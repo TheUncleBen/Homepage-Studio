@@ -63,6 +63,7 @@ vi.mock("utils/config/api-response", () => ({
 vi.mock("utils/logger", () => ({ default: () => ({ error() {} }) }));
 vi.mock("components/studio/api.mjs", () => ({ studioRequest: request }));
 vi.mock("swr", () => ({
+  SWRConfig: ({ children }) => children,
   default: (key, _fetcher, options) => {
     state.requests.push(key);
     return {

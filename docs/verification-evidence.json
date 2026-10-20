@@ -1,8 +1,8 @@
 {
-  "recordedAt": "2026-10-20T20:35:04.888499+00:00",
-  "status": "LOCAL_CHECKPOINT_PASSED_NOT_RELEASE_QUALIFIED",
+  "recordedAt": "2026-10-20T22:49:05.555834+00:00",
+  "status": "LOCAL_SSR_CORRECTION_VERIFIED_CI_RESULTS_SEPARATE",
   "upstreamCommit": "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
-  "nativeOverlayManifestSha256": "df34d2c09e55519b4a8d59556c0b9803c39646879574254254e482063d7e5182",
+  "nativeOverlayManifestSha256": "11fc8973743734783ef1980397e2bf426e945393b8e9668fbb2a416ab1c8d43b",
   "checks": [
     {
       "name": "integrated-node",
@@ -17,17 +17,21 @@
       "files": 581,
       "passed": 1924,
       "failed": 0,
-      "skipped": 0
+      "skipped": 0,
+      "sourceCommit": "6069e2eda645483ce8041174d980617c6d732ba6",
+      "scope": "Initial implementation before SSR correction; also passed in both initial CI builds."
     },
     {
       "name": "native-targeted",
-      "passed": 42,
-      "subsetOf": "native-full"
+      "passed": 44,
+      "files": 12,
+      "scope": "After SSR correction; previous42 plus2 real native SSR regressions."
     },
     {
       "name": "native-build",
       "command": "pnpm run build (prepared Homepage tree)",
-      "result": "PASS"
+      "result": "PASS",
+      "scope": "Rebuilt after SSR correction."
     },
     {
       "name": "native-overlay-lint",
@@ -48,6 +52,19 @@
       "writerFindings": 0,
       "nativeFindings": 0,
       "nativeDependencies": 403
+    },
+    {
+      "name": "production-standalone-http-ssr",
+      "result": "PASS",
+      "fixtures": [
+        "empty-nine-files",
+        "populated-nine-files"
+      ],
+      "status": 200,
+      "nativeDataStatus": 200,
+      "filesUnchanged": true,
+      "privateValuesAbsent": true,
+      "pageBundleSha256": "4ceaf69b8251448123147e0d1b0c4e168e5030b92d020dbe17da0db55376944f"
     }
   ],
   "notRunLocally": [
@@ -61,7 +78,14 @@
     "live external integrations",
     "owner acceptance"
   ],
-  "ci": "Prepared validation-only workflow; inspect exact repository Actions run for execution results.",
+  "ci": {
+    "policy": "Read-only validation; inspect the exact source run for current qualification. No image publication.",
+    "initialRun": 39509222831,
+    "initialHead": "6069e2eda645483ce8041174d980617c6d732ba6",
+    "initialTestedMerge": "dc03701c11fd712c34ff77365fab0bf91822aa5c",
+    "initialResult": "Both image builds/native1924tests pass; first dashboard GET500; browser/Swarm not reached.",
+    "correction": "Restore native SWR fallback; real SSR/production HTTP regression passes locally; full suite and deployment rerun in subsequent CI."
+  },
   "inputs": [
     {
       "path": ".dockerignore",
@@ -105,8 +129,8 @@
     },
     {
       "path": "browser/specs/dashboard.spec.mjs",
-      "sha256": "a9ef9303814804b2acdb97c50a83196c745ab390d2cda719a0828170bd7d1f8f",
-      "bytes": 11078
+      "sha256": "757c0c20e636b4f3a39db1d51d77fc05fc4b9a28628f00c9b0942b6aa72b8815",
+      "bytes": 11330
     },
     {
       "path": "docker/renderer-entrypoint.sh",
@@ -120,8 +144,13 @@
     },
     {
       "path": "overlay/src/__tests__/pages/index.test.jsx",
-      "sha256": "d289bdfaf1a6f1634f8204af6c66dac5fb75cd7d323efacfd207033ca3a04e5a",
-      "bytes": 9834
+      "sha256": "c571bf4e096692a70d0e4e629e7b96fc6969b29c7c0ca2d2bd481adb4799c951",
+      "bytes": 9875
+    },
+    {
+      "path": "overlay/src/__tests__/pages/studio-empty-ssr.test.jsx",
+      "sha256": "012784a5d3bc8620fad54e457fd0693b76e5e521be97d5c1ac28de9be0bfb3cf",
+      "bytes": 4729
     },
     {
       "path": "overlay/src/components/studio/api.mjs",
@@ -265,8 +294,8 @@
     },
     {
       "path": "overlay/src/pages/index.jsx",
-      "sha256": "b6f76380a94d248b14602398a953d77a4a1bfdf5421402361d55d8ec0f25c115",
-      "bytes": 6350
+      "sha256": "95f94ba99fa23137583859230bf8dad9a3d05c9697c7026fc8ca0229e94eb090",
+      "bytes": 6673
     },
     {
       "path": "overlay/src/styles/studio.css",
@@ -327,6 +356,11 @@
       "path": "scripts/build-catalog.mjs",
       "sha256": "b1729e66227ca2e0aac864313cbba1cd8abab998fc7aa20bcdeb9e1bdb8fd8ca",
       "bytes": 16221
+    },
+    {
+      "path": "scripts/check-native-ssr.py",
+      "sha256": "44fb98925cb1550aeefeef8099165a741e3bad0faa90719d6c0a3b4a38b0e386",
+      "bytes": 6744
     },
     {
       "path": "scripts/container-acceptance.mjs",

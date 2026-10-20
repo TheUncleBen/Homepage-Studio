@@ -75,6 +75,12 @@ Discovered definitions remain owned by Docker labels or Kubernetes annotations. 
 
 ## Validation and remaining gates
 
+### Cold server-rendering regression corrected after container CI
+
+The first AMD64 and ARM64 container runs exposed a missing native SWR fallback boundary in the replacement page. The bridge's `fallbackData` covered only `/api/studio/data`; native Quick Launch still reads `/api/widgets` directly. Its first server render therefore received `undefined`, and the dashboard returned HTTP 500. This affected cold empty and populated configurations alike. The existing page composition tests mocked Quick Launch/SWR and did not exercise this provider boundary.
+
+The page now restores Homepage's sanitized `SWRConfig` fallback around all page hooks and native children. The native Quick Launch component remains unchanged. `studio-empty-ssr.test.jsx` reads real isolated nine-file configurations and server-renders the actual App, page, SWR and Quick Launch with a fresh cache. It verifies empty startup without sample insertion, persisted native search/greeting/service/bookmark data, and provider/service-secret redaction. These tests reproduce the original exception before the fix. `scripts/check-native-ssr.py` also exercises the actual production standalone server over loopback with isolated empty and populated configurations, checks `GET /`, native render data, SSR fallback and unchanged source files, and stops the process afterward. Run it after the prepared native build with `--native-source <prepared-source-directory>`; it does not need Docker or access to real services.
+
 Run the unchanged native `pnpm test` command, and `pnpm build` (`next build --webpack`) against the prepared source. The final native output contains targeted fixtures for geometry, mixed proxy routing, lifecycle/iframe document retention, gestures, timers/StrictMode, reduced motion, typed field unions, main-page SSR/privacy, request limits, bridge privacy and discovery. The playback controller's separate fake-clock suite is retained by the sibling implementation.
 
 The implementation was tested with Node 24.19.0 and pnpm 10.34.7. Final logs, exact overlay file hashes and validation results are supplied alongside this handoff. Native-only tests that open loopback HTTP fixture servers require loopback permission in a restricted execution environment; they must not be skipped in container CI.

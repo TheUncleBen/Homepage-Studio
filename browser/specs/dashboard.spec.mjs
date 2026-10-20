@@ -96,6 +96,9 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await dialog.getByLabel('Transition', { exact: true }).selectOption('fade');
   await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
+  // Done persists asynchronously; wait for successful exit from editing before
+  // reloading so this assertion exercises saved state rather than a race.
+  await expect(page.getByRole('button', { name: 'Edit dashboard', exact: true })).toBeVisible();
   await expect(stack(page)).toHaveCount(1);
   await page.reload();
   await expect(stack(page)).toHaveCount(1);

@@ -2,7 +2,7 @@ import { useTranslation } from "next-i18next/pages";
 import Head from "next/head";
 import Script from "next/script";
 import { useContext, useEffect, useMemo, useState } from "react";
-import useSWR, { useSWRConfig } from "swr";
+import useSWR, { SWRConfig, useSWRConfig } from "swr";
 
 import QuickLaunch from "components/quicklaunch";
 import { studioRequest } from "components/studio/api.mjs";
@@ -19,7 +19,17 @@ export const getServerSideProps = withPageAuth(async () => ({
   props: await getDashboardData(),
 }));
 
-export default function HomepageStudio({ initialSettings, fallback }) {
+export default function HomepageStudio(props) {
+  // Native children such as Quick Launch read their original SWR keys during
+  // SSR. Keep Homepage's sanitized fallback available to the whole page.
+  return (
+    <SWRConfig value={{ fallback: props.fallback }}>
+      <StudioDashboard {...props} />
+    </SWRConfig>
+  );
+}
+
+function StudioDashboard({ initialSettings, fallback }) {
   const { i18n } = useTranslation();
   const { setSettings } = useContext(SettingsContext);
   const { setTheme } = useContext(ThemeContext);
