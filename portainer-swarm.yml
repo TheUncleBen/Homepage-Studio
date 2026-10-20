@@ -1,7 +1,9 @@
 version: "3.8"
+# Keep required-variable messages free of hyphens: Docker's legacy stack parser
+# checks default operators before required operators, including message text.
 services:
   studio:
-    image: ${STUDIO_IMAGE:?Set STUDIO_IMAGE to the approved configuration-service image digest}
+    image: ${STUDIO_IMAGE:?Set STUDIO_IMAGE to the approved configuration service image digest}
     environment:
       HOMEPAGE_UPSTREAM: http://homepage:3000
       STUDIO_PUBLIC_ORIGIN: ${STUDIO_PUBLIC_ORIGIN:?Set the exact dashboard URL origin}
@@ -33,7 +35,7 @@ services:
         condition: any
         delay: 5s
   homepage:
-    image: ${HOMEPAGE_IMAGE:?Set HOMEPAGE_IMAGE to the approved native-renderer image digest}
+    image: ${HOMEPAGE_IMAGE:?Set HOMEPAGE_IMAGE to the approved native renderer image digest}
     environment:
       STUDIO_WRITER_ORIGIN: http://studio:3001
       STUDIO_PUBLIC_ORIGIN: ${STUDIO_PUBLIC_ORIGIN:?Set the exact dashboard URL origin}

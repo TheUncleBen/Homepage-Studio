@@ -1,6 +1,6 @@
 {
-  "recordedAt": "2026-10-20T22:49:05.555834+00:00",
-  "status": "LOCAL_SSR_CORRECTION_VERIFIED_CI_RESULTS_SEPARATE",
+  "recordedAt": "2026-10-20T23:02:29.427144+00:00",
+  "status": "LOCAL_SWARM_TEMPLATE_CORRECTION_VERIFIED_EXACT_CI_RESULTS_SEPARATE",
   "upstreamCommit": "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
   "nativeOverlayManifestSha256": "11fc8973743734783ef1980397e2bf426e945393b8e9668fbb2a416ab1c8d43b",
   "checks": [
@@ -65,6 +65,15 @@
       "filesUnchanged": true,
       "privateValuesAbsent": true,
       "pageBundleSha256": "4ceaf69b8251448123147e0d1b0c4e168e5030b92d020dbe17da0db55376944f"
+    },
+    {
+      "name": "actual-docker-swarm-parser",
+      "command": "STUDIO_DOCKER_CLI=<official Docker28.0.4 client> node --test test/swarm-parser.mjs",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "daemonUsed": false,
+      "requiredMissingOrEmptyCases": 8
     }
   ],
   "notRunLocally": [
@@ -84,7 +93,20 @@
     "initialHead": "6069e2eda645483ce8041174d980617c6d732ba6",
     "initialTestedMerge": "dc03701c11fd712c34ff77365fab0bf91822aa5c",
     "initialResult": "Both image builds/native1924tests pass; first dashboard GET500; browser/Swarm not reached.",
-    "correction": "Restore native SWR fallback; real SSR/production HTTP regression passes locally; full suite and deployment rerun in subsequent CI."
+    "correction": "Restore native SWR fallback; real SSR/production HTTP regression passes locally; full suite and deployment rerun in subsequent CI.",
+    "secondRun": 39510878167,
+    "secondHead": "df1d2b40f6dd92e766075a3d916ca12078ea4d96",
+    "secondTestedMerge": "aea4ff62657f054cf981541951bdfd416abc4b4f",
+    "secondArchitectures": [
+      "amd64",
+      "arm64"
+    ],
+    "secondNativeTests": 1926,
+    "secondNativeFiles": 582,
+    "secondBrowserResult": "PASS both architectures",
+    "secondComposeResult": "PASS both architectures including persistence/replacement/restore",
+    "secondOverallResult": "FAILURE at Swarm image interpolation; corrected in this source change",
+    "swarmCorrection": "Remove hyphens only from the required image-variable help messages, retain required guards; actual Docker parser regression added before builds."
   },
   "inputs": [
     {
@@ -94,8 +116,8 @@
     },
     {
       "path": ".github/workflows/validate.yml",
-      "sha256": "7ee013e43b16cb94199106bfc2229d825bc2471227e4967dc935ac50265cec71",
-      "bytes": 3048
+      "sha256": "6ca8154ed1ba26159e0026b93d6906fe1b89716bbcce09eb6f2ba9a066bbbf9d",
+      "bytes": 3092
     },
     {
       "path": "Dockerfile",
@@ -334,8 +356,8 @@
     },
     {
       "path": "portainer-swarm.yml",
-      "sha256": "a41ba06900014215efbfc8588dff74259648d84f8b205aea463e8d4dbee3487f",
-      "bytes": 1855
+      "sha256": "916b7c7ce7a1c42d7da494fe4569a4ba8aa2488bdb1c4ac75be5943b2451aa8f",
+      "bytes": 2013
     },
     {
       "path": "portainer.env.example",
@@ -486,6 +508,11 @@
       "path": "test/packaging.test.mjs",
       "sha256": "eca24e7efbad0482615bd901179f07d050d02b814c792de2e7706723182b61db",
       "bytes": 13623
+    },
+    {
+      "path": "test/swarm-parser.mjs",
+      "sha256": "2e089ecd069dc768c064904e1fbc8949148ce6d9dc36b3c1eb11ba2fa2193d6b",
+      "bytes": 3290
     },
     {
       "path": "test/test_prepare_homepage.py",

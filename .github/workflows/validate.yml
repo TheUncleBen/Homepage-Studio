@@ -55,6 +55,7 @@ jobs:
           npm test
           node --test test/packaging.test.mjs
           python3 -m unittest discover -s test -p 'test_*.py'
+          node --test test/swarm-parser.mjs
       - name: Verify and prepare the pinned native source
         run: python3 scripts/prepare-homepage.py
       - name: Build and load configuration service locally
