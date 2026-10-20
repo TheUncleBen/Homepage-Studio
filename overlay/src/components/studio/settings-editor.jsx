@@ -258,12 +258,13 @@ export function SnapshotEditor({ state, backups, onSaved, onClose }) {
     setPending(true);
     setError(null);
     try {
-      await onSaved(
-        await studioRequest("/__studio/api/restore", {
-          revision: state.revision,
-          backupId: chosen,
-        }),
-      );
+      const restored = await studioRequest("/__studio/api/restore", {
+        revision: state.revision,
+        backupId: chosen,
+      });
+      await onSaved(restored, {
+        customJsChanged: (restored.customJs || "") !== (state.customJs || ""),
+      });
     } catch (err) {
       setError(err);
     } finally {

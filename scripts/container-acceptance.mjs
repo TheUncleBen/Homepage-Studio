@@ -25,6 +25,7 @@ const composeArgs = ['compose', '--project-name', identity, '--file', 'portainer
 let composeStarted = false;
 let swarmStarted = false;
 let stackStarted = false;
+let primaryFailure;
 
 async function docker(args, options = {}) {
   try {
@@ -233,6 +234,7 @@ try {
   await restoreEmpty(swarmFixture);
   console.log('PASS: fresh one-node Swarm, same-node single writer, stop-first service replacement, edit/snapshot persistence and restore.');
 } catch (error) {
+  primaryFailure = error;
   if (composeStarted) {
     try { console.error((await docker([...composeArgs, 'logs', '--no-color', '--tail', '80'])).slice(-14000)); } catch {}
   }
@@ -241,17 +243,22 @@ try {
   }
   throw error;
 } finally {
+  const cleanupFailures = [];
+  const cleanup = async operation => {
+    try { await operation(); }
+    catch (error) { cleanupFailures.push(error); console.error(error.message); }
+  };
   if (composeStarted) {
-    try { await docker([...composeArgs, 'down', '--volumes', '--remove-orphans']); } catch (error) { console.error(error.message); }
+    await cleanup(() => docker([...composeArgs, 'down', '--volumes', '--remove-orphans']));
   }
   if (stackStarted) {
-    try {
-      await docker(['stack', 'rm', identity]);
-      await eventually(async () => assert.equal(await docker(['ps', '--quiet', '--filter', `label=com.docker.stack.namespace=${identity}`]), ''), 'Fixture task removal', 60000);
-      for (const suffix of ['config', 'state']) await docker(['volume', 'rm', `${identity}_${suffix}`]);
-    } catch (error) { console.error(error.message); }
+    await cleanup(() => docker(['stack', 'rm', identity]));
+    // Stopped task containers can still hold volumes while Swarm removes them.
+    await cleanup(() => eventually(async () => assert.equal(await docker(['ps', '--all', '--quiet', '--filter', `label=com.docker.stack.namespace=${identity}`]), ''), 'Fixture task removal', 60000));
+    for (const suffix of ['config', 'state']) await cleanup(() => docker(['volume', 'rm', `${identity}_${suffix}`]));
   }
   if (swarmStarted) {
-    try { await docker(['swarm', 'leave', '--force']); } catch (error) { console.error(error.message); }
+    await cleanup(() => docker(['swarm', 'leave', '--force']));
   }
+  if (cleanupFailures.length && !primaryFailure) throw new AggregateError(cleanupFailures, 'Fixture cleanup failed after successful qualification.');
 }

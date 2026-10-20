@@ -1,8 +1,8 @@
 {
-  "recordedAt": "2026-10-20T23:21:42.521806+00:00",
-  "status": "LOCAL_SWARM_HEALTH_AND_MANUAL_DELAY_CORRECTIONS_VERIFIED_EXACT_CI_RESULTS_SEPARATE",
+  "recordedAt": "2026-10-20T23:46:59.093803+00:00",
+  "status": "LOCAL_FOLLOWUP_BROWSER_VERIFIED_HOSTED_COMBINED_QUALIFICATION_PENDING",
   "upstreamCommit": "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
-  "nativeOverlayManifestSha256": "7fc91be540fc40b2c8e092d65cdd0c103946772191a1b81837f2e28ffd5caf07",
+  "nativeOverlayManifestSha256": "cd4f602418e406ae1ba3e57db8e15da2b314cc08377fae20930b91d59c2f4f99",
   "checks": [
     {
       "name": "integrated-node",
@@ -88,10 +88,67 @@
       "result": "PASS",
       "lintWarnings": 0,
       "scope": "New control apply/reopen45s,30s default,1\u20133600s limits,draft isolation,and max(interval,hold)60s; full subsequent CI separate."
+    },
+    {
+      "name": "native-snapshot-reload-handoff",
+      "passed": 3,
+      "failed": 0,
+      "failedBeforeCorrection": 3,
+      "result": "PASS",
+      "lintWarnings": 0,
+      "scope": "Changed, removed and unchanged actual customJs contents; targeted subset of native suite."
+    },
+    {
+      "name": "local-production-chromium",
+      "passed": 7,
+      "failed": 0,
+      "retries": 0,
+      "durationSeconds": 19.0,
+      "result": "PASS",
+      "architecture": "x86_64",
+      "productionBuildRevision": "b7c9c3c9feac1af62e5189cd9f059e0c951a36f1+local-5fd0c798269561cb",
+      "browser": "Chromium headless shell 156.0.8078.4",
+      "playwright": "1.64.1",
+      "uncaughtMainPageErrors": 0,
+      "mainPageLocalHttp5xx": 0,
+      "scope": [
+        "Existing direct-edit/stack/playback scenario",
+        "Actual pointer movement/resize/Escape and persisted rectangles",
+        "Ordinary scrolling followed by same-finger hold/movement/direct stacking",
+        "Actual native search node/query preservation through stack and move-out; bookmark/config/layout reload",
+        "UI-edited 45-second manual delay; exact next advance and subsequent 2-second cadence; no playback snapshots",
+        "Native Custom API component/private proxy round trip against synthetic internal endpoint",
+        "Snapshot restore reload notice and actual harmless script application after explicit reload"
+      ],
+      "subset": "The focused touch/restore 2/2 run is included in the seven scenarios, not additive.",
+      "limits": "Local production processes, not Docker or ARM64. The separate mobile screenshot context checks native content and horizontal fit; main-page error postconditions do not cover that additional context."
+    },
+    {
+      "name": "post-integration-packaging",
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "result": "PASS",
+      "scope": "Integrated workflow/cleanup changes; overlaps the existing combined writer/packaging total."
+    },
+    {
+      "name": "cleanup-control-flow-regression",
+      "passed": 3,
+      "failedBeforeCorrection": 3,
+      "result": "PASS",
+      "scope": "Simulated Docker stopped-task removal, cleanup-only error propagation, preserved primary failure; next CI must confirm real cleanup."
+    },
+    {
+      "name": "production-visual-review",
+      "result": "REVIEWED",
+      "views": [
+        "1440x1080 desktop",
+        "390px mobile full page"
+      ],
+      "scope": "Actual synthetic native content screenshots; no clipped top-level controls or horizontal page overflow observed. Owner aesthetic/device and dense calendar/chart/embed review remain separate."
     }
   ],
   "notRunLocally": [
-    "Chromium/native browser",
     "Docker image build",
     "Compose lifecycle",
     "Swarm lifecycle",
@@ -133,7 +190,31 @@
     "thirdBrowserResult": "PASS both architectures",
     "thirdComposeResult": "PASS both architectures",
     "thirdOverallResult": "FAILURE at initial Swarm readiness after180s; service replacement/restore not reached.",
-    "startupCorrection": "Writer Docker health uses local configuration readiness; aggregate application readiness remains strict. Actual container boundary regression added before full lifecycle."
+    "startupCorrection": "Writer Docker health uses local configuration readiness; aggregate application readiness remains strict. Actual container boundary regression added before full lifecycle.",
+    "fourthRun": 39514570752,
+    "fourthHead": "b7c9c3c9feac1af62e5189cd9f059e0c951a36f1",
+    "fourthTestedMerge": "a82e3bbd555cd4ab12115927dcbdba130e676d22",
+    "fourthArchitectures": [
+      "amd64",
+      "arm64"
+    ],
+    "fourthNativeTests": 1927,
+    "fourthNativeFiles": 583,
+    "fourthBrowserScenarios": 1,
+    "fourthBrowserResult": "PASS both architectures",
+    "fourthComposeResult": "PASS both architectures",
+    "fourthSwarmLifecycleResult": "PASS both architectures",
+    "fourthOverallResult": "GitHub SUCCESS with swallowed fixture-cleanup errors and independent coverage findings; candidate gate stayed open.",
+    "followupCorrections": [
+      "Same-finger touch movement after hold",
+      "Snapshot customJs reload handoff",
+      "Seven isolated browser scenarios instead of one",
+      "Wait for all Swarm fixture containers and propagate cleanup-only failure",
+      "Push limited to default branch, preserving complete PR checks and superseded-source cancellation"
+    ],
+    "followupPolicy": "One combined exact-source qualification after local preflight. Its hosted result is a separate Actions record; no publication or release approval is inferred.",
+    "studioNativeCasesAtFourthRunReview": 45,
+    "studioNativeFilesAtFourthRunReview": 13
   },
   "inputs": [
     {
@@ -143,8 +224,8 @@
     },
     {
       "path": ".github/workflows/validate.yml",
-      "sha256": "6ca8154ed1ba26159e0026b93d6906fe1b89716bbcce09eb6f2ba9a066bbbf9d",
-      "bytes": 3092
+      "sha256": "e14d0527172d6492de4d41e2cef146d22c831530827c036e48824003248cfa01",
+      "bytes": 3146
     },
     {
       "path": "Dockerfile",
@@ -160,6 +241,11 @@
       "path": "VERSION",
       "sha256": "2f5500b47f0dea0ae6a8e75cd8988d6c24c3effe6c8a30a49cf08b97725eee45",
       "bytes": 11
+    },
+    {
+      "path": "browser/helpers/dashboard.mjs",
+      "sha256": "af7d15d23d5a4bfedddf1da94f907dc9370dc32727a31e7587c49e7cebb6d54f",
+      "bytes": 6265
     },
     {
       "path": "browser/package-lock.json",
@@ -178,8 +264,18 @@
     },
     {
       "path": "browser/specs/dashboard.spec.mjs",
-      "sha256": "757c0c20e636b4f3a39db1d51d77fc05fc4b9a28628f00c9b0942b6aa72b8815",
-      "bytes": 11330
+      "sha256": "f46916c0c8b4f185a3e2436c79f2c93fcd3d39913af4d7a3262b4c5b123ebc01",
+      "bytes": 11338
+    },
+    {
+      "path": "browser/specs/native-controls.spec.mjs",
+      "sha256": "fe7de081b2882269036c17d7700a337f19dd7d9dee32e9aa6a16396d16437e1a",
+      "bytes": 14300
+    },
+    {
+      "path": "browser/specs/recovery.spec.mjs",
+      "sha256": "1b3d5414b74265faeadf9544127c6bfc894bff1594f573c4420679dd0ed3667f",
+      "bytes": 1864
     },
     {
       "path": "docker/renderer-entrypoint.sh",
@@ -213,8 +309,8 @@
     },
     {
       "path": "overlay/src/components/studio/board.jsx",
-      "sha256": "4c7d26d90e6f86dcf0dc245393d7925a5c1eeddd86be33977fb0ee30141fd130",
-      "bytes": 33626
+      "sha256": "446b1c9e564899c087a54021e8e90e5da5eaa2915705218f98d0035bc9308caa",
+      "bytes": 34193
     },
     {
       "path": "overlay/src/components/studio/bridge.test.js",
@@ -308,8 +404,13 @@
     },
     {
       "path": "overlay/src/components/studio/settings-editor.jsx",
-      "sha256": "0a6e69e23f18b5409dcf295257388c0333d0a2d030246cfd42522a5344b96718",
-      "bytes": 11007
+      "sha256": "426bc264ebc8327b34110f767fc8f8495d9fc182a4a0da4b45ba1b77497a37d1",
+      "bytes": 11107
+    },
+    {
+      "path": "overlay/src/components/studio/settings-editor.test.jsx",
+      "sha256": "06efc349a32b1f5c3ac8dd32aab94a7ca1d5ec7da714148c4593177c842b3053",
+      "bytes": 2139
     },
     {
       "path": "overlay/src/components/studio/stack-editor.jsx",
@@ -418,8 +519,8 @@
     },
     {
       "path": "scripts/container-acceptance.mjs",
-      "sha256": "065ac7915c879b60590488e16ab0a8eeb8e9d54a437c5e444283796883cd1b9d",
-      "bytes": 14259
+      "sha256": "2f3ebf7c47b35e91d4422ac752523e752f67001604483d7ce97e21ab3ef4cbb1",
+      "bytes": 14623
     },
     {
       "path": "scripts/healthcheck.mjs",

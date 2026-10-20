@@ -10,6 +10,11 @@
 | Full native Homepage Vitest suite before the cold SSR correction | 581 test files; 1,924 tests passed; zero failures or skips; also passed inside both initial CI image builds |
 | Targeted native overlay tests after the cold SSR correction | 12 files; 44 passed; includes the previous 42 plus two real native SSR regressions |
 | Targeted native editor/stack tests after exposing the manual-delay control | 2 files; 5 passed; includes a new apply/reopen regression that fails before the control exists |
+| Snapshot custom-JavaScript reload handoff | 3 regressions fail before the correction and pass afterward; changed, removed and unchanged scripts |
+| Actual local production Chromium | 7 scenarios passed in 19.0 seconds with zero retries, uncaught main-page errors or local HTTP 5xx; includes the focused touch/restore pair |
+| Integrated packaging checks after CI trigger/cleanup corrections | 16 passed; zero failures or skips; overlaps the integrated writer/packaging total |
+| Cleanup control-flow regressions | 3 failed before / 3 passed after; simulated task-removal race, with actual Docker confirmation required in CI |
+| Actual production visual inspection | Desktop 1440 × 1080 and mobile 390-pixel screenshots reviewed; synthetic content, separate from owner/device acceptance |
 | Native ESLint for new/replaced files | Passed with zero warnings |
 | Native production Next standalone build | Passed, including a rebuild after the cold SSR correction |
 | Actual corrected standalone HTTP server | Empty and populated nine-file configurations both return HTTP 200; native render data, unchanged files and secret redaction verified |
@@ -48,7 +53,27 @@ The writer's container health depended on aggregate renderer readiness, while th
 
 A real HTTP/CLI regression runs the exact Dockerfile health command with native readiness unavailable. The old command fails, changing only the Dockerfile without the CLI endpoint mapping also fails, and the complete correction passes. Invalid configuration still fails container health, while aggregate readiness remains HTTP 503 until the renderer is ready. The integrated suite now passes 150 tests. Container acceptance additionally starts the writer alone and checks the same boundary before starting the renderer. Bounded failure diagnostics expose task health and selected endpoints without dumping configuration or environment values. Production update and stability timings remain unchanged.
 
-These local checks establish the corrected health boundary, not completed Swarm qualification. The next exact-source Actions result determines full deployment acceptance.
+These local checks established the corrected health boundary. The fourth hosted run below then exercised actual Swarm startup and replacement with that correction.
+
+## Fourth actual CI result and independent coverage review
+
+[Run 39514570752](https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39514570752) reported success on both architectures. Each job passed 583 native test files / 1,927 tests, the writer-alone health boundary, Chromium, the full standalone lifecycle, and Swarm startup, stop-first replacement, persistence and restoration. The tested merge was `a82e3bbd555cd4ab12115927dcbdba130e676d22`, whose tree equals source head `b7c9c3c9feac1af62e5189cd9f059e0c951a36f1`.
+
+That result did not close the candidate gate. Log review found that cleanup ignored stopped task containers and printed a volume-in-use error without failing the run. Cleanup now waits for all fixture containers, attempts remaining cleanup after an error, and reports a cleanup-only failure without replacing an earlier qualification error. Three focused control-flow regressions fail against the previous cleanup and pass against the correction; real-container confirmation belongs to the next exact-source run.
+
+A separate requirement-to-test review found that the single browser scenario used keyboard/numeric layout controls and selection-based stacking. It did not directly test pointer placement/resize, same-finger hold-and-drag, native search state, the native service-widget proxy path, or snapshot reload instructions. The 1,927-test total contains inherited Homepage coverage; the reviewed Studio-specific native subset contained 45 cases across 13 files. These counts are not interchangeable measures of feature acceptance.
+
+The review also found a missing reload handoff when a snapshot changes custom JavaScript. Restoration now compares the current and restored script and offers the same explicit reload action as file editing. Three regressions cover changed, removed and unchanged scripts. The actual browser verifies the prompt, preservation of the currently loaded script until reload, and execution of the restored script afterward.
+
+The first targeted local browser run reproduced a separate functional failure: a hold entered editing, but continuing with the same finger vertically did not move the panel. A canvas touch listener now preserves motion during an active single-touch board manipulation while allowing ordinary pre-hold scrolling. The repaired browser scenario verifies scrolling, same-finger movement, cancellation, deliberate drag-to-stack and saved membership. An unrelated initial recovery assertion was corrected to address the status container containing both notice text and a button; the notice itself was already present after the restore fix.
+
+All seven production-browser scenarios then passed locally in 19.0 seconds without retries. They add actual pointer move/resize and Escape cancellation, native search node/query preservation through stacking and moving out, native bookmark persistence, a saved 45-second manual delay with exact automatic-advance timing, and a native Custom API/private-proxy round trip using a synthetic internal endpoint. Each scenario resets the disposable configuration and checks its main page for uncaught errors and local HTTP 5xx. The additional mobile screenshot context verifies native content and horizontal fit. The two focused scenarios are a subset of seven, not nine unique tests. These local results apply to the repaired x86_64 production-process build; the next exact-source CI run qualifies the combined images on both architectures.
+
+## CI execution policy
+
+The initial workflow responded to both a branch push and its pull-request update. Four push duplicates were cancelled by the shared concurrency group while four PR qualification rounds continued. The duplicate triggers were avoidable. Push validation is now limited to the default branch, while pull requests retain complete validation on both architectures. Manual dispatch and cancellation of genuinely superseded source remain available. No path filter, draft condition, skipped job or weakened acceptance check was added. Browser installation follows the image build so a build failure does not first incur browser setup work.
+
+Follow-up corrections are reviewed and checked locally where possible, then submitted together. A passing run records the checks completed for its exact source; it is neither owner acceptance nor a claim of complete defect absence.
 
 ## What was exercised
 
@@ -64,7 +89,7 @@ Dependency review corrected `yaml` to 2.8.3 and the native `follow-redirects` de
 
 ## Local environment limits and remaining gates
 
-There is no Docker engine in the local implementation environment. Official browser installation attempts using bundled Playwright 1.62.1 and the pinned test package 1.64.1 returned truncated ZIP archives and did not install a browser. Consequently local results remain **NOT_RUN** for Chromium interaction, container builds, Compose, Swarm and architecture-qualified container execution. Hosted runs are separate evidence, including the real first-run failure recorded above. The corrected production standalone HTTP regression did execute locally; it is not browser or Docker acceptance.
+There is no Docker engine in the local implementation environment. The Playwright browser CDN returned an unavailable HTML response instead of a usable archive. The exact compatible Chrome for Testing version, 156.0.8078.4, was obtained from Google's official distribution, verified and successfully launched. It enables local browser checks against the real production renderer and writer before a hosted container run. Container builds, Compose, Swarm and architecture-qualified container execution still require the hosted environment. A local production-process check is not Docker acceptance.
 
 The nonpublishing workflow runs the actual two-image application, browser acceptance and Compose/Swarm lifecycle checks on amd64 and arm64 hosted runners. Its logs must establish results for the exact source before an engineering candidate is prepared. It has no registry login, image push, release, date-tag or installable-image artifact upload.
 

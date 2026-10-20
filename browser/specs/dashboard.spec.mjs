@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../helpers/dashboard.mjs';
 
 const activePanel = page => page.locator('[data-stack-id]:not([aria-hidden="true"])');
 const stack = page => page.locator('[aria-roledescription="carousel"]');

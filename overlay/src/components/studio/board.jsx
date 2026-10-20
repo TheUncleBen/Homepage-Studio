@@ -165,6 +165,19 @@ export default function StudioBoard({
   useLayoutEffect(() => {
     boardRef.current = board;
   }, [board]);
+  useEffect(() => {
+    const element = canvas.current;
+    // Register before a touch begins so the browser waits for this decision.
+    // Ordinary swipes still scroll; only an active held drag/resize owns motion.
+    const preserveManipulation = (event) => {
+      if (operation.current && event.touches.length === 1 && event.cancelable)
+        event.preventDefault();
+    };
+    element.addEventListener("touchmove", preserveManipulation, {
+      passive: false,
+    });
+    return () => element.removeEventListener("touchmove", preserveManipulation);
+  }, []);
   const projection = useMemo(() => projectBoard(board, width), [board, width]);
   const geometry = useMemo(
     () =>
