@@ -1,0 +1,1 @@
+Catalog documentation examples derive from gethomepage/homepage v2.6.0, pinned commit 51cc1684f9f34a7877ed462b8f94c9cc687b4dde. These upstream examples retain Homepage's GPL-3.0 license; see homepage-LICENSE. Studio's generator and reviewed metadata use AGPL-3.0-or-later. No source or license for the derived renderer is replaced by this generated catalog notice.

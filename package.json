@@ -1,0 +1,19 @@
+{
+  "name": "homepage-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Direct editing, flexible native panels and widget stacks for Homepage",
+  "scripts": {
+    "start": "node server/index.mjs",
+    "test": "node --test --test-isolation=none server/*.test.mjs",
+    "catalog": "node scripts/build-catalog.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "yaml": "2.8.3"
+  },
+  "license": "AGPL-3.0-or-later"
+}

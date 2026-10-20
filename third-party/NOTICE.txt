@@ -1,0 +1,28 @@
+Homepage Studio — license provenance
+
+Original Studio code:
+Copyright (c) 2026 Ben.
+Licensed under AGPL-3.0-or-later; see ../LICENSE. You may redistribute and
+modify it under GNU Affero General Public License version 3, or (at your
+option) any later version. It is provided without warranty; see the full
+license terms.
+
+Historical prototype:
+Earlier copies were provided under MIT. Those permissions are not revoked.
+The original notice is preserved in prototype-MIT-LICENSE. The original
+prototype archive remains unchanged.
+
+Homepage-derived material:
+The native renderer and widget catalog derive from gethomepage/homepage
+v2.6.0, commit 51cc1684f9f34a7877ed462b8f94c9cc687b4dde. Retain upstream
+copyright and GPL-3.0 terms; see homepage-LICENSE. Source preparation fetches
+and verifies the exact upstream archive before applying the Studio overlay.
+Studio's original-code license does not broaden the upstream grant.
+The catalog preserves source attribution and documentation example notices;
+see catalog-NOTICE.txt. It is a catalog of native examples and known fields,
+not a complete configuration schema or universal integration test.
+
+YAML parser:
+yaml 2.8.3 by Eemeli Aro is licensed under ISC. The exact installed notice is
+preserved in yaml-LICENSE. Keep dependency notices in corresponding-source
+and distribution artifacts.

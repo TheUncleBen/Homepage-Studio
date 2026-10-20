@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1
+ARG NODE_IMAGE=node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
+FROM ${NODE_IMAGE} AS builder
+ARG STUDIO_BUILD_REVISION=unreleased
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1 LOG_TARGETS=stdout STUDIO_BUILD_REVISION=${STUDIO_BUILD_REVISION}
+COPY .build/homepage/ ./
+RUN node -e 'if (require("./studio-source.json").overlayApplied !== true) throw new Error("The reviewed Studio overlay is required.")'
+RUN npm install --global pnpm@10.34.7 && pnpm install --frozen-lockfile --prefer-offline
+COPY test/native-redirect-security.mjs ./studio-native-tests/native-redirect-security.mjs
+RUN STUDIO_NATIVE_SOURCE=/app node --test studio-native-tests/native-redirect-security.mjs
+RUN pnpm audit --prod
+RUN pnpm test
+RUN NEXT_PUBLIC_VERSION="studio-${STUDIO_BUILD_REVISION}" NEXT_PUBLIC_REVISION="${STUDIO_BUILD_REVISION}" pnpm run build
+
+FROM ${NODE_IMAGE}
+ARG STUDIO_BUILD_REVISION=unreleased
+LABEL org.opencontainers.image.title="Homepage Studio native renderer" \
+      org.opencontainers.image.source="https://github.com/TheUncleBen/Homepage-Studio" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.revision="${STUDIO_BUILD_REVISION}" \
+      io.homepage-studio.upstream="51cc1684f9f34a7877ed462b8f94c9cc687b4dde"
+WORKDIR /app
+RUN apt-get update && apt-get install --no-install-recommends -y iputils-ping ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder --chown=1000:1000 /app/.next/standalone/ ./
+COPY --from=builder --chown=1000:1000 /app/.next/static/ ./.next/static/
+COPY --from=builder --chown=1000:1000 /app/public/ ./public/
+COPY --from=builder --chown=1000:1000 /app/studio-source.json ./studio-source.json
+COPY --from=builder --chown=1000:1000 /app/LICENSE ./third-party/homepage-LICENSE
+COPY --chown=1000:1000 LICENSE VERSION ./
+COPY --chown=1000:1000 third-party ./third-party
+COPY --chown=1000:1000 scripts/runtime-host.mjs scripts/healthcheck.mjs scripts/wait-for-config.mjs ./scripts/
+COPY --chmod=755 docker/renderer-entrypoint.sh ./docker/renderer-entrypoint.sh
+RUN mkdir -p /app/config && chown 1000:1000 /app/config && chmod 750 /app/config
+ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000 HOMEPAGE_CONFIG_DIR=/app/config LOG_TARGETS=stdout \
+    NEXT_TELEMETRY_DISABLED=1 STUDIO_BUILD_REVISION=${STUDIO_BUILD_REVISION}
+USER 1000:1000
+EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=4s --start-period=120s --retries=3 CMD ["node", "scripts/healthcheck.mjs", "renderer"]
+ENTRYPOINT ["/app/docker/renderer-entrypoint.sh"]
+CMD ["node", "server.js"]

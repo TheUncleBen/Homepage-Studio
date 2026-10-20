@@ -1,0 +1,467 @@
+{
+  "recordedAt": "2026-10-20T20:35:04.888499+00:00",
+  "status": "LOCAL_CHECKPOINT_PASSED_NOT_RELEASE_QUALIFIED",
+  "upstreamCommit": "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
+  "nativeOverlayManifestSha256": "df34d2c09e55519b4a8d59556c0b9803c39646879574254254e482063d7e5182",
+  "checks": [
+    {
+      "name": "integrated-node",
+      "command": "node --test --test-isolation=none server/*.test.mjs test/packaging.test.mjs",
+      "passed": 149,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "native-full",
+      "command": "pnpm test (prepared Homepage tree)",
+      "files": 581,
+      "passed": 1924,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "native-targeted",
+      "passed": 42,
+      "subsetOf": "native-full"
+    },
+    {
+      "name": "native-build",
+      "command": "pnpm run build (prepared Homepage tree)",
+      "result": "PASS"
+    },
+    {
+      "name": "native-overlay-lint",
+      "result": "PASS",
+      "warnings": 0
+    },
+    {
+      "name": "source-preparation",
+      "command": "python3 -m unittest discover -s test -p 'test_*.py'",
+      "passed": 10
+    },
+    {
+      "name": "native-redirect-security",
+      "passed": 4
+    },
+    {
+      "name": "production-dependency-audits",
+      "writerFindings": 0,
+      "nativeFindings": 0,
+      "nativeDependencies": 403
+    }
+  ],
+  "notRunLocally": [
+    "Chromium/native browser",
+    "Docker image build",
+    "Compose lifecycle",
+    "Swarm lifecycle",
+    "arm64 container execution",
+    "Portainer target host",
+    "physical Samsung device",
+    "live external integrations",
+    "owner acceptance"
+  ],
+  "ci": "Prepared validation-only workflow; inspect exact repository Actions run for execution results.",
+  "inputs": [
+    {
+      "path": ".dockerignore",
+      "sha256": "e9d40faed1a10f38399e129ba75e13d9452ed8fdb21b4ca6388927992c79c8b8",
+      "bytes": 379
+    },
+    {
+      "path": ".github/workflows/validate.yml",
+      "sha256": "7ee013e43b16cb94199106bfc2229d825bc2471227e4967dc935ac50265cec71",
+      "bytes": 3048
+    },
+    {
+      "path": "Dockerfile",
+      "sha256": "175f71669e07f1ced10c37a887de3fc62b9c9cc9f2c2602979f1a33a5bcab843",
+      "bytes": 1602
+    },
+    {
+      "path": "Dockerfile.homepage",
+      "sha256": "5184e41c8f3cf9805baf348bad1411499064fdf4f829e25cdcb32bd889d223c8",
+      "bytes": 2599
+    },
+    {
+      "path": "VERSION",
+      "sha256": "2f5500b47f0dea0ae6a8e75cd8988d6c24c3effe6c8a30a49cf08b97725eee45",
+      "bytes": 11
+    },
+    {
+      "path": "browser/package-lock.json",
+      "sha256": "a7cf13e5db866ffaa9aebefa5ad79d38212d7376f552e3bd582f5c925d66083d",
+      "bytes": 1741
+    },
+    {
+      "path": "browser/package.json",
+      "sha256": "7b2337159d9251a8023531ca453f29396716644a6b32f47cf81137b192d98c69",
+      "bytes": 274
+    },
+    {
+      "path": "browser/playwright.config.mjs",
+      "sha256": "533323aac174483928341764803a6aeea10b0826b6c5e415f905b2a4ca16c5cf",
+      "bytes": 923
+    },
+    {
+      "path": "browser/specs/dashboard.spec.mjs",
+      "sha256": "a9ef9303814804b2acdb97c50a83196c745ab390d2cda719a0828170bd7d1f8f",
+      "bytes": 11078
+    },
+    {
+      "path": "docker/renderer-entrypoint.sh",
+      "sha256": "c1fc2a49cd801542c2d83fed66247f601e50de48ac8c124ab1820db51a9b2a94",
+      "bytes": 274
+    },
+    {
+      "path": "docker/writer-entrypoint.sh",
+      "sha256": "082123adaa43d790026cf02d42f1d46d63bad3b8ba74e083c1d7b848d7e92c4f",
+      "bytes": 270
+    },
+    {
+      "path": "overlay/src/__tests__/pages/index.test.jsx",
+      "sha256": "d289bdfaf1a6f1634f8204af6c66dac5fb75cd7d323efacfd207033ca3a04e5a",
+      "bytes": 9834
+    },
+    {
+      "path": "overlay/src/components/studio/api.mjs",
+      "sha256": "83eb0a53d664c9c8eb8cc370155d80484795e345096c1c97dfd792a9f6bf8610",
+      "bytes": 1659
+    },
+    {
+      "path": "overlay/src/components/studio/api.test.js",
+      "sha256": "810e583940450feb69fe38719c4f8389b751d7bc07921e6e6af50f460ee9a4ee",
+      "bytes": 1451
+    },
+    {
+      "path": "overlay/src/components/studio/board.jsx",
+      "sha256": "4c7d26d90e6f86dcf0dc245393d7925a5c1eeddd86be33977fb0ee30141fd130",
+      "bytes": 33626
+    },
+    {
+      "path": "overlay/src/components/studio/bridge.test.js",
+      "sha256": "cbef2c693ecfd8a21f84c0b5b03c2ffcb50588948fa13252ca167fff20ca5b48",
+      "bytes": 3150
+    },
+    {
+      "path": "overlay/src/components/studio/config-form.jsx",
+      "sha256": "eb02d97762ed7a3bdb294088261b0738ce30b3e8be967bbad796a89da1242dc2",
+      "bytes": 11639
+    },
+    {
+      "path": "overlay/src/components/studio/config-form.test.jsx",
+      "sha256": "4d61d0d5e9a7467e900dc8db4e0fc8c99071419c1c5d98a44f9e199976d84814",
+      "bytes": 3718
+    },
+    {
+      "path": "overlay/src/components/studio/content-editor.jsx",
+      "sha256": "69271635f5e33aa7df0f65af257d7fdcd2359bd4c8e290b43cea29f311bab5b1",
+      "bytes": 13888
+    },
+    {
+      "path": "overlay/src/components/studio/dialog.jsx",
+      "sha256": "41d074280550553ac60232089bbabc0c04b1a63a1dbb8eb99aa4cf7f4efe04e1",
+      "bytes": 2240
+    },
+    {
+      "path": "overlay/src/components/studio/discovery-editor.jsx",
+      "sha256": "d6beb4afc69d795f92b9161bc08250e28c44190655f93e55bc5b35954f9403a5",
+      "bytes": 2323
+    },
+    {
+      "path": "overlay/src/components/studio/geometry.mjs",
+      "sha256": "3abd4fe864d28a8158942bd564f0f17df62c38188ba86650ffdbacc77a381122",
+      "bytes": 7072
+    },
+    {
+      "path": "overlay/src/components/studio/geometry.test.js",
+      "sha256": "cd8f1a58b11f43a54859dd798f94cc2ee7cae421115dacfa20b7965a6319bd29",
+      "bytes": 4646
+    },
+    {
+      "path": "overlay/src/components/studio/gestures.jsx",
+      "sha256": "e62aee496d2c24a10f6d2728bfebf09d4f79130be2cfed02a50f951f44a3d642",
+      "bytes": 5211
+    },
+    {
+      "path": "overlay/src/components/studio/gestures.test.jsx",
+      "sha256": "a7d077faf3dc05bf30f398c14a1b129f480c8f842276ba7c7fba78a3fde15613",
+      "bytes": 3441
+    },
+    {
+      "path": "overlay/src/components/studio/icons.jsx",
+      "sha256": "c7cc74b7471a32f76b4f12934ecbf1dec868119691fad82fa949044e70fe3067",
+      "bytes": 1493
+    },
+    {
+      "path": "overlay/src/components/studio/lifecycle.test.jsx",
+      "sha256": "0392d88889a78838f13c0b25c5fd339bb18a6edc533e87c65150b5ba962ce37a",
+      "bytes": 5396
+    },
+    {
+      "path": "overlay/src/components/studio/native-adapter.mjs",
+      "sha256": "354d659f67c154b053c44b68171ecfe1d212165c87bcd3a95f708b76b03b9eed",
+      "bytes": 3766
+    },
+    {
+      "path": "overlay/src/components/studio/native-adapter.test.js",
+      "sha256": "3932bec78e3d05fa0b1d21b160e752e5e0583d0518d06cdb63c756fc71ed8717",
+      "bytes": 5037
+    },
+    {
+      "path": "overlay/src/components/studio/native-panel.jsx",
+      "sha256": "f1bc182a254f2aadc02d7ea3cca866aeddaac292485c41135d493ed42b7640d8",
+      "bytes": 1485
+    },
+    {
+      "path": "overlay/src/components/studio/native-routing.test.js",
+      "sha256": "488a9af441ba3361a6e3000645660c03840e0be67b9ea002839772b985cce4e9",
+      "bytes": 3066
+    },
+    {
+      "path": "overlay/src/components/studio/panel-host.jsx",
+      "sha256": "fe42fed8604a1329d4b04e53b917791de1b4ba9e8aebecf6312577bef87b4121",
+      "bytes": 6546
+    },
+    {
+      "path": "overlay/src/components/studio/playback.mjs",
+      "sha256": "ad9a8d7a1b29bb842ed9f7c3e1e254d4dfd8a4e6a60b3286643d17a07033e122",
+      "bytes": 8276
+    },
+    {
+      "path": "overlay/src/components/studio/settings-editor.jsx",
+      "sha256": "0a6e69e23f18b5409dcf295257388c0333d0a2d030246cfd42522a5344b96718",
+      "bytes": 11007
+    },
+    {
+      "path": "overlay/src/components/studio/stack-editor.jsx",
+      "sha256": "76612210f489d9f59d48ae0efae5a82696316e1526ba1b5409883812ec7f3840",
+      "bytes": 12101
+    },
+    {
+      "path": "overlay/src/components/studio/stack-shell.jsx",
+      "sha256": "4dfca1b55ecbb8b225beb4082a593c51057f4c6be480d5398be504e3c4ea0cee",
+      "bytes": 8142
+    },
+    {
+      "path": "overlay/src/components/studio/stack-shell.test.jsx",
+      "sha256": "00b2e38ef329ae572c47d2abcfcb4daa231fcdc5f4d2fc8739a40875dbce0317",
+      "bytes": 4485
+    },
+    {
+      "path": "overlay/src/pages/api/studio/data.js",
+      "sha256": "504b79fdafb4998c473249e3a9e13802706ddf747937d458960a18eb6e305f61",
+      "bytes": 1643
+    },
+    {
+      "path": "overlay/src/pages/api/studio/health.js",
+      "sha256": "d8761f39be8ee904b6313271aded19e9540fa926e62a3d2680c056adf2430279",
+      "bytes": 563
+    },
+    {
+      "path": "overlay/src/pages/api/studio/sources.js",
+      "sha256": "d9c0b47f97e6eaea671031011d9002efc2cd9ff2ac5f19002e0e3bbd40eb8413",
+      "bytes": 574
+    },
+    {
+      "path": "overlay/src/pages/index.jsx",
+      "sha256": "b6f76380a94d248b14602398a953d77a4a1bfdf5421402361d55d8ec0f25c115",
+      "bytes": 6350
+    },
+    {
+      "path": "overlay/src/styles/studio.css",
+      "sha256": "5000725ebe5f24848f879dc22bae36f7f031eba303932419e902541207228934",
+      "bytes": 26159
+    },
+    {
+      "path": "overlay/src/utils/contexts/studio-revision.js",
+      "sha256": "99533e0be5e6dfb21c546ff77a6a455a97a6b8e841f189e51f9ce0373f86e4f2",
+      "bytes": 180
+    },
+    {
+      "path": "overlay/src/utils/studio/discovery-sources.js",
+      "sha256": "eced4fe805ca67ca3790ef91060813f71b59b3435e6c17101ddb42156708df3f",
+      "bytes": 4940
+    },
+    {
+      "path": "overlay/src/utils/studio/discovery-sources.test.js",
+      "sha256": "97a34aaa2e7f09e036fcd420136751ab993d7a940e74b286eb7834a6bec3d872",
+      "bytes": 4677
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "844d892b76ce8293fb1bb76350d4eb96e50c8e219c920837eef43641989faec7",
+      "bytes": 794
+    },
+    {
+      "path": "package.json",
+      "sha256": "21357f0020cf351c35494c6e5b8fce439531bdd0b9cc5dfb785987d2c2cd4fcc",
+      "bytes": 474
+    },
+    {
+      "path": "portainer-compose.yml",
+      "sha256": "ec90e775f8a35d44b9b2014500195df1f5306535a4416e3b0e0b918b1623f7e1",
+      "bytes": 955
+    },
+    {
+      "path": "portainer-swarm.yml",
+      "sha256": "a41ba06900014215efbfc8588dff74259648d84f8b205aea463e8d4dbee3487f",
+      "bytes": 1855
+    },
+    {
+      "path": "portainer.env.example",
+      "sha256": "5bd1692c4af6cbcfbf11f2f126aeb25d987918ae08f2080c7d85c3121de8c314",
+      "bytes": 740
+    },
+    {
+      "path": "public/catalog.json",
+      "sha256": "7d801fb7eac6cf13880740e9d7a197f17d2f039999f832a1c356d8e237ad229b",
+      "bytes": 501852
+    },
+    {
+      "path": "scripts/apply-homepage-overlay.mjs",
+      "sha256": "bfc91e3eaa76aa9da6a7800b64f9bc642669de5aab175c9a292edaaa115d16cd",
+      "bytes": 4902
+    },
+    {
+      "path": "scripts/build-catalog.mjs",
+      "sha256": "b1729e66227ca2e0aac864313cbba1cd8abab998fc7aa20bcdeb9e1bdb8fd8ca",
+      "bytes": 16221
+    },
+    {
+      "path": "scripts/container-acceptance.mjs",
+      "sha256": "f2b3cf02f825fdc867d037e6b475524f7c8fbfa8557a2411b743b8c0f59c122b",
+      "bytes": 10135
+    },
+    {
+      "path": "scripts/healthcheck.mjs",
+      "sha256": "8f979ccea53db429fa77857a2b422e6e659c63830caa1aad5784110155a4023c",
+      "bytes": 2788
+    },
+    {
+      "path": "scripts/prepare-homepage.py",
+      "sha256": "abb163bb6c16fb7973fbf6b9dc6cbc8094242f36193af90cb9ae7af4e7f0c3c6",
+      "bytes": 7657
+    },
+    {
+      "path": "scripts/release-manifest.mjs",
+      "sha256": "77cc85ea0826fba1b4b96e53a058d564bae757516f2d0fd646c8352a2aa8eca9",
+      "bytes": 7911
+    },
+    {
+      "path": "scripts/runtime-host.mjs",
+      "sha256": "b676dcc33f27cd01e7821eaa2180f631aa666a95828481ddfbf2b90ab1db4a66",
+      "bytes": 1617
+    },
+    {
+      "path": "scripts/seed-config.mjs",
+      "sha256": "a7f17543aef79db1a80effff2a3ea1e40409251f2ca98c2abd493a4897ecc23a",
+      "bytes": 3222
+    },
+    {
+      "path": "scripts/wait-for-config.mjs",
+      "sha256": "1d039bded13472c9c373c088b3543ab552451e6c81fc01cbb4bbc57a5ae4f56f",
+      "bytes": 1316
+    },
+    {
+      "path": "server/board-store.test.mjs",
+      "sha256": "da7c46fda1bce1d3ec8cff32e361ba77eac54c65bec751597784435de9ed66c9",
+      "bytes": 18659
+    },
+    {
+      "path": "server/board.mjs",
+      "sha256": "fa7ecab3de142286533cd708ab3356178f6d5240bf2431cfc483e6352c6299a8",
+      "bytes": 11073
+    },
+    {
+      "path": "server/catalog.test.mjs",
+      "sha256": "25331b76142508cd270288278d4a2a6dc8024892e3a8e87b44354a5808866149",
+      "bytes": 9499
+    },
+    {
+      "path": "server/config.mjs",
+      "sha256": "2f6a5c701b0240d4492f99f1758d02eb0329e510bde2fd9d0a841308c98a84d5",
+      "bytes": 53010
+    },
+    {
+      "path": "server/config.test.mjs",
+      "sha256": "dc5ec2dd2d07cce8564746c8973924f47409d9e5dd054d1d29cf3513d045f860",
+      "bytes": 27799
+    },
+    {
+      "path": "server/discovery-store.test.mjs",
+      "sha256": "af5d2ac1e3acbb12b50f7ef86b0fba43cd1fb3b387fe6b914e318c594f5ad2c4",
+      "bytes": 14533
+    },
+    {
+      "path": "server/discovery.mjs",
+      "sha256": "84439f9d375fdd2cd60ef8c7f0e3e1b4291088781143d0a9cd9da1e4a77f0b0d",
+      "bytes": 11011
+    },
+    {
+      "path": "server/discovery.test.mjs",
+      "sha256": "db9f481e3fe0e3a423718eac6059a49ea5ec57a617683587b379544d42132e87",
+      "bytes": 16488
+    },
+    {
+      "path": "server/fixtures/homepage/LICENSE",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "bytes": 35149
+    },
+    {
+      "path": "server/fixtures/homepage/package.json",
+      "sha256": "536b707256d05ab70fe0b8159c201138a4f084a1da60b389808f6b2d90711f88",
+      "bytes": 1990
+    },
+    {
+      "path": "server/fixtures/homepage/src/components/widgets/widget.jsx",
+      "sha256": "28d81e2cbefdac9897b06fa4ad9e4e65cf2ad0c29bd5fdb94204eb78862d344f",
+      "bytes": 1603
+    },
+    {
+      "path": "server/fixtures/homepage/src/widgets/components.js",
+      "sha256": "0e8ac3ab2d2a9fb788aa2871543e147722144f127b2f836b22e6976185313f4f",
+      "bytes": 10076
+    },
+    {
+      "path": "server/fixtures/source-manifest.json",
+      "sha256": "ad51e91493c360b09ccb15dda3cb85a0b304d01a22bd9f965f6758c1aa92e4f5",
+      "bytes": 6766
+    },
+    {
+      "path": "server/http.test.mjs",
+      "sha256": "403cef868d021413db539c3934e511d17ab415be60fc92648caaf51cbdbca88e",
+      "bytes": 30502
+    },
+    {
+      "path": "server/index.mjs",
+      "sha256": "790617d65ede2ed99453e926f8ca87406aa9b8bb3ca204884963d507890c3fa9",
+      "bytes": 16036
+    },
+    {
+      "path": "server/playback.test.mjs",
+      "sha256": "e77aedfec6c05df3f4a2059630af84dcae78dbb443091f4687bdb7dd61268597",
+      "bytes": 9502
+    },
+    {
+      "path": "test/native-redirect-security.mjs",
+      "sha256": "b5e22c531709c93a23aed9063d4d9f7e4ed368f64bd21538279355f0a326802f",
+      "bytes": 3810
+    },
+    {
+      "path": "test/packaging.test.mjs",
+      "sha256": "eca24e7efbad0482615bd901179f07d050d02b814c792de2e7706723182b61db",
+      "bytes": 13623
+    },
+    {
+      "path": "test/test_prepare_homepage.py",
+      "sha256": "bb1e277b1b08638f40d3a2b091ce5a30bd92c41c2b420e1ce6cfea6a7ee191e9",
+      "bytes": 9048
+    },
+    {
+      "path": "upstream.lock.json",
+      "sha256": "081d3a24fd85a574d9dd16376f8c767ffb5e539ddec5e56e7e27b4575b2c64ba",
+      "bytes": 1475
+    }
+  ]
+}
