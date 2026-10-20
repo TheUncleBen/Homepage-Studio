@@ -13,6 +13,7 @@ import { EMPTY_CONFIG, seedConfig } from '../scripts/seed-config.mjs';
 import { runtimeHost } from '../scripts/runtime-host.mjs';
 import { UPSTREAM_COMMIT, checkHealth } from '../scripts/healthcheck.mjs';
 import { artifactFingerprint, validateReleaseManifest, materializeRelease } from '../scripts/release-manifest.mjs';
+import { createStudioServer } from '../server/index.mjs';
 
 const execute = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -124,6 +125,48 @@ test('readiness accepts configuration-only readiness and rejects HTTP/JSON failu
   body = '{"status":"starting"}';
   await assert.rejects(checkHealth(options), /not ready/);
   await assert.rejects(checkHealth({ ...options, kind: 'unknown' }), /Invalid health protocol/);
+});
+
+test('the exact writer Docker health command succeeds without native readiness and rejects invalid configuration', async t => {
+  const dirs = await directories(t);
+  await seedConfig(dirs);
+  let nativeRequests = 0;
+  const upstream = await endpoint(t, (_req, res) => {
+    nativeRequests += 1;
+    res.statusCode = 503;
+    res.end('{"status":"starting"}');
+  });
+  const host = 'dashboard.example.test:3000';
+  const { server, initialization } = createStudioServer({ ...dirs, upstream, allowedHosts: host });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  await initialization;
+  const port = server.address().port;
+  const dockerfile = await fs.readFile(path.join(root, 'Dockerfile'), 'utf8');
+  const command = JSON.parse(dockerfile.match(/^HEALTHCHECK[^\n]+ CMD (\[[^\n]+\])$/m)[1]);
+  assert.equal(command[0], 'node');
+  const options = {
+    cwd: root, timeout: 5000,
+    env: { ...process.env, PORT: String(port), STUDIO_PUBLIC_ORIGIN: `http://${host}`, HOMEPAGE_ALLOWED_HOSTS: '', STUDIO_HEALTH_HOST: '' },
+  };
+  await execute(process.execPath, command.slice(1), options);
+  assert.equal(nativeRequests, 0, 'Container health must not wait for the renderer it enables.');
+  const readiness = await new Promise((resolve, reject) => {
+    const request = http.get(`http://127.0.0.1:${port}/__studio/ready`, { headers: { host } }, response => {
+      let body = '';
+      response.on('data', chunk => { body += chunk; });
+      response.on('error', reject);
+      response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(body) }));
+    });
+    request.on('error', reject);
+  });
+  assert.equal(readiness.status, 503);
+  assert.equal(readiness.body.code, 'HOMEPAGE_UNREACHABLE');
+  await assert.rejects(execute(process.execPath, ['scripts/healthcheck.mjs', 'writer'], options), { code: 1 });
+  assert.equal(nativeRequests, 2, 'Explicit aggregate readiness must still inspect native health.');
+  await fs.writeFile(path.join(dirs.configDir, 'settings.yaml'), 'invalid: [\n');
+  await assert.rejects(execute(process.execPath, command.slice(1), options), { code: 1 });
 });
 
 test('health checks bound unresponsive and oversized endpoints', async t => {

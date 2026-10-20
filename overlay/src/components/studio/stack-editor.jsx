@@ -282,6 +282,30 @@ export default function StackEditor({
             />
           </div>
           <div className="studio-field">
+            <label htmlFor="studio-stack-manual-delay">
+              Manual navigation delay (seconds)
+            </label>
+            <input
+              id="studio-stack-manual-delay"
+              type="number"
+              min={1}
+              max={3600}
+              value={draft.playback.manualHoldMs / 1000}
+              onChange={(event) =>
+                updatePlayback(
+                  "manualHoldMs",
+                  Math.max(
+                    1000,
+                    Math.min(
+                      3600000,
+                      Math.round(Number(event.target.value) * 1000),
+                    ),
+                  ),
+                )
+              }
+            />
+          </div>
+          <div className="studio-field">
             <label htmlFor="studio-stack-transition">Transition</label>
             <select
               id="studio-stack-transition"

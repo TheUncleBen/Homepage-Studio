@@ -1,15 +1,16 @@
 {
-  "recordedAt": "2026-10-20T23:02:29.427144+00:00",
-  "status": "LOCAL_SWARM_TEMPLATE_CORRECTION_VERIFIED_EXACT_CI_RESULTS_SEPARATE",
+  "recordedAt": "2026-10-20T23:21:42.521806+00:00",
+  "status": "LOCAL_SWARM_HEALTH_AND_MANUAL_DELAY_CORRECTIONS_VERIFIED_EXACT_CI_RESULTS_SEPARATE",
   "upstreamCommit": "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
-  "nativeOverlayManifestSha256": "11fc8973743734783ef1980397e2bf426e945393b8e9668fbb2a416ab1c8d43b",
+  "nativeOverlayManifestSha256": "7fc91be540fc40b2c8e092d65cdd0c103946772191a1b81837f2e28ffd5caf07",
   "checks": [
     {
       "name": "integrated-node",
       "command": "node --test --test-isolation=none server/*.test.mjs test/packaging.test.mjs",
-      "passed": 149,
+      "passed": 150,
       "failed": 0,
-      "skipped": 0
+      "skipped": 0,
+      "scope": "After startup health correction; includes16 packaging checks."
     },
     {
       "name": "native-full",
@@ -74,6 +75,19 @@
       "skipped": 0,
       "daemonUsed": false,
       "requiredMissingOrEmptyCases": 8
+    },
+    {
+      "name": "writer-container-health-boundary",
+      "result": "PASS",
+      "scope": "Exact Dockerfile command against real local writer with unavailable renderer; aggregate readiness still503; invalid config fails; old and half-corrected implementations fail."
+    },
+    {
+      "name": "native-manual-delay-editor",
+      "files": 2,
+      "passed": 5,
+      "result": "PASS",
+      "lintWarnings": 0,
+      "scope": "New control apply/reopen45s,30s default,1\u20133600s limits,draft isolation,and max(interval,hold)60s; full subsequent CI separate."
     }
   ],
   "notRunLocally": [
@@ -106,7 +120,20 @@
     "secondBrowserResult": "PASS both architectures",
     "secondComposeResult": "PASS both architectures including persistence/replacement/restore",
     "secondOverallResult": "FAILURE at Swarm image interpolation; corrected in this source change",
-    "swarmCorrection": "Remove hyphens only from the required image-variable help messages, retain required guards; actual Docker parser regression added before builds."
+    "swarmCorrection": "Remove hyphens only from the required image-variable help messages, retain required guards; actual Docker parser regression added before builds.",
+    "thirdRun": 39512418935,
+    "thirdHead": "db1f8e96a35de6a15e5c0840d0730cded370ef33",
+    "thirdTestedMerge": "44429544cf01f86112479166dbce9661e989262f",
+    "thirdArchitectures": [
+      "amd64",
+      "arm64"
+    ],
+    "thirdNativeTests": 1926,
+    "thirdNativeFiles": 582,
+    "thirdBrowserResult": "PASS both architectures",
+    "thirdComposeResult": "PASS both architectures",
+    "thirdOverallResult": "FAILURE at initial Swarm readiness after180s; service replacement/restore not reached.",
+    "startupCorrection": "Writer Docker health uses local configuration readiness; aggregate application readiness remains strict. Actual container boundary regression added before full lifecycle."
   },
   "inputs": [
     {
@@ -121,8 +148,8 @@
     },
     {
       "path": "Dockerfile",
-      "sha256": "175f71669e07f1ced10c37a887de3fc62b9c9cc9f2c2602979f1a33a5bcab843",
-      "bytes": 1602
+      "sha256": "53eee833e1dbe7b85ffaae48c04a36aec7fad03d3418202b25dd0adb5372383f",
+      "bytes": 1766
     },
     {
       "path": "Dockerfile.homepage",
@@ -286,8 +313,13 @@
     },
     {
       "path": "overlay/src/components/studio/stack-editor.jsx",
-      "sha256": "76612210f489d9f59d48ae0efae5a82696316e1526ba1b5409883812ec7f3840",
-      "bytes": 12101
+      "sha256": "4eb959a126076c28d19a6b01343e6cface4deb99ec605cb45318e5fb03ecb53d",
+      "bytes": 12858
+    },
+    {
+      "path": "overlay/src/components/studio/stack-editor.test.jsx",
+      "sha256": "f86242d6e62d68105ed393126c107668b45416fe2006de8643dcec1ed71f3ba0",
+      "bytes": 2453
     },
     {
       "path": "overlay/src/components/studio/stack-shell.jsx",
@@ -386,13 +418,13 @@
     },
     {
       "path": "scripts/container-acceptance.mjs",
-      "sha256": "f2b3cf02f825fdc867d037e6b475524f7c8fbfa8557a2411b743b8c0f59c122b",
-      "bytes": 10135
+      "sha256": "065ac7915c879b60590488e16ab0a8eeb8e9d54a437c5e444283796883cd1b9d",
+      "bytes": 14259
     },
     {
       "path": "scripts/healthcheck.mjs",
-      "sha256": "8f979ccea53db429fa77857a2b422e6e659c63830caa1aad5784110155a4023c",
-      "bytes": 2788
+      "sha256": "46569177129a471c2c0b9af155681b5cef29478a49b0c42dd4efeb21e12cf1c7",
+      "bytes": 2842
     },
     {
       "path": "scripts/prepare-homepage.py",
@@ -506,8 +538,8 @@
     },
     {
       "path": "test/packaging.test.mjs",
-      "sha256": "eca24e7efbad0482615bd901179f07d050d02b814c792de2e7706723182b61db",
-      "bytes": 13623
+      "sha256": "7a179b7db4d55c89dfa182f4ff532d9b168337fba39b29d15cc4b73393db2f4f",
+      "bytes": 15916
     },
     {
       "path": "test/swarm-parser.mjs",

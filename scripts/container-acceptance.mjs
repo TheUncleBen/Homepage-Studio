@@ -107,18 +107,83 @@ async function restoreEmpty(fixture) {
   assert.deepEqual(parse(restored.settingsYaml), {});
 }
 
-async function composeHealth() {
+async function composeHealth(services = ['studio', 'homepage']) {
   await eventually(async () => {
-    const ids = (await docker([...composeArgs, 'ps', '--quiet'])).split('\n').filter(Boolean);
-    assert.equal(ids.length, 2);
+    const ids = (await docker([...composeArgs, 'ps', '--quiet', ...services])).split('\n').filter(Boolean);
+    assert.equal(ids.length, services.length);
     for (const id of ids) assert.equal(await docker(['inspect', '--format', '{{.State.Health.Status}}', id]), 'healthy');
-  }, 'Both Docker health checks');
+  }, `Docker health: ${services.join(', ')}`);
+}
+
+async function diagnostic(label, operation) {
+  try { console.error(`[diagnostic] ${label}: ${(await operation()).slice(-12000)}`); }
+  catch (error) { console.error(`[diagnostic] ${label} unavailable: ${error.message}`); }
+}
+
+async function swarmDiagnostics() {
+  for (const service of ['studio', 'homepage']) {
+    const name = `${identity}_${service}`;
+    await diagnostic(`${name} tasks`, () => docker(['service', 'ps', '--no-trunc', name], { timeout: 15000 }));
+    await diagnostic(`${name} specification`, async () => {
+      const value = JSON.parse(await docker(['service', 'inspect', name], { timeout: 15000 }))[0];
+      return JSON.stringify({ name, image: value.Spec.TaskTemplate.ContainerSpec.Image, healthcheck: value.Spec.TaskTemplate.ContainerSpec.Healthcheck, updateStatus: value.UpdateStatus, serviceStatus: value.ServiceStatus, endpoint: value.Endpoint });
+    });
+    await diagnostic(`${name} containers`, async () => {
+      const ids = (await docker(['ps', '--all', '--quiet', '--filter', `label=com.docker.swarm.service.name=${name}`], { timeout: 15000 })).split('\n').filter(Boolean).slice(0, 4);
+      for (const id of ids) {
+        await diagnostic(`${id} health and state`, async () => {
+          const value = JSON.parse(await docker(['inspect', id], { timeout: 15000 }))[0];
+          return JSON.stringify({ name: value.Name, state: value.State, healthcheck: value.Config.Healthcheck });
+        });
+        await diagnostic(`${id} local and service endpoints`, () => docker(['exec', id, 'node', '--input-type=module', '-e', `
+          import http from 'node:http';
+          import https from 'node:https';
+          const host = new URL(process.env.STUDIO_PUBLIC_ORIGIN).host;
+          const writer = process.argv[1] === 'studio';
+          const targets = writer ? [
+            ['local configuration', 'http://127.0.0.1:3001/__studio/config-ready'],
+            ['local aggregate', 'http://127.0.0.1:3001/__studio/ready'],
+            ['native service', new URL('/api/studio/health', process.env.HOMEPAGE_UPSTREAM)],
+          ] : [
+            ['local native', 'http://127.0.0.1:3000/api/studio/health'],
+            ['writer service', new URL('/__studio/config-ready', process.env.STUDIO_WRITER_ORIGIN)],
+          ];
+          for (const [endpoint, url] of targets) {
+            try {
+              const response = await new Promise((resolve, reject) => {
+                const transport = new URL(url).protocol === 'https:' ? https : http;
+                const request = transport.get(url, { headers: { host }, signal: AbortSignal.timeout(3000) }, response => {
+                  let body = '';
+                  response.on('data', chunk => { body += chunk; });
+                  response.on('error', reject);
+                  response.on('end', () => resolve({ status: response.statusCode, body }));
+                });
+                request.on('error', reject);
+              });
+              let value = {};
+              try { value = JSON.parse(response.body) || {}; } catch {}
+              console.log(JSON.stringify({ endpoint, status: response.status, code: value.code, checks: value.checks, protocolVersion: value.protocolVersion, upstreamCommit: value.upstreamCommit, buildRevision: value.buildRevision }));
+            } catch (error) { console.log(JSON.stringify({ endpoint, error: error.message, code: error.cause?.code })); }
+          }
+        `, service], { timeout: 15000 }));
+      }
+      return `${ids.length} recent containers inspected`;
+    });
+    await diagnostic(`${name} logs`, () => docker(['service', 'logs', '--raw', '--tail', '80', name], { timeout: 15000 }));
+  }
 }
 
 try {
   assert.equal(await docker(['info', '--format', '{{.Swarm.LocalNodeState}}']), 'inactive', 'Refuse to use or alter an existing Swarm');
   await docker([...composeArgs, 'config', '--quiet']);
   composeStarted = true;
+  await docker([...composeArgs, 'up', '--detach', '--no-build', '--pull', 'never', 'studio']);
+  await composeHealth(['studio']);
+  assert.equal((await request('/__studio/config-ready')).json().status, 'ready');
+  const missingNative = await fetch(new URL('/__studio/ready', origin), { signal: AbortSignal.timeout(5000) });
+  assert.equal(missingNative.status, 503);
+  assert.equal((await missingNative.json()).code, 'HOMEPAGE_UNREACHABLE');
+  console.log('PASS: writer container health succeeds before native startup while aggregate readiness stays unavailable.');
   await docker([...composeArgs, 'up', '--detach', '--no-build', '--pull', 'never']);
   const composeFixture = await freshAndEdit();
   await composeHealth();
@@ -172,9 +237,7 @@ try {
     try { console.error((await docker([...composeArgs, 'logs', '--no-color', '--tail', '80'])).slice(-14000)); } catch {}
   }
   if (stackStarted) {
-    for (const service of ['studio', 'homepage']) {
-      try { console.error((await docker(['service', 'logs', '--raw', '--tail', '80', `${identity}_${service}`])).slice(-14000)); } catch {}
-    }
+    await swarmDiagnostics();
   }
   throw error;
 } finally {

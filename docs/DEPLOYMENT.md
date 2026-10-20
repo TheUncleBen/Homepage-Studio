@@ -25,7 +25,7 @@ The application relies on the deployment's existing private network/access arran
 | Default process identity | UID `1000`, GID `1000` in both images. Image mount directories are created with that ownership for new named volumes. |
 | First start | Only missing configuration files are created, with empty lists/maps or empty CSS/JavaScript. Existing regular files are preserved. |
 | Interrupted save | A pending transaction prevents entrypoint seeding. The writer recovers it before completing configuration initialization. |
-| Startup coordination | The renderer waits for the writer's live configuration-readiness endpoint. Final writer readiness additionally verifies the native protocol, source pin and matching build revision. |
+| Startup coordination | Writer container health checks local configuration readiness. The renderer waits for that live configuration endpoint before starting. The external `/__studio/ready` endpoint additionally verifies the native protocol, source pin and matching build revision. |
 | Snapshot default | The newest `25` snapshots, configurable through `STUDIO_BACKUP_RETENTION`. |
 | Runtime logs | Native Homepage logs to stdout. The read-only configuration mount is not used for log files. |
 
@@ -34,6 +34,8 @@ Keep the stack/project name and both named volumes when updating. Change both im
 The default Swarm template keeps one writer and one renderer on the same selected node. Both update and rollback use `stop-first`; brief downtime during an update is expected. The configured hostname must identify exactly one node. A local named volume is local to its Docker host, so this template does not promise automatic data failover to another node. Moving the application requires an explicit migration of both volumes. Docker documents the placement and local-volume behavior in its [Swarm service guide](https://docs.docker.com/engine/swarm/services/).
 
 Standalone Docker uses the same two images and volumes with an ordinary Compose network. Swarm publishes the selected port in host mode on the selected node. The published port, browser origin, and any existing reverse proxy must agree. `HOMEPAGE_ALLOWED_HOSTS` is derived from that origin by the entrypoints, including its nondefault port; wildcard defaults are rejected. See [Homepage's Docker configuration](https://gethomepage.dev/installation/docker/) for its hostname requirement and integration-specific mounts.
+
+Writer container health must not depend on the renderer. Swarm enables service routing after a container becomes healthy, as shown in the [Docker 28.0.4 executor](https://github.com/moby/moby/blob/v28.0.4/daemon/cluster/executor/container/controller.go). Depending on renderer readiness there would prevent the renderer from reaching its own writer prerequisite. Container health uses `/__studio/config-ready`; complete application monitoring should use `/__studio/ready`, which continues to reject an absent or mismatched renderer.
 
 Existing bind-mounted configurations are an advanced migration path. Their directories must already be writable by UID/GID `1000:1000` for the writer. Startup does not recursively change ownership of an existing host directory, follow configuration symlinks, or replace existing files with sample content.
 
@@ -63,6 +65,8 @@ Source preparation refuses to overwrite an existing build directory. Review or r
 ## What validation establishes
 
 The automatic workflow has read-only repository permissions and no registry credentials. On native `amd64` and `arm64` GitHub-hosted runners it runs unit/fixture tests, prepares the pinned source, builds both images into the runner's local Docker daemon, and exercises fresh Compose and one-node Swarm deployments. The integration suite checks empty first-run configuration, native protocol identity, nonroot processes, read-only renderer configuration, edits, snapshots, restart/replacement persistence and restore. It refuses an existing Swarm and is restricted to explicitly enabled disposable GitHub-hosted runners.
+
+The lifecycle test first starts only the writer, requires its actual Docker health to succeed, and verifies that aggregate application readiness remains HTTP 503. It then starts the renderer and runs the full application checks. This prevents a renderer-dependent container healthcheck from silently reintroducing the Swarm startup cycle. Failure diagnostics are bounded and omit environment/configuration values; service replacement retains the production stability monitor.
 
 Before image builds, `node --test test/swarm-parser.mjs` invokes the actual Docker CLI's daemon-free `stack config` parser. It verifies both image values, origin, node placement and defaults, and rejects unset/empty required values. Keep required-variable help messages free of hyphens: the legacy parser in the tested Docker 28.0.4 client checks default operators before required operators and misreads hyphens in that message text. The production Swarm template retains its `:?` guards. Docker documents that [stack deployment uses the legacy Compose v3 format](https://docs.docker.com/engine/swarm/stack-deploy/); the exact interpolation behavior is in its [versioned parser source](https://github.com/docker/cli/blob/v28.0.4/cli/compose/template/template.go).
 

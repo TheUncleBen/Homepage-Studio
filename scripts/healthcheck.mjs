@@ -42,7 +42,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const kind = process.argv[2] || 'writer';
     const host = process.env.STUDIO_HEALTH_HOST || runtimeHost(process.env.STUDIO_PUBLIC_ORIGIN, process.env.HOMEPAGE_ALLOWED_HOSTS).healthHost;
     const port = process.env.PORT || (kind === 'renderer' ? '3000' : '3001');
-    const endpoint = kind === 'renderer' ? '/api/studio/health' : '/__studio/ready';
+    const endpoint = kind === 'renderer' ? '/api/studio/health' : kind === 'configuration' ? '/__studio/config-ready' : '/__studio/ready';
     await checkHealth({ url: `http://127.0.0.1:${port}${endpoint}`, host, kind, buildRevision: process.env.STUDIO_BUILD_REVISION });
   } catch { process.exitCode = 1; }
 }

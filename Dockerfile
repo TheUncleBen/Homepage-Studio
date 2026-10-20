@@ -24,6 +24,8 @@ COPY --chmod=755 docker/writer-entrypoint.sh ./docker/writer-entrypoint.sh
 RUN mkdir -p /app/config /app/state && chown 1000:1000 /app/config /app/state && chmod 750 /app/config && chmod 700 /app/state
 USER 1000:1000
 EXPOSE 3001
-HEALTHCHECK --interval=15s --timeout=4s --start-period=120s --retries=3 CMD ["node", "scripts/healthcheck.mjs", "writer"]
+# Swarm enables service routing only after container health succeeds. Keep this
+# local to configuration so the renderer can reach its startup prerequisite.
+HEALTHCHECK --interval=15s --timeout=4s --start-period=120s --retries=3 CMD ["node", "scripts/healthcheck.mjs", "configuration"]
 ENTRYPOINT ["/app/docker/writer-entrypoint.sh"]
 CMD ["node", "server/index.mjs"]
