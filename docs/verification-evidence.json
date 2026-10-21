@@ -1,6 +1,6 @@
 {
-  "recordedAt": "2026-10-21T03:11:21.797306+00:00",
-  "status": "BROWSER_CLEANUP_REPAIR_LOCALLY_VERIFIED_HOSTED_CANDIDATE_PENDING",
+  "recordedAt": "2026-10-21T03:39:47.284296+00:00",
+  "status": "DELIVERY_PULL_REPAIR_LOCALLY_VERIFIED_HOSTED_PENDING",
   "upstreamCommit": "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
   "nativeOverlayManifestSha256": "d5d5ea04bf2fcb76aeb40b6a566caf9bd9dacb7469cf825ac550c46f7f4fafb2",
   "checks": [
@@ -3546,5 +3546,203 @@
     "futureCandidateRunId": null,
     "publicationPerformed": false,
     "scopeLimit": "Future source identity and completed run result are unassigned until actual publication/execution; no blanket rerun or cancellation."
+  },
+  "currentEvidenceRecord": "deliveryPullRepair",
+  "historicalEvidenceScope": "Earlier ci, cleanupRepair, releaseExecution, input manifests and publication flags retain their recorded checkpoint scope. deliveryPullRepair supplies the latest completed run and current bounded repair; it does not claim a future publication or delivery result.",
+  "deliveryPullRepair": {
+    "status": "LOCALLY_VERIFIED_HOSTED_DELIVERY_PENDING",
+    "parentCommit": "5509fc5d0c97b45d8784a887eaf80325975520ee",
+    "parentTree": "5b65083b5b8028a6f51d6608a88f3a646621fcab",
+    "failedRun": {
+      "runId": 39537323749,
+      "url": "https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39537323749",
+      "event": "push",
+      "attempt": 1,
+      "status": "completed",
+      "conclusion": "failure",
+      "updatedAtUTC": "2026-10-21T03:32:16Z",
+      "nativeTargets": {
+        "amd64": {
+          "jobId": 119016874140,
+          "conclusion": "success",
+          "allTwelveQualificationChecks": "passed",
+          "nativeImagesRetained": true,
+          "testCounts": {
+            "writer": 134,
+            "packagingReleaseRegistryCleanup": 79,
+            "python": 13,
+            "dockerParser": 2,
+            "nativeRedirectSecurity": 4,
+            "nativeRendererTests": 1930,
+            "nativeRendererFiles": 584,
+            "chromiumBrowser": 17,
+            "firefoxWebkitDesktop": 4,
+            "browserDurations": [
+              "39.9s",
+              "29.1s"
+            ]
+          },
+          "hiddenDocumentCleanup": {
+            "browser": {
+              "method": "graceful",
+              "code": 0,
+              "signal": null
+            },
+            "profile": {
+              "attempts": 1
+            }
+          }
+        },
+        "arm64": {
+          "jobId": 119016874493,
+          "conclusion": "success",
+          "allTwelveQualificationChecks": "passed",
+          "nativeImagesRetained": true,
+          "testCounts": {
+            "writer": 134,
+            "packagingReleaseRegistryCleanup": 79,
+            "python": 13,
+            "dockerParser": 2,
+            "nativeRedirectSecurity": 4,
+            "nativeRendererTests": 1930,
+            "nativeRendererFiles": 584,
+            "chromiumBrowser": 17,
+            "firefoxWebkitDesktop": 4,
+            "browserDurations": [
+              "40.4s",
+              "28.5s"
+            ]
+          },
+          "hiddenDocumentCleanup": {
+            "browser": {
+              "method": "graceful",
+              "code": 0,
+              "signal": null
+            },
+            "profile": {
+              "attempts": 1
+            }
+          }
+        }
+      },
+      "assemblyJobId": 119022378893,
+      "failureAtUTC": "2026-10-21T03:32:13Z",
+      "failure": "docker pull --platform linux/arm64 failed (1). cannot overwrite digest sha256:2122f70b39297997baa45d83f4816fbaa7e384a1f861e974ce88ed204a40606d",
+      "nativeImagesRetained": 4,
+      "indexCreationAndLocalBundleMaterialization": "Control flow reached authenticated delivery verification after these operations; independent final registry and bundle verification was not completed.",
+      "authenticatedFourImagePullCheck": "failed on second platform using one index digest",
+      "anonymousVerification": "not reached",
+      "deliveryReceiptWritten": false,
+      "bundleUpload": "skipped",
+      "completeCandidateDelivered": false,
+      "evidence": [
+        {
+          "label": "run-final.json",
+          "bytes": 13959,
+          "sha256": "3f1f83754a71cf6ec5354ce3fa8b4db6014d46dcc9d750675a1f4758692cf9c6"
+        },
+        {
+          "label": "jobs-final.json",
+          "bytes": 9897,
+          "sha256": "0e9cdca7da0966fde23f99af1985d355f7a498db17afd2e81079aea53a799522"
+        },
+        {
+          "label": "native-amd64-119016874140.log",
+          "bytes": 325935,
+          "sha256": "7178438a83938e7c6522a589a7b990a35effa3be185121fac27de26472988ce7"
+        },
+        {
+          "label": "native-arm64-119016874493.log",
+          "bytes": 322892,
+          "sha256": "272547b07108dfa2a367a6319a43d5657ad9022f9b0ec04e63f1ed0b7c29ea86"
+        },
+        {
+          "label": "assemble-119022378893.log",
+          "bytes": 21973,
+          "sha256": "2f31e459a695198faa4b546bcfa0d445977f97dd2c9e980f9f9294bad414eddc"
+        },
+        {
+          "label": "candidate-target-39537323749-amd64.zip",
+          "bytes": 677,
+          "sha256": "e03aaa8c93206d15bdc980d90fc33fabd79f8c03725d79ac689c29351924ed3d"
+        },
+        {
+          "label": "candidate-target-39537323749-arm64.zip",
+          "bytes": 678,
+          "sha256": "efd3a677eb022b348a4cc70c1fcad03c2421e4c9c938124ceb0a17d4c158a6d8"
+        }
+      ],
+      "monitorEvidence": {
+        "label": "MONITOR-RESULT.json",
+        "bytes": 30184,
+        "sha256": "c016610a3295aff9b6a73d83a2e710158d250b1934499b1fb66a9e0f1ad53912"
+      }
+    },
+    "repair": {
+      "scope": "Pull each already-verified architecture child manifest by immutable digest instead of reusing one index digest for two local image IDs.",
+      "preservedChecks": [
+        "Registry index binds exact child manifests and configurations to source and platform",
+        "Four authenticated Docker pulls remain required",
+        "Pulled configuration ID, operating system and architecture must match",
+        "Anonymous index/configuration and streamed layer verification remains required",
+        "Deployment templates retain immutable multiarchitecture index references"
+      ],
+      "applicationWorkflowsDockerfilesTemplatesChanged": false,
+      "imageDeletionRetaggingOrRebuildUsed": false,
+      "codeFiles": {
+        "scripts/candidate-pipeline.mjs": {
+          "bytes": 19040,
+          "sha256": "417f7ced9ff030801d7dcf4ebc2ade687e6d32cc2e15f5e4b61c34667cd1aab1"
+        },
+        "test/release-readiness.test.mjs": {
+          "bytes": 54482,
+          "sha256": "f101ac10978737717fbf58f52daea5aa3063cdac92394b377bb531da619fc713"
+        }
+      },
+      "primarySources": [
+        "https://github.com/moby/moby/issues/43188",
+        "https://docs.docker.com/reference/cli/docker/image/pull/"
+      ]
+    },
+    "localValidation": {
+      "beforeFix": {
+        "expectedFailure": true,
+        "observedError": "cannot overwrite digest",
+        "evidence": {
+          "label": "agent-red-regression.tap",
+          "bytes": 1366,
+          "sha256": "c404103b533e687af9976bc3d84e549f89eeb405d2ea8c20199d2e80c75ceb43"
+        },
+        "originalHelperSha256": "71a4f7820c73d0c3d453c9e97dab2e24c4afb2a20038aff2f53dd8d108ffea85"
+      },
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test --test-isolation=none --test-reporter=tap test/release-readiness.test.mjs",
+      "rootIndependentReview": "passed",
+      "rootIndependentValidationAt": "2026-10-21T03:37:45.601795+00:00",
+      "rootVerifiedBeforeFixFailure": true,
+      "syntaxChecksPassed": 2,
+      "diffCheck": "passed",
+      "rootTap": {
+        "label": "root-regression.tap",
+        "bytes": 7625,
+        "sha256": "d489b2642e8fa7455dd1ba35ee4a3b66ff3b60147e982ac4895992a92bf39e26"
+      },
+      "rootReceipt": {
+        "label": "ROOT-LOCAL-VALIDATION.json",
+        "bytes": 2212,
+        "sha256": "66cf2916823e47662dbd5987bfc3b63a9ea81404761e8cba43308c5e0b3a5d05"
+      },
+      "liveDockerPullPerformedLocally": false,
+      "scopeLimit": "The fixture models classic Docker store reference/configuration behavior; it is not a live Docker daemon, registry pull or completed hosted delivery result."
+    },
+    "futureCommit": null,
+    "futureTree": null,
+    "futureCandidateRunId": null,
+    "repairPublicationPerformed": false,
+    "remaining": "Publish the reviewed repair once, complete exact-source hosted qualification and delivery, verify the actual bundle and anonymous availability before handoff. Preserve the failed run and existing partial publication; do not overwrite its candidate index tags.",
+    "engineeringHandoffComplete": false,
+    "officialReleasePublished": false
   }
 }

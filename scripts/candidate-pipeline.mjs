@@ -126,8 +126,11 @@ async function checkCandidateIndex(candidate, name, read, reference = candidate.
 
 async function pullCandidateImages(candidate, docker, access) {
   for (const [name, image] of Object.entries(candidate.images)) for (const platform of PLATFORMS) {
-    await docker(['pull', '--platform', platform, image.reference]);
-    const expectedId = image.manifests[platform].configDigest;
+    const target = image.manifests[platform];
+    // A classic Docker store binds each digest reference to one image ID.
+    // The verified index already binds these exact platform-specific manifests.
+    await docker(['pull', '--platform', platform, `${IMAGE_REPOSITORIES[name]}@${target.digest}`]);
+    const expectedId = target.configDigest;
     const inspected = JSON.parse(await docker(['image', 'inspect', expectedId]))[0];
     if (inspected?.Id !== expectedId || `${inspected.Os}/${inspected.Architecture}` !== platform) throw new Error(`${access} ${name} pull differs from the natively tested ${platform} image.`);
   }

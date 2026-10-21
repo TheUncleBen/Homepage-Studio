@@ -409,7 +409,7 @@ async function candidatePipelineFixture({ event = 'push', publicAccess = false }
   };
   const identity = buildIdentity(context.environment);
   const fixtures = Object.fromEntries(Object.keys(IMAGE_REPOSITORIES).map(name => [name, imageFixture(name)]));
-  const state = { docker: [], calls, reads: [], tags: new Map(), runnerPlatform: 'linux/amd64', wrongLocalId: false, wrongLocalRevision: false, failPush: false, failAssembly: false, wrongPull: false, publicAccess, publicError: null, layerReads: [], layerError: null };
+  const state = { docker: [], calls, reads: [], tags: new Map(), pulledReferences: new Map(), pulledImages: new Map(), runnerPlatform: 'linux/amd64', wrongLocalId: false, wrongLocalRevision: false, failPush: false, failAssembly: false, wrongPull: false, wrongPullOs: false, wrongPullArchitecture: false, publicAccess, publicError: null, layerReads: [], layerError: null };
   const registry = (name, scope) => {
     const read = async (kind, reference, options = {}) => {
     assert.ok(['authenticated', 'public'].includes(scope));
@@ -441,13 +441,33 @@ async function candidatePipelineFixture({ event = 'push', publicAccess = false }
   const docker = async (args, input) => {
     state.docker.push(args);
     if (args[0] === 'login') { assert.equal(input, 'synthetic-token\n'); return ''; }
-    if (args[0] === 'logout' || args[0] === 'pull' || args[0] === 'tag') return '';
+    if (args[0] === 'logout' || args[0] === 'tag') return '';
+    if (args[0] === 'pull') {
+      assert.equal(args.length, 4);
+      assert.equal(args[1], '--platform');
+      const [repository, digest] = args[3].split('@');
+      const name = Object.keys(IMAGE_REPOSITORIES).find(name => IMAGE_REPOSITORIES[name] === repository);
+      assert.ok(name && digest, 'Pull an immutable image from an intended package.');
+      const item = fixtures[name];
+      const descriptor = digest === f.candidate.images[name].reference.split('@')[1]
+        ? item.index.manifests.find(value => `${value.platform.os}/${value.platform.architecture}` === args[2])
+        : item.index.manifests.find(value => value.digest === digest);
+      assert.ok(descriptor, 'The requested digest must belong to the verified image index.');
+      assert.equal(`${descriptor.platform.os}/${descriptor.platform.architecture}`, args[2]);
+      const manifest = JSON.parse(item.blobs.get(descriptor.digest));
+      const config = JSON.parse(item.blobs.get(manifest.config.digest));
+      const previous = state.pulledReferences.get(args[3]);
+      if (previous && previous !== manifest.config.digest) throw new Error(`cannot overwrite digest ${digest}`);
+      state.pulledReferences.set(args[3], manifest.config.digest);
+      state.pulledImages.set(manifest.config.digest, { Id: manifest.config.digest, Os: config.os, Architecture: config.architecture });
+      return '';
+    }
     if (args[0] === 'image' && args[1] === 'inspect') {
       if (args[2].startsWith('sha256:')) {
         assert.equal(args.length, 3, 'Use the Docker 28.0.4/API 1.48 inspect-by-ID contract.');
-        const platform = PLATFORMS.find(platform => Object.values(f.candidate.images).some(image => image.manifests[platform].configDigest === args[2]));
-        assert.ok(platform);
-        return JSON.stringify([{ Id: state.wrongPull ? 'sha256:' + 'e'.repeat(64) : args[2], Os: 'linux', Architecture: platform.split('/')[1] }]);
+        const actual = state.pulledImages.get(args[2]);
+        assert.ok(actual, 'Inspect only an image that this daemon actually pulled.');
+        return JSON.stringify([{ ...actual, Id: state.wrongPull ? 'sha256:' + 'e'.repeat(64) : actual.Id, Os: state.wrongPullOs ? 'windows' : actual.Os, Architecture: state.wrongPullArchitecture ? '386' : actual.Architecture }]);
       }
       const name = args[2] === 'homepage-studio-ci:writer' ? 'studio' : 'homepage';
       const id = f.candidate.images[name].manifests[state.runnerPlatform].configDigest;
@@ -594,19 +614,39 @@ test('public candidate completion verifies both images and architectures anonymo
   assert.equal(result.officialRelease, false);
   const authenticated = f.state.docker.filter(args => args[0] === 'pull');
   assert.equal(authenticated.length, 4);
-  assert.deepEqual(authenticated.map(args => [args[2], args[3]]).sort(), Object.values(f.candidate.images).flatMap(image => PLATFORMS.map(platform => [platform, image.reference])).sort());
+  assert.deepEqual(authenticated.map(args => [args[2], args[3]]).sort(), Object.entries(f.candidate.images).flatMap(([name, image]) => PLATFORMS.map(platform => [platform, `${IMAGE_REPOSITORIES[name]}@${image.manifests[platform].digest}`])).sort());
   assert.equal(result.verificationMethod, 'registry-stream-sha256');
   assert.equal(result.layers.length, 2);
   assert.equal(f.state.layerReads.length, 2);
   assert.ok(f.state.docker.every(args => !args.some(arg => arg === 'latest' || /^\d{4}\.\d{2}\.\d{2}$/.test(arg))));
 });
 
-test('registry faults, altered bytes, authenticated denial and wrong pulled IDs cannot be relabeled as a pending public setting', async () => {
+test('authenticated candidate delivery avoids classic-store digest collisions while preserving every exact native image', async () => {
+  const collision = await candidatePipelineFixture();
+  const reference = collision.candidate.images.studio.reference;
+  await collision.options.docker(['pull', '--platform', 'linux/amd64', reference]);
+  await assert.rejects(collision.options.docker(['pull', '--platform', 'linux/arm64', reference]), /cannot overwrite digest/);
+  assert.equal(collision.state.pulledReferences.get(reference), collision.candidate.images.studio.manifests['linux/amd64'].configDigest);
+
+  const f = await candidatePipelineFixture({ publicAccess: true }); f.seedIndexes();
+  const result = await verifyCandidateDelivery(f.candidate, f.options);
+  assert.equal(result.authenticatedPulls, 'passed');
+  assert.equal(result.anonymousAccess, 'passed');
+  const expected = Object.entries(f.candidate.images).flatMap(([name, image]) => PLATFORMS.map(platform => [`${IMAGE_REPOSITORIES[name]}@${image.manifests[platform].digest}`, image.manifests[platform].configDigest]));
+  assert.deepEqual([...f.state.pulledReferences], expected);
+  assert.equal(f.state.pulledImages.size, 4);
+  assert.deepEqual(f.state.docker.filter(args => args[0] === 'image').map(args => args[2]), expected.map(([, config]) => config));
+  assert.ok(f.state.docker.every(args => ['login', 'pull', 'image', 'logout'].includes(args[0])), 'Delivery verification must not delete, retag or rebuild images to avoid a local reference collision.');
+});
+
+test('registry faults, altered bytes, authenticated denial and wrong pulled IDs or platforms cannot be relabeled as a pending public setting', async () => {
   for (const change of [
     f => { f.state.publicError = new Error('Registry server unavailable (500)'); },
     f => { f.state.publicError = new RegistryAccessError(403, false); },
     f => { f.state.tags.set(`${IMAGE_REPOSITORIES.studio}:${f.identity}`, Buffer.from('different image bytes')); },
     f => { f.state.wrongPull = true; },
+    f => { f.state.wrongPullOs = true; },
+    f => { f.state.wrongPullArchitecture = true; },
     f => { f.state.layerError = new RegistryAccessError(403, true); },
     f => { f.state.layerError = new Error('Streamed layer digest differs'); },
   ]) {
