@@ -1,0 +1,134 @@
+import { expect, finishArrangement, mouseDrag, setPanelSize, studioApi, test } from '../helpers/dashboard.mjs';
+import { activePanel, carousel, expectPageFits } from '../helpers/engineering.mjs';
+import { installDenseResponses, installEmbeddedDocument, seedDenseContent, seedEmbeddedContent } from '../helpers/native-fixtures.mjs';
+
+test('native calendar, chart and process list fit their minima at desktop and narrow widths without losing local state', async ({ page, request }, testInfo) => {
+  const fixture = await installDenseResponses(page);
+  const seeded = await seedDenseContent(request);
+  await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
+  await page.goto('/');
+  const calendarSource = seeded.board.panels.find(panel => panel.nativeLocator.type === 'calendar');
+  const chartSource = seeded.board.panels.find(panel => panel.nativeLocator.type === 'glances' && panel.nativeLocator.sourceIndex === 0);
+  const listSource = seeded.board.panels.find(panel => panel.nativeLocator.type === 'glances' && panel.nativeLocator.sourceIndex === 1);
+  const calendar = page.locator(`[data-panel-id="${calendarSource.id}"]`);
+  const chart = page.locator(`[data-panel-id="${chartSource.id}"]`);
+  const list = page.locator(`[data-panel-id="${listSource.id}"]`);
+  await expect(calendar.getByRole('button', { name: 'October 2026', exact: true })).toBeVisible();
+  await expect(calendar.getByText('Calendar fixture event 8', { exact: true })).toHaveCount(1);
+  await expect(chart.locator('svg.recharts-surface')).toBeVisible();
+  await expect(list).toContainText('native-process-5');
+  await expect.poll(() => fixture.cpuSamples).toBeGreaterThan(1);
+  await page.clock.pauseAt(new Date('2026-10-20T13:00:00Z'));
+  const chartNode = await chart.locator('svg.recharts-surface').elementHandle();
+  await calendar.getByRole('button', { name: '>', exact: true }).click();
+  await expect(calendar.getByRole('button', { name: 'November 2026', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await page.getByRole('button', { name: `Move ${calendarSource.title}. Use arrow keys; Shift and arrow keys resize.`, exact: true }).press('ArrowDown');
+  await page.getByRole('button', { name: `Resize ${chartSource.title}. Use arrow keys.`, exact: true }).first().press('ArrowRight');
+  await finishArrangement(page);
+  await expect(calendar.getByRole('button', { name: 'November 2026', exact: true })).toBeVisible();
+  expect(await chart.locator('svg.recharts-surface').evaluate((node, original) => node === original, chartNode)).toBe(true);
+  await expectPageFits(page);
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expectPageFits(page);
+    await expect(calendar.getByRole('button', { name: 'November 2026', exact: true })).toBeVisible();
+    await calendar.getByRole('button', { name: 'November 2026', exact: true }).click();
+    await calendar.getByText('Calendar fixture event 8', { exact: true }).scrollIntoViewIfNeeded();
+    await expect(calendar.getByText('Calendar fixture event 8', { exact: true })).toBeInViewport();
+    expect(await calendar.locator('.studio-native-content').evaluate(element => getComputedStyle(element).overflowY)).toBe('auto');
+    await chart.scrollIntoViewIfNeeded();
+    await expect(chart.locator('svg.recharts-surface')).toBeVisible();
+    expect((await chart.locator('svg.recharts-surface').boundingBox()).width).toBeGreaterThan(200);
+    await list.scrollIntoViewIfNeeded();
+    await expect(list.getByText('native-process-5', { exact: true })).toBeVisible();
+    await calendar.locator('.studio-native-content').evaluate(element => { element.scrollTop = 0; });
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.screenshot({ path: testInfo.outputPath(`dense-native-${width}.png`), fullPage: true });
+    await calendar.getByRole('button', { name: '>', exact: true }).click();
+    await expect(calendar.getByRole('button', { name: 'November 2026', exact: true })).toBeVisible();
+  }
+  const saved = await studioApi(request, '/__studio/api/board');
+  expect(saved.board.panels.map(panel => panel.id).sort()).toEqual(seeded.board.panels.map(panel => panel.id).sort());
+  expect(fixture.calls).toEqual(expect.arrayContaining([
+    expect.objectContaining({ endpoint: 'Fixture calendar' }),
+    expect.objectContaining({ endpoint: '4/cpu', index: '0' }),
+    expect.objectContaining({ endpoint: '4/processlist', index: '1' }),
+  ]));
+  await calendar.getByRole('button', { name: 'November 2026', exact: true }).click();
+  await calendar.locator('.studio-native-content').evaluate(element => { element.scrollTop = 0; });
+  await page.setViewportSize({ width: 1440, height: 1080 });
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.screenshot({ path: testInfo.outputPath('dense-native-desktop.png'), fullPage: true });
+});
+
+test('an actual native iframe keeps its document and controls through move, resize, stack navigation and unstack', async ({ page, request }) => {
+  const fixture = await installEmbeddedDocument(page);
+  const seeded = await seedEmbeddedContent(request);
+  const source = seeded.board.panels.find(panel => panel.kind === 'serviceWidget');
+  await page.goto('/');
+  const panel = page.locator(`[data-panel-id="${source.id}"]`);
+  const iframe = panel.locator('iframe');
+  const content = iframe.contentFrame();
+  await content.getByRole('textbox', { name: 'Embedded note', exact: true }).fill('Embedded document survives');
+  await content.getByRole('button', { name: 'Count 0', exact: true }).click();
+  const iframeNode = await iframe.elementHandle();
+  const frame = await iframeNode.contentFrame();
+  const documentId = await frame.evaluate(() => window.fixtureLoadId);
+  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await page.getByRole('button', { name: `Move ${source.title}. Use arrow keys; Shift and arrow keys resize.`, exact: true }).press('ArrowDown');
+  await page.getByRole('button', { name: `Resize ${source.title}. Use arrow keys.`, exact: true }).press('ArrowRight');
+  await setPanelSize(page, source.title, 6, 6);
+  await page.getByRole('checkbox', { name: `Select ${source.title}`, exact: true }).check();
+  await page.getByRole('checkbox', { name: 'Select Stack companion', exact: true }).check();
+  await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
+  await finishArrangement(page);
+  if (await activePanel(page).getAttribute('data-panel-id') !== source.id) await carousel(page).press('ArrowRight');
+  await expect(content.getByRole('textbox', { name: 'Embedded note', exact: true })).toHaveValue('Embedded document survives');
+  await expect(content.getByRole('button', { name: 'Count 1', exact: true })).toBeVisible();
+  // The fixture reports iframe-local pixels; its parent must finish the slide
+  // transition before a fixed-distance pointer assertion has a stable origin.
+  await expect.poll(() => panel.locator('.studio-panel-slide').evaluate(element =>
+    element.getAnimations().filter(animation => animation.playState === 'running').length,
+  )).toBe(0);
+  await mouseDrag(page, content.getByRole('slider', { name: 'Embedded drag', exact: true }), 80, 0);
+  await expect(content.getByRole('slider', { name: 'Embedded drag', exact: true })).toHaveAttribute('aria-valuenow', '80');
+  await expect(activePanel(page)).toHaveAttribute('data-panel-id', source.id);
+  await carousel(page).press('ArrowRight');
+  await expect(panel).toHaveAttribute('inert', '');
+  await carousel(page).press('ArrowLeft');
+  await expect(content.getByRole('textbox', { name: 'Embedded note', exact: true })).toHaveValue('Embedded document survives');
+  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Unstack all', exact: true }).click();
+  await finishArrangement(page);
+  await expect(carousel(page)).toHaveCount(0);
+  expect(await iframe.evaluate((node, original) => node === original, iframeNode)).toBe(true);
+  expect(await frame.evaluate(() => window.fixtureLoadId)).toBe(documentId);
+  await expect(content.getByRole('textbox', { name: 'Embedded note', exact: true })).toHaveValue('Embedded document survives');
+  await expect(content.getByRole('button', { name: 'Count 1', exact: true })).toBeVisible();
+  expect(fixture.loads).toBe(1);
+});
+
+test('typing in a native embedded page suspends playback until focus returns to the dashboard', async ({ page, request }) => {
+  await installEmbeddedDocument(page);
+  const seeded = await seedEmbeddedContent(request, true);
+  const source = seeded.board.panels.find(panel => panel.kind === 'serviceWidget');
+  await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
+  await page.goto('/');
+  const content = page.locator(`[data-panel-id="${source.id}"] iframe`).contentFrame();
+  await expect(content.getByRole('textbox', { name: 'Embedded note', exact: true })).toBeVisible();
+  await page.clock.pauseAt(new Date('2026-10-20T13:00:00Z'));
+  await carousel(page).getByRole('button', { name: 'Play slideshow', exact: true }).click();
+  await page.clock.fastForward(1000);
+  await content.getByRole('textbox', { name: 'Embedded note', exact: true }).fill('Focused embed retains its slide');
+  await page.clock.fastForward(60000);
+  await expect(activePanel(page)).toHaveAttribute('data-panel-id', source.id);
+  await expect(carousel(page).locator('.studio-playback-status')).toHaveText('Waiting');
+  await carousel(page).focus();
+  await expect(carousel(page).locator('.studio-playback-status')).toHaveText('Playing');
+  await page.clock.fastForward(999);
+  await expect(activePanel(page)).toHaveAttribute('data-panel-id', source.id);
+  await page.clock.fastForward(1);
+  await expect(activePanel(page)).not.toHaveAttribute('data-panel-id', source.id);
+});

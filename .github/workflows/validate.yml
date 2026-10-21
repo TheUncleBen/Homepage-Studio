@@ -51,7 +51,7 @@ jobs:
         run: |
           npm audit --omit=dev
           npm test
-          node --test test/packaging.test.mjs
+          node --test test/*.test.mjs
           python3 -m unittest discover -s test -p 'test_*.py'
           node --test test/swarm-parser.mjs
       - name: Verify and prepare the pinned native source
@@ -62,8 +62,8 @@ jobs:
         run: docker build --progress=plain --build-arg STUDIO_BUILD_REVISION="$GITHUB_SHA" --tag homepage-studio-ci:renderer --file Dockerfile.homepage .
       - name: Install locked browser test dependencies
         run: npm ci --prefix browser --ignore-scripts
-      - name: Install Chromium in the disposable test runner
-        run: node browser/node_modules/@playwright/test/cli.js install --with-deps chromium
+      - name: Install all three browser engines in the disposable test runner
+        run: node browser/node_modules/@playwright/test/cli.js install --with-deps chromium firefox webkit
       - name: Exercise fresh Compose and Swarm deployments
         env:
           STUDIO_TEST_CONTAINERS: "1"
@@ -72,7 +72,15 @@ jobs:
           HOMEPAGE_IMAGE: homepage-studio-ci:renderer
           STUDIO_EXPECTED_REVISION: ${{ github.sha }}
         run: node scripts/container-acceptance.mjs
+      - name: Qualify both templates through pinned Portainer CE
+        env:
+          STUDIO_TEST_CONTAINERS: "1"
+          STUDIO_PORTAINER_TESTS: "1"
+          STUDIO_IMAGE: homepage-studio-ci:writer
+          HOMEPAGE_IMAGE: homepage-studio-ci:renderer
+          STUDIO_EXPECTED_REVISION: ${{ github.sha }}
+        run: node scripts/portainer-acceptance.mjs
       - name: Record qualification scope
         if: success()
         run: |
-          printf '%s\n' '### Container qualification passed' 'Source: `'$GITHUB_SHA'`' 'Architecture: `${{ matrix.arch }}`' 'Tests built and ran both local images, fresh volumes, edits, snapshots, restarts, container replacement, and a one-node Swarm.' 'No registry login, image push, release, date tag, deployment, or image artifact upload was performed.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' '### Container qualification passed' 'Source: `'$GITHUB_SHA'`' 'Architecture: `${{ matrix.arch }}`' 'Tests built and ran both local images, fresh volumes, edits, snapshots, restarts, container replacement, standalone Compose, a one-node Swarm, three browser engines, real hidden-document timing, and both templates through pinned Portainer CE.' 'The disposable Portainer fixture transferred these same images through a temporary loopback registry only. No public registry login, public image push, release, date tag, or image artifact upload was performed.' >> "$GITHUB_STEP_SUMMARY"

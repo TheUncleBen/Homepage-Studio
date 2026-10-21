@@ -10,6 +10,7 @@ cache
 build
 release-dist
 browser/.results
+browser/.desktop-results
 *.zip
 *.tar
 *.tar.gz

@@ -37,6 +37,13 @@ const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const uuid = () =>
   globalThis.crypto?.randomUUID?.() ||
   `stack-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const isEmptyBoardSpace = (target, element) =>
+  target === element ||
+  Boolean(
+    element?.contains(target) &&
+      target.closest?.(".studio-empty") &&
+      !target.closest("a,button,input,select,textarea,[contenteditable]"),
+  );
 
 function useReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -801,7 +808,7 @@ export default function StudioBoard({
           "--studio-grid-row": `${ROW_HEIGHT + GAP}px`,
         }}
         onPointerDown={(event) => {
-          if (event.target !== canvas.current) return;
+          if (!isEmptyBoardSpace(event.target, canvas.current)) return;
           const x = event.clientX,
             y = event.clientY;
           emptyPress.current = { x, y, timer: setTimeout(beginEditing, 420) };
@@ -827,7 +834,7 @@ export default function StudioBoard({
           emptyPress.current = null;
         }}
         onContextMenu={(event) => {
-          if (event.target === canvas.current) {
+          if (isEmptyBoardSpace(event.target, canvas.current)) {
             event.preventDefault();
             beginEditing();
           }

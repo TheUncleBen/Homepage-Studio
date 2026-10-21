@@ -26,7 +26,36 @@ export default function PanelHost({
   renderNative: RenderNative = NativePanel,
 }) {
   const press = useRef(null);
+  const nativeContent = useRef(null);
+  const playback = controller?.();
   useEffect(() => () => clearTimeout(press.current?.timer), []);
+  useEffect(() => {
+    if (!playback || !active) return undefined;
+    const reason = `embedded-focus:${panel.id}`;
+    let listening = true;
+    const update = () => {
+      if (!listening) return;
+      const focused = document.activeElement;
+      playback.setBlocked(
+        reason,
+        focused?.tagName === "IFRAME" && nativeContent.current?.contains(focused),
+      );
+    };
+    // Focus events inside another document do not bubble through the iframe.
+    // Its parent element is still observable without reading cross-origin data.
+    const afterFocus = () => queueMicrotask(update);
+    window.addEventListener("blur", afterFocus);
+    window.addEventListener("focus", afterFocus);
+    document.addEventListener("focusin", afterFocus);
+    update();
+    return () => {
+      listening = false;
+      window.removeEventListener("blur", afterFocus);
+      window.removeEventListener("focus", afterFocus);
+      document.removeEventListener("focusin", afterFocus);
+      playback.setBlocked(reason, false);
+    };
+  }, [playback, active, panel.id]);
   const gestures = useStackGestures({
     controller,
     disabled: editing || !stack,
@@ -39,7 +68,7 @@ export default function PanelHost({
       : (stack?.playback.transitionDurationMs ?? 250);
   const style = { ...rect, "--studio-slide-duration": `${duration}ms` };
   const memberIndex = stack?.panelIds.indexOf(panel.id) ?? 0;
-  const snapshot = controller?.()?.getSnapshot();
+  const snapshot = playback?.getSnapshot();
   const activeIndex = snapshot?.activeIndex ?? 0;
   const direction = memberIndex < activeIndex ? -1 : 1;
   const translation =
@@ -169,6 +198,7 @@ export default function PanelHost({
           </header>
         )}
         <div
+          ref={nativeContent}
           className="studio-native-content"
           onFocusCapture={() =>
             controller?.()?.setBlocked("content-focus", true)

@@ -22,7 +22,7 @@ Configuration changes use revision checks, a recovery journal, and snapshots. Th
 
 The application consists of a pinned Homepage-derived renderer and a small configuration writer. Only the writer's port is exposed. Both containers share the native configuration volume; the writer also owns a separate state volume. The supplied templates target standalone Docker Compose and Portainer with Docker Swarm. Swarm runs one instance of each component on the same selected node so that local volumes refer to the same data.
 
-The intended installation is to choose an approved version, supply the local dashboard origin and deployment variables, and deploy the corresponding Portainer template. The first approved release will provide the exact image digests and a short installation checklist. [Deployment documentation](docs/DEPLOYMENT.md) describes the model and current source-build qualification procedure.
+The intended installation is to choose an approved version, supply the local dashboard origin and deployment variables, and deploy the corresponding Portainer template. The first approved release will provide the exact image digests and a short installation checklist. [Deployment documentation](docs/DEPLOYMENT.md) describes the model and current source-build qualification procedure. [Candidate delivery](docs/CANDIDATES.md) describes the proposed, separately approved path for testing the complete image pair in Portainer before official acceptance; its workflow definitions remain dormant.
 
 Homepage Studio has no added login system. Deploy it on the trusted private network or behind the access controls used for the rest of the dashboard. The exact configured origin is also used for host and write-request checks.
 
