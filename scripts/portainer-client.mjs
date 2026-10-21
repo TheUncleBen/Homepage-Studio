@@ -9,6 +9,17 @@ export const PORTAINER_VERSION = '2.45.2';
 export const PORTAINER_IMAGE = 'portainer/portainer-ce:2.45.2@sha256:03f94a406496dc84d37b552795fc424ccad8d0d7200353b6a82915f6e8f73ab0';
 export const REGISTRY_IMAGE = 'registry:3.1.2@sha256:ddf754342cfc8acc51a56d5d0ab6af06826461864460636d8bd5c546dab2a7b8';
 
+export async function readSwarmClusterId(docker) {
+  // Docker has no `swarm inspect` command. The manager's system-info response
+  // exposes the cluster ID separately from the current node ID.
+  const swarm = JSON.parse(await docker(['info', '--format', '{{json .Swarm}}']));
+  assert.equal(swarm?.LocalNodeState, 'active', 'The disposable node must belong to an active Swarm');
+  assert.equal(swarm.ControlAvailable, true, 'The disposable node must be a Swarm manager');
+  assert.equal(typeof swarm.Cluster?.ID, 'string', 'Docker info must provide the Swarm cluster ID');
+  assert.ok(swarm.Cluster.ID.trim(), 'Docker info must provide a nonempty Swarm cluster ID');
+  return swarm.Cluster.ID;
+}
+
 export async function inspectFixtureManifest({ repository, expectedConfig, architecture }, { fetchImpl = fetch } = {}) {
   assert.match(repository, /^studio-(writer|renderer)(-replacement)?$/);
   assert.ok(['amd64', 'arm64'].includes(architecture));

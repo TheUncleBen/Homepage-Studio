@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { PortainerClient, PORTAINER_IMAGE, PORTAINER_VERSION, REGISTRY_IMAGE, cleanupPortainerStack, inspectFixtureManifest, stackPayload } from '../scripts/portainer-client.mjs';
+import { PortainerClient, PORTAINER_IMAGE, PORTAINER_VERSION, REGISTRY_IMAGE, cleanupPortainerStack, inspectFixtureManifest, readSwarmClusterId, stackPayload } from '../scripts/portainer-client.mjs';
 
 const environment = {
   STUDIO_IMAGE: '127.0.0.1:15000/studio-writer@sha256:' + 'a'.repeat(64),
@@ -14,6 +14,20 @@ const environment = {
   UNRELATED_SECRET: 'must-not-be-sent',
 };
 const json = (value, status = 200) => new Response(status === 204 ? null : JSON.stringify(value), { status });
+
+test('Swarm qualification reads the cluster identity through Docker info and rejects incomplete manager state', async () => {
+  const active = { LocalNodeState: 'active', ControlAvailable: true, NodeID: 'a-distinct-node-id', Cluster: { ID: 'the-cluster-id' } };
+  const docker = async args => {
+    assert.deepEqual(args, ['info', '--format', '{{json .Swarm}}']);
+    return JSON.stringify(active);
+  };
+  assert.equal(await readSwarmClusterId(docker), 'the-cluster-id');
+  for (const invalid of [null, {}, { ...active, LocalNodeState: 'inactive' }, { ...active, ControlAvailable: false }, { ...active, Cluster: undefined }, { ...active, Cluster: { ID: '' } }, { ...active, Cluster: { ID: '   ' } }, { ...active, Cluster: { ID: 123 } }]) {
+    await assert.rejects(readSwarmClusterId(async () => JSON.stringify(invalid)));
+  }
+  await assert.rejects(readSwarmClusterId(async () => 'invalid JSON'));
+  await assert.rejects(readSwarmClusterId(async () => { throw new Error('synthetic Docker failure'); }), /synthetic Docker failure/);
+});
 
 test('Portainer acceptance refuses missing opt-ins and self-hosted runners before Docker access', async () => {
   const execute = promisify(execFile);

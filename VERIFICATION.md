@@ -2,7 +2,35 @@
 
 **Unreleased development implementation.** The evidence below distinguishes the initial implementation, the cold-server-rendering correction, and actual hosted qualification. It is not an approved deployment candidate or official image. Current repository Actions results are a separate qualification record; this document does not treat a prepared workflow as an executed test.
 
-## Latest completed hosted checkpoint and expanded acceptance — 21 October 2026
+## Sixth hosted checkpoint and Portainer Swarm harness correction — 21 October 2026
+
+[Run 39523019327](https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39523019327) completed with **failure on both AMD64 and ARM64**. It tested source head `1a567184e0f3595f40beb37b315e2f8592a4f3b0` through merge commit `bcc8cea7be55179dd08a2b5e428f2ef7cef7ea52`; both have tree `d00faec1fa569136355ca3f3903b84f5dbec2acc`. The only observed failing stage was the Portainer Swarm qualification harness: it called the unsupported command `docker swarm inspect` after initializing the disposable Swarm and before creating its Portainer stack. Actual Portainer Swarm deployment was therefore not exercised.
+
+| Completed gate | AMD64 | ARM64 |
+| --- | --- | --- |
+| Native suite | 584 files / 1,930 tests passed | 584 files / 1,930 tests passed |
+| Writer and packaging/release/Portainer checks | 134 + 53 passed | 134 + 53 passed |
+| Python / actual Docker parser / native redirect-security checks | 13 / 2 / 4 passed | 13 / 2 / 4 passed |
+| Chromium production scenarios | 17 passed in 42.2 seconds | 17 passed in 40.8 seconds |
+| Firefox/WebKit desktop cases | 4 passed in 26.2 seconds | 4 passed in 33.2 seconds |
+| Real headed hidden-document timing | Passed in 18.435 seconds | Passed in 18.188 seconds |
+| Docker-volume retention | Exact newest 25 pre-save revisions after 26 saves; API and on-volume filenames agree | Same exact checks passed |
+| Direct Compose and Swarm lifecycle | Passed, including production 180-second Swarm update monitors | Same lifecycle passed |
+| Portainer CE 2.45.2 standalone API lifecycle | Passed | Passed |
+
+The actual Portainer standalone check verified deployment through its API, the stored unchanged template and explicit environment, immutable image identities, editing, snapshots, replacement persistence and restoration. No cleanup failure was emitted. The original harness failure remained the run's result, and the final all-qualified success message was absent.
+
+The independent Docker-volume retention and strict browser no-playback-write checks now pass on both architectures. This closes that specific engineering gate raised by the earlier scratch history observations. It does **not** establish why older files appeared to reappear in the scratch workspace. Those observations and failed intermediate runs remain recorded; no writer retention code or assertion was weakened.
+
+The reviewed correction changes three qualification files only. Its helper reads `docker info --format '{{json .Swarm}}'`, requires an active manager with a nonempty `Cluster.ID`, and returns that cluster identity rather than `NodeID`. The pinned Docker 28.0.4 executable was exercised against synthetic loopback Engine API responses in six cases: the original unsupported command was reproduced, the supported lookup returned the cluster ID, and inactive nodes, workers, absent clusters and empty IDs were rejected. This checks the actual CLI interface without claiming a local Docker daemon or Swarm deployment.
+
+The corrected Portainer-client subset passes **14 tests**, with zero failures or skips, and the three changed files pass syntax checks. Root repeated that focused subset after integration, and an independent review verified that only those three files changed across the 149-file source. The earlier combined **187** result remains historical; **188** is the expected combined count after adding the new case, not a completed full-suite result for the correction. No production component, deployment template, update monitor or acceptance assertion changed.
+
+Actual Portainer Swarm deployment/update/cleanup on both architectures and a complete hosted result for the corrected source remain pending. The successful browser, direct lifecycle, retention and Portainer standalone stages above retain their exact-source scope. Candidate delivery and official promotion definitions remain dormant; actual candidate registry/review/artifact-transfer/anonymous-pull operations and an installable image are not established by these checks.
+
+## Earlier hosted checkpoint and local expanded acceptance — 21 October 2026
+
+The following section preserves the preceding checkpoint and local follow-up. Its pending statements describe that earlier stage; the sixth hosted result above records the subsequent execution.
 
 [Run 39517328982](https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39517328982) completed successfully on native AMD64 and ARM64. It qualified source head `e571da0b82409beff3e293d9bd8853fe79e8fd61` through merge commit `689fc6d03cc1cc43d98608449c5e42a3435c5092`; both have tree `004be3e70dc9e9a37946e155a11e2a07ce1ddb7a`. Each architecture passed 584 native test files / 1,930 tests, 150 writer/packaging checks, 10 Python checks, two real Docker-parser checks, four redirect-security regressions, production dependency audits, seven actual Chromium scenarios, and the complete Compose/Swarm lifecycle. Fixture cleanup completed without the earlier swallowed-error warning. The revised trigger produced one pull-request run and no duplicate push run.
 
@@ -20,11 +48,11 @@ The repaired local production build identifies itself as `e571da0b82409beff3e293
 
 The hidden-document check does not override `document.hidden`, use a fake clock, or rely on Playwright's focus-emulated page behavior. The Firefox/WebKit checks do not establish physical Samsung or Safari hardware behavior. The local process build is not a Docker or ARM64 result.
 
-Two intermediate browser runs are retained as evidence. A coordinate-based iframe slider assertion first ran before its CSS transition had finished; the harness now waits for the real transition to settle and retains the exact value and mounted-state assertions. A subsequent run observed older backup entries reappearing in the scratch-backed fixture's history. The unchanged full suite then passed, and an exact oldest-file identity probe confirmed normal committed-save pruning from 26 to 25 with the removed file remaining absent. The cause of the earlier directory observations is not established. No writer code or no-snapshot assertion was weakened. Independent Docker-volume retention and no-playback-write checks remain required before closing that item.
+Two intermediate browser runs are retained as evidence. A coordinate-based iframe slider assertion first ran before its CSS transition had finished; the harness now waits for the real transition to settle and retains the exact value and mounted-state assertions. A subsequent run observed older backup entries reappearing in the scratch-backed fixture's history. The unchanged full suite then passed, and an exact oldest-file identity probe confirmed normal committed-save pruning from 26 to 25 with the removed file remaining absent. The cause of the earlier directory observations is not established. No writer code or no-snapshot assertion was weakened. At that local checkpoint, independent Docker-volume retention and no-playback-write checks remained required. The sixth hosted run above subsequently passed those exact checks on both architectures; the scratch cause remains unestablished.
 
 The extended source adds all three browser engines, real document visibility, and actual pinned Portainer CE standalone/Swarm deployment to the nonpublishing workflow on both architectures. Its combined hosted result must be inspected for this exact source. Preparing these gates is not an executed result. An installable candidate additionally requires preserved image identities, complete source and evidence, and the authorized delivery path described in [RELEASES.md](docs/RELEASES.md).
 
-The combined local follow-up passes 187 writer, packaging, Portainer-client and release-tool tests, with zero failures or skips, plus 13 Python source-preparation/archive checks. These totals include the 24 release-readiness tests and three new source-archive checks; they are not additional counts. The actual Docker 28.0.4 parser again passes both named checks, including rejection of all eight missing/empty required values. All three workflow definitions pass actionlint, and all 18 JavaScript tooling files pass syntax checks. Test discovery confirms the expected 17 Chromium and four Firefox/WebKit scenarios without claiming another browser execution.
+Before the later three-file Portainer Swarm harness correction, the combined local follow-up passed 187 writer, packaging, Portainer-client and release-tool tests, with zero failures or skips, plus 13 Python source-preparation/archive checks. These totals include the 24 release-readiness tests and three new source-archive checks; they are not additional counts. The actual Docker 28.0.4 parser again passes both named checks, including rejection of all eight missing/empty required values. All three workflow definitions pass actionlint, and all 18 JavaScript tooling files pass syntax checks. Test discovery confirms the expected 17 Chromium and four Firefox/WebKit scenarios without claiming another browser execution.
 
 Independent release-tool review found and closed two concrete issues before integration: official promotion now binds the original candidate bundle to its exact successful workflow run, and anonymous image identity checks use commands supported by the qualified Docker 28 client. Eight focused independent checks pass. The candidate and official definitions remain dormant in `release/workflows/`; these local results do not establish actual GitHub environment setup, GHCR delivery, or an installable image. The [candidate procedure](docs/CANDIDATES.md) records those remaining actual-account gates.
 

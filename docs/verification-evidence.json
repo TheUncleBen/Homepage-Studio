@@ -1,6 +1,6 @@
 {
-  "recordedAt": "2026-10-21T00:42:04.599076+00:00",
-  "status": "HOSTED_E571_CHECKPOINT_PASSED_EXPANDED_LOCAL_VERIFIED_COMBINED_HOSTED_AND_DELIVERY_PENDING",
+  "recordedAt": "2026-10-21T01:06:30.460459+00:00",
+  "status": "CI6_FAILED_AT_PORTAINER_SWARM_HARNESS_CORRECTION_TARGETED_VERIFIED_CURRENT_HOSTED_AND_DELIVERY_PENDING",
   "upstreamCommit": "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
   "nativeOverlayManifestSha256": "d5d5ea04bf2fcb76aeb40b6a566caf9bd9dacb7469cf825ac550c46f7f4fafb2",
   "checks": [
@@ -508,6 +508,89 @@
         "bytes": 246,
         "sha256": "4025a0ccbe95ad6c057fd74c4bedf8567a747a5888ea8b11ea0f31ff1255d271"
       }
+    },
+    {
+      "name": "hosted-sixth-expanded-dashboard-and-lifecycle",
+      "result": "PASS_COMPLETED_STAGES_OVERALL_RUN_FAILED",
+      "run": 39523019327,
+      "sourceCommit": "1a567184e0f3595f40beb37b315e2f8592a4f3b0",
+      "testedMerge": "bcc8cea7be55179dd08a2b5e428f2ef7cef7ea52",
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "nativeFilesPerArchitecture": 584,
+      "nativeTestsPerArchitecture": 1930,
+      "writerTestsPerArchitecture": 134,
+      "packagingReleasePortainerTestsPerArchitecture": 53,
+      "pythonTestsPerArchitecture": 13,
+      "actualDockerParserTestsPerArchitecture": 2,
+      "nativeSecurityTestsPerArchitecture": 4,
+      "chromiumCasesPerArchitecture": 17,
+      "desktopCasesPerArchitecture": 4,
+      "realHeadedHidden": "PASS both architectures",
+      "docker26SaveNewest25Retention": "PASS exact API/on-volume identities both architectures",
+      "strictNoPlaybackWriteAssertions": "PASS both architectures",
+      "directCompose": "PASS both architectures",
+      "directSwarm": "PASS both architectures with production180-second update monitors",
+      "portainerStandalone": "PASS real API lifecycle both architectures",
+      "portainerSwarm": "NOT_REACHED before stack creation",
+      "scope": "Successful stages of a failed exact-source run. No corrected-current-run or Portainer Swarm success inferred; scratch cause not established.",
+      "evidence": {
+        "label": "CHECKPOINT-39523019327.json",
+        "bytes": 10789,
+        "sha256": "4444b607fcc48144da0d83355e933fa258907f99eebb926724e1ee093d7f56a9"
+      }
+    },
+    {
+      "name": "portainer-swarm-cluster-id-correction-unit",
+      "command": "node --test --test-isolation=none test/portainer-client.test.mjs",
+      "result": "PASS",
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "Complete corrected Portainer-client subset repeated after root integration. Frozen log uses TAP; root repeat uses the spec reporter. Previous13 included; expected combined188 not executed after this correction.",
+      "evidence": {
+        "label": "portainer-client-tests.tap",
+        "bytes": 3561,
+        "sha256": "0a1e1009c23a42375389cfe773e2b6c04a5c5cfd934a24274c7e833f8688fb06"
+      },
+      "rootIntegrationEvidence": {
+        "label": "swarm-info-root-portainer-tests.log",
+        "bytes": 1586,
+        "sha256": "c5bec7436850fc09e64ed6093d5cfdc6da677767cdf5be6d78d08c602fb96bf8"
+      },
+      "independentReview": {
+        "label": "SWARM-INFO-CORRECTION-REVIEW.json",
+        "bytes": 6546,
+        "sha256": "e4ad5ae973bf49a2991ad1753ad059bea87f960c6283e6d7e029e547b06cd149"
+      }
+    },
+    {
+      "name": "portainer-swarm-cluster-id-actual-docker-cli",
+      "result": "PASS",
+      "cases": 6,
+      "dockerCliVersion": "28.0.4",
+      "dockerCliSha256": "b8ab40a60aa9222c2396570dc2ac9cb1e9f6a8dcaf6e19993d33a92f3d1b2a29",
+      "daemonUsed": false,
+      "actualSwarmDeploymentPerformed": false,
+      "scope": "Actual pinned CLI against synthetic loopback Engine API responses: reproduces unsupported swarm inspect; supported info format returns Cluster.ID rather than NodeID; rejects inactive, worker, absent-cluster and empty-ID states.",
+      "evidence": {
+        "label": "ACTUAL-CLI-REGRESSION.json",
+        "bytes": 1780,
+        "sha256": "2b9af4c5c7e423139697f962b787b5c165e7fb2555ff009856536820f6e58fd7"
+      }
+    },
+    {
+      "name": "portainer-swarm-cluster-id-correction-syntax",
+      "result": "PASS",
+      "files": 3,
+      "scope": "Qualification-file syntax only; no production component, template, update monitor or acceptance assertion changed.",
+      "evidence": {
+        "label": "swarm-info-correction-FROZEN-MANIFEST.json",
+        "bytes": 1902,
+        "sha256": "4cb23ecf3d06d0b74ae657a110df2afc569a408d9838f5e4e391ef9be4a5897a"
+      }
     }
   ],
   "notRunLocally": [
@@ -642,21 +725,156 @@
         "cleanupCompletedWithoutReportedError": true
       }
     ],
-    "latestCompletedRun": 39517328982,
+    "latestCompletedRun": 39523019327,
     "pendingCombinedQualification": {
-      "status": "PREPARED_NOT_EXECUTED",
+      "status": "CORRECTED_HARNESS_CURRENT_SOURCE_HOSTED_RESULT_PENDING",
+      "baseCommit": "1a567184e0f3595f40beb37b315e2f8592a4f3b0",
       "architectures": [
         "amd64",
         "arm64"
       ],
       "scope": [
-        "Later focused-iframe and empty-board-hold repairs.",
-        "Expanded17 Chromium scenarios, four desktop compatibility cases and actual hidden-document gate.",
-        "Actual Portainer CE standalone/Swarm API lifecycle.",
-        "Strict newest25 snapshot identities after26 committed saves on a real Docker volume, with API/on-volume agreement."
+        "Actual Portainer Swarm API deployment/update/cleanup after the reviewed cluster-ID lookup correction.",
+        "Complete exact-source hosted qualification of the corrected three-file harness; earlier successful stage evidence is retained."
       ],
+      "correction": {
+        "label": "swarm-info-correction-FROZEN-MANIFEST.json",
+        "bytes": 1902,
+        "sha256": "4cb23ecf3d06d0b74ae657a110df2afc569a408d9838f5e4e391ef9be4a5897a"
+      },
+      "expectedCombinedNodeTests": 188,
+      "fullCombinedNodeTestsExecutedAfterCorrection": false,
       "publicationAuthorizedByValidation": false
-    }
+    },
+    "pendingCombinedQualificationHistory": [
+      {
+        "recordedAt": "2026-10-21T00:42:04.599076+00:00",
+        "qualification": {
+          "status": "PREPARED_NOT_EXECUTED",
+          "architectures": [
+            "amd64",
+            "arm64"
+          ],
+          "scope": [
+            "Later focused-iframe and empty-board-hold repairs.",
+            "Expanded17 Chromium scenarios, four desktop compatibility cases and actual hidden-document gate.",
+            "Actual Portainer CE standalone/Swarm API lifecycle.",
+            "Strict newest25 snapshot identities after26 committed saves on a real Docker volume, with API/on-volume agreement."
+          ],
+          "publicationAuthorizedByValidation": false
+        },
+        "subsequentRun": 39523019327,
+        "disposition": "Completed with failure before Portainer Swarm stack creation; successful stages recorded separately."
+      }
+    ],
+    "sixthRun": 39523019327,
+    "sixthHead": "1a567184e0f3595f40beb37b315e2f8592a4f3b0",
+    "sixthTestedMerge": "bcc8cea7be55179dd08a2b5e428f2ef7cef7ea52",
+    "sixthSourceAndMergeTree": "d00faec1fa569136355ca3f3903b84f5dbec2acc",
+    "sixthMergeTreeMatchesHead": true,
+    "sixthArchitectures": [
+      "amd64",
+      "arm64"
+    ],
+    "sixthNativeTests": 1930,
+    "sixthNativeFiles": 584,
+    "sixthChromiumScenarios": 17,
+    "sixthDesktopFirefoxWebKitCases": 4,
+    "sixthBrowserResult": "PASS Chromium17 and Firefox/WebKit4 on both architectures",
+    "sixthRealHiddenDocumentResult": "PASS actual headed visibility/timer gate on both architectures",
+    "sixthDocker26SaveRetentionResult": "PASS exact newest25 pre-save revisions and API/on-volume filename agreement on both architectures",
+    "sixthComposeResult": "PASS both architectures",
+    "sixthDirectSwarmResult": "PASS both architectures with production180-second update monitors",
+    "sixthPortainerStandaloneResult": "PASS actual API deployment/template/environment/image/persistence/replacement/restore on both architectures",
+    "sixthPortainerSwarmResult": "NOT_REACHED: unsupported docker swarm inspect failed before Portainer createStack",
+    "sixthCleanupResult": "No cleanup failure emitted; original primary failure preserved; final all-qualified PASS absent",
+    "sixthOverallResult": "FAILURE at Portainer Swarm qualification harness; complete qualification and release approval not inferred",
+    "sixthEvent": "pull_request",
+    "sixthAttempt": 1,
+    "sixthCompletedAt": "2026-10-21T00:58:37Z",
+    "sixthCheckpoint": {
+      "label": "CHECKPOINT-39523019327.json",
+      "bytes": 10789,
+      "sha256": "4444b607fcc48144da0d83355e933fa258907f99eebb926724e1ee093d7f56a9"
+    },
+    "sixthJobs": [
+      {
+        "architecture": "amd64",
+        "jobId": 118971110367,
+        "conclusion": "failure",
+        "startedAtUTC": "2026-10-21T00:43:22Z",
+        "completedAtUTC": "2026-10-21T00:58:37Z",
+        "rawLogSha256": "855245239f05a4aa234e2b78a7a69a43e7cae420424a4a8628756f8aa9295cbf",
+        "rawLogBytes": 332362,
+        "native": {
+          "files": 584,
+          "tests": 1930
+        },
+        "writerTests": 134,
+        "packagingReleasePortainerTests": 53,
+        "pythonTests": 13,
+        "actualDockerParserTests": 2,
+        "nativeSecurityTests": 4,
+        "chromium": {
+          "tests": 17,
+          "seconds": 42.2
+        },
+        "desktopFirefoxWebKit": {
+          "tests": 4,
+          "seconds": 26.2
+        },
+        "realHeadedHidden": {
+          "passed": true,
+          "elapsedMs": 18435
+        },
+        "docker26SaveRetention": "passed exact newest25 pre-save revisions and actual-volume/API filename agreement",
+        "directCompose": "passed",
+        "directSwarm": "passed with production180-second update monitors",
+        "portainerStandalone": "passed real API deployment, persisted raw template/environment, exact images, edit/snapshot/replacement/restore",
+        "portainerSwarm": "blocked before createStack by invalid harness Docker command",
+        "failure": "docker: unknown command: docker swarm inspect",
+        "cleanup": "No cleanup failure emitted; original primary failure preserved. Final all-qualified PASS intentionally absent.",
+        "rawLogLabel": "ci-sixth-amd64-118971110367.log"
+      },
+      {
+        "architecture": "arm64",
+        "jobId": 118971110648,
+        "conclusion": "failure",
+        "startedAtUTC": "2026-10-21T00:43:25Z",
+        "completedAtUTC": "2026-10-21T00:57:43Z",
+        "rawLogSha256": "82e5c6b3eb01e8f02c9a713fb11f39ecd317df5a4562b6b0e6bbde847006f2d1",
+        "rawLogBytes": 329211,
+        "native": {
+          "files": 584,
+          "tests": 1930
+        },
+        "writerTests": 134,
+        "packagingReleasePortainerTests": 53,
+        "pythonTests": 13,
+        "actualDockerParserTests": 2,
+        "nativeSecurityTests": 4,
+        "chromium": {
+          "tests": 17,
+          "seconds": 40.8
+        },
+        "desktopFirefoxWebKit": {
+          "tests": 4,
+          "seconds": 33.2
+        },
+        "realHeadedHidden": {
+          "passed": true,
+          "elapsedMs": 18188
+        },
+        "docker26SaveRetention": "passed exact newest25 pre-save revisions and actual-volume/API filename agreement",
+        "directCompose": "passed",
+        "directSwarm": "passed with production180-second update monitors",
+        "portainerStandalone": "passed real API deployment, persisted raw template/environment, exact images, edit/snapshot/replacement/restore",
+        "portainerSwarm": "blocked before createStack by invalid harness Docker command",
+        "failure": "docker: unknown command: docker swarm inspect",
+        "cleanup": "No cleanup failure emitted; original primary failure preserved. Final all-qualified PASS intentionally absent.",
+        "rawLogLabel": "ci-sixth-arm64-118971110648.log"
+      }
+    ]
   },
   "inputs": [
     {
@@ -701,8 +919,8 @@
     },
     {
       "path": "VERIFICATION.md",
-      "sha256": "8b0d801c416d995186f176fb59f6b8e71ce53e377caff292203f8e609e04f736",
-      "bytes": 22903
+      "sha256": "26a63f76e3a7e95d38e6f83d08965d90b48d29ee82924702cb280d2891cac82e",
+      "bytes": 27362
     },
     {
       "path": "VERSION",
@@ -1106,13 +1324,13 @@
     },
     {
       "path": "scripts/portainer-acceptance.mjs",
-      "sha256": "b442b5f874c8a1ed0795c51113453d31b1409b549edba56f82fe31c57c74bc21",
+      "sha256": "f6dcb78e3263a8615f2437d1a0b615946f320114faf8141a0b89f3715cb69559",
       "bytes": 12694
     },
     {
       "path": "scripts/portainer-client.mjs",
-      "sha256": "86c5879abae640fcafde3fdcf10fd557f24106234417d21b2352415bd713f856",
-      "bytes": 11008
+      "sha256": "11b5d2eab121d1372cfd859bd7c1e6f098a7ca2d1bf20f77bfa936674059b137",
+      "bytes": 11707
     },
     {
       "path": "scripts/prepare-homepage.py",
@@ -1346,8 +1564,8 @@
     },
     {
       "path": "test/portainer-client.test.mjs",
-      "sha256": "96abacdd2898fab07d435bbcef3d22dc7777f3375d7f8f650a7f09874fefcf32",
-      "bytes": 14963
+      "sha256": "a837a16d3096bbb82476b8e90a02841e241f98f7b5f2c76a77657510bed1e842",
+      "bytes": 16021
     },
     {
       "path": "test/release-readiness.test.mjs",
@@ -1850,6 +2068,755 @@
         }
       ],
       "scope": "Previous verification input snapshot retained unchanged. Earlier checks and CI records remain historical; subsequent entries record newer results."
+    },
+    {
+      "recordedAt": "2026-10-21T00:42:04.599076+00:00",
+      "status": "HOSTED_E571_CHECKPOINT_PASSED_EXPANDED_LOCAL_VERIFIED_COMBINED_HOSTED_AND_DELIVERY_PENDING",
+      "sourceCommit": "1a567184e0f3595f40beb37b315e2f8592a4f3b0",
+      "nativeOverlayManifestSha256": "d5d5ea04bf2fcb76aeb40b6a566caf9bd9dacb7469cf825ac550c46f7f4fafb2",
+      "inputs": [
+        {
+          "path": ".dockerignore",
+          "sha256": "5b8b90e718e2e92353a22e6433369057d96299f0b18c4943b7ca115a35e6a7fd",
+          "bytes": 404
+        },
+        {
+          "path": ".github/workflows/validate.yml",
+          "sha256": "dde9fb29a8c1e50d4acea74d99ef35114c026bed61f71ec01ba5489da4d161eb",
+          "bytes": 3758
+        },
+        {
+          "path": ".gitignore",
+          "sha256": "42b09923b89cae5ed134c7c27e281d0c093cb9669d4b516b8720b3a6cc856c23",
+          "bytes": 209
+        },
+        {
+          "path": "AGENTS.md",
+          "sha256": "74f938a08fb6585e182ffdd690405f38dd39cc074fcc0db8dbaa154f9262a83c",
+          "bytes": 3215
+        },
+        {
+          "path": "Dockerfile",
+          "sha256": "53eee833e1dbe7b85ffaae48c04a36aec7fad03d3418202b25dd0adb5372383f",
+          "bytes": 1766
+        },
+        {
+          "path": "Dockerfile.homepage",
+          "sha256": "5184e41c8f3cf9805baf348bad1411499064fdf4f829e25cdcb32bd889d223c8",
+          "bytes": 2599
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+          "bytes": 34523
+        },
+        {
+          "path": "README.md",
+          "sha256": "4966dd86f8b332b69f476f8b147241b56e98df72d1108a5e2452ea7e12e727c2",
+          "bytes": 5694
+        },
+        {
+          "path": "VERIFICATION.md",
+          "sha256": "8b0d801c416d995186f176fb59f6b8e71ce53e377caff292203f8e609e04f736",
+          "bytes": 22903
+        },
+        {
+          "path": "VERSION",
+          "sha256": "2f5500b47f0dea0ae6a8e75cd8988d6c24c3effe6c8a30a49cf08b97725eee45",
+          "bytes": 11
+        },
+        {
+          "path": "browser/desktop.config.mjs",
+          "sha256": "2cf0b874f8068965ce432ebdcc36f73bae1416394e8836af51ace6cc0f347c0f",
+          "bytes": 678
+        },
+        {
+          "path": "browser/helpers/dashboard.mjs",
+          "sha256": "af7d15d23d5a4bfedddf1da94f907dc9370dc32727a31e7587c49e7cebb6d54f",
+          "bytes": 6265
+        },
+        {
+          "path": "browser/helpers/engineering.mjs",
+          "sha256": "738985e4f594e429a2ee87496f8572a1d6204ebc907622f3be788563e52e4c6a",
+          "bytes": 3055
+        },
+        {
+          "path": "browser/helpers/native-fixtures.mjs",
+          "sha256": "934479583d020e1275e39a0b71bde544a1883303d77afe351d6ce4715ed58bb3",
+          "bytes": 5095
+        },
+        {
+          "path": "browser/package-lock.json",
+          "sha256": "a7cf13e5db866ffaa9aebefa5ad79d38212d7376f552e3bd582f5c925d66083d",
+          "bytes": 1741
+        },
+        {
+          "path": "browser/package.json",
+          "sha256": "7b2337159d9251a8023531ca453f29396716644a6b32f47cf81137b192d98c69",
+          "bytes": 274
+        },
+        {
+          "path": "browser/playwright.config.mjs",
+          "sha256": "533323aac174483928341764803a6aeea10b0826b6c5e415f905b2a4ca16c5cf",
+          "bytes": 923
+        },
+        {
+          "path": "browser/specs/configuration-workflows.spec.mjs",
+          "sha256": "83e21f7e14850fe9f6df97e156aa60a32b5679ad82fb05ecd0509f2128468a57",
+          "bytes": 11491
+        },
+        {
+          "path": "browser/specs/dashboard.spec.mjs",
+          "sha256": "f46916c0c8b4f185a3e2436c79f2c93fcd3d39913af4d7a3262b4c5b123ebc01",
+          "bytes": 11338
+        },
+        {
+          "path": "browser/specs/native-content-state.spec.mjs",
+          "sha256": "da66d26c4c85529a80da8db15ed04f4751cf6423087f996b023e4be086f94f6e",
+          "bytes": 9976
+        },
+        {
+          "path": "browser/specs/native-controls.spec.mjs",
+          "sha256": "fe7de081b2882269036c17d7700a337f19dd7d9dee32e9aa6a16396d16437e1a",
+          "bytes": 14300
+        },
+        {
+          "path": "browser/specs/playback-suspension.spec.mjs",
+          "sha256": "66412f756d3f2dae45c13975b1efeae54749737ea6f9edaa62ab85a683c2d1eb",
+          "bytes": 4859
+        },
+        {
+          "path": "browser/specs/recovery.spec.mjs",
+          "sha256": "1b3d5414b74265faeadf9544127c6bfc894bff1594f573c4420679dd0ed3667f",
+          "bytes": 1864
+        },
+        {
+          "path": "browser/specs/stack-membership.spec.mjs",
+          "sha256": "5642708d1a660c188f3113212e86b12f8617bcda345fa72aafbc1dfe23e9ec41",
+          "bytes": 5605
+        },
+        {
+          "path": "browser/visibility/hidden-document.mjs",
+          "sha256": "d6b14ac90f7bade996d6c562eecf962f9bc914a73e88e0e011772c5c3e0a5705",
+          "bytes": 11501
+        },
+        {
+          "path": "docker/renderer-entrypoint.sh",
+          "sha256": "c1fc2a49cd801542c2d83fed66247f601e50de48ac8c124ab1820db51a9b2a94",
+          "bytes": 274
+        },
+        {
+          "path": "docker/writer-entrypoint.sh",
+          "sha256": "082123adaa43d790026cf02d42f1d46d63bad3b8ba74e083c1d7b848d7e92c4f",
+          "bytes": 270
+        },
+        {
+          "path": "docs/ARCHITECTURE.md",
+          "sha256": "0bedbc759b2c5dc82a0e84154378691174fce269490bc3ccba226e83bea84cb9",
+          "bytes": 5867
+        },
+        {
+          "path": "docs/CANDIDATES.md",
+          "sha256": "bfc285532733c9d742091119d2fa679f00405c9e65d0d4c575ebeed99c505e49",
+          "bytes": 11307
+        },
+        {
+          "path": "docs/DEPLOYMENT.md",
+          "sha256": "5c123e25a82841287aa43f38b9a3aa904d17793cc4827662789487741ab53878",
+          "bytes": 14455
+        },
+        {
+          "path": "docs/NATIVE-OVERLAY.md",
+          "sha256": "a19cd1b2d8a464ff1b61a802a5b0cfb3b2a8a356bb1df55f59cb467ef9f43615",
+          "bytes": 14529
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "2ab50cf12e9835f7e0b2882152456e8559566e271b47e348aa60c65585dca9c2",
+          "bytes": 10684
+        },
+        {
+          "path": "overlay/src/__tests__/pages/index.test.jsx",
+          "sha256": "c571bf4e096692a70d0e4e629e7b96fc6969b29c7c0ca2d2bd481adb4799c951",
+          "bytes": 9875
+        },
+        {
+          "path": "overlay/src/__tests__/pages/studio-empty-ssr.test.jsx",
+          "sha256": "012784a5d3bc8620fad54e457fd0693b76e5e521be97d5c1ac28de9be0bfb3cf",
+          "bytes": 4729
+        },
+        {
+          "path": "overlay/src/components/studio/api.mjs",
+          "sha256": "83eb0a53d664c9c8eb8cc370155d80484795e345096c1c97dfd792a9f6bf8610",
+          "bytes": 1659
+        },
+        {
+          "path": "overlay/src/components/studio/api.test.js",
+          "sha256": "810e583940450feb69fe38719c4f8389b751d7bc07921e6e6af50f460ee9a4ee",
+          "bytes": 1451
+        },
+        {
+          "path": "overlay/src/components/studio/board.jsx",
+          "sha256": "d797a6edd162a2897d77c6e7afb0f7cd3c7ece263ed51d2088ed27d0dc1b6c6c",
+          "bytes": 34464
+        },
+        {
+          "path": "overlay/src/components/studio/bridge.test.js",
+          "sha256": "cbef2c693ecfd8a21f84c0b5b03c2ffcb50588948fa13252ca167fff20ca5b48",
+          "bytes": 3150
+        },
+        {
+          "path": "overlay/src/components/studio/config-form.jsx",
+          "sha256": "eb02d97762ed7a3bdb294088261b0738ce30b3e8be967bbad796a89da1242dc2",
+          "bytes": 11639
+        },
+        {
+          "path": "overlay/src/components/studio/config-form.test.jsx",
+          "sha256": "4d61d0d5e9a7467e900dc8db4e0fc8c99071419c1c5d98a44f9e199976d84814",
+          "bytes": 3718
+        },
+        {
+          "path": "overlay/src/components/studio/content-editor.jsx",
+          "sha256": "69271635f5e33aa7df0f65af257d7fdcd2359bd4c8e290b43cea29f311bab5b1",
+          "bytes": 13888
+        },
+        {
+          "path": "overlay/src/components/studio/dialog.jsx",
+          "sha256": "41d074280550553ac60232089bbabc0c04b1a63a1dbb8eb99aa4cf7f4efe04e1",
+          "bytes": 2240
+        },
+        {
+          "path": "overlay/src/components/studio/discovery-editor.jsx",
+          "sha256": "d6beb4afc69d795f92b9161bc08250e28c44190655f93e55bc5b35954f9403a5",
+          "bytes": 2323
+        },
+        {
+          "path": "overlay/src/components/studio/geometry.mjs",
+          "sha256": "3abd4fe864d28a8158942bd564f0f17df62c38188ba86650ffdbacc77a381122",
+          "bytes": 7072
+        },
+        {
+          "path": "overlay/src/components/studio/geometry.test.js",
+          "sha256": "cd8f1a58b11f43a54859dd798f94cc2ee7cae421115dacfa20b7965a6319bd29",
+          "bytes": 4646
+        },
+        {
+          "path": "overlay/src/components/studio/gestures.jsx",
+          "sha256": "e62aee496d2c24a10f6d2728bfebf09d4f79130be2cfed02a50f951f44a3d642",
+          "bytes": 5211
+        },
+        {
+          "path": "overlay/src/components/studio/gestures.test.jsx",
+          "sha256": "a7d077faf3dc05bf30f398c14a1b129f480c8f842276ba7c7fba78a3fde15613",
+          "bytes": 3441
+        },
+        {
+          "path": "overlay/src/components/studio/icons.jsx",
+          "sha256": "c7cc74b7471a32f76b4f12934ecbf1dec868119691fad82fa949044e70fe3067",
+          "bytes": 1493
+        },
+        {
+          "path": "overlay/src/components/studio/lifecycle.test.jsx",
+          "sha256": "0392d88889a78838f13c0b25c5fd339bb18a6edc533e87c65150b5ba962ce37a",
+          "bytes": 5396
+        },
+        {
+          "path": "overlay/src/components/studio/native-adapter.mjs",
+          "sha256": "354d659f67c154b053c44b68171ecfe1d212165c87bcd3a95f708b76b03b9eed",
+          "bytes": 3766
+        },
+        {
+          "path": "overlay/src/components/studio/native-adapter.test.js",
+          "sha256": "3932bec78e3d05fa0b1d21b160e752e5e0583d0518d06cdb63c756fc71ed8717",
+          "bytes": 5037
+        },
+        {
+          "path": "overlay/src/components/studio/native-panel.jsx",
+          "sha256": "f1bc182a254f2aadc02d7ea3cca866aeddaac292485c41135d493ed42b7640d8",
+          "bytes": 1485
+        },
+        {
+          "path": "overlay/src/components/studio/native-routing.test.js",
+          "sha256": "488a9af441ba3361a6e3000645660c03840e0be67b9ea002839772b985cce4e9",
+          "bytes": 3066
+        },
+        {
+          "path": "overlay/src/components/studio/panel-host.jsx",
+          "sha256": "376b92d99189d99d447fee2d0829f383a0618f16de916c3493d0ad11cd960d9a",
+          "bytes": 7707
+        },
+        {
+          "path": "overlay/src/components/studio/playback.mjs",
+          "sha256": "ad9a8d7a1b29bb842ed9f7c3e1e254d4dfd8a4e6a60b3286643d17a07033e122",
+          "bytes": 8276
+        },
+        {
+          "path": "overlay/src/components/studio/settings-editor.jsx",
+          "sha256": "426bc264ebc8327b34110f767fc8f8495d9fc182a4a0da4b45ba1b77497a37d1",
+          "bytes": 11107
+        },
+        {
+          "path": "overlay/src/components/studio/settings-editor.test.jsx",
+          "sha256": "06efc349a32b1f5c3ac8dd32aab94a7ca1d5ec7da714148c4593177c842b3053",
+          "bytes": 2139
+        },
+        {
+          "path": "overlay/src/components/studio/stack-editor.jsx",
+          "sha256": "4eb959a126076c28d19a6b01343e6cface4deb99ec605cb45318e5fb03ecb53d",
+          "bytes": 12858
+        },
+        {
+          "path": "overlay/src/components/studio/stack-editor.test.jsx",
+          "sha256": "f86242d6e62d68105ed393126c107668b45416fe2006de8643dcec1ed71f3ba0",
+          "bytes": 2453
+        },
+        {
+          "path": "overlay/src/components/studio/stack-shell.jsx",
+          "sha256": "4dfca1b55ecbb8b225beb4082a593c51057f4c6be480d5398be504e3c4ea0cee",
+          "bytes": 8142
+        },
+        {
+          "path": "overlay/src/components/studio/stack-shell.test.jsx",
+          "sha256": "00b2e38ef329ae572c47d2abcfcb4daa231fcdc5f4d2fc8739a40875dbce0317",
+          "bytes": 4485
+        },
+        {
+          "path": "overlay/src/pages/api/studio/data.js",
+          "sha256": "504b79fdafb4998c473249e3a9e13802706ddf747937d458960a18eb6e305f61",
+          "bytes": 1643
+        },
+        {
+          "path": "overlay/src/pages/api/studio/health.js",
+          "sha256": "d8761f39be8ee904b6313271aded19e9540fa926e62a3d2680c056adf2430279",
+          "bytes": 563
+        },
+        {
+          "path": "overlay/src/pages/api/studio/sources.js",
+          "sha256": "d9c0b47f97e6eaea671031011d9002efc2cd9ff2ac5f19002e0e3bbd40eb8413",
+          "bytes": 574
+        },
+        {
+          "path": "overlay/src/pages/index.jsx",
+          "sha256": "95f94ba99fa23137583859230bf8dad9a3d05c9697c7026fc8ca0229e94eb090",
+          "bytes": 6673
+        },
+        {
+          "path": "overlay/src/styles/studio.css",
+          "sha256": "5000725ebe5f24848f879dc22bae36f7f031eba303932419e902541207228934",
+          "bytes": 26159
+        },
+        {
+          "path": "overlay/src/utils/contexts/studio-revision.js",
+          "sha256": "99533e0be5e6dfb21c546ff77a6a455a97a6b8e841f189e51f9ce0373f86e4f2",
+          "bytes": 180
+        },
+        {
+          "path": "overlay/src/utils/studio/discovery-sources.js",
+          "sha256": "eced4fe805ca67ca3790ef91060813f71b59b3435e6c17101ddb42156708df3f",
+          "bytes": 4940
+        },
+        {
+          "path": "overlay/src/utils/studio/discovery-sources.test.js",
+          "sha256": "97a34aaa2e7f09e036fcd420136751ab993d7a940e74b286eb7834a6bec3d872",
+          "bytes": 4677
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "844d892b76ce8293fb1bb76350d4eb96e50c8e219c920837eef43641989faec7",
+          "bytes": 794
+        },
+        {
+          "path": "package.json",
+          "sha256": "21357f0020cf351c35494c6e5b8fce439531bdd0b9cc5dfb785987d2c2cd4fcc",
+          "bytes": 474
+        },
+        {
+          "path": "portainer-compose.yml",
+          "sha256": "ec90e775f8a35d44b9b2014500195df1f5306535a4416e3b0e0b918b1623f7e1",
+          "bytes": 955
+        },
+        {
+          "path": "portainer-swarm.yml",
+          "sha256": "916b7c7ce7a1c42d7da494fe4569a4ba8aa2488bdb1c4ac75be5943b2451aa8f",
+          "bytes": 2013
+        },
+        {
+          "path": "portainer.env.example",
+          "sha256": "5bd1692c4af6cbcfbf11f2f126aeb25d987918ae08f2080c7d85c3121de8c314",
+          "bytes": 740
+        },
+        {
+          "path": "public/catalog.json",
+          "sha256": "7d801fb7eac6cf13880740e9d7a197f17d2f039999f832a1c356d8e237ad229b",
+          "bytes": 501852
+        },
+        {
+          "path": "release-manifest.example.json",
+          "sha256": "f64211de08a2385aff2dcc7cd4d1c3883daa258558b1322af215b3c84d6ff661",
+          "bytes": 589
+        },
+        {
+          "path": "release/workflows/candidate-approved.yml",
+          "sha256": "017f1ce692a0380c9b35d3a2f4ad6e3df1cdacad609d62f23e9b755d9975a108",
+          "bytes": 7967
+        },
+        {
+          "path": "release/workflows/promote-approved.yml",
+          "sha256": "080bec241fb133b3c0b67ec66e377d3a1495c4ca919e5382280a0c8b15527ec3",
+          "bytes": 4174
+        },
+        {
+          "path": "scripts/acceptance-fixture.mjs",
+          "sha256": "748a2a070ff3ccb45a4d1832bf7343c6e2ad21bd3d8950d2575f1f58059bea5b",
+          "bytes": 3784
+        },
+        {
+          "path": "scripts/apply-homepage-overlay.mjs",
+          "sha256": "bfc91e3eaa76aa9da6a7800b64f9bc642669de5aab175c9a292edaaa115d16cd",
+          "bytes": 4902
+        },
+        {
+          "path": "scripts/build-catalog.mjs",
+          "sha256": "b1729e66227ca2e0aac864313cbba1cd8abab998fc7aa20bcdeb9e1bdb8fd8ca",
+          "bytes": 16221
+        },
+        {
+          "path": "scripts/candidate-manifest.mjs",
+          "sha256": "f65432866d30df5ebdc42251af75726344d4c39a9b5b00ab0f6d918528e21a32",
+          "bytes": 12736
+        },
+        {
+          "path": "scripts/candidate-pipeline.mjs",
+          "sha256": "95f86ffda2b3be2d0446da577cae3eb56b6cc3353264f88b5bcc30cab6538e3e",
+          "bytes": 30724
+        },
+        {
+          "path": "scripts/check-native-ssr.py",
+          "sha256": "44fb98925cb1550aeefeef8099165a741e3bad0faa90719d6c0a3b4a38b0e386",
+          "bytes": 6744
+        },
+        {
+          "path": "scripts/container-acceptance.mjs",
+          "sha256": "b11cfa5e507d57043e57f33bd4fd4097812fd5d615d5dbe056e6cd61eb59714c",
+          "bytes": 13654
+        },
+        {
+          "path": "scripts/ghcr-read.mjs",
+          "sha256": "06d769a1f1bb0686a37d3cfed96c7990ea76fc7e78ca2dc128824ab9e80d6efe",
+          "bytes": 3728
+        },
+        {
+          "path": "scripts/healthcheck.mjs",
+          "sha256": "46569177129a471c2c0b9af155681b5cef29478a49b0c42dd4efeb21e12cf1c7",
+          "bytes": 2842
+        },
+        {
+          "path": "scripts/inspect-image-set.mjs",
+          "sha256": "ea2527959daa0d191240237b53723dddcb49e61e87bae0ee5a7c590dd8276775",
+          "bytes": 7335
+        },
+        {
+          "path": "scripts/pack-candidate-source.py",
+          "sha256": "606a6be2d57f3a958000b688ae9183d53b8b3c6eb0e1f5c1d253ff2863d02430",
+          "bytes": 3894
+        },
+        {
+          "path": "scripts/portainer-acceptance.mjs",
+          "sha256": "b442b5f874c8a1ed0795c51113453d31b1409b549edba56f82fe31c57c74bc21",
+          "bytes": 12694
+        },
+        {
+          "path": "scripts/portainer-client.mjs",
+          "sha256": "86c5879abae640fcafde3fdcf10fd557f24106234417d21b2352415bd713f856",
+          "bytes": 11008
+        },
+        {
+          "path": "scripts/prepare-homepage.py",
+          "sha256": "abb163bb6c16fb7973fbf6b9dc6cbc8094242f36193af90cb9ae7af4e7f0c3c6",
+          "bytes": 7657
+        },
+        {
+          "path": "scripts/prepare-promotion-inputs.mjs",
+          "sha256": "78fb7714c5569d442f96f6b8b86afed3654d1dbcb09b6ec46ff53899d9a7bb8b",
+          "bytes": 2750
+        },
+        {
+          "path": "scripts/promote-release.mjs",
+          "sha256": "e668d9f5c7b2e4b93da95acdc2c098afc2ae4fbdf1e8af13da2af6411759cb13",
+          "bytes": 16093
+        },
+        {
+          "path": "scripts/release-guard.mjs",
+          "sha256": "36620669593742dfb14ea13cb97c6d53fb48084fa26e6407380638b54926cf29",
+          "bytes": 9213
+        },
+        {
+          "path": "scripts/release-manifest.mjs",
+          "sha256": "77cc85ea0826fba1b4b96e53a058d564bae757516f2d0fd646c8352a2aa8eca9",
+          "bytes": 7911
+        },
+        {
+          "path": "scripts/runtime-host.mjs",
+          "sha256": "b676dcc33f27cd01e7821eaa2180f631aa666a95828481ddfbf2b90ab1db4a66",
+          "bytes": 1617
+        },
+        {
+          "path": "scripts/seed-config.mjs",
+          "sha256": "a7f17543aef79db1a80effff2a3ea1e40409251f2ca98c2abd493a4897ecc23a",
+          "bytes": 3222
+        },
+        {
+          "path": "scripts/wait-for-config.mjs",
+          "sha256": "1d039bded13472c9c373c088b3543ab552451e6c81fc01cbb4bbc57a5ae4f56f",
+          "bytes": 1316
+        },
+        {
+          "path": "server/board-store.test.mjs",
+          "sha256": "da7c46fda1bce1d3ec8cff32e361ba77eac54c65bec751597784435de9ed66c9",
+          "bytes": 18659
+        },
+        {
+          "path": "server/board.mjs",
+          "sha256": "fa7ecab3de142286533cd708ab3356178f6d5240bf2431cfc483e6352c6299a8",
+          "bytes": 11073
+        },
+        {
+          "path": "server/catalog.test.mjs",
+          "sha256": "25331b76142508cd270288278d4a2a6dc8024892e3a8e87b44354a5808866149",
+          "bytes": 9499
+        },
+        {
+          "path": "server/config.mjs",
+          "sha256": "2f6a5c701b0240d4492f99f1758d02eb0329e510bde2fd9d0a841308c98a84d5",
+          "bytes": 53010
+        },
+        {
+          "path": "server/config.test.mjs",
+          "sha256": "dc5ec2dd2d07cce8564746c8973924f47409d9e5dd054d1d29cf3513d045f860",
+          "bytes": 27799
+        },
+        {
+          "path": "server/discovery-store.test.mjs",
+          "sha256": "af5d2ac1e3acbb12b50f7ef86b0fba43cd1fb3b387fe6b914e318c594f5ad2c4",
+          "bytes": 14533
+        },
+        {
+          "path": "server/discovery.mjs",
+          "sha256": "84439f9d375fdd2cd60ef8c7f0e3e1b4291088781143d0a9cd9da1e4a77f0b0d",
+          "bytes": 11011
+        },
+        {
+          "path": "server/discovery.test.mjs",
+          "sha256": "db9f481e3fe0e3a423718eac6059a49ea5ec57a617683587b379544d42132e87",
+          "bytes": 16488
+        },
+        {
+          "path": "server/fixtures/homepage/LICENSE",
+          "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+          "bytes": 35149
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/info/customapi.md",
+          "sha256": "d5ec29fc5f2408ce239df10a98d8c3b848a049a72fcac4770580852678d635a5",
+          "bytes": 1565
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/info/datetime.md",
+          "sha256": "d423e895a28bcaf74f7e0a598f47b66eb7b45ff6829e77f84d5ce4626621b08e",
+          "bytes": 1321
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/info/glances.md",
+          "sha256": "96905c927ba54136826a32c933301d0be52edb7faa635ee986dbdf2ca718bb6f",
+          "bytes": 1876
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/info/longhorn.md",
+          "sha256": "dd92f585d0f393173655528b255750a383c355d614ec234208640dc8f19840e5",
+          "bytes": 1059
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/info/resources.md",
+          "sha256": "43f57d699fd6993a2502e4aca89d2959890d53987a7ca07469bec5d02f000f32",
+          "bytes": 3012
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/info/stocks.md",
+          "sha256": "69731c879bb19b8f486534d5b4fc2a52d3e71eae2db2c585bd1fc7682aa54428",
+          "bytes": 1369
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/azuredevops.md",
+          "sha256": "e7099696f0ebcb6ca146be50ec93f659d1b198267f6c4a566b78a306c4266465",
+          "bytes": 1210
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/calendar.md",
+          "sha256": "e88ad45d5836770be7819afbc950438f33e9173d2f6132607c6fd18110a36f6a",
+          "bytes": 2779
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/customapi.md",
+          "sha256": "fd19e47ea0c45460fab9fb9aec11ccc6753423d053d3258176787d94aace5cec",
+          "bytes": 7730
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/homeassistant.md",
+          "sha256": "8d5cab9f657f90b45a2298804167b72331f3848447dc080f9013e48cb73eab18",
+          "bytes": 1520
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/komga.md",
+          "sha256": "652a62fe32bde219d98abc2f73d5495f013ada88f6535360121b4ca448a8217a",
+          "bytes": 575
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/komodo.md",
+          "sha256": "17c24c8390f6f1d39cca5f67c58b838b34ae839de80f224d427bf7bad294678a",
+          "bytes": 841
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/ntfy.md",
+          "sha256": "9153154b25687c0739a86a0b9cfdd9dccc51c494d0e2abce9b1a0661c5d0b767",
+          "bytes": 1591
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/openmediavault.md",
+          "sha256": "d386e8047a16d01b682956b59bb11f4255298a8edc2e9637a3b1861eb8166eff",
+          "bytes": 830
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/peanut.md",
+          "sha256": "e8284ddfd3214dc965b0a2229ba1f05a7afb3380525bbbb54f31c22e6e7f3e8a",
+          "bytes": 911
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/portainer.md",
+          "sha256": "95dad6afceb6e9c8489925613ad892def60ea51dc946bf7efcd75f13a8840c74",
+          "bytes": 932
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/qnap.md",
+          "sha256": "3f51a8d143396b2c4f49904cc7236fe452c86fbd6d2e1f242b871cc47e329fda",
+          "bytes": 564
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/rutorrent.md",
+          "sha256": "dca8e49a991595c597d2c378fb00fd8a3f3950fda6eca67421ac397caddecb8c",
+          "bytes": 559
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/sonarr.md",
+          "sha256": "abb439cbf9becc616034ed8aa82f9e033067c5a0fd5003641a83d4f9bf9cdd09",
+          "bytes": 479
+        },
+        {
+          "path": "server/fixtures/homepage/docs/widgets/services/uptimerobot.md",
+          "sha256": "6f5e32b5f90646795dc2edad724715a295176bebb2ba51020ec48c6b7c7e9f6c",
+          "bytes": 788
+        },
+        {
+          "path": "server/fixtures/homepage/package.json",
+          "sha256": "536b707256d05ab70fe0b8159c201138a4f084a1da60b389808f6b2d90711f88",
+          "bytes": 1990
+        },
+        {
+          "path": "server/fixtures/homepage/src/components/widgets/widget.jsx",
+          "sha256": "28d81e2cbefdac9897b06fa4ad9e4e65cf2ad0c29bd5fdb94204eb78862d344f",
+          "bytes": 1603
+        },
+        {
+          "path": "server/fixtures/homepage/src/widgets/components.js",
+          "sha256": "0e8ac3ab2d2a9fb788aa2871543e147722144f127b2f836b22e6976185313f4f",
+          "bytes": 10076
+        },
+        {
+          "path": "server/fixtures/source-manifest.json",
+          "sha256": "ad51e91493c360b09ccb15dda3cb85a0b304d01a22bd9f965f6758c1aa92e4f5",
+          "bytes": 6766
+        },
+        {
+          "path": "server/http.test.mjs",
+          "sha256": "403cef868d021413db539c3934e511d17ab415be60fc92648caaf51cbdbca88e",
+          "bytes": 30502
+        },
+        {
+          "path": "server/index.mjs",
+          "sha256": "790617d65ede2ed99453e926f8ca87406aa9b8bb3ca204884963d507890c3fa9",
+          "bytes": 16036
+        },
+        {
+          "path": "server/playback.test.mjs",
+          "sha256": "e77aedfec6c05df3f4a2059630af84dcae78dbb443091f4687bdb7dd61268597",
+          "bytes": 9502
+        },
+        {
+          "path": "test/native-redirect-security.mjs",
+          "sha256": "b5e22c531709c93a23aed9063d4d9f7e4ed368f64bd21538279355f0a326802f",
+          "bytes": 3810
+        },
+        {
+          "path": "test/packaging.test.mjs",
+          "sha256": "7a179b7db4d55c89dfa182f4ff532d9b168337fba39b29d15cc4b73393db2f4f",
+          "bytes": 15916
+        },
+        {
+          "path": "test/portainer-client.test.mjs",
+          "sha256": "96abacdd2898fab07d435bbcef3d22dc7777f3375d7f8f650a7f09874fefcf32",
+          "bytes": 14963
+        },
+        {
+          "path": "test/release-readiness.test.mjs",
+          "sha256": "34a70b8805218703c3658f51845de625c3914bf493b345eee403a8e9360e5876",
+          "bytes": 48698
+        },
+        {
+          "path": "test/swarm-parser.mjs",
+          "sha256": "2e089ecd069dc768c064904e1fbc8949148ce6d9dc36b3c1eb11ba2fa2193d6b",
+          "bytes": 3290
+        },
+        {
+          "path": "test/test_candidate_source.py",
+          "sha256": "4f4000e1aaaba99cd7b85e81d7626b658a4274de29d3d7be7e33f587a42daf80",
+          "bytes": 3848
+        },
+        {
+          "path": "test/test_prepare_homepage.py",
+          "sha256": "bb1e277b1b08638f40d3a2b091ce5a30bd92c41c2b420e1ce6cfea6a7ee191e9",
+          "bytes": 9048
+        },
+        {
+          "path": "third-party/NOTICE.txt",
+          "sha256": "ceb1115c86113de4252819aeb808220e01c6949ec4ea81b6aeb0030b05a0c98b",
+          "bytes": 1339
+        },
+        {
+          "path": "third-party/catalog-NOTICE.txt",
+          "sha256": "ade810734efd1a1ec1315e72adcdb5f213c7f0b18e94c2685126510bde737ec1",
+          "bytes": 365
+        },
+        {
+          "path": "third-party/homepage-LICENSE",
+          "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+          "bytes": 35149
+        },
+        {
+          "path": "third-party/prototype-MIT-LICENSE",
+          "sha256": "0a3e509cd56fe759cbba2be301b58e6141cb2ad8038746eac59328f0d20be815",
+          "bytes": 1060
+        },
+        {
+          "path": "third-party/yaml-LICENSE",
+          "sha256": "5bba27375d93e9119f76c1015f7672cf9ad5f70952296e0842fb2243d6376869",
+          "bytes": 738
+        },
+        {
+          "path": "upstream.lock.json",
+          "sha256": "081d3a24fd85a574d9dd16376f8c767ffb5e539ddec5e56e7e27b4575b2c64ba",
+          "bytes": 1475
+        }
+      ],
+      "scope": "Previous source-input snapshot retained unchanged before the three-file qualification correction and this documentation update."
     }
   ],
   "preservedFollowupFailures": [
@@ -1873,16 +2840,16 @@
     }
   ],
   "snapshotAnomaly": {
-    "status": "OPEN_FOR_INDEPENDENT_HOSTED_DOCKER_VOLUME_GATE",
+    "status": "INDEPENDENT_HOSTED_VOLUME_GATE_PASSED_SCRATCH_CAUSE_UNESTABLISHED",
     "observations": [
       "After the affected run, ten read-only GETs returned the same41 snapshots despite retention25, warnings[] and no transaction journal.",
       "Existing readiness cleanup reduced41\u219225 immediately. The exact two failed cases then passed unchanged2/2 in2.8s; directory observations during saves showed25\u219226\u219225.",
       "Final complete17-case run passed with unchanged assertions. A10ms directory observer recorded41 previously absent names reappearing, in batches, with instantaneous counts25..33; scans are not atomic during writes, so this alone does not prove external recreation.",
       "One final normal committed save made the exact oldest snapshot stat ENOENT immediately and it remained missing10.043s; count25 and warnings[]."
     ],
-    "interpretation": "Scratch filesystem visibility is a plausible cause, not a proven application or environmental diagnosis. No writer retention code or strict no-snapshot assertion was weakened. Local subsequent passes do not close this independent engineering gate.",
+    "interpretation": "The exact independent Docker-volume retention and strict no-playback-write gate passed on amd64 and arm64 in run39523019327. This closes that engineering gate without proving why older files appeared to reappear in the scratch workspace. Historical observations remain; no writer retention source or strict assertion was weakened.",
     "pendingGate": {
-      "status": "PREPARED_NOT_EXECUTED",
+      "status": "PASSED_AMD64_AND_ARM64_IN_RUN_39523019327",
       "script": "scripts/container-acceptance.mjs",
       "committedSaves": 26,
       "retainedNewestPreSaveRevisions": 25,
@@ -1891,7 +2858,15 @@
         "API history has exactly the newest25 pre-save revision identities.",
         "On-volume snapshot filenames exactly match API history.",
         "Strict browser no-playback-write assertions remain enabled."
-      ]
+      ],
+      "previousStatus": "PREPARED_NOT_EXECUTED",
+      "completedRun": 39523019327,
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "sourceCommit": "1a567184e0f3595f40beb37b315e2f8592a4f3b0",
+      "scratchCauseEstablished": false
     },
     "evidence": [
       {
@@ -1918,8 +2893,14 @@
         "label": "history-final-unlink-identity-observation.json",
         "bytes": 986,
         "sha256": "42b663c50bcfc908fefe8f361d15a036d7017453fc15e04c22cb49c0cb22ce6e"
+      },
+      {
+        "label": "CHECKPOINT-39523019327.json",
+        "bytes": 10789,
+        "sha256": "4444b607fcc48144da0d83355e933fa258907f99eebb926724e1ee093d7f56a9"
       }
-    ]
+    ],
+    "previouslyRecordedStatus": "OPEN_FOR_INDEPENDENT_HOSTED_DOCKER_VOLUME_GATE"
   },
   "releaseExecution": {
     "status": "DORMANT_NOT_EXECUTED",
@@ -1941,16 +2922,16 @@
     "scope": "Local engineering fixtures and static workflow lint have run. Actual candidate delivery operations require the separately authorized activation/setup path and must complete before the human-test handoff. Official publication remains subject to owner acceptance and exact artifact/date approval."
   },
   "remainingEngineeringGates": [
-    "Combined exact-source hosted amd64/arm64 qualification of the later repairs and expanded browser checks.",
-    "Actual pinned Portainer API deployment/update/cleanup on both architectures.",
-    "Independent Docker-volume26-save/newest25 identity gate and unchanged strict no-playback-write checks to resolve the scratch-history anomaly.",
+    "Actual Portainer CE Swarm API deployment/update/cleanup on amd64 and arm64 after the reviewed cluster-ID lookup correction.",
+    "Complete exact-source hosted qualification of the corrected three-file harness; previous successful expanded browser, direct lifecycle, retention and Portainer standalone stages retain their recorded source scope.",
     "Authorized candidate delivery activation and actual private image/metadata/review/artifact-transfer/anonymous-pull verification; dormant fixture tests do not establish these."
   ],
   "scopeNotes": [
     "Historical checks and CI1-4 are preserved unchanged. Later entries supersede only the specific pending gates they actually exercised.",
     "Native upstream full-suite volume, targeted overlay tests, browser scenarios, static checks and lifecycle gates measure different behavior and are not summed into an acceptance score.",
     "Actual user credentials, private target-host integration, aesthetic approval and physical Samsung gesture feel remain owner acceptance only after feasible engineering and artifact delivery are complete.",
-    "Evidence labels are portable identifiers with content hashes; private evidence locations, local runtime configuration and credentials are not included."
+    "Evidence labels are portable identifiers with content hashes; private evidence locations, local runtime configuration and credentials are not included.",
+    "CI6 closes the exact independent hosted-volume/no-playback-write gate while preserving its overall failure and the unestablished scratch cause. The14-case correction subset is not an observed188-case combined run."
   ],
   "nativeOverlayManifest": {
     "scope": "Complete integrated overlay after the focused-iframe and empty-board-hold repairs; the corresponding local production build passed17 Chromium cases, real hidden-document acceptance and four Firefox/WebKit desktop cases. Combined hosted qualification for these later changes remains pending.",
@@ -2144,10 +3125,12 @@
   },
   "nativeOverlayManifestEncoding": "UTF-8 JSON.stringify-equivalent indent2 plus final newline of the embedded nativeOverlayManifest object; object key and sorted file order preserved.",
   "inputHashScope": {
-    "recordedAt": "2026-10-21T00:42:04.599076+00:00",
+    "recordedAt": "2026-10-21T01:06:30.460459+00:00",
     "sourceFiles": 149,
     "hashedInputs": 148,
-    "scope": "All ordinary public source files, including verification-relevant documentation, native fixtures and dormant release definitions; this evidence document is excluded to avoid a recursive self-hash. No dependencies, runtime files or symlinks included.",
-    "qualificationMeaning": "Current input identity only. Each executed check retains its own source/build scope; current hashes do not relabel historical test execution."
+    "scope": "Composite integration inputs: current149-file root source with the reviewed three-file harness correction plus staged VERIFICATION.md. Evidence JSON excludes itself; dependencies, runtime files and symlinks excluded.",
+    "qualificationMeaning": "Current input identity only. Each executed check retains its own source/build scope; current hashes do not relabel historical test execution.",
+    "baseCommit": "1a567184e0f3595f40beb37b315e2f8592a4f3b0",
+    "stagedVerificationSha256": "26a63f76e3a7e95d38e6f83d08965d90b48d29ee82924702cb280d2891cac82e"
   }
 }

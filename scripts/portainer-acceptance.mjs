@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import { promisify } from 'node:util';
 import { createDashboardFixture, eventually } from './acceptance-fixture.mjs';
-import { PortainerClient, PORTAINER_IMAGE, PORTAINER_VERSION, REGISTRY_IMAGE, cleanupPortainerStack, inspectFixtureManifest, stackPayload } from './portainer-client.mjs';
+import { PortainerClient, PORTAINER_IMAGE, PORTAINER_VERSION, REGISTRY_IMAGE, cleanupPortainerStack, inspectFixtureManifest, readSwarmClusterId, stackPayload } from './portainer-client.mjs';
 
 if (process.env.STUDIO_TEST_CONTAINERS !== '1' || process.env.STUDIO_PORTAINER_TESTS !== '1' || process.env.GITHUB_ACTIONS !== 'true' || process.env.RUNNER_ENVIRONMENT !== 'github-hosted') {
   throw new Error('Portainer acceptance requires an explicitly enabled, disposable GitHub-hosted runner.');
@@ -88,7 +88,7 @@ async function runStack(swarm) {
   const name = `${identity}-${swarm ? 'swarm' : 'compose'}`;
   const template = await readFile(swarm ? 'portainer-swarm.yml' : 'portainer-compose.yml', 'utf8');
   const stack = { name, swarm, environment: { ...env, STUDIO_IMAGE: references.studio.initial, HOMEPAGE_IMAGE: references.homepage.initial } };
-  const swarmId = swarm ? JSON.parse(await docker(['swarm', 'inspect']))[0].ID : undefined;
+  const swarmId = swarm ? await readSwarmClusterId(docker) : undefined;
   const payload = stackPayload({ name, template, environment: stack.environment, swarmId });
   stacks.push(stack);
   stack.id = await portainer.createStack(endpointId, payload);
