@@ -1,6 +1,6 @@
 {
-  "recordedAt": "2026-10-21T02:42:13.760376+00:00",
-  "status": "NATIVE_QUALIFICATION_COMPLETE_FIRST_CANDIDATE_PREFLIGHT_FAILED_SIMPLIFIED_DELIVERY_EXECUTION_PENDING",
+  "recordedAt": "2026-10-21T03:11:21.797306+00:00",
+  "status": "BROWSER_CLEANUP_REPAIR_LOCALLY_VERIFIED_HOSTED_CANDIDATE_PENDING",
   "upstreamCommit": "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
   "nativeOverlayManifestSha256": "d5d5ea04bf2fcb76aeb40b6a566caf9bd9dacb7469cf825ac550c46f7f4fafb2",
   "checks": [
@@ -87,7 +87,7 @@
       "passed": 5,
       "result": "PASS",
       "lintWarnings": 0,
-      "scope": "New control apply/reopen45s,30s default,1\u20133600s limits,draft isolation,and max(interval,hold)60s; full subsequent CI separate."
+      "scope": "New control apply/reopen45s,30s default,1–3600s limits,draft isolation,and max(interval,hold)60s; full subsequent CI separate."
     },
     {
       "name": "native-snapshot-reload-handoff",
@@ -1129,6 +1129,104 @@
           "sha256": "69a68c13f9f8cb9d66013aef8f50166f04e46d931f187b7eeae7e7a0d9bfaefe"
         }
       ]
+    },
+    "currentCandidateRun": {
+      "runId": 39535169718,
+      "url": "https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39535169718",
+      "sourceCommit": "f7141edb2a54a13275b3c386e9442f1803aafbb9",
+      "sourceTree": "57d9af70af8a02489718477599e30809ba315f9c",
+      "event": "push",
+      "attempt": 1,
+      "statusAtFailureReview": "in_progress",
+      "overallConclusionAtFailureReview": null,
+      "amd64": {
+        "jobId": 119010039043,
+        "statusAtFailureReview": "in_progress",
+        "conclusion": "success",
+        "finalStatus": "completed",
+        "qualificationChecks": {
+          "writer": "passed",
+          "packaging": "passed",
+          "native": "passed",
+          "dependencies": "passed",
+          "browser": "passed",
+          "desktopFirefox": "passed",
+          "desktopWebKit": "passed",
+          "hiddenDocument": "passed",
+          "compose": "passed",
+          "swarm": "passed",
+          "portainerCompose": "passed",
+          "portainerSwarm": "passed"
+        },
+        "retainedNativeImages": {
+          "studio": {
+            "digest": "sha256:a99a5fcd985f264ed2d3b430320686851a8651223872f9ee0d5b62fe921f67ad",
+            "configDigest": "sha256:85aee8bc16c3aec8a2744c240a152c973296179e7986a8f3fb726379064c131d"
+          },
+          "homepage": {
+            "digest": "sha256:95a8c31344953b0a19f261b2d8002a5099926815108b0d0ceffbe4de122da07e",
+            "configDigest": "sha256:8bed5f5e342f274c797d0d99c456baece6b5edb8bbb2e7258d33dea2f7e27832"
+          }
+        },
+        "receipt": {
+          "artifactId": 12318246301,
+          "archiveBytes": 679,
+          "archiveSha256": "e96254622b70041ea69ef86cda2c5034a0f6b4d0dd3e203adcdc5fa77a0cb866",
+          "receiptBytes": 1124,
+          "receiptSha256": "2368be791035a9700fe681ddee501139ee3dc2a2beda696e170f81d3416ef7c2"
+        },
+        "scope": "AMD64 completed the unchanged qualification and retained this single-platform image pair. ARM64 failure prevented assembly; these are not a complete multiarchitecture candidate."
+      },
+      "arm64": {
+        "jobId": 119010039285,
+        "conclusion": "failure",
+        "failedStep": "Complete both-image Compose and Swarm acceptance",
+        "failure": "ENOTEMPTY removing temporary Chromium profile Default directory after real hidden-document assertions passed",
+        "failureAtUTC": "2026-10-21T02:57:04Z",
+        "tests": {
+          "nativeFiles": 584,
+          "nativeTests": 1930,
+          "writer": 134,
+          "tooling": 69,
+          "python": 13,
+          "actualDockerParser": 2,
+          "nativeSecurity": 4,
+          "chromium": {
+            "passed": 17,
+            "seconds": 42.4
+          },
+          "firefoxWebKitDesktop": {
+            "passed": 4,
+            "seconds": 34.7
+          },
+          "realHeadedHidden": {
+            "assertionsPassed": true,
+            "browserFailures": 0,
+            "elapsedMs": 18337,
+            "cleanupPassed": false
+          }
+        },
+        "notReached": [
+          "dockerVolumeRetention",
+          "remainingDirectComposeLifecycle",
+          "directSwarmLifecycle",
+          "portainerCompose",
+          "portainerSwarm",
+          "candidateImageRetention"
+        ],
+        "logEvidence": {
+          "label": "native-arm64-119010039285.log",
+          "bytes": 314960,
+          "sha256": "e7c056f3ad00b5d4ef4e0b1fee0f234681b9699155ffeb6d95de90e3a944a114"
+        }
+      },
+      "completeCandidateQualified": false,
+      "completeCandidateImagesRetained": false,
+      "scope": "Run completed with ARM64 cleanup failure and AMD64 success. Only AMD64 native images were retained; assembly was skipped and no complete candidate bundle or official publication exists for this run.",
+      "finalStatus": "completed",
+      "finalConclusion": "failure",
+      "finalObservedUpdateAt": "2026-10-21T03:09:34Z",
+      "assembly": "skipped"
     }
   },
   "inputs": [
@@ -3098,7 +3196,7 @@
     "status": "INDEPENDENT_HOSTED_VOLUME_GATE_PASSED_SCRATCH_CAUSE_UNESTABLISHED",
     "observations": [
       "After the affected run, ten read-only GETs returned the same41 snapshots despite retention25, warnings[] and no transaction journal.",
-      "Existing readiness cleanup reduced41\u219225 immediately. The exact two failed cases then passed unchanged2/2 in2.8s; directory observations during saves showed25\u219226\u219225.",
+      "Existing readiness cleanup reduced41→25 immediately. The exact two failed cases then passed unchanged2/2 in2.8s; directory observations during saves showed25→26→25.",
       "Final complete17-case run passed with unchanged assertions. A10ms directory observer recorded41 previously absent names reappearing, in batches, with instantaneous counts25..33; scans are not atomic during writes, so this alone does not prove external recreation.",
       "One final normal committed save made the exact oldest snapshot stat ENOENT immediately and it remained missing10.043s; count25 and warnings[]."
     ],
@@ -3158,7 +3256,7 @@
     "previouslyRecordedStatus": "OPEN_FOR_INDEPENDENT_HOSTED_DOCKER_VOLUME_GATE"
   },
   "releaseExecution": {
-    "status": "ACTIVE_FIRST_CANDIDATE_PREFLIGHT_FAILED_SIMPLIFIED_DELIVERY_EXECUTION_PENDING",
+    "status": "BROWSER_CLEANUP_REPAIR_LOCALLY_VERIFIED_HOSTED_CANDIDATE_PENDING",
     "localToolingNodeTests": 24,
     "localSourceArchiveTests": 3,
     "testsIncludedInCombinedTotals": true,
@@ -3169,18 +3267,19 @@
     "activated": true,
     "candidateWorkflowDispatched": true,
     "officialPromotionDispatched": false,
-    "privateRegistryPushOrCopyExecuted": false,
     "authenticatedPublishingReviewReadExecuted": false,
     "candidateArtifactTransferExecuted": false,
     "anonymousPublishedImagePullExecuted": false,
-    "publicImageOrReleasePublicationPerformed": false,
-    "scope": "Earlier workflow activation and full native validation succeeded. First candidate dispatch failed at obsolete metadata preflight before builds. This revision removes candidate approval/metadata/staging dependencies while preserving native qualification and exact-image checks; its actual delivery execution remains pending. Official publication remains subject to owner acceptance and exact artifact/date approval.",
-    "activationSourceCommit": "e80f83f610d572d6c41df548cd0779be52a1de34"
+    "scope": "Run39535169718 completed failure: ARM64 failed profile cleanup after browser assertions passed; AMD64 completed qualification and authenticated GHCR retention. The native AMD64 receipt ZIP was downloaded and matched its Actions digest. Full candidate assembly and anonymous verification were not reached. The harness repair passed10focused regressions and independent review; repaired-source hosted qualification and human acceptance remain pending.",
+    "activationSourceCommit": "e80f83f610d572d6c41df548cd0779be52a1de34",
+    "authenticatedRegistryPushExecuted": true,
+    "officialReleasePublicationPerformed": false,
+    "candidateNativeReceiptTransferExecuted": true
   },
   "remainingEngineeringGates": [
-    "Complete exact-source candidate execution with retained native AMD64/ARM64 images after delivery simplification.",
-    "Verify actual GHCR indexes, architecture/configuration identities and layer availability for the retained image pair.",
-    "Verify the downloaded source/evidence/deployment bundle and actual anonymous access before the human deployment handoff."
+    "Execute one exact-source repaired candidate after the reviewed repair publication; completed run39535169718 is preserved as failure.",
+    "Complete native AMD64/ARM64 qualification, retaining the exact tested images only after all required gates pass.",
+    "Verify actual GHCR indexes/configuration identities, full layer availability and the downloaded source/evidence/deployment bundle before the human deployment handoff."
   ],
   "scopeNotes": [
     "Historical checks and CI1-4 are preserved unchanged. Later entries supersede only the specific pending gates they actually exercised.",
@@ -3189,7 +3288,8 @@
     "Evidence labels are portable identifiers with content hashes; private evidence locations, local runtime configuration and credentials are not included.",
     "CI6 closes the exact independent hosted-volume/no-playback-write gate while preserving its overall failure and the unestablished scratch cause. The14-case correction subset is not an observed188-case combined run.",
     "CI7 and activation validation supersede the earlier corrected-harness pending status with complete success on both native architectures. Historical input manifests and historical local-tooling counts retain their original source scopes.",
-    "Candidate run39533793508 failed before image builds at HTTP400 metadata preflight; no GHCR write failure is established. Candidate delivery is now authorized engineering work without a separate owner review; official release remains pending human acceptance."
+    "Candidate run39533793508 failed before image builds at HTTP400 metadata preflight; no GHCR write failure is established. Candidate delivery is now authorized engineering work without a separate owner review; official release remains pending human acceptance.",
+    "Run39535169718 completed with ARM64 ENOTEMPTY cleanup failure after17Chromium+4FirefoxWebKit and real hidden-document assertions; AMD64 completed all gates and retained only its native images. Assembly was skipped. The repaired-source hosted result remains unassigned at this source-publication checkpoint."
   ],
   "nativeOverlayManifest": {
     "scope": "Complete integrated overlay after the focused-iframe and empty-board-hold repairs; the corresponding local production build passed17 Chromium cases, real hidden-document acceptance and four Firefox/WebKit desktop cases. Combined hosted qualification for these later changes remains pending.",
@@ -3407,9 +3507,44 @@
     "tagFormat": "build-<full-source-commit>-<run-id>[-<architecture>]",
     "ordinaryPushPublishesImages": false,
     "officialReleaseApprovalRetained": true,
-    "actualRevisedWorkflowExecution": "NOT_RUN",
-    "retainedImages": "NOT_YET_DELIVERED",
+    "actualRevisedWorkflowExecution": "RUN39535169718_COMPLETED_FAILURE_ARM64_CLEANUP_AMD64_SUCCESS",
+    "retainedImages": "AMD64_NATIVE_ONLY_NO_ASSEMBLED_CANDIDATE",
     "anonymousAccess": "NOT_YET_VERIFIED",
     "scope": "Delivery tooling change only; application/runtime behavior is unchanged. Candidate build success and anonymous availability are reported separately; a visibility-only restriction does not require rebuilding the image bytes."
+  },
+  "cleanupRepair": {
+    "status": "LOCALLY_VERIFIED_HOSTED_PENDING",
+    "parentCommit": "f7141edb2a54a13275b3c386e9442f1803aafbb9",
+    "parentTree": "57d9af70af8a02489718477599e30809ba315f9c",
+    "scope": "Test-harness browser process/profile teardown only; preserve application behavior and acceptance assertions.",
+    "localValidation": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "command": "node --test --test-isolation=none --test-reporter=tap test/browser-cleanup.test.mjs",
+      "evidence": {
+        "label": "root-regression.tap",
+        "bytes": 2442,
+        "sha256": "5ade2ab946e80807af4805bb70d52a625796b4af5ea7a166dc9eb21e57a25894"
+      },
+      "syntaxChecksPassed": 3,
+      "diffCheck": "passed",
+      "filesSha256": {
+        "browser/visibility/cleanup.mjs": "be1db75ce49784bb3961d6a378d9316e4fcd72c9c8a99bdd37b983b2d526831d",
+        "browser/visibility/hidden-document.mjs": "c9cfdd4b253f8173f1d9d252d8d34715b7a7f9fdc952dde34ffe6950acda0e23",
+        "test/browser-cleanup.test.mjs": "c65545a72477cff56514269f85768aa49b444ea8103d34796e4731044bc6fd98"
+      },
+      "scope": "Real child-process and filesystem regression tests; no Docker/ARM64 or actual browser execution claimed for this local subset."
+    },
+    "independentReview": {
+      "result": "passed",
+      "reviewer": "root (independent of implementation author)",
+      "scope": "Graceful close, inherited-pipe descendants, bounded TERM/KILL, signal exit handling, transient removal retries, primary/cleanup error preservation, post-cleanup success evidence; original dashboard assertions unchanged."
+    },
+    "futureCommit": null,
+    "futureTree": null,
+    "futureCandidateRunId": null,
+    "publicationPerformed": false,
+    "scopeLimit": "Future source identity and completed run result are unassigned until actual publication/execution; no blanket rerun or cancellation."
   }
 }

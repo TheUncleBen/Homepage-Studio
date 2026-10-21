@@ -3,14 +3,14 @@
 // The Playwright package supplies only its pinned executable and HTTP client.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { once } from 'node:events';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, request } from '@playwright/test';
 import { origin, resetDashboard, studioApi } from '../helpers/dashboard.mjs';
 import { seedPlayback } from '../helpers/engineering.mjs';
+import { observeChildClose, removeBrowserProfile, stopBrowserProcess } from './cleanup.mjs';
 
 if (!origin) throw new Error('Set STUDIO_BROWSER_ORIGIN to a disposable Studio deployment.');
 if (process.env.STUDIO_TEST_CONTAINERS !== '1' && process.env.STUDIO_DISPOSABLE_BROWSER_TEST !== '1') {
@@ -23,12 +23,15 @@ const dwellMs = 4000;
 const hiddenMs = 9000;
 const profile = await mkdtemp(join(tmpdir(), 'studio-hidden-document-'));
 const executable = process.env.STUDIO_VISIBILITY_EXECUTABLE || chromium.executablePath();
-const api = await request.newContext();
+let api;
 const failures = [];
 const pending = new Map();
 let sequence = 0;
 let socket;
 let child;
+let browserProcess;
+let evidence;
+let primaryFailure;
 let diagnostics = '';
 let observedSession;
 const originUrl = new URL(origin).origin;
@@ -63,6 +66,7 @@ async function until(read, accepts, label, timeout = 15000) {
 }
 
 try {
+  api = await request.newContext();
   await resetDashboard(api);
   const seeded = await seedPlayback(api, { intervalMs: dwellMs });
   const firstId = seeded.board.stacks[0].panelIds[0];
@@ -73,14 +77,15 @@ try {
     '--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check',
     '--window-size=1440,1080', '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0',
     `--user-data-dir=${profile}`, 'about:blank',
-  ], { env: process.env, stdio: ['ignore', 'ignore', 'pipe'] });
+  ], { env: process.env, detached: process.platform !== 'win32', stdio: ['ignore', 'ignore', 'pipe'] });
+  browserProcess = observeChildClose(child, { processGroup: process.platform !== 'win32' });
   child.stderr.on('data', chunk => { diagnostics = (diagnostics + chunk).slice(-5000); });
   let startupError;
   child.once('error', error => { startupError = error; });
   let endpoint;
   for (let index = 0; index < 100; index += 1) {
     if (startupError) throw startupError;
-    if (child.exitCode !== null) throw new Error(`Chrome exited during startup: ${diagnostics}`);
+    if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Chrome exited during startup: ${diagnostics}`);
     try {
       const [port, path] = (await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).trim().split('\n');
       endpoint = `ws://127.0.0.1:${port}${path}`;
@@ -173,24 +178,36 @@ try {
   assert.equal(slides.length, 2);
   assert.deepEqual(await studioApi(api, '/__studio/api/backups'), backupsBefore, 'Playback must not create snapshots');
   assert.deepEqual(failures, [], 'No uncaught page exceptions or same-origin HTTP 5xx');
-  const evidence = {
+  evidence = {
     passed: true,
     method: 'Unmanaged headed pinned Chromium, real tab activation through raw CDP; no focus/visibility emulation or fake clock',
     nativeIdentity, browserVersion, dwellMs, hiddenMs, remainingMs, resumedAfterMs, followingDwellMs,
     events: nextAdvance.events, browserFailures: failures, elapsedMs: Date.now() - startedAt,
   };
-  if (process.env.STUDIO_VISIBILITY_EVIDENCE) await writeFile(process.env.STUDIO_VISIBILITY_EVIDENCE, `${JSON.stringify(evidence, null, 2)}\n`);
-  console.log(JSON.stringify(evidence, null, 2));
-  await call('Browser.close');
-} finally {
+} catch (error) {
+  primaryFailure = error;
+}
+
+const cleanupFailures = [];
+let browserCleanup;
+let profileCleanup;
+try {
+  browserCleanup = await stopBrowserProcess(browserProcess, {
+    requestClose: socket?.readyState === WebSocket.OPEN ? () => call('Browser.close') : undefined,
+  });
+} catch (error) { cleanupFailures.push(error); }
+try {
   for (const item of pending.values()) item.reject(new Error('Raw browser check finished'));
   pending.clear();
   socket?.close();
-  if (child?.exitCode === null) {
-    child.kill('SIGTERM');
-    await Promise.race([once(child, 'exit'), delay(3000)]);
-  }
-  if (child?.exitCode === null) child.kill('SIGKILL');
-  await api.dispose();
-  await rm(profile, { recursive: true, force: true });
-}
+} catch (error) { cleanupFailures.push(error); }
+try { await api?.dispose(); } catch (error) { cleanupFailures.push(error); }
+try { profileCleanup = await removeBrowserProfile(profile); } catch (error) { cleanupFailures.push(error); }
+const errors = [primaryFailure, ...cleanupFailures].filter(Boolean);
+if (errors.length === 1) throw errors[0];
+if (errors.length > 1) throw new AggregateError(errors, 'Raw browser qualification and cleanup failed.', { cause: primaryFailure || cleanupFailures[0] });
+
+evidence.cleanup = { browser: browserCleanup, profile: profileCleanup };
+evidence.elapsedMs = Date.now() - startedAt;
+if (process.env.STUDIO_VISIBILITY_EVIDENCE) await writeFile(process.env.STUDIO_VISIBILITY_EVIDENCE, `${JSON.stringify(evidence, null, 2)}\n`);
+console.log(JSON.stringify(evidence, null, 2));
