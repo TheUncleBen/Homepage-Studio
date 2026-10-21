@@ -11,13 +11,6 @@ export const IMAGE_REPOSITORIES = Object.freeze({
   studio: 'ghcr.io/theuncleben/homepage-studio',
   homepage: 'ghcr.io/theuncleben/homepage-studio-renderer',
 });
-// Proposed private stage. Existing packages are verified private before pushes.
-// Explicit first-use bootstrap may create absent packages from qualified images;
-// the real private visibility is checked immediately after creation.
-export const STAGING_REPOSITORIES = Object.freeze({
-  studio: 'ghcr.io/theuncleben/homepage-studio-candidate-staging',
-  homepage: 'ghcr.io/theuncleben/homepage-studio-renderer-candidate-staging',
-});
 export const PLATFORMS = Object.freeze(['linux/amd64', 'linux/arm64']);
 export const CANDIDATE_FILES = Object.freeze(['studio-source.tar.gz', 'homepage-source.tar.gz', 'verification.json']);
 export const TEMPLATE_FILES = Object.freeze(['portainer-compose.yml', 'portainer-swarm.yml']);
@@ -113,7 +106,7 @@ export async function materializeCandidate(manifest, inputDirectory, sourceRoot,
   }
   files.set('candidate-manifest.json', Buffer.from(JSON.stringify(manifest, null, 2) + '\n'));
   files.set('portainer.env.example', Buffer.from('STUDIO_PUBLIC_ORIGIN=http://homepage.example.test:3000\nSTUDIO_PORT=3000\n# Swarm only: the node holding the named volumes.\nSTUDIO_NODE=<docker-node-hostname>\nSTUDIO_BACKUP_RETENTION=25\n'));
-  files.set('READ-ME-FIRST.txt', Buffer.from(`Homepage Studio human-test candidate\n\nSource: ${manifest.sourceCommit}\nArtifact set: ${result.artifactSetSha256}\nHuman acceptance: pending. No official version is assigned.\n\nDelivery must be separately authorized. These templates are usable only after\nthe exact images are available through the approved access path. This bundle\ndoes not publish images or certify owner approval.\n\nIn Portainer, create a new stack using the Compose or Swarm template.\nSet the exact dashboard origin and, for Swarm, the node holding the volumes.\nUse a new stack/volumes for the first evaluation. Keep the old dashboard intact.\n\nHuman checks: your phone's touch/scroll feel and Samsung-style stack behavior;\ntheme and readability on your displays; actual service credentials and widget\ndata; hostname/NetBird access and storage on your Portainer host.\n\nRecord findings against this artifact set. Do not upgrade one image alone.\nFor rollback, retain the previous digest-pinned image pair and its matching\nconfiguration/state backup. Restore the full pair and matching data together.\nA first evaluation on a new stack can be stopped without altering the old one.\n`));
+  files.set('READ-ME-FIRST.txt', Buffer.from(`Homepage Studio human-test candidate\n\nSource: ${manifest.sourceCommit}\nArtifact set: ${result.artifactSetSha256}\nHuman acceptance: pending. No official version is assigned.\n\nCheck delivery-receipt.json for registry access. The build retains the exact\nqualified images; GitHub may require a one-time package visibility setting\nbefore anonymous deployment. No candidate workflow approval is required.\nAn access-pending receipt is not a completed public deployment handoff.\n\nDeploy both service blocks and their volumes as one matched image pair.\nThey can be added to your existing Portainer stack with unused service/volume\nnames and port; keep the internal service references consistent if renamed.\nA separate test stack can use the template unchanged and is also supported.\nSet the exact dashboard origin and, for Swarm, the node holding the volumes.\nUse fresh configuration/state volumes for the empty first evaluation.\nRetain the existing dashboard configuration so you can return to it.\n\nHuman checks: your phone's touch/scroll feel and Samsung-style stack behavior;\ntheme and readability on your displays; actual service credentials and widget\ndata; hostname/NetBird access and storage on your Portainer host.\n\nRecord findings against this artifact set. Do not upgrade one image alone.\nFor rollback, retain the previous digest-pinned image pair and its matching\nconfiguration/state backup. Restore the full pair and matching data together.\nA first evaluation on a new stack can be stopped without altering the old one.\n`));
   files.set('SHA256SUMS', Buffer.from([...files.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, bytes]) => `${sha256(bytes)}  ${name}\n`).join('')));
   const output = path.resolve(outputDirectory);
   await fs.mkdir(path.dirname(output), { recursive: true });

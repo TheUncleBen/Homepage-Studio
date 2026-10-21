@@ -7,13 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { UPSTREAM_COMMIT } from '../scripts/healthcheck.mjs';
 import { artifactFingerprint } from '../scripts/release-manifest.mjs';
-import { IMAGE_REPOSITORIES, STAGING_REPOSITORIES, PLATFORMS, TEMPLATE_FILES, QUALIFICATION_CHECKS, sha256, candidateFingerprint, validateCandidateManifest, validateQualificationReport, materializeCandidate, matchCandidateToRelease } from '../scripts/candidate-manifest.mjs';
+import { IMAGE_REPOSITORIES, PLATFORMS, TEMPLATE_FILES, QUALIFICATION_CHECKS, sha256, candidateFingerprint, validateCandidateManifest, validateQualificationReport, materializeCandidate, matchCandidateToRelease } from '../scripts/candidate-manifest.mjs';
 import { inspectImageIndex, inspectImageDirectory } from '../scripts/inspect-image-set.mjs';
 import { approvalStatement, verifyTrustedApproval, githubApi, boundedResponse } from '../scripts/release-guard.mjs';
-import { publicRegistry } from '../scripts/ghcr-read.mjs';
+import { RegistryAccessError, publicRegistry, registryReader } from '../scripts/ghcr-read.mjs';
 import { QUALIFIED_BUNDLE_FILES, loadQualifiedCandidateBundle, prepareOfficialAssets, promoteRelease } from '../scripts/promote-release.mjs';
 import { preparePromotionInputs } from '../scripts/prepare-promotion-inputs.mjs';
-import { buildIdentity, stagingStatement, publicCandidateStatement, packageMetadata, packageVersions, verifyMetadataReader, stageNativeTarget, validateTargetReceipts, assembleCandidate, prepareCandidateDestinations, publishCandidate } from '../scripts/candidate-pipeline.mjs';
+import { buildIdentity, stageNativeTarget, validateTargetReceipts, assembleCandidate, verifyCandidateDelivery, verifyPublicCandidate } from '../scripts/candidate-pipeline.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const commit = 'a'.repeat(40);
@@ -369,7 +369,8 @@ test('failed approval, changed assets and existing date tags produce no remote w
     f => { f.context.responses['/actions/runs/456'].status = 'in_progress'; },
     f => { f.context.responses['/actions/runs/456'].path = '.github/workflows/validate.yml'; },
     f => { f.context.responses['/actions/runs/456'].head_sha = 'b'.repeat(40); },
-    f => { f.context.responses['/actions/runs/456'].actor.login = 'another-user'; },
+    f => { f.context.responses['/actions/runs/456'].event = 'pull_request'; },
+    f => { f.context.responses['/actions/runs/456'].event = 'push'; f.context.responses['/actions/runs/456'].head_commit = { message: 'Validate only' }; },
     f => { f.context.responses['/actions/runs/456'].run_attempt = 2; },
     f => { f.options.qualifiedBundle = undefined; },
     f => { f.options.qualifiedBundle['candidate-manifest.json'] = Buffer.from('{}\n'); },
@@ -395,42 +396,47 @@ test('partial registry or upload failure never publishes a release, retries, ove
   }
 });
 
-async function candidatePipelineFixture({ bootstrap = true, staging = 'private', destination = 'absent' } = {}) {
+async function candidatePipelineFixture({ event = 'push', publicAccess = false } = {}) {
   const f = await fixture();
   const context = approvedContext(f.candidate, f.release);
-  Object.assign(context.environment, { GITHUB_TOKEN: 'synthetic-token', GITHUB_SHA: commit, STUDIO_CANDIDATE_SOURCE: commit, STUDIO_PRIVATE_BOOTSTRAP: String(bootstrap), GITHUB_WORKFLOW_REF: 'TheUncleBen/Homepage-Studio/.github/workflows/candidate-approved.yml@refs/heads/main' });
-  Object.assign(context.responses['/actions/runs/123'], { head_sha: commit, path: '.github/workflows/candidate-approved.yml' });
-  const gate = (name, id) => ({ id, name, protection_rules: [{ type: 'required_reviewers', prevent_self_review: false, reviewers: [{ type: 'User', reviewer: { login: 'TheUncleBen' } }] }] });
-  context.responses['/environments/candidate-publication'] = gate('candidate-publication', 57);
-  const approve = candidate => {
-    context.responses['/actions/runs/123/approvals'] = [
-      { state: 'approved', user: { login: 'TheUncleBen' }, environments: [{ id: 57, name: 'candidate-publication' }], comment: publicCandidateStatement(candidate, context.environment) },
-    ];
+  Object.assign(context.environment, { GITHUB_TOKEN: 'synthetic-token', GITHUB_EVENT_NAME: event, GITHUB_ACTOR: 'delivery-integration', GITHUB_TRIGGERING_ACTOR: 'delivery-integration', GITHUB_SHA: commit, STUDIO_CANDIDATE_SOURCE: commit, GITHUB_WORKFLOW_REF: 'TheUncleBen/Homepage-Studio/.github/workflows/candidate-approved.yml@refs/heads/main' });
+  Object.assign(context.responses['/actions/runs/123'], { event, head_sha: commit, path: '.github/workflows/candidate-approved.yml', actor: { login: 'delivery-integration' }, triggering_actor: { login: 'delivery-integration' }, head_commit: { message: 'Prepare tested containers [deliver-candidate]' } });
+  const calls = [];
+  context.request = async suffix => {
+    calls.push(suffix);
+    assert.ok(['', '/actions/runs/123'].includes(suffix), 'Candidate delivery must not query approvals, environments or package REST metadata.');
+    return context.responses[suffix];
   };
-  approve(f.candidate);
   const identity = buildIdentity(context.environment);
   const fixtures = Object.fromEntries(Object.keys(IMAGE_REPOSITORIES).map(name => [name, imageFixture(name)]));
-  const state = { docker: [], tags: new Map(), packages: new Map(), runnerPlatform: 'linux/amd64', extraVersions: [], wrongLocalId: false, createdVisibility: 'private', failCopy: false, wrongPull: false };
-  for (const repository of Object.values(STAGING_REPOSITORIES)) if (staging !== 'absent') state.packages.set(repository, staging);
-  for (const repository of Object.values(IMAGE_REPOSITORIES)) if (destination !== 'absent') state.packages.set(repository, destination);
-  const metadata = async repository => state.packages.has(repository) ? { name: repository.split('/').at(-1), package_type: 'container', visibility: state.packages.get(repository), owner: { login: 'TheUncleBen' }, repository: { full_name: 'TheUncleBen/Homepage-Studio' } } : null;
-  const versions = async repository => {
-    const name = Object.keys(IMAGE_REPOSITORIES).find(name => IMAGE_REPOSITORIES[name] === repository);
-    return [...(state.tags.has(`${repository}:${identity}`) ? [f.candidate.images[name].reference.split('@')[1], ...PLATFORMS.map(platform => f.candidate.images[name].manifests[platform].digest)] : []), ...state.extraVersions];
-  };
-  const registry = (name, scope) => async (kind, reference, options = {}) => {
-    const repository = scope === 'private' ? STAGING_REPOSITORIES[name] : IMAGE_REPOSITORIES[name];
-    if (scope === 'public') assert.equal(state.packages.get(repository), 'public', 'Anonymous reads must wait for actual public visibility.');
+  const state = { docker: [], calls, reads: [], tags: new Map(), runnerPlatform: 'linux/amd64', wrongLocalId: false, wrongLocalRevision: false, failPush: false, failAssembly: false, wrongPull: false, publicAccess, publicError: null, layerReads: [], layerError: null };
+  const registry = (name, scope) => {
+    const read = async (kind, reference, options = {}) => {
+    assert.ok(['authenticated', 'public'].includes(scope));
+    state.reads.push({ name, scope, kind, reference });
+    if (scope === 'public') {
+      if (state.publicError) throw state.publicError;
+      if (!state.publicAccess) throw new RegistryAccessError(403, true);
+    }
+    const repository = IMAGE_REPOSITORIES[name];
     if (reference.startsWith('build-')) {
       const value = state.tags.get(`${repository}:${reference}`);
       if (value) return value;
       if (options.absent) return null;
-      throw new Error('Fixture tag is absent.');
+      throw new Error('Fixture tag is absent; first-use must push before attempting pull-only readback.');
     }
     const item = fixtures[name];
     if (reference === f.candidate.images[name].reference.split('@')[1]) return item.indexBytes;
     assert.ok(item.blobs.has(reference));
     return item.blobs.get(reference);
+    };
+    read.verifyBlob = async (digest, size) => {
+      assert.equal(scope, 'public');
+      if (state.layerError) throw state.layerError;
+      state.layerReads.push({ name, digest, size });
+      return { digest, size };
+    };
+    return read;
   };
   const docker = async (args, input) => {
     state.docker.push(args);
@@ -445,58 +451,65 @@ async function candidatePipelineFixture({ bootstrap = true, staging = 'private',
       }
       const name = args[2] === 'homepage-studio-ci:writer' ? 'studio' : 'homepage';
       const id = f.candidate.images[name].manifests[state.runnerPlatform].configDigest;
-      return JSON.stringify([{ Id: state.wrongLocalId ? 'sha256:' + 'e'.repeat(64) : id, Os: 'linux', Architecture: state.runnerPlatform.split('/')[1], Config: { Labels: { 'org.opencontainers.image.revision': commit } } }]);
+      return JSON.stringify([{ Id: state.wrongLocalId ? 'sha256:' + 'e'.repeat(64) : id, Os: 'linux', Architecture: state.runnerPlatform.split('/')[1], Config: { Labels: { 'org.opencontainers.image.revision': state.wrongLocalRevision ? 'c'.repeat(40) : commit } } }]);
     }
     if (args[0] === 'push') {
+      if (state.failPush) throw new Error('Synthetic authenticated push failure.');
       const repository = args[1].split(':')[0];
-      const name = Object.keys(STAGING_REPOSITORIES).find(name => STAGING_REPOSITORIES[name] === repository);
+      const name = Object.keys(IMAGE_REPOSITORIES).find(name => IMAGE_REPOSITORIES[name] === repository);
+      assert.ok(name, 'Only the two intended application packages may be written.');
+      assert.equal(args[1], `${repository}:${identity}-${state.runnerPlatform.split('/')[1]}`);
+      assert.ok(!state.tags.has(args[1]), 'Fresh run/architecture identities must not reuse tags.');
       const descriptor = fixtures[name].index.manifests.find(item => item.platform.architecture === state.runnerPlatform.split('/')[1]);
-      state.packages.set(repository, state.packages.get(repository) || state.createdVisibility);
       state.tags.set(args[1], fixtures[name].blobs.get(descriptor.digest));
       return '';
     }
     assert.deepEqual(args.slice(0, 4), ['buildx', 'imagetools', 'create', '--tag']);
     const repository = args[4].split(':')[0];
-    const name = Object.keys(IMAGE_REPOSITORIES).find(name => IMAGE_REPOSITORIES[name] === repository || STAGING_REPOSITORIES[name] === repository);
+    const name = Object.keys(IMAGE_REPOSITORIES).find(name => IMAGE_REPOSITORIES[name] === repository);
     assert.ok(name);
-    assert.ok(!state.tags.has(args[4]), 'No existing tag may be overwritten.');
-    if (state.failCopy) throw new Error('Synthetic copy failure.');
-    const sources = args.slice(5);
-    if (repository === IMAGE_REPOSITORIES[name]) assert.deepEqual(sources, [`${STAGING_REPOSITORIES[name]}@${f.candidate.images[name].reference.split('@')[1]}`]);
-    else assert.deepEqual(sources, PLATFORMS.map(platform => `${repository}@${f.candidate.images[name].manifests[platform].digest}`));
-    state.packages.set(repository, state.packages.get(repository) || state.createdVisibility);
+    assert.equal(args[4], `${repository}:${identity}`);
+    assert.ok(!state.tags.has(args[4]), 'An existing assembled index must not be overwritten.');
+    if (state.failAssembly) throw new Error('Synthetic index assembly failure.');
+    assert.deepEqual(args.slice(5), PLATFORMS.map(platform => `${repository}@${f.candidate.images[name].manifests[platform].digest}`));
     state.tags.set(args[4], fixtures[name].indexBytes);
     return '';
   };
-  return { ...f, context, state, fixtures, identity, approve, options: { ...context, metadata, versions, registry, docker } };
+  const seedIndexes = () => {
+    for (const name of Object.keys(IMAGE_REPOSITORIES)) state.tags.set(`${IMAGE_REPOSITORIES[name]}:${identity}`, fixtures[name].indexBytes);
+  };
+  return { ...f, context, state, fixtures, identity, seedIndexes, options: { ...context, registry, docker } };
 }
 
-test('package bootstrap requires verified namespace absence, and API/owner failures stay failures', async () => {
-  const calls = [];
-  const absent = await packageMetadata(STAGING_REPOSITORIES.studio, 'synthetic-token', async (url, options) => {
-    calls.push(url); assert.equal(options.redirect, 'error');
-    return url.includes('/packages/container/') ? new Response('{}', { status: 404 }) : new Response('[]');
-  });
-  assert.equal(absent, null); assert.equal(calls.length, 2);
-  for (const status of [401, 403, 500]) await assert.rejects(packageMetadata(STAGING_REPOSITORIES.studio, 'synthetic-token', async () => new Response('{}', { status })), /Cannot verify/);
-  for (const items of [[{ name: 'another', package_type: 'container', owner: { login: 'another-user' } }], [{ name: 'homepage-studio-candidate-staging', package_type: 'container', owner: { login: 'TheUncleBen' } }]]) {
-    await assert.rejects(packageMetadata(STAGING_REPOSITORIES.studio, 'synthetic-token', async url => url.includes('/packages/container/') ? new Response('{}', { status: 404 }) : new Response(JSON.stringify(items))));
+async function stageFixtureTargets(f) {
+  const receipts = [];
+  for (const platform of PLATFORMS) {
+    f.state.runnerPlatform = platform;
+    receipts.push(await stageNativeTarget(platform, tree, { ...f.options, runnerPlatform: platform }));
   }
-  await assert.rejects(packageVersions(IMAGE_REPOSITORIES.studio, 'synthetic-token', async () => new Response('[{"name":"latest"}]')), /manifest list/);
-  await assert.rejects(verifyMetadataReader({ STUDIO_PACKAGE_METADATA_TOKEN: 'synthetic-nonowner' }, async () => new Response('{"login":"another-user"}')), /project owner/);
-  await verifyMetadataReader({ STUDIO_PACKAGE_METADATA_TOKEN: 'synthetic-owner' }, async (url, options) => {
-    assert.equal(url, 'https://api.github.com/user'); assert.equal(options.redirect, 'error');
-    return new Response('{"login":"TheUncleBen"}');
-  });
-});
+  return receipts;
+}
 
-test('native staging refuses emulation claims, untrusted dispatch, public staging and implicit bootstrap before any image write', async () => {
+async function candidateInputs(t, f) {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-candidate-assembly-')); t.after(() => fs.rm(temp, { recursive: true, force: true }));
+  await fs.writeFile(path.join(temp, 'studio-source.tar.gz'), f.files['studio-source.tar.gz']);
+  await fs.writeFile(path.join(temp, 'homepage-source.tar.gz'), f.files['homepage-source.tar.gz']);
+  return temp;
+}
+
+test('native candidate retention rejects emulation, unrelated runs, missing delivery requests and stale identities before image writes', async () => {
   for (const change of [
     f => { f.options.runnerPlatform = 'linux/arm64'; },
-    f => { f.context.responses['/actions/runs/123'].actor.login = 'another-user'; },
-    f => { f.state.packages.set(STAGING_REPOSITORIES.studio, 'public'); },
-    f => { f.state.packages.clear(); f.context.environment.STUDIO_PRIVATE_BOOTSTRAP = 'false'; f.approve(f.candidate); },
+    f => { f.context.environment.GITHUB_REPOSITORY = 'another/repository'; },
+    f => { f.context.environment.GITHUB_REF = 'refs/heads/unreviewed'; },
+    f => { f.context.environment.GITHUB_EVENT_NAME = 'pull_request'; },
+    f => { f.context.responses['/actions/runs/123'].head_commit.message = 'Only validate source'; },
+    f => { f.context.responses['/actions/runs/123'].head_sha = 'b'.repeat(40); },
+    f => { f.context.responses['/actions/runs/123'].event = 'workflow_dispatch'; },
+    f => { f.context.responses['/actions/runs/123'].path = '.github/workflows/validate.yml'; },
+    f => { f.context.responses['/actions/runs/123'].status = 'completed'; },
     f => { f.context.environment.STUDIO_CANDIDATE_SOURCE = 'b'.repeat(40); },
+    f => { f.context.environment.GITHUB_RUN_ATTEMPT = '2'; },
   ]) {
     const f = await candidatePipelineFixture(); f.options.runnerPlatform = 'linux/amd64'; change(f);
     await assert.rejects(stageNativeTarget('linux/amd64', tree, f.options));
@@ -504,34 +517,35 @@ test('native staging refuses emulation claims, untrusted dispatch, public stagin
   }
 });
 
-test('first-use staging preserves tested config IDs and checks real private visibility immediately after creation', async () => {
-  const f = await candidatePipelineFixture({ staging: 'absent' });
-  const target = await stageNativeTarget('linux/amd64', tree, { ...f.options, runnerPlatform: 'linux/amd64' });
-  assert.equal(target.images.studio.configDigest, f.candidate.images.studio.manifests['linux/amd64'].configDigest);
-  assert.deepEqual(target.checks, Object.fromEntries(QUALIFICATION_CHECKS.map(name => [name, 'passed'])));
-  assert.equal(f.state.docker.filter(args => args[0] === 'push').length, 2);
-  assert.ok(f.state.docker.filter(args => args[0] === 'push').every(args => args[1].includes('-candidate-staging:build-')));
-  for (const change of [value => { value.state.createdVisibility = 'public'; }, value => { value.state.wrongLocalId = true; }]) {
-    const bad = await candidatePipelineFixture({ staging: 'absent' }); change(bad);
-    await assert.rejects(stageNativeTarget('linux/amd64', tree, { ...bad.options, runnerPlatform: 'linux/amd64' }));
-    assert.equal(bad.state.docker.filter(args => args[0] === 'push').length, 1, 'Stop before staging the second image after a failed readback.');
+test('first-use direct delivery uses the standard workflow token and preserves both exact tested image IDs without owner approval or metadata probes', async () => {
+  for (const event of ['push', 'workflow_dispatch']) {
+    const f = await candidatePipelineFixture({ event });
+    const target = await stageNativeTarget('linux/amd64', tree, { ...f.options, runnerPlatform: 'linux/amd64' });
+    assert.equal(target.images.studio.configDigest, f.candidate.images.studio.manifests['linux/amd64'].configDigest);
+    assert.deepEqual(target.checks, Object.fromEntries(QUALIFICATION_CHECKS.map(name => [name, 'passed'])));
+    assert.equal(f.state.docker.filter(args => args[0] === 'push').length, 2);
+    assert.ok(f.state.docker.filter(args => args[0] === 'push').every(args => !args[1].includes('-staging')));
+    assert.deepEqual(f.state.calls, ['', '/actions/runs/123']);
   }
+  const bad = await candidatePipelineFixture(); bad.state.wrongLocalId = true;
+  await assert.rejects(stageNativeTarget('linux/amd64', tree, { ...bad.options, runnerPlatform: 'linux/amd64' }), /differ from the exact locally tested/);
+  assert.equal(bad.state.docker.filter(args => args[0] === 'push').length, 1, 'A mismatched first image must stop before the second push.');
+  const wrongRevision = await candidatePipelineFixture(); wrongRevision.state.wrongLocalRevision = true;
+  await assert.rejects(stageNativeTarget('linux/amd64', tree, { ...wrongRevision.options, runnerPlatform: 'linux/amd64' }), /locally qualified image identity/);
+  assert.equal(wrongRevision.state.docker.filter(args => args[0] === 'push').length, 0);
+  const denied = await candidatePipelineFixture(); denied.state.failPush = true;
+  await assert.rejects(stageNativeTarget('linux/amd64', tree, { ...denied.options, runnerPlatform: 'linux/amd64' }), /authenticated push failure/);
+  assert.equal(denied.state.docker.filter(args => args[0] === 'push').length, 1);
 });
 
-test('complete native receipts bind both Portainer gates, every browser gate and the exact build before index assembly', async t => {
-  const f = await candidatePipelineFixture({ staging: 'absent' });
-  const receipts = [];
-  for (const platform of PLATFORMS) {
-    f.state.runnerPlatform = platform;
-    receipts.push(await stageNativeTarget(platform, tree, { ...f.options, runnerPlatform: platform }));
-  }
+test('complete native receipts bind both Portainer gates, every browser gate and the exact build before direct index assembly', async t => {
+  const f = await candidatePipelineFixture();
+  const receipts = await stageFixtureTargets(f);
   validateTargetReceipts(receipts, f.context.environment);
   for (const change of [value => value.pop(), value => { value[1].runnerPlatform = 'linux/amd64'; }, value => { value[1].buildIdentity += '-other'; }, value => { delete value[1].checks.portainerCompose; }, value => { value[1].checks.portainerSwarm = 'not-run'; }, value => { value[0].checks.hiddenDocument = 'not-run'; }, value => { value[1].sourceTree = 'b'.repeat(40); }]) {
     const altered = clone(receipts); change(altered); assert.throws(() => validateTargetReceipts(altered, f.context.environment));
   }
-  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-candidate-assembly-')); t.after(() => fs.rm(temp, { recursive: true, force: true }));
-  await fs.writeFile(path.join(temp, 'studio-source.tar.gz'), f.files['studio-source.tar.gz']);
-  await fs.writeFile(path.join(temp, 'homepage-source.tar.gz'), f.files['homepage-source.tar.gz']);
+  const temp = await candidateInputs(t, f);
   const candidate = await assembleCandidate(receipts, temp, f.options);
   validateQualificationReport(JSON.parse(await fs.readFile(path.join(temp, 'verification.json'), 'utf8')), candidate);
   assert.deepEqual(candidate.images, f.candidate.images);
@@ -539,62 +553,99 @@ test('complete native receipts bind both Portainer gates, every browser gate and
   assert.equal(f.state.docker.filter(args => args[0] === 'buildx').length, 2);
 });
 
-test('first-use complete candidate remains private until owner visibility action and exact approval, then verifies without overwriting', async () => {
-  const f = await candidatePipelineFixture();
-  const prepared = await prepareCandidateDestinations(f.candidate, f.options);
-  assert.equal(prepared.status, 'awaiting-public-distribution-approval');
-  assert.deepEqual(Object.values(prepared.destinations), ['private-awaiting-owner-visibility-change', 'private-awaiting-owner-visibility-change']);
-  assert.equal(f.state.docker.filter(args => args[0] === 'buildx').length, 2);
-  assert.ok(Object.values(IMAGE_REPOSITORIES).every(repository => f.state.packages.get(repository) === 'private'));
-  await assert.rejects(publishCandidate(f.candidate, f.options), /public package/);
-  const before = f.state.docker.length;
-  for (const repository of Object.values(IMAGE_REPOSITORIES)) f.state.packages.set(repository, 'public'); // Simulated owner action, never a pipeline API.
-  f.context.responses['/actions/runs/123/approvals'].pop();
-  await assert.rejects(publishCandidate(f.candidate, f.options), /owner must approve/);
-  assert.equal(f.state.docker.length, before);
-  f.approve(f.candidate);
-  const result = await publishCandidate(f.candidate, f.options);
+test('changed index tags and partial assembly failures never overwrite or invent a completed candidate', async t => {
+  for (const collision of [true, false]) {
+    const f = await candidatePipelineFixture();
+    const receipts = await stageFixtureTargets(f);
+    const temp = await candidateInputs(t, f);
+    if (collision) f.seedIndexes(); else f.state.failAssembly = true;
+    await assert.rejects(assembleCandidate(receipts, temp, f.options), collision ? /already exists/ : /assembly failure/);
+    assert.equal(f.state.docker.filter(args => args[0] === 'buildx').length, collision ? 0 : 1);
+    await assert.rejects(fs.stat(path.join(temp, 'verification.json')), { code: 'ENOENT' });
+  }
+});
+
+test('first private package access preserves the qualified candidate and exact authenticated pulls, then public verification resumes without rebuilding', async () => {
+  const f = await candidatePipelineFixture(); f.seedIndexes();
+  const result = await verifyCandidateDelivery(f.candidate, f.options);
+  assert.equal(result.status, 'package-access-pending');
+  assert.equal(result.authenticatedPulls, 'passed');
+  assert.equal(result.anonymousAccess, 'pending');
   assert.equal(result.officialRelease, false);
-  assert.equal(f.state.docker.filter(args => args[0] === 'buildx').length, 2, 'Resumed first-use job must not copy or replace the prepositioned indexes.');
+  assert.deepEqual(result.pendingPackages, Object.values(IMAGE_REPOSITORIES));
   assert.equal(f.state.docker.filter(args => args[0] === 'pull').length, 4);
-  assert.ok(f.state.docker.every(args => !args.includes('build') && !args.some(arg => /^\d{4}\.\d{2}\.\d{2}$/.test(arg))));
+  assert.ok(f.state.docker.every(args => !['build', 'buildx', 'push'].includes(args[0])));
+  f.state.publicAccess = true; // Simulates the one-time GitHub package setting only.
+  const verified = await verifyPublicCandidate(f.candidate, f.options);
+  assert.equal(verified.anonymousAccess, 'passed');
+  assert.equal(verified.verificationMethod, 'registry-stream-sha256');
+  assert.deepEqual(verified.pendingPackages, []);
+  assert.equal(verified.layers.length, 2, 'Shared architecture layers are deduplicated within each repository, never across repository permissions.');
+  assert.equal(f.state.layerReads.length, 2);
+  assert.equal(f.state.docker.filter(args => args[0] === 'pull').length, 4, 'Post-visibility verification runs without Docker.');
+  assert.ok(f.state.docker.every(args => !['build', 'buildx', 'push'].includes(args[0])));
 });
 
-test('existing public destinations receive no candidate writes until exact publication approval', async () => {
-  const f = await candidatePipelineFixture({ bootstrap: false, destination: 'public' });
-  const prepared = await prepareCandidateDestinations(f.candidate, f.options);
-  assert.deepEqual(Object.values(prepared.destinations), ['copy-after-approval', 'copy-after-approval']);
-  assert.deepEqual(f.state.docker, []);
-  await publishCandidate(f.candidate, f.options);
-  assert.equal(f.state.docker.filter(args => args[0] === 'buildx').length, 2);
-  assert.equal(f.state.docker.filter(args => args[0] === 'pull').length, 4);
+test('public candidate completion verifies both images and architectures anonymously and creates no release or moving tags', async () => {
+  const f = await candidatePipelineFixture({ publicAccess: true }); f.seedIndexes();
+  const result = await verifyCandidateDelivery(f.candidate, f.options);
+  assert.equal(result.status, 'public-ready');
+  assert.equal(result.anonymousAccess, 'passed');
+  assert.equal(result.officialRelease, false);
+  const authenticated = f.state.docker.filter(args => args[0] === 'pull');
+  assert.equal(authenticated.length, 4);
+  assert.deepEqual(authenticated.map(args => [args[2], args[3]]).sort(), Object.values(f.candidate.images).flatMap(image => PLATFORMS.map(platform => [platform, image.reference])).sort());
+  assert.equal(result.verificationMethod, 'registry-stream-sha256');
+  assert.equal(result.layers.length, 2);
+  assert.equal(f.state.layerReads.length, 2);
+  assert.ok(f.state.docker.every(args => !args.some(arg => arg === 'latest' || /^\d{4}\.\d{2}\.\d{2}$/.test(arg))));
 });
 
-test('unrelated private versions, changed build tags, wrong pull IDs and partial copies cannot produce a candidate handoff', async () => {
-  const history = await candidatePipelineFixture({ destination: 'private' });
-  history.state.extraVersions = ['sha256:' + 'e'.repeat(64)];
-  await assert.rejects(prepareCandidateDestinations(history.candidate, history.options), /other image versions/);
-  assert.deepEqual(history.state.docker, []);
-  const changed = await candidatePipelineFixture({ destination: 'public', bootstrap: false });
-  changed.state.tags.set(`${IMAGE_REPOSITORIES.studio}:${changed.identity}`, Buffer.from('different image bytes'));
-  await assert.rejects(publishCandidate(changed.candidate, changed.options), /different bytes/);
-  assert.deepEqual(changed.state.docker, []);
-  const failed = await candidatePipelineFixture({ destination: 'public', bootstrap: false });
-  failed.state.failCopy = true;
-  await assert.rejects(publishCandidate(failed.candidate, failed.options), /copy failure/);
-  assert.equal(failed.state.docker.filter(args => args[0] === 'buildx').length, 1);
-  assert.equal(failed.state.docker.filter(args => args[0] === 'pull').length, 0);
-  const badPull = await candidatePipelineFixture({ destination: 'public', bootstrap: false });
-  badPull.state.wrongPull = true;
-  await assert.rejects(publishCandidate(badPull.candidate, badPull.options), /Anonymous.*differs/);
-  assert.equal(badPull.state.docker.filter(args => args[0] === 'pull').length, 1);
+test('registry faults, altered bytes, authenticated denial and wrong pulled IDs cannot be relabeled as a pending public setting', async () => {
+  for (const change of [
+    f => { f.state.publicError = new Error('Registry server unavailable (500)'); },
+    f => { f.state.publicError = new RegistryAccessError(403, false); },
+    f => { f.state.tags.set(`${IMAGE_REPOSITORIES.studio}:${f.identity}`, Buffer.from('different image bytes')); },
+    f => { f.state.wrongPull = true; },
+    f => { f.state.layerError = new RegistryAccessError(403, true); },
+    f => { f.state.layerError = new Error('Streamed layer digest differs'); },
+  ]) {
+    const f = await candidatePipelineFixture({ publicAccess: true }); f.seedIndexes(); change(f);
+    await assert.rejects(verifyCandidateDelivery(f.candidate, f.options));
+    assert.ok(f.state.docker.every(args => !['build', 'buildx', 'push'].includes(args[0])));
+  }
 });
 
-test('dormant workflow contracts require complete native runtime qualification and protected manual publication', async () => {
-  const candidate = parse(await fs.readFile(path.join(root, 'release/workflows/candidate-approved.yml'), 'utf8'));
+test('GHCR anonymous access denial is typed while transport and CDN errors remain failures', async () => {
+  for (const status of [401, 403]) {
+    const read = publicRegistry('studio', async url => url.startsWith('https://ghcr.io/token?') ? new Response('{}', { status }) : new Response('', { status: 401, headers: { 'www-authenticate': 'Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:theuncleben/homepage-studio:pull"' } }));
+    await assert.rejects(read('manifests', 'sha256:' + 'a'.repeat(64)), error => error instanceof RegistryAccessError && error.status === status && error.anonymous);
+  }
+  const authenticated = registryReader(IMAGE_REPOSITORIES.studio, { credential: 'synthetic-token', fetcher: async () => new Response('{}', { status: 403 }) });
+  await assert.rejects(authenticated('manifests', 'sha256:' + 'a'.repeat(64)), error => error instanceof RegistryAccessError && !error.anonymous);
+  const broken = publicRegistry('studio', async () => new Response('{}', { status: 500 }));
+  await assert.rejects(broken('manifests', 'sha256:' + 'a'.repeat(64)), error => !(error instanceof RegistryAccessError));
+  const cdn = publicRegistry('studio', async url => url.startsWith('https://ghcr.io/') ? new Response('', { status: 307, headers: { location: 'https://pkg-containers.githubusercontent.com/fixture' } }) : new Response('{}', { status: 403 }));
+  await assert.rejects(cdn('blobs', 'sha256:' + 'a'.repeat(64)), error => !(error instanceof RegistryAccessError));
+});
+
+test('official promotion accepts a successful marked candidate push by the delivery integration while still requiring exact owner release approval', async t => {
+  const f = await publicationFixture(t);
+  Object.assign(f.context.responses['/actions/runs/456'], { event: 'push', actor: { login: 'delivery-integration' }, triggering_actor: { login: 'delivery-integration' }, head_commit: { message: 'Test exact deployable images [deliver-candidate]' } });
+  assert.equal((await promoteRelease(f.candidate, f.release, f.assets, f.options)).releaseId, 999);
+});
+
+test('workflow contracts run full native qualification once per push and retain images only for deliberate delivery requests', async () => {
+  const candidateText = await fs.readFile(path.join(root, '.github/workflows/candidate-approved.yml'), 'utf8');
+  assert.equal(candidateText, await fs.readFile(path.join(root, 'release/workflows/candidate-approved.yml'), 'utf8'));
+  const candidate = parse(candidateText);
   const official = parse(await fs.readFile(path.join(root, 'release/workflows/promote-approved.yml'), 'utf8'));
+  const validation = parse(await fs.readFile(path.join(root, '.github/workflows/validate.yml'), 'utf8'));
+  assert.deepEqual(Object.keys(candidate.on), ['push', 'workflow_dispatch']);
+  assert.deepEqual(candidate.on.push.branches, ['implementation/native-dashboard']);
+  assert.deepEqual(Object.keys(validation.on), ['pull_request', 'workflow_dispatch'], 'Default pushes must not duplicate the same native qualification workflow.');
+  assert.deepEqual(Object.keys(official.on), ['workflow_dispatch']);
   for (const workflow of [candidate, official]) {
-    assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
     assert.deepEqual(workflow.permissions, { contents: 'read' });
     assert.equal(workflow.concurrency['cancel-in-progress'], false);
     for (const job of Object.values(workflow.jobs)) for (const step of job.steps || []) {
@@ -602,9 +653,11 @@ test('dormant workflow contracts require complete native runtime qualification a
       if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/);
     }
   }
-  assert.equal(candidate.on.workflow_dispatch.inputs.bootstrap_private_packages.default, false);
-  assert.equal(candidate.jobs.authorize.environment, undefined, 'The owner dispatch authorizes private staging without an extra protected review.');
-  assert.equal(candidate.jobs.native.needs, 'authorize');
+  assert.equal(candidate.jobs.authorize, undefined);
+  assert.equal(candidate.jobs.publish, undefined);
+  assert.ok(Object.values(candidate.jobs).every(job => !job.environment));
+  assert.ok(!candidateText.includes('STUDIO_PACKAGE_METADATA_TOKEN'));
+  assert.equal(candidate.jobs.native.needs, undefined);
   assert.deepEqual(candidate.jobs.native.strategy.matrix.include, [{ arch: 'amd64', runner: 'ubuntu-24.04' }, { arch: 'arm64', runner: 'ubuntu-24.04-arm' }]);
   assert.equal(candidate.jobs.native.strategy['fail-fast'], false);
   const steps = candidate.jobs.native.steps;
@@ -614,12 +667,14 @@ test('dormant workflow contracts require complete native runtime qualification a
   assert.ok(direct > 0 && portainer > direct && stage > portainer);
   assert.equal(steps[direct].env.STUDIO_BROWSER_TESTS, '1');
   assert.equal(steps[portainer].env.STUDIO_PORTAINER_TESTS, '1');
+  const request = "github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deliver-candidate]')";
+  assert.equal(steps[stage].if, request);
+  assert.equal(steps.find(step => step.uses?.startsWith('actions/upload-artifact@')).if, request);
+  assert.equal(candidate.jobs.assemble.if, request);
   assert.ok(steps.some(step => step.run?.includes('install --with-deps chromium firefox webkit')));
   assert.ok(steps.some(step => step.run?.includes('node --test test/*.test.mjs')));
   assert.ok(steps.find(step => step.run?.includes('docker buildx build')).run.includes('--load --provenance=false --sbom=false --platform'));
   assert.equal(candidate.jobs.assemble.needs, 'native');
-  assert.equal(candidate.jobs.publish.needs, 'assemble');
-  assert.equal(candidate.jobs.publish.environment.name, 'candidate-publication');
   assert.equal(official.jobs.promote.environment.name, 'official-release');
   assert.ok(!official.jobs.promote.steps.some(step => step.run?.includes('docker build')));
   const originalBundle = official.jobs.promote.steps.find(step => step.uses?.startsWith('actions/download-artifact@'));

@@ -1,9 +1,6 @@
 name: Validate without publication
 
 on:
-  push:
-    branches:
-      - implementation/native-dashboard
   pull_request:
   workflow_dispatch:
 

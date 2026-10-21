@@ -1,6 +1,6 @@
 {
-  "recordedAt": "2026-10-21T01:06:30.460459+00:00",
-  "status": "CI6_FAILED_AT_PORTAINER_SWARM_HARNESS_CORRECTION_TARGETED_VERIFIED_CURRENT_HOSTED_AND_DELIVERY_PENDING",
+  "recordedAt": "2026-10-21T02:42:13.760376+00:00",
+  "status": "NATIVE_QUALIFICATION_COMPLETE_FIRST_CANDIDATE_PREFLIGHT_FAILED_SIMPLIFIED_DELIVERY_EXECUTION_PENDING",
   "upstreamCommit": "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
   "nativeOverlayManifestSha256": "d5d5ea04bf2fcb76aeb40b6a566caf9bd9dacb7469cf825ac550c46f7f4fafb2",
   "checks": [
@@ -604,7 +604,7 @@
     "owner acceptance"
   ],
   "ci": {
-    "policy": "Read-only validation; inspect the exact source run for current qualification. No image publication.",
+    "policy": "One full native matrix per default-branch push; only an explicit [deliver-candidate] marker or deliberate candidate manual dispatch retains images. Pull requests use the nonpublishing workflow. Official release remains independently owner approved.",
     "initialRun": 39509222831,
     "initialHead": "6069e2eda645483ce8041174d980617c6d732ba6",
     "initialTestedMerge": "dc03701c11fd712c34ff77365fab0bf91822aa5c",
@@ -725,26 +725,14 @@
         "cleanupCompletedWithoutReportedError": true
       }
     ],
-    "latestCompletedRun": 39523019327,
+    "latestCompletedRun": 39533793508,
     "pendingCombinedQualification": {
-      "status": "CORRECTED_HARNESS_CURRENT_SOURCE_HOSTED_RESULT_PENDING",
-      "baseCommit": "1a567184e0f3595f40beb37b315e2f8592a4f3b0",
-      "architectures": [
-        "amd64",
-        "arm64"
+      "status": "COMPLETED_BY_CI7_AND_ACTIVATION_VALIDATION",
+      "runIds": [
+        39525550327,
+        39531172438
       ],
-      "scope": [
-        "Actual Portainer Swarm API deployment/update/cleanup after the reviewed cluster-ID lookup correction.",
-        "Complete exact-source hosted qualification of the corrected three-file harness; earlier successful stage evidence is retained."
-      ],
-      "correction": {
-        "label": "swarm-info-correction-FROZEN-MANIFEST.json",
-        "bytes": 1902,
-        "sha256": "4cb23ecf3d06d0b74ae657a110df2afc569a408d9838f5e4e391ef9be4a5897a"
-      },
-      "expectedCombinedNodeTests": 188,
-      "fullCombinedNodeTestsExecutedAfterCorrection": false,
-      "publicationAuthorizedByValidation": false
+      "scope": "The corrected Portainer harness and complete native matrix passed on both required architectures. Revised delivery source requires its own candidate execution; previous source evidence is not relabeled."
     },
     "pendingCombinedQualificationHistory": [
       {
@@ -765,6 +753,26 @@
         },
         "subsequentRun": 39523019327,
         "disposition": "Completed with failure before Portainer Swarm stack creation; successful stages recorded separately."
+      },
+      {
+        "status": "CORRECTED_HARNESS_CURRENT_SOURCE_HOSTED_RESULT_PENDING",
+        "baseCommit": "1a567184e0f3595f40beb37b315e2f8592a4f3b0",
+        "architectures": [
+          "amd64",
+          "arm64"
+        ],
+        "scope": [
+          "Actual Portainer Swarm API deployment/update/cleanup after the reviewed cluster-ID lookup correction.",
+          "Complete exact-source hosted qualification of the corrected three-file harness; earlier successful stage evidence is retained."
+        ],
+        "correction": {
+          "label": "swarm-info-correction-FROZEN-MANIFEST.json",
+          "bytes": 1902,
+          "sha256": "4cb23ecf3d06d0b74ae657a110df2afc569a408d9838f5e4e391ef9be4a5897a"
+        },
+        "expectedCombinedNodeTests": 188,
+        "fullCombinedNodeTestsExecutedAfterCorrection": false,
+        "publicationAuthorizedByValidation": false
       }
     ],
     "sixthRun": 39523019327,
@@ -874,7 +882,254 @@
         "cleanup": "No cleanup failure emitted; original primary failure preserved. Final all-qualified PASS intentionally absent.",
         "rawLogLabel": "ci-sixth-arm64-118971110648.log"
       }
-    ]
+    ],
+    "latestSuccessfulQualificationRun": 39531172438,
+    "seventhCheckpoint": {
+      "runId": 39525550327,
+      "url": "https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39525550327",
+      "event": "pull_request",
+      "attempt": 1,
+      "conclusion": "success",
+      "completedAtUTC": "2026-10-21T01:27:03Z",
+      "sourceCommit": "dabebdba9e784d796b74a4d9207c5c549fc53016",
+      "sourceTree": "b374c7aca73562598fd867e56d68f233c00ddcb7",
+      "retainedCandidateImages": false,
+      "jobs": [
+        {
+          "architecture": "amd64",
+          "jobId": 118979203137,
+          "conclusion": "success",
+          "actualCheckoutCommit": "a03601f0182806550b13ac87119b244988069d1b",
+          "actualNativeBuildRevision": "a03601f0182806550b13ac87119b244988069d1b",
+          "tests": {
+            "nativeFiles": 584,
+            "nativeTests": 1930,
+            "writer": 134,
+            "packagingReleasePortainer": 54,
+            "python": 13,
+            "actualDockerParser": 2,
+            "nativeSecurity": 4,
+            "chromium": {
+              "passed": 17,
+              "seconds": 40.3
+            },
+            "desktopFirefoxWebKit": {
+              "passed": 4,
+              "seconds": 24.2
+            },
+            "realHeadedHidden": {
+              "passed": true,
+              "elapsedMs": 18987
+            }
+          },
+          "gates": {
+            "startupHealthBoundary": "passed writer configuration health before native startup with strict aggregate readiness still unavailable",
+            "dockerVolumeRetention": "passed26 committed saves; exact newest25 pre-save revisions, empty warnings, API/on-volume filenames agree",
+            "directCompose": "passed fresh empty volumes, nonroot pair, writer configRW/native configRO, native protocol/revision, edits/snapshots, restarts, replacement and restore",
+            "directSwarm": "passed fresh one-node collocated single-writer deployment, stop-first replacement and persistence/restore with180-second production monitoring",
+            "portainerCompose": "passed unchanged raw template and explicit environment persisted by actual pinned API, digest/config/source identity, edits/snapshots, replacement and restore",
+            "portainerSwarm": "passed actual pinned API deployment, stored template/environment, immutable image identity, single-node/single-writer placement, stop-first replacement with180-second production monitoring, persisted edits/snapshots and restore"
+          },
+          "cleanup": {
+            "directLifecycleStep": "success; no cleanup error emitted",
+            "portainerFinalMarker": "PASS: Portainer qualification and all disposable stack, volume, registry and server cleanup completed. No public registry or release was used.",
+            "assertions": "Waited for all running/stopped task containers and stack networks, removed both configuration/state volumes, removed disposable Portainer/registry containers and tmpfs data, removed temporary local image tags, left disposable Swarm and verified no fixture containers remain. Cleanup errors would fail qualification.",
+            "reportedCleanupErrors": 0
+          },
+          "logEvidence": {
+            "bytes": 322552,
+            "sha256": "b46c848a9b1ee83bfb90ca35db4440707b46cc5c49ff9177c8e226c7aa561bbd"
+          }
+        },
+        {
+          "architecture": "arm64",
+          "jobId": 118979202911,
+          "conclusion": "success",
+          "actualCheckoutCommit": "a03601f0182806550b13ac87119b244988069d1b",
+          "actualNativeBuildRevision": "a03601f0182806550b13ac87119b244988069d1b",
+          "tests": {
+            "nativeFiles": 584,
+            "nativeTests": 1930,
+            "writer": 134,
+            "packagingReleasePortainer": 54,
+            "python": 13,
+            "actualDockerParser": 2,
+            "nativeSecurity": 4,
+            "chromium": {
+              "passed": 17,
+              "seconds": 43.5
+            },
+            "desktopFirefoxWebKit": {
+              "passed": 4,
+              "seconds": 34.2
+            },
+            "realHeadedHidden": {
+              "passed": true,
+              "elapsedMs": 18204
+            }
+          },
+          "gates": {
+            "startupHealthBoundary": "passed writer configuration health before native startup with strict aggregate readiness still unavailable",
+            "dockerVolumeRetention": "passed26 committed saves; exact newest25 pre-save revisions, empty warnings, API/on-volume filenames agree",
+            "directCompose": "passed fresh empty volumes, nonroot pair, writer configRW/native configRO, native protocol/revision, edits/snapshots, restarts, replacement and restore",
+            "directSwarm": "passed fresh one-node collocated single-writer deployment, stop-first replacement and persistence/restore with180-second production monitoring",
+            "portainerCompose": "passed unchanged raw template and explicit environment persisted by actual pinned API, digest/config/source identity, edits/snapshots, replacement and restore",
+            "portainerSwarm": "passed actual pinned API deployment, stored template/environment, immutable image identity, single-node/single-writer placement, stop-first replacement with180-second production monitoring, persisted edits/snapshots and restore"
+          },
+          "cleanup": {
+            "directLifecycleStep": "success; no cleanup error emitted",
+            "portainerFinalMarker": "PASS: Portainer qualification and all disposable stack, volume, registry and server cleanup completed. No public registry or release was used.",
+            "assertions": "Waited for all running/stopped task containers and stack networks, removed both configuration/state volumes, removed disposable Portainer/registry containers and tmpfs data, removed temporary local image tags, left disposable Swarm and verified no fixture containers remain. Cleanup errors would fail qualification.",
+            "reportedCleanupErrors": 0
+          },
+          "logEvidence": {
+            "bytes": 319927,
+            "sha256": "f15f7158c7ed8e3ab169927d30077895b34d6661b8106c3e8b308b053c9e71fa"
+          }
+        }
+      ],
+      "testedMergeCommit": "a03601f0182806550b13ac87119b244988069d1b",
+      "testedMergeTree": "b374c7aca73562598fd867e56d68f233c00ddcb7"
+    },
+    "activationCheckpoint": {
+      "runId": 39531172438,
+      "url": "https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39531172438",
+      "event": "push",
+      "attempt": 1,
+      "conclusion": "success",
+      "completedAtUTC": "2026-10-21T02:25:45Z",
+      "sourceCommit": "e80f83f610d572d6c41df548cd0779be52a1de34",
+      "sourceTree": "1473c67b389c740614f03a7ed6c0223bcc2b898c",
+      "retainedCandidateImages": false,
+      "jobs": [
+        {
+          "architecture": "amd64",
+          "jobId": 118997149244,
+          "conclusion": "success",
+          "actualCheckoutCommit": "e80f83f610d572d6c41df548cd0779be52a1de34",
+          "actualNativeBuildRevision": "e80f83f610d572d6c41df548cd0779be52a1de34",
+          "tests": {
+            "nativeFiles": 584,
+            "nativeTests": 1930,
+            "writer": 134,
+            "packagingReleasePortainer": 54,
+            "python": 13,
+            "actualDockerParser": 2,
+            "nativeSecurity": 4,
+            "chromium": {
+              "passed": 17,
+              "seconds": 39.0
+            },
+            "firefoxWebKitDesktop": {
+              "passed": 4,
+              "seconds": 26.9
+            },
+            "realHeadedHidden": {
+              "passed": true,
+              "elapsedMs": 18218,
+              "method": "Unmanaged headed pinned Chromium, real tab activation through raw CDP; no focus/visibility emulation or fake clock"
+            }
+          },
+          "gates": {
+            "startupHealthBoundary": "2026-10-21T02:13:23.1900187Z PASS: writer container health succeeds before native startup while aggregate readiness stays unavailable.",
+            "dockerVolumeRetention": "2026-10-21T02:15:04.3755865Z PASS: real Docker volume retains the exact newest25 pre-save revisions after26 committed saves; API history and on-volume snapshot identities agree.",
+            "directCompose": "2026-10-21T02:15:04.6393324Z PASS: fresh standalone volumes, native protocol, nonroot processes, read-only renderer configuration, edit/snapshot, restart, replacement, restore, Chromium dashboard/mobile, Firefox/WebKit desktop and real hidden-document qualification.",
+            "directSwarm": "2026-10-21T02:21:35.2739061Z PASS: fresh one-node Swarm, same-node single writer, stop-first service replacement, edit/snapshot persistence and restore.",
+            "portainerCompose": "2026-10-21T02:22:09.0865603Z PASS: Portainer CE 2.45.2 standalone API deployment, unchanged stored template, explicit environment, immutable image identity, edit/snapshot persistence, real replacement and restore.",
+            "portainerSwarm": "2026-10-21T02:25:36.8446542Z PASS: Portainer CE 2.45.2 Swarm API deployment, unchanged stored template, explicit environment, immutable image identity, edit/snapshot persistence, real replacement and restore.",
+            "finalCleanup": "2026-10-21T02:25:43.5613671Z PASS: Portainer qualification and all disposable stack, volume, registry and server cleanup completed. No public registry or release was used."
+          },
+          "cleanup": {
+            "allRequiredCleanupPassed": true,
+            "actionsErrorAnnotations": 0,
+            "fixtureCleanupFailureMarkers": 0,
+            "finalCleanupMarkerPresent": true,
+            "directLifecycleStepConclusion": "success"
+          },
+          "logEvidence": {
+            "bytes": 322537,
+            "sha256": "c4758c657aebaf039869e5f6bd55f398f6ac3d2c6be5513f6cce15a257e07178"
+          }
+        },
+        {
+          "architecture": "arm64",
+          "jobId": 118997149005,
+          "conclusion": "success",
+          "actualCheckoutCommit": "e80f83f610d572d6c41df548cd0779be52a1de34",
+          "actualNativeBuildRevision": "e80f83f610d572d6c41df548cd0779be52a1de34",
+          "tests": {
+            "nativeFiles": 584,
+            "nativeTests": 1930,
+            "writer": 134,
+            "packagingReleasePortainer": 54,
+            "python": 13,
+            "actualDockerParser": 2,
+            "nativeSecurity": 4,
+            "chromium": {
+              "passed": 17,
+              "seconds": 39.7
+            },
+            "firefoxWebKitDesktop": {
+              "passed": 4,
+              "seconds": 28.5
+            },
+            "realHeadedHidden": {
+              "passed": true,
+              "elapsedMs": 18209,
+              "method": "Unmanaged headed pinned Chromium, real tab activation through raw CDP; no focus/visibility emulation or fake clock"
+            }
+          },
+          "gates": {
+            "startupHealthBoundary": "2026-10-21T02:12:17.9776810Z PASS: writer container health succeeds before native startup while aggregate readiness stays unavailable.",
+            "dockerVolumeRetention": "2026-10-21T02:14:01.1847820Z PASS: real Docker volume retains the exact newest25 pre-save revisions after26 committed saves; API history and on-volume snapshot identities agree.",
+            "directCompose": "2026-10-21T02:14:01.4725038Z PASS: fresh standalone volumes, native protocol, nonroot processes, read-only renderer configuration, edit/snapshot, restart, replacement, restore, Chromium dashboard/mobile, Firefox/WebKit desktop and real hidden-document qualification.",
+            "directSwarm": "2026-10-21T02:20:32.2019597Z PASS: fresh one-node Swarm, same-node single writer, stop-first service replacement, edit/snapshot persistence and restore.",
+            "portainerCompose": "2026-10-21T02:21:04.1238272Z PASS: Portainer CE 2.45.2 standalone API deployment, unchanged stored template, explicit environment, immutable image identity, edit/snapshot persistence, real replacement and restore.",
+            "portainerSwarm": "2026-10-21T02:24:31.9626432Z PASS: Portainer CE 2.45.2 Swarm API deployment, unchanged stored template, explicit environment, immutable image identity, edit/snapshot persistence, real replacement and restore.",
+            "finalCleanup": "2026-10-21T02:24:38.5705200Z PASS: Portainer qualification and all disposable stack, volume, registry and server cleanup completed. No public registry or release was used."
+          },
+          "cleanup": {
+            "allRequiredCleanupPassed": true,
+            "actionsErrorAnnotations": 0,
+            "fixtureCleanupFailureMarkers": 0,
+            "finalCleanupMarkerPresent": true,
+            "directLifecycleStepConclusion": "success"
+          },
+          "logEvidence": {
+            "bytes": 319588,
+            "sha256": "922e747fed94aa95db300587be48cf95bb70f53bc9d860f01688f3fc8ec67249"
+          }
+        }
+      ]
+    },
+    "firstCandidateAttempt": {
+      "runId": 39533793508,
+      "url": "https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39533793508",
+      "attempt": 1,
+      "event": "workflow_dispatch",
+      "sourceCommit": "e80f83f610d572d6c41df548cd0779be52a1de34",
+      "conclusion": "failure",
+      "failedJobId": 119005598692,
+      "failedStep": "Verify actual package visibility and explicit bootstrap eligibility",
+      "error": "Cannot verify package metadata (400); no unverified visibility or absence is accepted.",
+      "nativeBuildsExecuted": false,
+      "registryLoginOrPushExecuted": false,
+      "assemblyExecuted": false,
+      "publicationExecuted": false,
+      "causeLimit": "HTTP status preserved; no response body recorded, so the endpoint rejection reason is not established. Registry push was not attempted.",
+      "evidence": [
+        {
+          "label": "candidate-39533793508-authorize.log",
+          "bytes": 17810,
+          "sha256": "11c0233e9444b9ec228bc991b16703c6107903aeab3e393fcf044e917802cadd"
+        },
+        {
+          "label": "candidate-39533793508-jobs.json",
+          "bytes": 2334,
+          "sha256": "69a68c13f9f8cb9d66013aef8f50166f04e46d931f187b7eeae7e7a0d9bfaefe"
+        }
+      ]
+    }
   },
   "inputs": [
     {
@@ -2903,35 +3158,38 @@
     "previouslyRecordedStatus": "OPEN_FOR_INDEPENDENT_HOSTED_DOCKER_VOLUME_GATE"
   },
   "releaseExecution": {
-    "status": "DORMANT_NOT_EXECUTED",
+    "status": "ACTIVE_FIRST_CANDIDATE_PREFLIGHT_FAILED_SIMPLIFIED_DELIVERY_EXECUTION_PENDING",
     "localToolingNodeTests": 24,
     "localSourceArchiveTests": 3,
     "testsIncludedInCombinedTotals": true,
     "workflows": [
-      "release/workflows/candidate-approved.yml",
-      "release/workflows/promote-approved.yml"
+      ".github/workflows/candidate-approved.yml",
+      ".github/workflows/promote-approved.yml"
     ],
-    "activated": false,
-    "candidateWorkflowDispatched": false,
+    "activated": true,
+    "candidateWorkflowDispatched": true,
     "officialPromotionDispatched": false,
     "privateRegistryPushOrCopyExecuted": false,
     "authenticatedPublishingReviewReadExecuted": false,
     "candidateArtifactTransferExecuted": false,
     "anonymousPublishedImagePullExecuted": false,
     "publicImageOrReleasePublicationPerformed": false,
-    "scope": "Local engineering fixtures and static workflow lint have run. Actual candidate delivery operations require the separately authorized activation/setup path and must complete before the human-test handoff. Official publication remains subject to owner acceptance and exact artifact/date approval."
+    "scope": "Earlier workflow activation and full native validation succeeded. First candidate dispatch failed at obsolete metadata preflight before builds. This revision removes candidate approval/metadata/staging dependencies while preserving native qualification and exact-image checks; its actual delivery execution remains pending. Official publication remains subject to owner acceptance and exact artifact/date approval.",
+    "activationSourceCommit": "e80f83f610d572d6c41df548cd0779be52a1de34"
   },
   "remainingEngineeringGates": [
-    "Actual Portainer CE Swarm API deployment/update/cleanup on amd64 and arm64 after the reviewed cluster-ID lookup correction.",
-    "Complete exact-source hosted qualification of the corrected three-file harness; previous successful expanded browser, direct lifecycle, retention and Portainer standalone stages retain their recorded source scope.",
-    "Authorized candidate delivery activation and actual private image/metadata/review/artifact-transfer/anonymous-pull verification; dormant fixture tests do not establish these."
+    "Complete exact-source candidate execution with retained native AMD64/ARM64 images after delivery simplification.",
+    "Verify actual GHCR indexes, architecture/configuration identities and layer availability for the retained image pair.",
+    "Verify the downloaded source/evidence/deployment bundle and actual anonymous access before the human deployment handoff."
   ],
   "scopeNotes": [
     "Historical checks and CI1-4 are preserved unchanged. Later entries supersede only the specific pending gates they actually exercised.",
     "Native upstream full-suite volume, targeted overlay tests, browser scenarios, static checks and lifecycle gates measure different behavior and are not summed into an acceptance score.",
     "Actual user credentials, private target-host integration, aesthetic approval and physical Samsung gesture feel remain owner acceptance only after feasible engineering and artifact delivery are complete.",
     "Evidence labels are portable identifiers with content hashes; private evidence locations, local runtime configuration and credentials are not included.",
-    "CI6 closes the exact independent hosted-volume/no-playback-write gate while preserving its overall failure and the unestablished scratch cause. The14-case correction subset is not an observed188-case combined run."
+    "CI6 closes the exact independent hosted-volume/no-playback-write gate while preserving its overall failure and the unestablished scratch cause. The14-case correction subset is not an observed188-case combined run.",
+    "CI7 and activation validation supersede the earlier corrected-harness pending status with complete success on both native architectures. Historical input manifests and historical local-tooling counts retain their original source scopes.",
+    "Candidate run39533793508 failed before image builds at HTTP400 metadata preflight; no GHCR write failure is established. Candidate delivery is now authorized engineering work without a separate owner review; official release remains pending human acceptance."
   ],
   "nativeOverlayManifest": {
     "scope": "Complete integrated overlay after the focused-iframe and empty-board-hold repairs; the corresponding local production build passed17 Chromium cases, real hidden-document acceptance and four Firefox/WebKit desktop cases. Combined hosted qualification for these later changes remains pending.",
@@ -3128,9 +3386,30 @@
     "recordedAt": "2026-10-21T01:06:30.460459+00:00",
     "sourceFiles": 149,
     "hashedInputs": 148,
-    "scope": "Composite integration inputs: current149-file root source with the reviewed three-file harness correction plus staged VERIFICATION.md. Evidence JSON excludes itself; dependencies, runtime files and symlinks excluded.",
+    "scope": "Historical composite integration inputs recorded at the timestamp in this object: 149-file source with the three-file harness correction and staged VERIFICATION.md. These retained hashes do not describe the current delivery revision. Evidence JSON excluded itself; dependencies, runtime files and symlinks were excluded.",
     "qualificationMeaning": "Current input identity only. Each executed check retains its own source/build scope; current hashes do not relabel historical test execution.",
     "baseCommit": "1a567184e0f3595f40beb37b315e2f8592a4f3b0",
     "stagedVerificationSha256": "26a63f76e3a7e95d38e6f83d08965d90b48d29ee82924702cb280d2891cac82e"
+  },
+  "deliveryRevision": {
+    "baseCommit": "e80f83f610d572d6c41df548cd0779be52a1de34",
+    "candidateApprovalRequired": false,
+    "candidateOwnerOnlyInitiatorRequired": false,
+    "candidateSupplementalTokenRequired": false,
+    "requestMechanisms": [
+      "trusted default-branch head commit message containing [deliver-candidate]",
+      "manual candidate dispatch from default branch"
+    ],
+    "imageRepositories": [
+      "ghcr.io/theuncleben/homepage-studio",
+      "ghcr.io/theuncleben/homepage-studio-renderer"
+    ],
+    "tagFormat": "build-<full-source-commit>-<run-id>[-<architecture>]",
+    "ordinaryPushPublishesImages": false,
+    "officialReleaseApprovalRetained": true,
+    "actualRevisedWorkflowExecution": "NOT_RUN",
+    "retainedImages": "NOT_YET_DELIVERED",
+    "anonymousAccess": "NOT_YET_VERIFIED",
+    "scope": "Delivery tooling change only; application/runtime behavior is unchanged. Candidate build success and anonymous availability are reported separately; a visibility-only restriction does not require rebuilding the image bytes."
   }
 }

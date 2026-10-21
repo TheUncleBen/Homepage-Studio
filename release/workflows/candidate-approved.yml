@@ -1,61 +1,28 @@
-# Dormant proposal. No GitHub Actions discovery occurs in release/workflows/.
-# Requires approved PRIVATE staging. Explicit first-use bootstrap creates only
-# qualified application images in verified private packages, never placeholders.
-# Public distribution waits for exact owner approval; visibility is never changed.
-name: Qualify and deliver one approved candidate
+# Default-branch pushes run full native qualification exactly once.
+# Images are retained only for a deliberate [deliver-candidate] push or manual run.
+# Official dated releases still require separate owner acceptance and promotion.
+name: Validate and prepare deployment candidate
 
 on:
+  push:
+    branches:
+      - implementation/native-dashboard
   workflow_dispatch:
-    inputs:
-      source_commit:
-        description: Exact frozen default-branch commit to build and qualify
-        type: string
-        required: true
-      bootstrap_private_packages:
-        description: Authorize first-use private creation of the two declared staging and two intended destination packages from qualified images
-        type: boolean
-        required: true
-        default: false
 
 permissions:
   contents: read
 
 env:
-  STUDIO_CANDIDATE_SOURCE: ${{ inputs.source_commit }}
-  STUDIO_PRIVATE_BOOTSTRAP: ${{ inputs.bootstrap_private_packages }}
+  STUDIO_CANDIDATE_SOURCE: ${{ github.sha }}
 
 concurrency:
-  group: homepage-studio-candidate-publication
+  group: homepage-studio-candidate-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  authorize:
-    if: github.repository == 'TheUncleBen/Homepage-Studio' && github.actor == 'TheUncleBen' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_attempt == 1
-    permissions:
-      actions: read
-      contents: read
-      packages: read
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24.19.0
-          package-manager-cache: false
-      - name: Verify actual package visibility and explicit bootstrap eligibility
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STUDIO_PACKAGE_METADATA_TOKEN: ${{ secrets.STUDIO_PACKAGE_METADATA_TOKEN }}
-        run: node scripts/candidate-pipeline.mjs authorize
-      - name: Record the exact private operation authorized by owner dispatch
-        run: node scripts/candidate-pipeline.mjs review
-
   native:
-    needs: authorize
-    name: Native candidate qualification (${{ matrix.arch }})
+    if: github.repository == 'TheUncleBen/Homepage-Studio' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    name: Native build and deployment (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
@@ -97,7 +64,7 @@ jobs:
         run: |
           npm ci --prefix browser --ignore-scripts
           node browser/node_modules/@playwright/test/cli.js install --with-deps chromium firefox webkit
-      - name: Complete both-image Compose and Swarm acceptance before staging
+      - name: Complete both-image Compose and Swarm acceptance
         env:
           STUDIO_TEST_CONTAINERS: "1"
           STUDIO_BROWSER_TESTS: "1"
@@ -113,13 +80,14 @@ jobs:
           HOMEPAGE_IMAGE: homepage-studio-ci:renderer
           STUDIO_EXPECTED_REVISION: ${{ github.sha }}
         run: node scripts/portainer-acceptance.mjs
-      - name: Preserve only this natively tested image pair in verified private staging
+      - name: Retain this exact natively qualified image pair when delivery is requested
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deliver-candidate]')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STUDIO_PACKAGE_METADATA_TOKEN: ${{ secrets.STUDIO_PACKAGE_METADATA_TOKEN }}
           STUDIO_TARGET_PLATFORM: linux/${{ matrix.arch }}
         run: node scripts/candidate-pipeline.mjs stage "$STUDIO_TARGET_PLATFORM"
-      - name: Save noninstallable qualification metadata only
+      - name: Save this architecture’s qualified image receipt
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deliver-candidate]')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-target-${{ github.run_id }}-${{ matrix.arch }}
@@ -128,6 +96,7 @@ jobs:
 
   assemble:
     needs: native
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deliver-candidate]')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -146,45 +115,17 @@ jobs:
         with:
           pattern: candidate-target-${{ github.run_id }}-*
           merge-multiple: true
+          digest-mismatch: error
           path: candidate-targets
       - name: Preserve reproducible corresponding source and license files
         run: python3 scripts/pack-candidate-source.py --source . --commit "$GITHUB_SHA" --output candidate-inputs
-      - name: Assemble the exact indexes and prepare any authorized private destinations
+      - name: Assemble and verify the exact deployable image pair
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STUDIO_PACKAGE_METADATA_TOKEN: ${{ secrets.STUDIO_PACKAGE_METADATA_TOKEN }}
         run: node scripts/candidate-pipeline.mjs assemble
-      - name: Save source, evidence and pending templates; no image-layer artifact
+      - name: Save digest-pinned Portainer templates, source and delivery evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-${{ github.sha }}-${{ github.run_id }}
           path: candidate-bundle/
           if-no-files-found: error
-
-  publish:
-    needs: assemble
-    environment:
-      name: candidate-publication
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      actions: read
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24.19.0
-          package-manager-cache: false
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: candidate-${{ github.sha }}-${{ github.run_id }}
-          path: candidate-bundle
-      - name: Authenticate exact approval, preserve existing build tags and verify anonymous pulls
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STUDIO_PACKAGE_METADATA_TOKEN: ${{ secrets.STUDIO_PACKAGE_METADATA_TOKEN }}
-        run: node scripts/candidate-pipeline.mjs publish

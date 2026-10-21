@@ -1,6 +1,37 @@
 # Verification status
 
-**Unreleased development implementation.** The evidence below distinguishes the initial implementation, the cold-server-rendering correction, and actual hosted qualification. It is not an approved deployment candidate or official image. Current repository Actions results are a separate qualification record; this document does not treat a prepared workflow as an executed test.
+**Unreleased; engineering candidate delivery is pending.** Complete native runtime qualification has passed on AMD64 and ARM64. The latest candidate attempt failed in its former package-metadata preflight before any build or publication. The delivery simplification in this revision still requires its own exact-source execution and retained-image verification. Historical failed runs remain below; a green test result is neither an official release nor a guarantee of defect absence.
+
+## Completed native qualification and delivery revision — 21 October 2026
+
+[Run 39525550327](https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39525550327) completed successfully on both native architectures. It qualified source `dabebdba9e784d796b74a4d9207c5c549fc53016` through tested merge `a03601f0182806550b13ac87119b244988069d1b`, with the same Git tree `b374c7aca73562598fd867e56d68f233c00ddcb7`. This completed the Portainer Swarm gate left open by the historical sixth run.
+
+The workflows were then activated on the default branch at `e80f83f610d572d6c41df548cd0779be52a1de34`. [Run 39531172438](https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39531172438) completed successfully for that exact source/build revision and tree `1473c67b389c740614f03a7ed6c0223bcc2b898c`. Both jobs passed all 17 steps, with no failed cleanup or Actions error annotation.
+
+Each architecture passed:
+
+| Gate | Executed result per architecture |
+| --- | --- |
+| Native source tests | 584 files / 1,930 tests |
+| Writer and packaging/release/Portainer checks | 134 + 54 tests |
+| Python / actual Docker parser / native redirect-security checks | 13 / 2 / 4 tests |
+| Production browsers | 17 Chromium scenarios and four total Firefox/WebKit desktop scenarios |
+| Real hidden-document timing | Actual headed Chromium tab hiding and timer resumption passed |
+| Docker-volume retention | After 26 committed saves, exactly the newest 25 pre-save revisions remained; API and on-volume identities agreed |
+| Direct Compose and Swarm | Fresh startup, identity, edits, snapshots, replacement, persistence and restore passed |
+| Actual Portainer CE 2.45.2 | Both unchanged templates passed API deployment, stored template/environment checks, exact image identities, replacement, persistence, restore and cleanup |
+
+The successful activation run retained the known upstream Vitest hoisting and Next Edge Runtime `process.cwd` warnings. They did not fail a required gate; the complete logs are not warning-free. These runs built disposable images in hosted runners and a temporary loopback registry. They did not retain an installable GHCR candidate.
+
+[Candidate run 39533793508](https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39533793508), attempt 1, used the same activated source and failed in `authorize` with `Cannot verify package metadata (400)`. The two native builds, assembly and publication were skipped. GHCR login and push were never attempted, so this failure establishes no registry-write or container-runtime defect. The logged status does not establish why the metadata endpoint rejected the request.
+
+This delivery revision removes the separate candidate approval environment, owner-only initiation, supplemental metadata token, private staging repositories and package-metadata preflight. The candidate workflow retains the full native qualification. It handles trusted default-branch pushes once; image retention occurs only for an explicit `[deliver-candidate]` request or manual candidate dispatch. Ordinary default pushes validate without publication, and pull requests use the separate nonpublishing workflow. The tested image pair is pushed directly to the declared project packages and assembled into exact multiarchitecture indexes. Source/run identity checks, image checks, complete source/evidence packaging and official release approval remain in place.
+
+The current outstanding engineering work is actual delivery execution for this revised source, retained registry/image verification and exact bundle validation. Anonymous access is reported separately; if first-use GHCR visibility prevents access, the images are preserved while that account setting is completed. No image rebuild or candidate workflow approval is required for a visibility change. Official date publication remains pending human acceptance. See [candidate delivery](docs/CANDIDATES.md) for the resulting handoff.
+
+## Historical qualification checkpoints
+
+The following records retain their original source, results and limitations. Pending statements within those records describe their historical checkpoint; the completed qualification and current delivery status above take precedence.
 
 ## Sixth hosted checkpoint and Portainer Swarm harness correction — 21 October 2026
 
@@ -125,7 +156,7 @@ All seven production-browser scenarios then passed locally in 19.0 seconds witho
 
 ## CI execution policy
 
-The initial workflow responded to both a branch push and its pull-request update. Four push duplicates were cancelled by the shared concurrency group while four PR qualification rounds continued. The duplicate triggers were avoidable. Push validation is now limited to the default branch, while pull requests retain complete validation on both architectures. Manual dispatch and cancellation of genuinely superseded source remain available. No path filter, draft condition, skipped job or weakened acceptance check was added. Browser installation follows the image build so a build failure does not first incur browser setup work.
+The initial workflow responded to both a branch push and its pull-request update. Four push duplicates were cancelled by the shared concurrency group while four PR qualification rounds continued. The duplicate triggers were avoidable. The revised routing gives default-branch pushes one complete native matrix through the candidate workflow; pull requests retain the separate complete validation matrix. An explicit candidate request enables retention only after all qualification steps pass. Candidate delivery is serialized without cancellation of a partial publication. Manual validation remains available. No acceptance assertion was weakened. Browser installation follows the image build so a build failure does not first incur browser setup work.
 
 Follow-up corrections are reviewed and checked locally where possible, then submitted together. A passing run records the checks completed for its exact source; it is neither owner acceptance nor a claim of complete defect absence.
 
@@ -145,7 +176,7 @@ Dependency review corrected `yaml` to 2.8.3 and the native `follow-redirects` de
 
 There is no Docker engine in the local implementation environment. Chrome for Testing 156.0.8078.4 and the pinned Playwright Firefox/WebKit builds were obtained from their official distributions and successfully ran the checks recorded above. Browser installation is complete. Container builds, Compose, Swarm, actual Portainer and architecture-qualified container execution require the hosted environment. A local production-process check is not Docker acceptance.
 
-The nonpublishing workflow runs the actual two-image application, browser acceptance, Compose/Swarm lifecycle and pinned Portainer checks on amd64 and arm64 hosted runners. Its logs must establish results for the exact source before an engineering candidate is prepared. Only the disposable Portainer fixture transfers already-built images through a temporary loopback registry; the workflow has no public registry credentials, public image publication, release, date-tag or installable-image artifact upload.
+Both workflow paths run the actual two-image application, browser acceptance, Compose/Swarm lifecycle and pinned Portainer checks on AMD64 and ARM64 hosted runners. The successful hosted runs above establish those results for their exact sources. The revised candidate path must pass the same qualification before retaining the image pair through the repository's normal GHCR token. The separate pull-request validation path remains nonpublishing. Neither path creates an official date tag or release; the temporary Portainer registry is removed after qualification.
 
 Owner testing in the intended private environment and on the physical phone remains a separate acceptance gate after all feasible engineering checks and image delivery are complete. Real external integrations were not contacted. Configuration support does not imply successful live testing of every native service. Native hidden widgets retain their own polling behavior. Representative calendar/chart/list/embed behavior has been checked in production browsers; aesthetic preference and physical gesture feel still require the owner.
 

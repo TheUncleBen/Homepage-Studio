@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The only publisher. Requires authenticated approval in the dormant manual workflow.
+// Official release publisher. Requires authenticated approval in the manual workflow.
 // Never builds, changes visibility, replaces a ref/asset, or overwrites a date tag.
 import fs from 'node:fs/promises';
 import path from 'node:path';

@@ -52,6 +52,19 @@ export function chicagoDate(now) {
   return `${fields.year}.${fields.month}.${fields.day}`;
 }
 
+export async function verifyCandidateRun({ environment = process.env, request } = {}) {
+  const context = environment;
+  if (context.GITHUB_ACTIONS !== 'true' || context.GITHUB_REPOSITORY !== RELEASE_REPOSITORY || !['push', 'workflow_dispatch'].includes(context.GITHUB_EVENT_NAME) || context.GITHUB_RUN_ATTEMPT !== '1' || !/^[1-9][0-9]*$/.test(context.GITHUB_RUN_ID || '') || !isCommit(context.GITHUB_SHA)) throw new Error('Candidate delivery requires a fresh default-branch push or manual run in the intended repository.');
+  const api = request || githubApi(context.GITHUB_TOKEN);
+  const repository = await api('');
+  const ref = `refs/heads/${repository.default_branch}`;
+  if (repository.full_name !== RELEASE_REPOSITORY || repository.private !== false || !repository.default_branch || context.GITHUB_REF !== ref || context.GITHUB_WORKFLOW_REF !== `${RELEASE_REPOSITORY}/${CANDIDATE_WORKFLOW}@${ref}`) throw new Error('Run the candidate workflow from this public repository’s default branch.');
+  const run = await api(`/actions/runs/${context.GITHUB_RUN_ID}`);
+  if (String(run.id) !== context.GITHUB_RUN_ID || run.run_attempt !== 1 || run.event !== context.GITHUB_EVENT_NAME || run.status !== 'in_progress' || run.head_branch !== repository.default_branch || run.head_sha !== context.GITHUB_SHA || run.repository?.full_name !== RELEASE_REPOSITORY || !matchingWorkflowPath(run.path, CANDIDATE_WORKFLOW, repository.default_branch)) throw new Error('The authenticated GitHub run does not match this candidate source and workflow.');
+  if (run.event === 'push' && !run.head_commit?.message?.includes('[deliver-candidate]')) throw new Error('A default-branch push must explicitly request [deliver-candidate] before retaining images.');
+  return { schemaVersion: 1, repository: RELEASE_REPOSITORY, runId: context.GITHUB_RUN_ID, workflowCommit: context.GITHUB_SHA, event: run.event };
+}
+
 export async function verifyOwnerRun(workflowPath, { environment = process.env, request } = {}) {
   const context = environment;
   if (context.GITHUB_ACTIONS !== 'true' || context.GITHUB_REPOSITORY !== RELEASE_REPOSITORY || context.GITHUB_EVENT_NAME !== 'workflow_dispatch' || context.GITHUB_ACTOR !== RELEASE_OWNER || context.GITHUB_TRIGGERING_ACTOR !== RELEASE_OWNER || context.GITHUB_RUN_ATTEMPT !== '1' || !/^[1-9][0-9]*$/.test(context.GITHUB_RUN_ID || '') || !isCommit(context.GITHUB_SHA)) throw new Error('Controlled delivery requires a fresh, owner-initiated manual run in the intended repository.');
@@ -94,7 +107,7 @@ export async function verifyQualifiedCandidateRun(report, candidate, { environme
   const api = request || githubApi(environment.GITHUB_TOKEN);
   const repository = await api('');
   const run = await api(`/actions/runs/${report.workflowRun.runId}`);
-  if (repository.full_name !== RELEASE_REPOSITORY || repository.private !== false || !repository.default_branch || String(run.id) !== report.workflowRun.runId || run.run_attempt !== 1 || run.event !== 'workflow_dispatch' || run.status !== 'completed' || run.conclusion !== 'success' || run.head_branch !== repository.default_branch || run.head_sha !== candidate.sourceCommit || run.actor?.login !== RELEASE_OWNER || run.triggering_actor?.login !== RELEASE_OWNER || run.repository?.full_name !== RELEASE_REPOSITORY || !matchingWorkflowPath(run.path, CANDIDATE_WORKFLOW, repository.default_branch)) throw new Error('The exact candidate workflow must have completed successfully for this source, owner dispatch and first attempt before official promotion.');
+  if (repository.full_name !== RELEASE_REPOSITORY || repository.private !== false || !repository.default_branch || String(run.id) !== report.workflowRun.runId || run.run_attempt !== 1 || !['push', 'workflow_dispatch'].includes(run.event) || (run.event === 'push' && !run.head_commit?.message?.includes('[deliver-candidate]')) || run.status !== 'completed' || run.conclusion !== 'success' || run.head_branch !== repository.default_branch || run.head_sha !== candidate.sourceCommit || run.repository?.full_name !== RELEASE_REPOSITORY || !matchingWorkflowPath(run.path, CANDIDATE_WORKFLOW, repository.default_branch)) throw new Error('The exact candidate workflow must have completed successfully for this source, deliberate delivery request and first attempt before official promotion.');
   return { runId: report.workflowRun.runId, sourceCommit: candidate.sourceCommit };
 }
 
