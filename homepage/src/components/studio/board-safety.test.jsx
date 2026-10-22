@@ -234,6 +234,66 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Native board save and draft safety", () => {
+  it.each(["pointerup", "lostpointercapture", "pointercancel"])(
+    "retains a held child's valid capture transfer, then handles %s without losing native state",
+    async (ending) => {
+      const initial = structuredClone(initialState);
+      initial.board.stacks = [{
+        id: "held-stack",
+        panelIds: ["clock", "search"],
+        rect: { x: 0, y: 0, w: 4, h: 3 },
+        playback: {
+          mode: "manual",
+          intervalMs: 2000,
+          manualHoldMs: 30000,
+          loop: true,
+          transition: "horizontal",
+          transitionDurationMs: 250,
+        },
+      }];
+      await mountBoard({ initial });
+      const native = screen.getByLabelText("Native state clock");
+      const child = screen.getByRole("button", { name: /^Choose widget in stack:/ }).querySelector("strong");
+      const root = child.closest(".studio-stack-shell");
+      let captured = false;
+      root.setPointerCapture = vi.fn(() => {
+        captured = true;
+      });
+      root.hasPointerCapture = vi.fn(() => captured);
+      root.releasePointerCapture = vi.fn(() => {
+        captured = false;
+      });
+      const event = (type, x = 100, y = 100) =>
+        Object.assign(new Event(type, { bubbles: true }), {
+          pointerId: 1,
+          button: 0,
+          isPrimary: true,
+          clientX: x,
+          clientY: y,
+        });
+      vi.useFakeTimers();
+      try {
+        fireEvent(child, event("pointerdown"));
+        fireEvent(child, event("pointermove", 102));
+        act(() => vi.advanceTimersByTime(420));
+        expect(root.setPointerCapture).toHaveBeenCalledWith(1);
+        fireEvent(child, event("lostpointercapture", 102));
+        expect(root.releasePointerCapture).not.toHaveBeenCalled();
+        fireEvent(window, event("pointermove", 102, 188));
+        expect(root.style.top).toBe("88px");
+        expect(screen.getByText("Unsaved arrangement", { exact: true })).toBeInTheDocument();
+        if (ending === "lostpointercapture") captured = false;
+        fireEvent(root, event(ending, 102, 188));
+        expect(root.style.top).toBe(ending === "pointerup" ? "88px" : "0px");
+        expect(Boolean(screen.queryByText("Unsaved arrangement", { exact: true }))).toBe(ending === "pointerup");
+        expect(document.querySelectorAll(".studio-moving")).toHaveLength(0);
+        expect(screen.getByLabelText("Native state clock")).toBe(native);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("accepts unchanged position settings without creating a draft or leaving the dialog open", async () => {
     await mountBoard();
     fireEvent.click(screen.getByRole("button", { name: "Edit dashboard", exact: true }));

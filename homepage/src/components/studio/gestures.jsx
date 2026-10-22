@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 // A short press has no pointer capture yet. Its release may happen outside the
 // original element, so observe that pointer for only the lifetime of the press.
-function watchPointer(pointerId, { move, end, cancel }) {
+function watchPointer(pointerId, { move, end, cancel, captureTarget }) {
   const matches = (event) => event.pointerId === pointerId;
   const onMove = (event) => {
     if (matches(event)) move?.(event);
@@ -13,6 +13,11 @@ function watchPointer(pointerId, { move, end, cancel }) {
   const onCancel = (event) => {
     if (matches(event)) cancel();
   };
+  const onLostCapture = (event) => {
+    // Touch first captures the pressed child implicitly. Its normal transfer
+    // to the gesture owner emits child loss while that owner already holds it.
+    if (matches(event) && !captureTarget?.hasPointerCapture?.(pointerId)) cancel();
+  };
   const onOtherPointer = (event) => {
     if (!matches(event)) cancel();
   };
@@ -22,7 +27,7 @@ function watchPointer(pointerId, { move, end, cancel }) {
   window.addEventListener("pointermove", onMove, { passive: false });
   window.addEventListener("pointerup", onEnd, true);
   window.addEventListener("pointercancel", onCancel, true);
-  window.addEventListener("lostpointercapture", onCancel, true);
+  window.addEventListener("lostpointercapture", onLostCapture, true);
   window.addEventListener("pointerdown", onOtherPointer, true);
   window.addEventListener("blur", cancel);
   document.addEventListener("visibilitychange", onVisibility);
@@ -30,7 +35,7 @@ function watchPointer(pointerId, { move, end, cancel }) {
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onEnd, true);
     window.removeEventListener("pointercancel", onCancel, true);
-    window.removeEventListener("lostpointercapture", onCancel, true);
+    window.removeEventListener("lostpointercapture", onLostCapture, true);
     window.removeEventListener("pointerdown", onOtherPointer, true);
     window.removeEventListener("blur", cancel);
     document.removeEventListener("visibilitychange", onVisibility);
@@ -183,6 +188,7 @@ export function useStackGestures({ controller, disabled, onManual, onDrag }) {
       };
       cancelActive.current = () => finish(undefined, true);
       drag.current.cleanup = watchPointer(event.pointerId, {
+        captureTarget: event.currentTarget,
         move: (pointerEvent) => {
           if (!drag.current?.target.contains(pointerEvent.target)) move(pointerEvent);
         },

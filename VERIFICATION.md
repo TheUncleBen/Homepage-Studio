@@ -1,5 +1,34 @@
 # Verification evidence
 
+## Capture correction — local browser verification passed
+
+The reviewed owner-aware capture repair is integrated at `d68d261e03422b0daf1ce7a40dfa252270c4193a`, native manifest `65d4b442829e3933cedd8a593ada80fcb5b5ac9d39f65b8eb09c6d3a4825b8c9`. Full local lint/build/compression passed; all **38 Chromium cases passed with zero retries, skips or flaky results**, including the two unchanged swipe failures and stronger held-title arrangement case. The preceding **37/38** local invocation remains a recorded runner setup failure: it omitted the existing local widget-fixture URL override. Source, assertions and budgets did not change between those invocations. See the [detailed correction checkpoint](docs/qualification/intensive-review-2026-10-22.md#capture-correction--complete-local-production-browser-checkpoint).
+
+This local production-process evidence does not qualify a container candidate. A new frozen publication and complete first-attempt native architecture matrix, lifecycle, exact-image/source/artifact and OS verification remain required.
+
+## First intensive-review replacement attempt — failed
+
+[Run 39805250061, attempt 1](docs/qualification/39805250061.md) failed for exact
+source `fe8e56f782e5498c8cb4f2c987bd5fa7c4456270`, tree
+`849ad0e8ddd94144ac5bf7b279c526d31178ebf9`. Each native architecture passed 219
+controller, 89 tooling, four Python, two actual Swarm-parser and four native
+redirect-security checks, plus all **599 native files / 2,091 tests**, lint,
+production build, audits and the source-input guard. Both then recorded
+**36/38 Chromium passed, two failed, zero retries** at the same mobile-swipe
+advancement assertions; all 13 review-added browser cases passed within the 36.
+
+The real local event trace confirms that the review-added cancellation watchdog
+mistook an implicit child-to-shell pointer-capture transfer for actual capture
+loss. This product regression affects both architectures. Its correction and complete local Chromium result are recorded above;
+full container requalification remains **pending**. Firefox/WebKit, hidden-document,
+the later retention/Swarm lifecycle gates, Portainer and delivery were not
+reached; no qualified replacement image was retained and no replacement OS scan
+was run. The mandatory gates and retry/assertion budgets remain unchanged.
+
+The local checkpoint below predates this hosted attempt and retains its original
+results and source limits. The failed run has its own full record; it does not
+erase earlier failed invocations or qualify the subsequent repaired source.
+
 ## Intensive review checkpoint — 22 October 2026
 
 The [intensive review record](docs/qualification/intensive-review-2026-10-22.md)
@@ -51,6 +80,7 @@ before treating an image as ready for deployment evaluation.
 | [39710951764](docs/qualification/39710951764.md) | `308771961057db5e38985a1055b395eedd9d2c19` | Both native builds passed; container qualification exposed a command-line worker-discovery defect in the harness. No candidate was retained. |
 | [39713698869](docs/qualification/39713698869.md) | `da16fd89f7091138639c352189b4fdd792caffc9` | Corrected process regressions passed on both architectures; both image builds then failed when the registry's production audit request timed out. No candidate was retained. |
 | [39781710031](https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39781710031) | `03e48b8bcd214a5de47aaea1d64fbad083c20edb` | Both native architecture qualifications passed; engineering-qualified/public-ready baseline receipts verified exact image/source and anonymous runtime layers. Human acceptance remained pending. This is the [historical baseline](docs/qualification/intensive-review-2026-10-22.md#historical-successful-baseline), not qualification of intensive-review corrections. |
+| [39805250061](docs/qualification/39805250061.md) | `fe8e56f782e5498c8cb4f2c987bd5fa7c4456270` | Both native builds and all 2,091 native tests passed; both Chromium runs failed the same two touch-swipe cases (36/38). The review-added capture watchdog caused the product regression. Later image/lifecycle/delivery gates were not reached; no qualified replacement image was retained. |
 
 The second result preserves the required dependency audit as a failed gate. Its
 record does not change application code, dependencies, audit semantics, retry

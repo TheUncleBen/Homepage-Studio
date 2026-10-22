@@ -17,6 +17,75 @@ function pointer(root, x, y = 0, target = root) {
   };
 }
 describe("Stack pointer/trackpad gestures", () => {
+  it("keeps a touch swipe active when implicit child capture transfers to its gesture owner", () => {
+    const root = document.createElement("div");
+    const child = document.createElement("strong");
+    root.append(child);
+    document.body.append(root);
+    let captured = false;
+    root.setPointerCapture = vi.fn(() => {
+      captured = true;
+    });
+    root.hasPointerCapture = vi.fn(() => captured);
+    root.releasePointerCapture = vi.fn(() => {
+      captured = false;
+    });
+    const controller = createStackPlayback({ ids: ["a", "b"] });
+    const drag = vi.fn();
+    const { result, unmount } = renderHook(() => useStackGestures({ controller, onDrag: drag }));
+    try {
+      act(() => {
+        result.current.onPointerDown(pointer(root, 200, 0, child));
+        result.current.onPointerMove(pointer(root, 140, 0, child));
+        // Real touch transfers its implicit child capture before the owner's
+        // gotpointercapture. hasPointerCapture already names the pending owner.
+        child.dispatchEvent(Object.assign(new Event("lostpointercapture", { bubbles: true }), { pointerId: 1 }));
+      });
+      expect(controller.getSnapshot().blockedReasons).toContain("gesture");
+      expect(drag).toHaveBeenLastCalledWith(-60);
+      expect(root.releasePointerCapture).not.toHaveBeenCalled();
+      act(() => result.current.onPointerUp(pointer(root, 140)));
+      expect(controller.getSnapshot()).toMatchObject({ activeId: "b", blockedReasons: [] });
+      expect(drag).toHaveBeenLastCalledWith(0);
+      expect(root.releasePointerCapture).toHaveBeenCalledOnce();
+    } finally {
+      unmount();
+      root.remove();
+      controller.destroy();
+    }
+  });
+
+  it.each(["lostpointercapture", "pointercancel"])("still cancels a swipe on genuine %s", (type) => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    let captured = false;
+    root.setPointerCapture = vi.fn(() => {
+      captured = true;
+    });
+    root.hasPointerCapture = vi.fn(() => captured);
+    root.releasePointerCapture = vi.fn(() => {
+      captured = false;
+    });
+    const controller = createStackPlayback({ ids: ["a", "b"] });
+    const drag = vi.fn();
+    const { result, unmount } = renderHook(() => useStackGestures({ controller, onDrag: drag }));
+    try {
+      act(() => {
+        result.current.onPointerDown(pointer(root, 200));
+        result.current.onPointerMove(pointer(root, 140));
+        if (type === "lostpointercapture") captured = false;
+        root.dispatchEvent(Object.assign(new Event(type, { bubbles: true }), { pointerId: 1 }));
+        result.current.onPointerUp(pointer(root, 140));
+      });
+      expect(controller.getSnapshot()).toMatchObject({ activeId: "a", blockedReasons: [] });
+      expect(drag).toHaveBeenLastCalledWith(0);
+    } finally {
+      unmount();
+      root.remove();
+      controller.destroy();
+    }
+  });
+
   it("cancels rather than navigates when a second pointer starts outside the stack", () => {
     const root = document.createElement("div");
     const controller = createStackPlayback({ ids: ["a", "b"] });
@@ -153,6 +222,8 @@ describe("Intentional panel and empty-board holds", () => {
       const { result, unmount } = renderHook(() => useLongPress({ onLongPress: hold }));
       for (const event of [
         Object.assign(new Event("pointerup"), { pointerId: 1 }),
+        Object.assign(new Event("pointercancel"), { pointerId: 1 }),
+        Object.assign(new Event("lostpointercapture"), { pointerId: 1 }),
         new Event("blur"),
         Object.assign(new Event("pointerdown"), { pointerId: 2 }),
       ]) {

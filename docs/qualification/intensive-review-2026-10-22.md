@@ -1,8 +1,85 @@
 # Intensive review checkpoint — 22 October 2026
 
-**Status: corrections and local verification are recorded below; a replacement deployment candidate is not yet qualified by this record.** The previously successful hosted baseline remains historical evidence for its exact bytes. The `a52fd56` application has a local production build, scoped browser checks and measured performance comparisons. The subsequently confirmed light-theme contrast defect is corrected in `26f6cc54c104fd902270df38c13e069e50171a07`, native manifest `e28b3f85ecac741c25927f7da2423635646ad805017d28fa982c5797eba90dc7`; full local lint/build/compression and its focused production browser regression passed. Full frozen-source verification, both native architecture image qualifications and exact-image OS verification remain required.
+**Status at source freeze: the capture repair and complete local production browser execution have passed; the replacement container candidate still requires fresh full qualification.** The first intensive-review candidate `fe8e56f` failed both hosted mobile-swipe gates. The owner-aware capture repair is integrated as `d68d261e03422b0daf1ce7a40dfa252270c4193a`, native manifest `65d4b442829e3933cedd8a593ada80fcb5b5ac9d39f65b8eb09c6d3a4825b8c9`. Full local lint/build/compression and 38/38 Chromium cases passed with zero retries, skips or flaky results. The preceding 37/38 local runner-setup failure and failed hosted attempt are preserved below. Both native architecture images, full lifecycle/delivery gates and exact-image OS checks remain required; no replacement deployment-ready claim is made by this checkpoint.
 
 This review deliberately treated existing passing tests as supporting evidence, not proof that implementation, interaction or security behavior was correct. It examined the controlled Homepage fork, one-container runtime, independent dashboard routing/storage/context, configuration transactions, native transport, gestures/playback, responsive arrangement, deployment and release gates. Reproductions used synthetic configurations and services; no live owner integration or private deployment was exercised.
+
+## Subsequent first replacement attempt — failed
+
+[Hosted run 39805250061](39805250061.md), **attempt 1**, failed on both native
+architectures for source `fe8e56f782e5498c8cb4f2c987bd5fa7c4456270`, tree
+`849ad0e8ddd94144ac5bf7b279c526d31178ebf9`, native manifest
+`e28b3f85ecac741c25927f7da2423635646ad805017d28fa982c5797eba90dc7`.
+The workflow began at **15:29:03 UTC**; its final metadata recorded failure at
+**15:39:32 UTC**. This later outcome supersedes the pre-attempt pending statuses
+for that source's tests and hosted execution, without qualifying a replacement.
+
+Each architecture passed **219 controller, 89 tooling, four Python, two actual
+Swarm-parser and four native redirect-security checks**, then all **599 native
+files / 2,091 native tests**, lint, production build/compression, production
+dependency audits and the exact source-input guard. Chromium then finished with
+**36 passed / two failed out of 38**, zero retries, on both architectures. All
+13 review-added cases passed within those 36. The same existing mobile-swipe
+advancement checks failed at `dashboard.spec.mjs:164` and
+`stack-picker.spec.mjs:89`.
+
+A separate unchanged-test local reproduction and real touch-event trace confirm
+the cause: the review-added pointer-cancellation watchdog treats the child's
+normal loss of implicit capture during transfer to the stack shell as an actual
+loss of the gesture. It cancels the drag even though the shell owns capture.
+This is a regression introduced during this review, not an ARM64-specific or
+flaky-test explanation. The owner-aware correction and complete local Chromium result are recorded below;
+its exact corrected publication source and hosted requalification remain pending.
+
+Firefox/WebKit, real hidden-document playback, post-browser Docker retention,
+direct Swarm lifecycle, actual Portainer, image retention and delivery were not
+reached. The passing Swarm parser is distinct from the unrun lifecycle gate.
+Both failed builds installed Perl `5.36.0-7+deb12u4`, but no qualified replacement
+image was retained and no exact replacement OS scan was performed. No assertion,
+timeout, retry policy or required gate is waived. The linked failed-run record
+preserves complete-log fingerprints and the actual event-trace provenance.
+Earlier local measurements below remain evidence only for their stated sources.
+
+## Capture correction — complete local production browser checkpoint
+
+The failed hosted attempt remains failed. Its capture-transfer regression is
+corrected in reviewed patch `db2f01888cca25a41797ed009e3d7801d1ea421e`, integrated as
+`d68d261e03422b0daf1ce7a40dfa252270c4193a`. Native source manifest:
+`65d4b442829e3933cedd8a593ada80fcb5b5ac9d39f65b8eb09c6d3a4825b8c9`. Only the two intended capture-owner
+guards change product behavior. A child's normal transfer to the swipe/arrangement
+owner continues; genuine capture loss, pointer cancellation, another finger,
+overlays, blur and rollback retain their existing behavior.
+
+Independent source/trace review and **52 focused tests** passed. The fresh local
+production build passed full native lint (**31.831s**), compilation (**49.840s**)
+and compression (**0.365s**), with unchanged native source bytes. The complete
+Chromium execution then passed **38/38**, **zero retries, skips or flaky results**,
+in **84.666 seconds** of reported test time (85.141s wrapper), ending at
+**2026-10-22 15:58:59 UTC**. Both originally failing swipe specifications are
+byte-unchanged. The existing held-touch case now starts on the title child and
+moves 2px before holding, retaining its original scrolling, vertical drag,
+stacking, state and cancellation assertions and time budgets.
+
+The first local complete invocation is also retained: **37/38 passed** because
+the review runner omitted the existing `STUDIO_BROWSER_WIDGET_FIXTURE_URL`
+override. Its Custom API test tried the Docker-only `studio:3000` hostname,
+which failed DNS resolution in the local native-process environment. The
+verified local fixture address was then supplied; application source and all
+assertions, timeout/retry settings remained unchanged for the successful full
+38-case invocation. Both original swipe cases and the stronger held-touch case
+already passed in that first invocation. This was a runner setup correction,
+not a first-pass 38/38 claim.
+
+This is local production-process evidence, **not final container qualification**.
+A new frozen publication and first-attempt full hosted run must still pass on
+both native architectures, followed by exact image/config/source/artifact and
+OS verification. No gate or failed attempt is waived.
+
+| Retained record | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Complete successful browser JSON | 64,384 | `cdbe6ec78c0f35c26493534a6942cb94b6327c90364cf85c02145b8c6209a670` |
+| Complete successful browser log | 5,935 | `4d2ec0c99c8c4aaae0a4e8d2aef61cd31543e871e57b68e33e32f23d389208c4` |
+| Production build receipt | 2,065 | `839e7c51fac0ef6db95f2040baa0c6e7fc6d59b5d703430ed41460105adb0373` |
 
 ## Source and verification bindings
 
@@ -17,8 +94,8 @@ This review deliberately treated existing passing tests as supporting evidence, 
 | Later production lint/build | Source `a52fd567b163208fefa241c46d7a15a14e0a5202`; native source manifest SHA-256 `6130e453ba86f8e726e551963b8763f63f1a0beb70bf517a0324cfc9ca7a6bc0` |
 | Browser precondition correction | Test-only `4299a3103bc690a57a5147db7548362060050953`; the application under test remained the built `a52fd56` source |
 | Light-theme description contrast correction | Reviewed source patch `83339ea90c76ea8186989cecee67002efd2cd4ed`, integrated as `26f6cc54c104fd902270df38c13e069e50171a07`; native manifest `e28b3f85ecac741c25927f7da2423635646ad805017d28fa982c5797eba90dc7`; full lint/build/compression and focused production regression passed |
-| Final reviewed commit/tree/native manifest | **Pending**; final source and its complete qualification must be frozen and identified |
-| Replacement workflow/image/artifact identity | **Pending**; no new hosted result or image digest is inferred from local passes |
+| Final reviewed commit/tree/native manifest | **Pending after the capture regression**; failed attempt `fe8e56f` is identified in the addendum above and does not qualify its successor |
+| Replacement workflow/image/artifact identity | Run **39805250061, attempt 1 failed**; no qualified replacement image was retained. A corrected source requires a fresh complete run and its own image/artifact identities. |
 
 The production application extracted from the exact published amd64 baseline was used for live baseline probes. Local native-process execution of that application is not a fresh Docker deployment. Later focused helper/controller measurements and the integrated local build are identified separately below.
 
@@ -226,17 +303,17 @@ This is a package/advisory inventory with vendor-informed triage, not proof that
 | --- | --- |
 | Mixed-width visible-order repair and focused regression | Implemented as `a52fd56`; 38 focused tests and independent geometry checks passed |
 | Light-theme description contrast correction | Integrated `26f6cc5`; fresh full lint/build/compression and focused 1/1 production browser regression passed. Service description normal/hover 6.726/6.365; bookmark hover 7.056. Final image gates remain required. |
-| Final corrected source commit/tree and native source manifest | **Pending** |
-| Full native lint/production build after later corrections | Passed for `26f6cc5` and native manifest `e28b3f85ecac741c25927f7da2423635646ad805017d28fa982c5797eba90dc7`; final publication source binding still required |
-| Final complete native test suite after later corrections | **Pending**; the broad 2,086-test result belongs to the earlier native manifest |
+| Final corrected source commit/tree and native source manifest | Local correction `d68d261e03422b0daf1ce7a40dfa252270c4193a`, native manifest `65d4b442829e3933cedd8a593ada80fcb5b5ac9d39f65b8eb09c6d3a4825b8c9`; public replacement binding remains pending. |
+| Full native lint/production build after later corrections | Passed for `d68d261e03422b0daf1ce7a40dfa252270c4193a` and native manifest `65d4b442829e3933cedd8a593ada80fcb5b5ac9d39f65b8eb09c6d3a4825b8c9`; fresh final publication/image binding still required |
+| Final complete native test suite after later corrections | Both `fe8e56f` hosted jobs passed **599 files / 2,091 tests**. The earlier 2,086-test result retains its original scope; the capture correction still requires its own complete qualification. |
 | Final clean-input guard and corresponding-source archive/hash | **Pending** |
-| Executed patched production Chromium suite and new interaction cases | Selected local cases recorded as **14/15 plus 1/1 focused**; complete suite/final-image gate **pending** |
+| Executed patched production Chromium suite and new interaction cases | Both `fe8e56f` hosted jobs **failed, 36/38 passed**, with all 13 review-added cases among the passes; same two mobile-swipe failures. Corrected local production run **38/38 passed**, with its first runner-setup failure preserved above; final-image gate **pending**. |
 | Firefox/WebKit and real hidden-document qualification for final source | **Pending** |
 | Local comparative browser/asset measurements | Completed for the `a52fd56` production build with exact baseline comparison, retained interruption and scoped figures above; not final-image or physical-device evidence |
-| New first-attempt hosted workflow on native amd64 and arm64 | **Pending** |
-| Actual final-image Compose/Swarm/Portainer lifecycle and parser gates | **Pending**; the local missing-Docker attempt remains failed |
+| New first-attempt hosted workflow on native amd64 and arm64 | **39805250061 attempt 1 failed on both**. Fresh complete qualification after the capture correction is **pending**. |
+| Actual final-image Compose/Swarm/Portainer lifecycle and parser gates | Both `fe8e56f` actual parser suites passed **2/2**; full lifecycle/Portainer qualification was not reached. Corrected-image gates remain **pending** and the earlier local missing-Docker attempt remains failed. |
 | Replacement application index, child manifests and image config digests | **Pending** |
-| Exact replacement OS inventory, installed Perl version and both rescans | **Pending** |
+| Exact replacement OS inventory, installed Perl version and both rescans | Failed-run builds logged Perl `5.36.0-7+deb12u4`; no qualified replacement was retained. Both exact-image rescans remain **pending**. |
 | Final artifact-set/source hashes and anonymous runtime-layer receipt | **Pending** |
 | Owner's physical-device, appearance, real integrations and host acceptance | Pending after a complete engineering handoff |
 

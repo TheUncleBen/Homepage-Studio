@@ -646,7 +646,7 @@ export default function StudioBoard({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
-      window.removeEventListener("lostpointercapture", onCancel, true);
+      window.removeEventListener("lostpointercapture", onLostCapture, true);
       window.removeEventListener("pointerdown", onOtherPointer, true);
       window.removeEventListener("blur", onBlur);
       document.removeEventListener("visibilitychange", onVisibility);
@@ -670,6 +670,11 @@ export default function StudioBoard({
     };
     const onUp = (upEvent) => finish(upEvent);
     const onCancel = (cancelEvent) => finish(cancelEvent, true);
+    const onLostCapture = (lostEvent) => {
+      // A held child transfers implicit touch capture to this arrangement
+      // owner. Cancel only if the owner no longer holds the active pointer.
+      if (!element?.hasPointerCapture?.(start.pointerId)) onCancel(lostEvent);
+    };
     const onOtherPointer = (pointerEvent) => {
       if (pointerEvent.pointerId !== start.pointerId) finish({}, true);
     };
@@ -687,7 +692,7 @@ export default function StudioBoard({
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
-    window.addEventListener("lostpointercapture", onCancel, true);
+    window.addEventListener("lostpointercapture", onLostCapture, true);
     window.addEventListener("pointerdown", onOtherPointer, true);
     window.addEventListener("blur", onBlur);
     document.addEventListener("visibilitychange", onVisibility);

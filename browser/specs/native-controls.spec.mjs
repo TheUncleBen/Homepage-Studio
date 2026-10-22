@@ -71,7 +71,12 @@ test.describe('touch direct manipulation', () => {
 
       point = await headerPoint();
       const before = await panelPixels(source);
+      // Establish real implicit capture on a child before the hold transfers
+      // it to the header; slight finger movement must not cancel arrangement.
+      const titleBounds = await source.locator('.studio-panel-title strong').boundingBox();
+      point = { x: titleBounds.x + titleBounds.width / 2, y: titleBounds.y + titleBounds.height / 2 };
       await touch.start(point.x, point.y);
+      await touch.move(point, { x: point.x + 2, y: point.y }, 1);
       await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
       await touch.move(point, { x: point.x, y: point.y + 100 });
       await touch.end();
