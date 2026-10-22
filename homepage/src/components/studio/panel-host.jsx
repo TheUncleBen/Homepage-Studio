@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
-import { useStackGestures } from "./gestures";
+import { useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
 import NativePanel from "./native-panel";
 
@@ -13,6 +13,7 @@ export default function PanelHost({
   selected,
   editing,
   busy = false,
+  overlayOpen = false,
   stale = false,
   saved = false,
   moving,
@@ -28,10 +29,16 @@ export default function PanelHost({
   onLongPress,
   renderNative: RenderNative = NativePanel,
 }) {
-  const press = useRef(null);
   const nativeContent = useRef(null);
+  const slide = useRef(null);
+  const previousPresentation = useRef(null);
+  const slideAnimation = useRef(null);
   const playback = controller?.();
-  useEffect(() => () => clearTimeout(press.current?.timer), []);
+  const press = useLongPress({
+    disabled: editing || busy || overlayOpen || Boolean(stack),
+    accepts: (event) => !event.target.closest("button,input"),
+    onLongPress: (pointer) => onLongPress?.(panel.id, pointer),
+  });
   useEffect(() => {
     if (!playback || !active) return undefined;
     const reason = `embedded-focus:${panel.id}`;
@@ -39,11 +46,7 @@ export default function PanelHost({
     const update = () => {
       if (!listening) return;
       const focused = document.activeElement;
-      playback.setBlocked(
-        reason,
-        focused?.tagName === "IFRAME" &&
-          nativeContent.current?.contains(focused),
-      );
+      playback.setBlocked(reason, focused?.tagName === "IFRAME" && nativeContent.current?.contains(focused));
     };
     // Focus events inside another document do not bubble through the iframe.
     // Its parent element is still observable without reading cross-origin data.
@@ -62,47 +65,77 @@ export default function PanelHost({
   }, [playback, active, panel.id]);
   const gestures = useStackGestures({
     controller,
-    disabled: editing || busy || !stack,
+    disabled: editing || busy || overlayOpen || !stack,
     onDrag: onStackDrag,
     onManual,
   });
   const duration =
-    reducedMotion || stack?.playback.transition === "none"
-      ? 0
-      : (stack?.playback.transitionDurationMs ?? 250);
+    reducedMotion || stack?.playback.transition === "none" ? 0 : (stack?.playback.transitionDurationMs ?? 250);
   const style = { ...rect, "--studio-slide-duration": `${duration}ms` };
   const memberIndex = stack?.panelIds.indexOf(panel.id) ?? 0;
   const snapshot = playback?.getSnapshot();
   const activeIndex = snapshot?.activeIndex ?? 0;
-  const direction = memberIndex < activeIndex ? -1 : 1;
+  const direction =
+    snapshot?.previousId === panel.id && snapshot.direction ? -snapshot.direction : memberIndex < activeIndex ? -1 : 1;
   const translation =
-    stack?.playback.transition === "vertical"
-      ? `translateY(${direction * 100}%)`
-      : `translateX(${direction * 100}%)`;
-  let translate =
-    !active && stack && !["none", "fade"].includes(stack.playback.transition)
-      ? translation
-      : "none";
+    stack?.playback.transition === "vertical" ? `translateY(${direction * 100}%)` : `translateX(${direction * 100}%)`;
+  let translate = !active && stack && !["none", "fade"].includes(stack.playback.transition) ? translation : "none";
   const nextIndex = stack ? (activeIndex + 1) % stack.panelIds.length : 0;
-  const previousIndex = stack
-    ? (activeIndex - 1 + stack.panelIds.length) % stack.panelIds.length
-    : 0;
+  const previousIndex = stack ? (activeIndex - 1 + stack.panelIds.length) % stack.panelIds.length : 0;
   const neighbor =
     stack &&
     dragOffset &&
-    ((dragOffset < 0 &&
-      memberIndex === nextIndex &&
-      (snapshot?.loop || activeIndex < stack.panelIds.length - 1)) ||
-      (dragOffset > 0 &&
-        memberIndex === previousIndex &&
-        (snapshot?.loop || activeIndex > 0)));
+    ((dragOffset < 0 && memberIndex === nextIndex && (snapshot?.loop || activeIndex < stack.panelIds.length - 1)) ||
+      (dragOffset > 0 && memberIndex === previousIndex && (snapshot?.loop || activeIndex > 0)));
   const presented = active || Boolean(neighbor);
   if (stack && dragOffset)
     translate = `translateX(${dragOffset + (active ? 0 : dragOffset < 0 ? rect.width : -rect.width)}px)`;
-  const cancelPress = () => {
-    clearTimeout(press.current?.timer);
-    press.current = null;
-  };
+  useLayoutEffect(() => {
+    const previous = previousPresentation.current;
+    const interrupted =
+      slideAnimation.current?.playState === "running" ? getComputedStyle(slide.current).transform : null;
+    if (previous?.active !== active || previous?.stackId !== stack?.id || dragOffset || !duration) {
+      slideAnimation.current?.cancel();
+      slideAnimation.current = null;
+    }
+    if (
+      previous &&
+      active !== previous.active &&
+      previous?.stackId === stack?.id &&
+      snapshot?.direction &&
+      duration &&
+      ["horizontal", "vertical"].includes(stack?.playback.transition)
+    ) {
+      const from =
+        interrupted ||
+        (previous.dragOffset
+          ? `translateX(${previous.dragOffset + (active ? (previous.dragOffset < 0 ? rect.width : -rect.width) : 0)}px)`
+          : active
+            ? `${stack.playback.transition === "vertical" ? "translateY" : "translateX"}(${snapshot.direction * 100}%)`
+            : "none");
+      // Explicit direction is necessary at a loop boundary, where numeric member
+      // order would place the entering slide on the opposite side. Animate this
+      // existing host, starting at its finger-following offset after a swipe.
+      slideAnimation.current = slide.current?.animate?.(
+        [{ transform: from }, { transform: active ? "none" : translation }],
+        {
+          duration,
+          easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        },
+      );
+    }
+    previousPresentation.current = { active, dragOffset, stackId: stack?.id };
+  }, [
+    active,
+    dragOffset,
+    duration,
+    rect.width,
+    snapshot?.direction,
+    stack?.id,
+    stack?.playback.transition,
+    translation,
+  ]);
+  useEffect(() => () => slideAnimation.current?.cancel(), []);
   return (
     <section
       className={`studio-panel${stack ? " studio-stacked-panel" : ""}${selected ? " studio-selected" : ""}${moving ? " studio-moving" : ""}${!presented ? " studio-inactive" : ""}${!active ? " studio-noninteractive" : ""}`}
@@ -116,6 +149,7 @@ export default function PanelHost({
       {...gestures}
     >
       <div
+        ref={slide}
         className="studio-panel-slide"
         style={{
           opacity: presented ? 1 : 0,
@@ -126,37 +160,12 @@ export default function PanelHost({
         {!stack && (
           <header
             className="studio-panel-header"
-            onPointerDown={(event) => {
-              if (editing || busy || event.target.closest("button,input"))
-                return;
-              const pointer = {
-                clientX: event.clientX,
-                clientY: event.clientY,
-                pointerId: event.pointerId,
-                currentTarget: event.currentTarget,
-              };
-              press.current = {
-                x: event.clientX,
-                y: event.clientY,
-                timer: setTimeout(() => {
-                  onLongPress?.(panel.id, pointer);
-                  press.current = null;
-                }, 420),
-              };
-            }}
-            onPointerMove={(event) => {
-              if (
-                press.current &&
-                Math.hypot(
-                  event.clientX - press.current.x,
-                  event.clientY - press.current.y,
-                ) > 10
-              )
-                cancelPress();
-            }}
-            onPointerUp={cancelPress}
-            onPointerCancel={cancelPress}
+            onPointerDown={press.onPointerDown}
+            onPointerMove={press.onPointerMove}
+            onPointerUp={press.onPointerUp}
+            onPointerCancel={press.onPointerCancel}
             onContextMenu={(event) => {
+              press.cancel();
               if (busy) return;
               event.preventDefault();
               onLongPress?.(panel.id);
@@ -172,12 +181,7 @@ export default function PanelHost({
               />
             )}
             <span className="studio-panel-title">
-              <small>
-                {panel.group ||
-                  (panel.kind === "informationWidget"
-                    ? "Information"
-                    : "Dashboard")}
-              </small>
+              <small>{panel.group || (panel.kind === "informationWidget" ? "Information" : "Dashboard")}</small>
               <strong>{panel.title}</strong>
             </span>
             {editing && (
@@ -187,9 +191,7 @@ export default function PanelHost({
                   disabled={busy}
                   aria-label={`Move ${panel.title}. Use arrow keys; Shift and arrow keys resize.`}
                   title="Drag to move · arrows to move · Shift + arrows to resize"
-                  onPointerDown={(event) =>
-                    onManipulate(event, panel.id, "move")
-                  }
+                  onPointerDown={(event) => onManipulate(event, panel.id, "move")}
                   onKeyDown={(event) => onUnitKey(event, panel.id)}
                 >
                   <StudioIcon name="grip" />
@@ -212,12 +214,9 @@ export default function PanelHost({
           inert={stale}
           aria-hidden={stale || undefined}
           style={{ visibility: stale ? "hidden" : undefined }}
-          onFocusCapture={() =>
-            controller?.()?.setBlocked("content-focus", true)
-          }
+          onFocusCapture={() => controller?.()?.setBlocked("content-focus", true)}
           onBlurCapture={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget))
-              controller?.()?.setBlocked("content-focus", false);
+            if (!event.currentTarget.contains(event.relatedTarget)) controller?.()?.setBlocked("content-focus", false);
           }}
         >
           <RenderNative panel={panel} data={data} />

@@ -182,6 +182,7 @@ function StudioDashboard({ initialSettings, fallback, studioDashboard = { id: "d
         settings={settings}
         onNativeChange={refresh}
         onInteractionBlocked={reportInteractionBlocked}
+        overlayOpen={searching && !interactionBlocked}
         onSearch={() => {
           if (!interactionBlocked) setSearching(true);
         }}

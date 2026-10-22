@@ -82,6 +82,19 @@ export function unitsForBoard(board) {
   ];
 }
 
+function applyRectangles(board, rectangles) {
+  let changed = false;
+  const update = (unit) => {
+    const rect = rectangles.get(unit.id);
+    if (!rect || ["x", "y", "w", "h"].every((key) => rect[key] === unit.rect[key])) return unit;
+    changed = true;
+    return { ...unit, rect };
+  };
+  const panels = board.panels.map(update);
+  const stacks = board.stacks.map(update);
+  return changed ? { ...board, panels, stacks } : board;
+}
+
 export function moveUnit(board, id, rect) {
   const units = unitsForBoard(board);
   const moved = units.find((unit) => unit.id === id);
@@ -114,23 +127,104 @@ export function moveUnit(board, id, rect) {
       placed.push({ ...unit, rect: candidate });
     });
   const rectangles = new Map(placed.map((unit) => [unit.id, unit.rect]));
-  return {
-    ...board,
-    panels: board.panels.map((panel) =>
-      rectangles.has(panel.id)
-        ? { ...panel, rect: rectangles.get(panel.id) }
-        : panel,
-    ),
-    stacks: board.stacks.map((stack) =>
-      rectangles.has(stack.id)
-        ? { ...stack, rect: rectangles.get(stack.id) }
-        : stack,
-    ),
-  };
+  return applyRectangles(board, rectangles);
 }
 
-export function projectBoard(board, width) {
-  const columns = width < 560 ? 4 : width < 940 ? 8 : COLUMNS;
+export function moveProjectedUnit(board, id, delta, projection) {
+  const units = unitsForBoard(board);
+  const moved = units.find((unit) => unit.id === id);
+  if (!moved) return board;
+  const destination = { ...moved.rect, x: moved.rect.x + delta.x, y: moved.rect.y + delta.y };
+  if (projection.columns === COLUMNS || !delta.y) return moveUnit(board, id, destination);
+  const ordered = [...projection.units].sort(
+    (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
+  );
+  const from = ordered.findIndex((unit) => unit.id === id);
+  if (from < 0) return board;
+  const start = ordered[from].rect;
+  const target = { x: start.x + start.w / 2 + (delta.x * projection.columns) / COLUMNS, y: start.y + delta.y };
+  const distance = (unit) => Math.hypot(target.x - unit.rect.x - unit.rect.w / 2, target.y - unit.rect.y);
+  const nearest = ordered.reduce((a, b) => (distance(a) <= distance(b) ? a : b));
+  const to = ordered.indexOf(nearest);
+  if (from === to || Math.abs(target.y - nearest.rect.y) > nearest.rect.h / 2) return moveUnit(board, id, destination);
+
+  // A narrow layout can project several desktop columns into successive rows.
+  // Reuse the crossed units' canonical slots so moving upward still changes the
+  // shared layout, even when every original unit already has canonical y = 0.
+  const canonical = new Map(units.map((unit) => [unit.id, unit]));
+  const slots = ordered.map((unit) => canonical.get(unit.id).rect);
+  const reordered = [...ordered];
+  reordered.splice(to, 0, ...reordered.splice(from, 1));
+  const placed = [];
+  reordered.forEach((unit, index) => {
+    const original = canonical.get(unit.id);
+    const slot = slots[index];
+    let rect = fitMinimum({ ...original.rect, x: slot.x, y: slot.y }, unitMinimum(board, unit.id));
+    let collisions = placed.filter((other) => intersects(rect, other.rect));
+    while (collisions.length) {
+      rect = { ...rect, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
+      collisions = placed.filter((other) => intersects(rect, other.rect));
+    }
+    placed.push({ ...original, rect });
+  });
+  const candidate = applyRectangles(board, new Map(placed.map((unit) => [unit.id, unit.rect])));
+  const visible = projectColumns(candidate, projection.columns).units.sort(
+    (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
+  );
+  if (visible.every((unit, index) => unit.id === reordered[index].id)) return candidate;
+
+  // Different widths can push an earlier slot below an untouched later slot.
+  // Repair only that case. Canonical priority matters between overlapping
+  // projected columns; disjoint columns may keep their original desktop order.
+  const projected = [];
+  placed.length = 0;
+  const settle = (rect, others) => {
+    let next = rect;
+    let collisions = others.filter((other) => intersects(next, other.rect));
+    while (collisions.length) {
+      next = { ...next, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
+      collisions = others.filter((other) => intersects(next, other.rect));
+    }
+    return next;
+  };
+  reordered.forEach((unit, index) => {
+    const original = canonical.get(unit.id);
+    const slot = slots[index];
+    let rect = fitMinimum({ ...original.rect, x: slot.x, y: slot.y }, unitMinimum(board, unit.id));
+    let shape = projectRect(rect, projection.columns);
+    projected.forEach((other, previous) => {
+      if (shape.x < other.rect.x + other.rect.w && shape.x + shape.w > other.rect.x) {
+        const prior = placed[previous].rect;
+        rect.y = Math.max(rect.y, prior.y + (rect.x <= prior.x ? 1 : 0));
+      }
+    });
+    rect = settle(rect, placed);
+    shape = settle(projectRect(rect, projection.columns), projected);
+    const prior = projected.at(-1)?.rect;
+    if (prior && (shape.y < prior.y || (shape.y === prior.y && shape.x < prior.x))) {
+      rect = settle({ ...rect, y: Math.max(rect.y, prior.y + (shape.x <= prior.x ? 1 : 0)) }, placed);
+      shape = settle(projectRect(rect, projection.columns), projected);
+    }
+    placed.push({ ...original, rect });
+    projected.push({ id: unit.id, rect: shape });
+  });
+  return applyRectangles(board, new Map(placed.map((unit) => [unit.id, unit.rect])));
+}
+
+function projectRect(rect, columns) {
+  return columns === COLUMNS
+    ? rect
+    : clampRect(
+        {
+          ...rect,
+          x: Math.floor((rect.x * columns) / COLUMNS),
+          w: Math.max(columns === 4 ? 4 : 3, Math.round((rect.w * columns) / COLUMNS)),
+        },
+        columns,
+      );
+}
+
+function projectColumns(board, columns) {
   const units = unitsForBoard(board).sort(
     (a, b) =>
       a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
@@ -138,20 +232,7 @@ export function projectBoard(board, width) {
   const placed = [];
   units.forEach((unit) => {
     const raw = fitMinimum(clampRect(unit.rect), unitMinimum(board, unit.id));
-    let rect =
-      columns === COLUMNS
-        ? raw
-        : clampRect(
-            {
-              ...raw,
-              x: Math.floor((raw.x * columns) / COLUMNS),
-              w: Math.max(
-                columns === 4 ? 4 : 3,
-                Math.round((raw.w * columns) / COLUMNS),
-              ),
-            },
-            columns,
-          );
+    let rect = projectRect(raw, columns);
     {
       let collisions = placed.filter((other) => intersects(rect, other.rect));
       while (collisions.length) {
@@ -171,6 +252,10 @@ export function projectBoard(board, width) {
     units: placed,
     rows: Math.max(4, ...placed.map((unit) => unit.rect.y + unit.rect.h)),
   };
+}
+
+export function projectBoard(board, width) {
+  return projectColumns(board, width < 560 ? 4 : width < 940 ? 8 : COLUMNS);
 }
 
 export function pixelRect(rect, width, columns = COLUMNS) {

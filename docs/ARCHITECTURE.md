@@ -17,6 +17,18 @@ configuration APIs and routing into each worker. A shared environment/YAML
 implementation keeps application-wide indexing policy consistent with native
 configuration semantics.
 
+## Immutable build assets
+
+The native build precompresses eligible text assets under `.next/static` into
+Brotli and gzip sidecars only when they save bytes. Regeneration removes obsolete
+sidecars, including when a source becomes too small to compress. The controller
+streams the accepted representation directly, with `Vary: Accept-Encoding`,
+representation-specific validators, correct HEAD/304 behavior, and the immutable
+cache policy of these build-addressed assets. File resolution remains confined
+to regular files inside the packaged asset tree. Configuration, integration
+responses and per-dashboard custom CSS/JavaScript are outside this compression
+step; it adds no request-time compression or worker startup dependency.
+
 ## Dashboard identity and isolation
 
 The versioned registry `studio-dashboards.json` lives in the configuration root.
@@ -67,6 +79,14 @@ the global application unavailable and must fail clearly.
 
 State version 2 has a 12-column board, independently identified panels, and one-level stacks. Rectangles use integer x/y/w/h coordinates. Each native service, individual service widget, information widget, and bookmark has a stable identity. Stacks refer to panel IDs and have their own rectangle and playback preferences. Two visible units may not overlap. Removing a member from a two-member stack collapses the surviving member into an independent panel.
 
+Newly reconciled panels use the same first-free row-major placement as the
+original allocator. A sparse 12-column occupancy index and cursors per rectangle
+size avoid repeatedly scanning every prior rectangle. Persisted positions,
+legacy layout handling, stack collapse, identity and geometry limits are
+unchanged. The index is built only when a new placement is needed; it does not
+allocate a dense grid up to every distant stored coordinate. The existing
+4,096-panel ceiling remains a validation bound, not a device performance promise.
+
 Native locators are derived on the server. Browser board submissions can change geometry, grouping, and playback preferences, but cannot replace native source identities or supply new credential-bearing locators. When a service has both `widgets` and `widget`, the adapter retains the original source key and native proxy index: array indices are nonnegative and the singular widget uses -1.
 
 A raw YAML type edit in an existing source slot preserves its panel identity after unchanged entries have reserved their identities. Structured rename/move/edit operations preserve identity explicitly. Snapshot restoration restores the source identities and board alongside configuration.
@@ -75,9 +95,53 @@ Structured editor patches contain changed keys only, preserving untouched null v
 
 The renderer keeps native panel hosts in a stable keyed list. Position and visibility change without making a slide a newly mounted widget. Hidden stack members are inert. Playback state, active slide, elapsed time, and finger-following offsets are temporary client state and do not change the persisted revision.
 
+Responsive editing must map projected rows back to the one canonical board,
+including keyboard movement, while preserving the intended visible order across
+adjacent or multi-row movement and mixed panel sizes. It does not introduce a
+separate mobile layout. Unchanged snapped positions retain board/panel object
+identities and do not resubmit the same arrangement. Releasing a pending hold
+ends it even outside its header. Cancellation, blur, visibility loss, another
+pointer or a modal opening cancels the applicable pending hold/drag. Quick Launch
+freezes playback and cancels pending holds or active arrangement; closing it
+resumes only the remaining playback time. Loop-wrap direction and rapid reversal
+use transient navigation direction while native hosts stay mounted.
+
 ## Native discovery
 
-A bounded, metadata-only native endpoint describes Docker/Kubernetes discovered services and individual widgets. The controller accepts only the safe descriptor schema from the selected dashboard worker; it never accepts a client-selected discovery URL. Discovery refresh happens during dashboard operations, not configuration initialization or readiness.
+A bounded, metadata-only native endpoint describes Docker/Kubernetes discovered
+services and individual widgets. The controller accepts only the safe descriptor
+schema from the selected dashboard worker; it never accepts a client-selected
+URL or follows discovery redirects. The metadata request has a five-second
+absolute timeout after worker acquisition, a 1 MiB response limit and a
+4,096-source limit, including the retained/fresh union.
+
+Concurrent refreshes for one dashboard share one in-flight provider read. The
+store captures validated context under its serialized configuration queue, then
+releases that queue before provider I/O or cold-worker startup. It applies the
+result under the queue only if the nine-file native revision and private file
+identity stamps still match. This detects a replacement followed by rollback to
+identical bytes; a layout-only edit does not invalidate native membership.
+Provider failure, an oversized union, or a changed configuration preserves safe
+retained descriptors and reports unavailability. Refresh itself creates no
+snapshot or background persistent write.
+
+The following paths are relative to the selected dashboard's
+`/__studio/api/` prefix. Freshness is explicit, without a timer or TTL that writes
+configuration in the background:
+
+| Operation | Discovery policy |
+| --- | --- |
+| GET `state`, `board`, `export` | Await a coalesced fresh provider attempt. |
+| POST `board`; POST `save` with its own `board` property | Await a fresh attempt before validating complete membership; a newly discovered identity can invalidate a submitted board even when file bytes are unchanged. |
+| POST `save` without `board`; `service`, `service-widget`, `info-widget`, `bookmark`, `settings` | Use revision-checked local files and validated retained identities without waiting for a provider. |
+| POST `discovery-visibility`, `restore` | Use known retained source identities or the validated snapshot and target revision; no provider wait. Unknown identities still reject. |
+| POST `import` | Validate and commit the archive without discovery, then reset the destination cache. |
+| Initialization, recovery, native forwarding, readiness | Do not start or wait on discovery. Recovery/writes still use the configuration queue. |
+
+A failed fresh attempt can retain unavailable known sources; it is not a claim
+that an unreachable provider's current inventory has been observed. An explicit
+client refresh after a committed save may still wait for discovery. The client
+must preserve that committed outcome rather than retrying the write.
 
 Persisted and cached source descriptors retain panel geometry and stack membership when a discovery source is temporarily absent. Missing or ambiguous native content is displayed as unavailable instead of silently selecting a different service. Hiding a discovered panel is a Studio preference; it does not alter container labels or Kubernetes annotations. The add interface can restore hidden sources.
 
@@ -102,11 +166,66 @@ Appearance is an optional studioTheme namespace in settings.yaml. Dark, light, o
 
 ## API boundaries
 
+Exact Host checks apply to requests. Both Studio `/__studio/` and native `/api/`
+routes, after selecting the dashboard, reject browser Fetch Metadata contexts of
+`cross-site` or `same-site`; an Origin header must match the configured public
+origin and accepted host. Native actions retain same-origin and direct
+non-browser use without requiring the Studio-only write header. A direct client
+without Origin is not authenticated by these checks.
+
 GET `/__studio/api/board` provides safe panel metadata and geometry. GET `/__studio/api/state` is the trusted editor's full native configuration response and can contain secrets already present in the local files. POST endpoints for board, service, service-widget, info-widget, bookmark, settings, save, restore, import, and discovery-visibility require the current revision and the editor request header. Export and snapshot endpoints remain behind the same private deployment boundary.
 
 Native `/api/studio/data` supplies sanitized rendering data. The writer and renderer expose the same nine-file configuration fingerprint, excluding layout-only state. The renderer verifies file bytes and local file identities before and after its native reads, returning a retryable private error if a write or rollback crosses that read. The file identity stamps stay server-local. The client renders only a matched board/native-data pair, preserving hidden, inert healthy hosts while refreshed data is unavailable. A saved response is adopted before refreshing widgets; Retry refresh never repeats a committed write. An arrangement draft retains the revision and source data it was created against, so an external edit reaches the existing conflict path instead of silently reinterpreting stale locators.
 
-`/api/studio/sources` supplies safe discovery descriptors. Native integration requests continue through Homepage's own proxy rules. Do not add credentials to panel descriptors, public catalog data, logs, exception messages, or build artifacts. Native MCP configuration writes bypass this journal/revision model and are disabled explicitly in both container entrypoint and every worker. Sharing the UID inside one container does not create a separate filesystem security boundary; controller ownership is enforced by supported write paths and tests.
+`/api/studio/sources` supplies safe discovery descriptors. Native MCP
+configuration writes bypass this journal/revision model and are disabled
+explicitly in both container entrypoint and every worker. Sharing the UID inside
+one container does not create a separate filesystem security boundary;
+controller ownership is enforced by supported write paths and tests.
+
+## Native integration transport
+
+The shared native HTTP helper retains credentials on same-origin redirects. On
+an exact-origin change, including a different port, it forwards only public HTTP
+metadata, removes URL authentication and refuses a request body that the redirect
+would preserve. A library rewrite to GET may continue after discarding the
+body. For the rest of that redirect chain, the helper neither reads nor writes
+the cookie jar, so later same-origin hops at the destination cannot resurrect
+source credentials or overwrite the source session. Allowed cookies are
+attributed to their issuing URL and respect path, deletion and shorter expiry;
+invalid cookies are ignored and retention is capped at one hour.
+
+Each shared-helper outbound request enforces a 45-second total deadline across
+connection, the full redirect chain and response chunks. Its final response body
+has separate 32 MiB wire and decoded limits; these are not a byte budget summed
+across redirect responses. Smaller internal caller timeouts may shorten the
+deadline; larger ones cannot extend it. Oversized declarations, chunked overflow,
+decompression failure, upstream abortion, deadline and a supplied AbortSignal
+settle the request and release sockets/decoder/buffers. These are finite API,
+image and feed reads, not open-ended streams. They are per-request bounds:
+concatenation can temporarily retain both chunks and a final buffer, and a
+multi-step adapter or concurrent requests have separate budgets. They are not a
+process memory ceiling or an aggregate endpoint deadline, and separate adapter
+or WebSocket paths do not automatically inherit them.
+
+Shared transport diagnostics expose an allowlisted error code/message and only
+the network origin of a URL, omitting userinfo, path, query and fragment. The
+reviewed cache/QNAP/generic/credentialed/Jellyfin diagnostic paths do not log
+credential URLs or arbitrary response bodies. Do not add credentials to panel
+descriptors, catalogs, logs, exception messages or build artifacts. This bounded
+review does not guarantee that every custom native adapter's error payload or
+legacy debug log is sanitized.
+
+Inherited compatibility remains explicit: the shared HTTPS agent and TrueNAS
+WebSocket path use `rejectUnauthorized: false`, encrypting traffic without
+rejecting an untrusted server certificate. There is no exposed native
+configuration switch enabling verification for the shared helper;
+`NODE_EXTRA_CA_CERTS` does not override its explicit false setting. The
+per-dashboard jar uses normal cookie domain/path rules for direct requests; it
+is not separated by integration or port. Configure canonical service endpoints
+when authentication is required rather than relying on authenticated
+cross-origin redirects. See [deployment](DEPLOYMENT.md) for the operational
+trust boundary. These retained behaviors are not fixed by the redirect guard.
 
 ## Supported deployment targets and qualification
 

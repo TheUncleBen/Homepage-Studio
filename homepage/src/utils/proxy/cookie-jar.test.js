@@ -67,4 +67,23 @@ describe("utils/proxy/cookie-jar", () => {
     expect(params.headers.Cookie).toContain("sid=1");
     expect(params.headers.Cookie).not.toContain("stale=1");
   });
+
+  it("ignores malformed upstream cookies instead of throwing from an HTTP callback", async () => {
+    const { addCookieToJar, setCookieHeader } = await import("./cookie-jar");
+    const url = "http://malformed.example.test/";
+    expect(() => addCookieToJar(url, { "set-cookie": ["not-a-cookie", "valid=kept; Path=/"] })).not.toThrow();
+    const params = { headers: {} };
+    setCookieHeader(url, params);
+    expect(params.headers.Cookie).toBe("valid=kept");
+  });
+
+  it("honors deletion cookies instead of extending their lifetime", async () => {
+    const { addCookieToJar, setCookieHeader } = await import("./cookie-jar");
+    const url = "http://expiry.example.test/";
+    addCookieToJar(url, { "set-cookie": "sid=old; Path=/" });
+    addCookieToJar(url, { "set-cookie": "sid=; Path=/; Max-Age=0" });
+    const params = { headers: {} };
+    setCookieHeader(url, params);
+    expect(params.headers.Cookie).toBeUndefined();
+  });
 });

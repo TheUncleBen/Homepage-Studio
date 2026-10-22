@@ -11,7 +11,7 @@ WORKDIR /build/homepage
 ENV NEXT_TELEMETRY_DISABLED=1 LOG_TARGETS=stdout STUDIO_BUILD_REVISION=${STUDIO_BUILD_REVISION}
 # Build only the complete controlled fork from this same source commit.
 COPY homepage/ ./
-COPY upstream.lock.json scripts/install-pinned-pnpm.mjs /tmp/studio-toolchain/
+COPY upstream.lock.json scripts/install-pinned-pnpm.mjs scripts/compress-static-assets.mjs /tmp/studio-toolchain/
 RUN node /tmp/studio-toolchain/install-pinned-pnpm.mjs /tmp/studio-toolchain/upstream.lock.json && pnpm install --frozen-lockfile --prefer-offline
 COPY test/native-redirect-security.mjs ./studio-native-tests/native-redirect-security.mjs
 RUN STUDIO_NATIVE_SOURCE=/build/homepage node --test studio-native-tests/native-redirect-security.mjs
@@ -19,6 +19,7 @@ RUN pnpm audit --prod
 RUN pnpm lint
 RUN pnpm test
 RUN NEXT_PUBLIC_VERSION="studio-${STUDIO_BUILD_REVISION}" NEXT_PUBLIC_REVISION="${STUDIO_BUILD_REVISION}" pnpm run build
+RUN node /tmp/studio-toolchain/compress-static-assets.mjs /build/homepage/.next/static
 
 FROM ${NODE_IMAGE}
 ARG STUDIO_BUILD_REVISION=unreleased
@@ -28,7 +29,9 @@ LABEL org.opencontainers.image.title="Homepage Studio" \
       org.opencontainers.image.revision="${STUDIO_BUILD_REVISION}" \
       io.homepage-studio.upstream="51cc1684f9f34a7877ed462b8f94c9cc687b4dde"
 WORKDIR /app
-RUN apt-get update && apt-get install --no-install-recommends -y iputils-ping ca-certificates && rm -rf /var/lib/apt/lists/*
+# Refresh the inherited Perl runtime as well: the pinned Node base predates
+# Debian's Bookworm perl-base security update (5.36.0-7+deb12u4).
+RUN apt-get update && apt-get install --no-install-recommends -y iputils-ping ca-certificates perl-base && rm -rf /var/lib/apt/lists/*
 COPY --from=controller-dependencies --chown=1000:1000 /app/node_modules ./node_modules
 COPY --from=native-builder --chown=1000:1000 /build/homepage/.next/standalone/ ./homepage/
 COPY --from=native-builder --chown=1000:1000 /build/homepage/.next/static/ ./homepage/.next/static/

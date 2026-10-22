@@ -1,6 +1,6 @@
 import getServiceWidget from "utils/config/service-helpers";
 import createLogger from "utils/logger";
-import { formatApiCall, sanitizeErrorURL } from "utils/proxy/api-helpers";
+import { formatApiCall, sanitizeErrorURL, sanitizeLogURL } from "utils/proxy/api-helpers";
 import { httpProxy } from "utils/proxy/http";
 import validateWidgetData from "utils/proxy/validate-widget-data";
 import widgets from "widgets/widgets";
@@ -54,7 +54,7 @@ export default async function jellyfinProxyHandler(req, res, map) {
   }
 
   if (status >= 400) {
-    logger.error("HTTP Error %d calling %s", status, url.toString());
+    logger.error("HTTP Error %d calling %s", status, sanitizeLogURL(url));
   }
 
   if (status === 200) {

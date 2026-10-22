@@ -13,6 +13,7 @@ import {
   GAP,
   ROW_HEIGHT,
   clampRect,
+  moveProjectedUnit,
   moveUnit,
   panelMinimum,
   pixelRect,
@@ -21,6 +22,7 @@ import {
   unitMinimum,
   unitsForBoard,
 } from "./geometry.mjs";
+import { useLongPress } from "./gestures";
 import StudioIcon from "./icons";
 import PanelHost from "./panel-host";
 import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
@@ -64,6 +66,7 @@ export function PanelLayer({
   selection,
   editing,
   busy = false,
+  overlayOpen = false,
   stale = false,
   saved = false,
   moving,
@@ -87,7 +90,9 @@ export function PanelLayer({
       {panels.map((panel) => {
         const stack = stackByPanel.get(panel.id);
         const unitId = stack?.id || panel.id;
-        const selectedId = stack ? active[stack.id] || stack.panelIds[0] : panel.id;
+        const selectedId = stack
+          ? controllers.current.get(stack.id)?.getSnapshot().activeId || active[stack.id] || stack.panelIds[0]
+          : panel.id;
         const isVisible = (!visibleIds || visibleIds.has(unitId)) && selectedId === panel.id;
         return (
           <PanelHost
@@ -100,6 +105,7 @@ export function PanelLayer({
             selected={selection.includes(panel.id)}
             editing={editing}
             busy={busy}
+            overlayOpen={overlayOpen}
             stale={stale}
             saved={saved}
             moving={moving === unitId}
@@ -128,6 +134,7 @@ export default function StudioBoard({
   onNativeChange,
   onSearch,
   onInteractionBlocked,
+  overlayOpen = false,
   onNavigateDashboard = (path) => window.location.assign(path),
 }) {
   const {
@@ -167,7 +174,6 @@ export default function StudioBoard({
   const canvas = useRef(null);
   const boardRef = useRef(null);
   const operation = useRef(null);
-  const emptyPress = useRef(null);
   const generation = useRef(0);
   const controllers = useRef(new Map());
   const saveInFlight = useRef(false);
@@ -283,15 +289,15 @@ export default function StudioBoard({
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
-    if (!dirty && !editorGuard.dirty) return undefined;
+    if (!dirty && !editorGuard.dirty && !editorGuard.pending && !saving) return undefined;
     const unload = (event) => {
-      if (!dirty && !editorGuardRef.current.dirty) return;
+      if (!dirty && !editorGuardRef.current.dirty && !editorGuardRef.current.pending && !saveInFlight.current) return;
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", unload);
     return () => window.removeEventListener("beforeunload", unload);
-  }, [dirty, editorGuard.dirty]);
+  }, [dirty, editorGuard.dirty, editorGuard.pending, saving]);
   const reportEditorDraft = useCallback((next) => {
     editorGuardRef.current = next;
     setEditorGuard((current) => (current.dirty === next.dirty && current.pending === next.pending ? current : next));
@@ -316,6 +322,10 @@ export default function StudioBoard({
   const changeBoard = useCallback(
     (next, source) => {
       if (saveInFlight.current || nativeRefreshLock.current) return false;
+      if (next === boardRef.current) return true;
+      // Pointer cancellation may arrive before React commits the queued draft.
+      // Keep the next gesture event aligned with the last submitted board.
+      boardRef.current = next;
       setDraftSource(
         (current) =>
           current ||
@@ -338,6 +348,11 @@ export default function StudioBoard({
     setFilter("all");
     setNotice("");
   };
+  const emptyPress = useLongPress({
+    disabled: editing || interactionBlocked || overlayOpen,
+    accepts: (event) => isEmptyBoardSpace(event.target, canvas.current),
+    onLongPress: beginEditing,
+  });
   const select = (id) => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
     setSelection((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
@@ -541,6 +556,7 @@ export default function StudioBoard({
 
   const manipulate = (event, id, mode) => {
     if (saveInFlight.current || nativeRefreshLock.current || !envelope) return;
+    if ((event.button !== undefined && event.button !== 0) || event.isPrimary === false) return;
     event.preventDefault?.();
     event.stopPropagation?.();
     const initial = boardRef.current;
@@ -556,6 +572,7 @@ export default function StudioBoard({
       pointerId: event.pointerId,
     };
     let latest = initial;
+    let lastCell = null;
     let target = null;
     let targetTime = 0;
     let stackReady = false;
@@ -575,8 +592,14 @@ export default function StudioBoard({
           ? { ...unit.rect, w: unit.rect.w + dx, h: unit.rect.h + dy }
           : { ...unit.rect, x: unit.rect.x + dx, y: unit.rect.y + dy },
       );
-      latest = moveUnit(initial, id, rect);
-      changeBoard(latest);
+      if (!lastCell || lastCell.dx !== dx || lastCell.dy !== dy) {
+        latest =
+          mode === "move"
+            ? moveProjectedUnit(initial, id, { x: dx, y: dy }, initialProjection)
+            : moveUnit(initial, id, rect);
+        lastCell = { dx, dy };
+        changeBoard(latest);
+      }
       if (mode !== "move" || unit.kind !== "panel") return;
       const bounds = canvas.current.getBoundingClientRect();
       const point = {
@@ -623,8 +646,12 @@ export default function StudioBoard({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("lostpointercapture", onCancel, true);
+      window.removeEventListener("pointerdown", onOtherPointer, true);
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("keydown", onEscape);
-      element?.releasePointerCapture?.(start.pointerId);
+      if (element?.hasPointerCapture?.(start.pointerId)) element.releasePointerCapture(start.pointerId);
       if (cancel) changeBoard(initial);
       else if (target && stackReady && performance.now() - targetTime >= 500) {
         if (target.kind === "stack") {
@@ -643,6 +670,13 @@ export default function StudioBoard({
     };
     const onUp = (upEvent) => finish(upEvent);
     const onCancel = (cancelEvent) => finish(cancelEvent, true);
+    const onOtherPointer = (pointerEvent) => {
+      if (pointerEvent.pointerId !== start.pointerId) finish({}, true);
+    };
+    const onBlur = () => finish({}, true);
+    const onVisibility = () => {
+      if (document.hidden) onBlur();
+    };
     const onEscape = (keyEvent) => {
       if (keyEvent.key === "Escape") {
         keyEvent.preventDefault();
@@ -653,15 +687,21 @@ export default function StudioBoard({
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("lostpointercapture", onCancel, true);
+    window.addEventListener("pointerdown", onOtherPointer, true);
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("keydown", onEscape);
   };
   useEffect(
     () => () => {
       operation.current?.();
-      clearTimeout(emptyPress.current?.timer);
     },
     [],
   );
+  useEffect(() => {
+    if (overlayOpen) operation.current?.();
+  }, [overlayOpen]);
   const unitKey = (event, id, mode = "move") => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
@@ -677,6 +717,23 @@ export default function StudioBoard({
           ? "h"
           : "y";
     const amount = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+    if (key === "y" && projection.columns < COLUMNS) {
+      const projected = projection.units.find((item) => item.id === id);
+      const neighbor = projection.units
+        .filter(
+          (item) =>
+            item.id !== id &&
+            Math.sign(item.rect.y - projected.rect.y) === amount &&
+            item.rect.x < projected.rect.x + projected.rect.w &&
+            item.rect.x + item.rect.w > projected.rect.x,
+        )
+        .sort((a, b) => Math.abs(a.rect.y - projected.rect.y) - Math.abs(b.rect.y - projected.rect.y))[0];
+      const canonical = neighbor && unitsForBoard(board).find((item) => item.id === neighbor.id);
+      if (neighbor && (projected.rect.y !== unit.rect.y || neighbor.rect.y !== canonical.rect.y)) {
+        changeBoard(moveProjectedUnit(board, id, { x: 0, y: neighbor.rect.y - projected.rect.y }, projection));
+        return;
+      }
+    }
     changeBoard(moveUnit(board, id, { ...unit.rect, [key]: unit.rect[key] + amount }));
   };
   const longPress = (id, pointer) => {
@@ -901,30 +958,12 @@ export default function StudioBoard({
           "--studio-grid-column": `${(width + GAP) / projection.columns}px`,
           "--studio-grid-row": `${ROW_HEIGHT + GAP}px`,
         }}
-        onPointerDown={(event) => {
-          if (!isEmptyBoardSpace(event.target, canvas.current)) return;
-          const x = event.clientX,
-            y = event.clientY;
-          emptyPress.current = { x, y, timer: setTimeout(beginEditing, 420) };
-        }}
-        onPointerMove={(event) => {
-          if (
-            emptyPress.current &&
-            Math.hypot(event.clientX - emptyPress.current.x, event.clientY - emptyPress.current.y) > 10
-          ) {
-            clearTimeout(emptyPress.current.timer);
-            emptyPress.current = null;
-          }
-        }}
-        onPointerUp={() => {
-          clearTimeout(emptyPress.current?.timer);
-          emptyPress.current = null;
-        }}
-        onPointerCancel={() => {
-          clearTimeout(emptyPress.current?.timer);
-          emptyPress.current = null;
-        }}
+        onPointerDown={emptyPress.onPointerDown}
+        onPointerMove={emptyPress.onPointerMove}
+        onPointerUp={emptyPress.onPointerUp}
+        onPointerCancel={emptyPress.onPointerCancel}
         onContextMenu={(event) => {
+          emptyPress.cancel();
           if (isEmptyBoardSpace(event.target, canvas.current)) {
             event.preventDefault();
             beginEditing();
@@ -992,6 +1031,7 @@ export default function StudioBoard({
           onManipulate={manipulate}
           onUnitKey={unitKey}
           onLongPress={longPress}
+          overlayOpen={overlayOpen}
         />
         <div className="studio-stack-layer">
           {board.stacks.map((stack) => (
@@ -1005,6 +1045,7 @@ export default function StudioBoard({
               }}
               editing={editing || Boolean(modal)}
               busy={controlsDisabled}
+              overlayOpen={overlayOpen}
               reducedMotion={reducedMotion}
               onActive={onActive}
               registerController={registerController}

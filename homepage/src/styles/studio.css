@@ -367,6 +367,13 @@ body {
 .studio-native-content > div {
   max-width: 100%;
 }
+/* The default slate secondary shade needs more contrast over the light panel
+   gradient, including card hover. Keep other native palettes and ordinary
+   custom CSS in control; semantic status colors are outside these selectors. */
+:where(.light.theme-slate .studio-native-content .service-description),
+:where(.light.theme-slate .studio-native-content .bookmark-description) {
+  color: rgb(var(--color-600));
+}
 /* Glances process/container lists use absolute chart overlays upstream. Lists
    need normal flow and growing rows so enlarged text never overlaps values. */
 .studio-native-content .service-container:has(.opacity-25.w-14.text-right) {

@@ -234,6 +234,81 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Native board save and draft safety", () => {
+  it("accepts unchanged position settings without creating a draft or leaving the dialog open", async () => {
+    await mountBoard();
+    fireEvent.click(screen.getByRole("button", { name: "Edit dashboard", exact: true }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Clock", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Position & size", exact: true }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Apply to arrangement", exact: true }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unsaved arrangement", { exact: true })).not.toBeInTheDocument();
+  });
+  it("moves a projected mobile row upward from the keyboard while retaining the native input", async () => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(354);
+    try {
+      await mountBoard();
+      const input = screen.getByLabelText("Native state search");
+      expect(input.closest("section").style.top).toBe("264px");
+      fireEvent.click(screen.getByRole("button", { name: "Edit dashboard", exact: true }));
+      fireEvent.keyDown(
+        screen.getByRole("button", { name: "Move Search. Use arrow keys; Shift and arrow keys resize." }),
+        { key: "ArrowUp" },
+      );
+      expect(input.closest("section").style.top).toBe("0px");
+      expect(screen.getByLabelText("Native state search")).toBe(input);
+      expect(screen.getByText("Unsaved arrangement", { exact: true })).toBeInTheDocument();
+    } finally {
+      width.mockRestore();
+    }
+  });
+  it.each(["pointercancel", "blur", "pointerdown"])(
+    "reverts an immediate %s even before the moved draft has committed",
+    async (eventType) => {
+      await mountBoard();
+      fireEvent.click(screen.getByRole("button", { name: "Edit dashboard", exact: true }));
+      const handle = screen.getByRole("button", { name: "Move Clock. Use arrow keys; Shift and arrow keys resize." });
+      const pointerEvent = (type, y) =>
+        Object.assign(new Event(type, { bubbles: true }), {
+          pointerId: 1,
+          button: 0,
+          isPrimary: true,
+          clientX: 100,
+          clientY: y,
+        });
+      fireEvent(handle, pointerEvent("pointerdown", 100));
+      act(() => {
+        window.dispatchEvent(pointerEvent("pointermove", 364));
+        window.dispatchEvent(
+          Object.assign(pointerEvent(eventType, 364), { pointerId: eventType === "pointerdown" ? 2 : 1 }),
+        );
+      });
+      expect(screen.queryByText("Unsaved arrangement", { exact: true })).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Native state clock").closest("section").style.top).toBe("0px");
+    },
+  );
+  it("protects departure during snapshot restoration even though no editor draft is dirty", async () => {
+    const gate = deferred();
+    const writer = vi.fn(() => gate.promise);
+    await mountBoard({
+      write: writer,
+      backups: [{ id: "snapshot-one", createdAt: "2026-10-22T12:00:00Z", changedFiles: ["settings.yaml"] }],
+    });
+    const settings = await openSettings();
+    fireEvent.click(within(settings).getByRole("button", { name: /Snapshots & restore/ }));
+    const snapshot = await screen.findByRole("button", { name: /settings.yaml/ });
+    fireEvent.click(snapshot);
+    const before = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(before);
+    expect(before.defaultPrevented).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Restore selected snapshot", exact: true }));
+    await waitFor(() => expect(writer).toHaveBeenCalledTimes(1));
+    const leaving = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leaving);
+    expect(leaving.defaultPrevented).toBe(true);
+    await act(async () => gate.resolve({ ...initialState, revision: "restored" }));
+  });
+
   it("clears a saved dashboard draft synchronously before navigating its current address", async () => {
     const dashboard = { id: "default", name: "Main", slug: "", archived: false };
     const registry = { version: 1, revision: "registry-before", dashboards: [dashboard] };

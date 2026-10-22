@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,6 +13,47 @@ import { createStackPlayback } from "./playback.mjs";
 vi.mock("./native-panel", () => ({ default: () => null }));
 
 describe("Stable React-owned native hosts", () => {
+  it("cancels a standalone panel hold when an overlay opens without replacing its host", () => {
+    vi.useFakeTimers();
+    const hold = vi.fn();
+    const props = {
+      board: {
+        version: 2,
+        columns: 12,
+        panels: [{ id: "a", title: "Clock", kind: "informationWidget", rect: { x: 0, y: 0, w: 4, h: 3 } }],
+        stacks: [],
+      },
+      data: {},
+      geometry: new Map([["a", { left: 0, top: 0, width: 320, height: 248 }]]),
+      controllers: { current: new Map() },
+      selection: [],
+      editing: false,
+      active: {},
+      onLongPress: hold,
+      renderNative: () => <input aria-label="Held native input" />,
+    };
+    const { rerender, unmount } = render(<PanelLayer {...props} />);
+    try {
+      const input = screen.getByLabelText("Held native input");
+      fireEvent(
+        screen.getByText("Clock"),
+        Object.assign(new Event("pointerdown", { bubbles: true }), {
+          pointerId: 1,
+          button: 0,
+          isPrimary: true,
+          clientX: 100,
+          clientY: 20,
+        }),
+      );
+      rerender(<PanelLayer {...props} overlayOpen />);
+      act(() => vi.advanceTimersByTime(500));
+      expect(hold).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("Held native input")).toBe(input);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
   it("preserves the same input nodes/state/mounts through move, resize, stacking, slides and unstacking", () => {
     const mounts = new Map();
     const unmounts = new Map();
@@ -52,12 +93,7 @@ describe("Stable React-owned native hosts", () => {
       ],
       stacks: [],
     };
-    const geometry = new Map(
-      ["a", "b", "s"].map((id) => [
-        id,
-        { left: 0, top: 0, width: 320, height: 240 },
-      ]),
-    );
+    const geometry = new Map(["a", "b", "s"].map((id) => [id, { left: 0, top: 0, width: 320, height: 240 }]));
     const controller = createStackPlayback({ ids: ["a", "b"] });
     const controllers = { current: new Map([["s", controller]]) };
     const props = {
@@ -70,9 +106,7 @@ describe("Stable React-owned native hosts", () => {
       onEdit() {},
       renderNative: NativeFixture,
     };
-    const { rerender } = render(
-      <PanelLayer {...props} board={board} active={{}} />,
-    );
+    const { rerender } = render(<PanelLayer {...props} board={board} active={{}} />);
     const a = screen.getByLabelText("Native input a");
     const b = screen.getByLabelText("Native input b");
     const frame = screen.getByTitle("Native frame a");
@@ -97,14 +131,8 @@ describe("Stable React-owned native hosts", () => {
     expect(a).toHaveValue("search retained");
     expect(b).toHaveValue("calendar retained");
     expect(frame.contentDocument).toBe(documentBefore);
-    expect(frame.contentDocument.body).toHaveTextContent(
-      "Embedded state retained",
-    );
-    expect(
-      [...frame.closest(".studio-panel-layer").children].map(
-        (node) => node.dataset.panelId,
-      ),
-    ).toEqual(["a", "b"]);
+    expect(frame.contentDocument.body).toHaveTextContent("Embedded state retained");
+    expect([...frame.closest(".studio-panel-layer").children].map((node) => node.dataset.panelId)).toEqual(["a", "b"]);
     expect([...mounts.values()]).toEqual([1, 1]);
     expect(unmounts.size).toBe(0);
     controller.destroy();

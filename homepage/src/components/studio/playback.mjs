@@ -38,6 +38,8 @@ export function createStackPlayback(options = {}) {
   if (activeIndex < 0) throw new TypeError('activeId must identify a member.');
   let playing = Boolean(options.autoplay);
   let holding = false;
+  let previousId = null;
+  let direction = 0;
   let remainingMs = intervalMs;
   let dueAt = null;
   let timer = null;
@@ -70,6 +72,8 @@ export function createStackPlayback(options = {}) {
       ids: Object.freeze([...ids]),
       activeId: ids[activeIndex] ?? null,
       activeIndex: ids.length ? activeIndex : -1,
+      previousId,
+      direction,
       playing,
       holding,
       blockedReasons: Object.freeze([...blocks].sort()),
@@ -112,6 +116,8 @@ export function createStackPlayback(options = {}) {
         publish();
         return;
       }
+      previousId = ids[activeIndex];
+      direction = 1;
       activeIndex = (activeIndex + 1) % ids.length;
       holding = false;
       remainingMs = intervalMs;
@@ -121,11 +127,13 @@ export function createStackPlayback(options = {}) {
     }, remainingMs);
   }
 
-  function select(id, { manual = true } = {}) {
+  function select(id, { manual = true, direction: requestedDirection } = {}) {
     if (destroyed) return false;
     const index = ids.indexOf(id);
     if (index < 0) throw new TypeError('The selected panel is not a stack member.');
     if (index === activeIndex) return false;
+    previousId = ids[activeIndex];
+    direction = requestedDirection === 1 || requestedDirection === -1 ? requestedDirection : Math.sign(index - activeIndex);
     activeIndex = index;
     holding = Boolean(manual && playing);
     remainingMs = holding ? Math.max(intervalMs, manualHoldMs) : intervalMs;
@@ -139,7 +147,7 @@ export function createStackPlayback(options = {}) {
     const index = loop
       ? (activeIndex + direction + ids.length) % ids.length
       : Math.max(0, Math.min(ids.length - 1, activeIndex + direction));
-    return select(ids[index], settings);
+    return select(ids[index], { ...settings, direction });
   }
 
   function play() {
@@ -191,6 +199,8 @@ export function createStackPlayback(options = {}) {
     ids = [...nextIds];
     activeIndex = retainedIndex >= 0 ? retainedIndex : Math.min(activeIndex, Math.max(0, ids.length - 1));
     if (activeRemoved || (!hadEnoughMembers && ids.length > 1)) {
+      previousId = null;
+      direction = 0;
       holding = false;
       remainingMs = nextInterval;
     } else if (!holding && nextInterval !== intervalMs) remainingMs = nextInterval;

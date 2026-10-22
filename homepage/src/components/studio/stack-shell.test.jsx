@@ -33,6 +33,91 @@ afterEach(() => {
 });
 
 describe("Native board stack controls", () => {
+  it("cancels a pending header hold when Quick Launch opens before the hold threshold", () => {
+    const hold = vi.fn();
+    let controller;
+    const props = {
+      stack,
+      panels,
+      rect: {},
+      editing: false,
+      reducedMotion: false,
+      onActive: vi.fn(),
+      onLongPress: hold,
+      registerController: (_, value) => {
+        if (value) controller = value;
+      },
+    };
+    const { rerender } = render(<StackShell {...props} />);
+    fireEvent(
+      screen.getByText("Widget stack"),
+      Object.assign(new Event("pointerdown", { bubbles: true }), {
+        pointerId: 1,
+        button: 0,
+        isPrimary: true,
+        clientX: 100,
+        clientY: 20,
+      }),
+    );
+    expect(controller.getSnapshot().blockedReasons).toContain("gesture");
+    rerender(<StackShell {...props} overlayOpen />);
+    act(() => vi.advanceTimersByTime(500));
+    expect(hold).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().blockedReasons).not.toContain("gesture");
+  });
+  it("freezes the remaining automatic interval behind an external overlay and resumes without catching up", () => {
+    let controller;
+    const props = {
+      stack: { ...stack, playback: { ...stack.playback, mode: "automatic" } },
+      panels,
+      rect: {},
+      editing: false,
+      reducedMotion: false,
+      onActive: vi.fn(),
+      registerController: (_, value) => {
+        if (value) controller = value;
+      },
+    };
+    const { rerender } = render(<StackShell {...props} />);
+    act(() => vi.advanceTimersByTime(4000));
+    rerender(<StackShell {...props} overlayOpen />);
+    act(() => vi.advanceTimersByTime(60000));
+    expect(controller.getSnapshot()).toMatchObject({ activeId: "a", remainingMs: 6000, playing: true });
+    rerender(<StackShell {...props} />);
+    act(() => vi.advanceTimersByTime(5999));
+    expect(controller.getSnapshot().activeId).toBe("a");
+    act(() => vi.advanceTimersByTime(1));
+    expect(controller.getSnapshot().activeId).toBe("b");
+  });
+  it("does not enter editing after a short pointer release outside its local header", () => {
+    const hold = vi.fn();
+    render(
+      <StackShell
+        stack={stack}
+        panels={panels}
+        rect={{}}
+        editing={false}
+        reducedMotion={false}
+        onActive={() => {}}
+        onLongPress={hold}
+        registerController={() => {}}
+      />,
+    );
+    fireEvent(
+      screen.getByText("Widget stack"),
+      Object.assign(new Event("pointerdown", { bubbles: true }), {
+        pointerId: 1,
+        button: 0,
+        isPrimary: true,
+        clientX: 100,
+        clientY: 20,
+      }),
+    );
+    act(() => window.dispatchEvent(Object.assign(new Event("pointerup"), { pointerId: 1 })));
+    act(() => vi.advanceTimersByTime(500));
+    expect(hold).not.toHaveBeenCalled();
+  });
+
   it("locks arrangement controls during a write without recreating playback or advancing a suspended stack", () => {
     let controller;
     const register = (_, value) => {

@@ -5,7 +5,7 @@ import { xml2json } from "xml-js";
 
 import getServiceWidget from "utils/config/service-helpers";
 import createLogger from "utils/logger";
-import { formatApiCall } from "utils/proxy/api-helpers";
+import { formatApiCall, sanitizeLogURL } from "utils/proxy/api-helpers";
 import { httpProxy } from "utils/proxy/http";
 
 const proxyName = "qnapProxyHandler";
@@ -53,7 +53,7 @@ async function apiCall(widget, endpoint, service) {
   }
 
   if (status !== 200) {
-    logger.error("Error getting data from QNAP: %s status %d. Data: %s", apiUrl, status, data);
+    logger.error("Error getting data from QNAP at %s: status %d", sanitizeLogURL(apiUrl), status);
     return { status, contentType, data: null, responseHeaders };
   }
 
@@ -66,7 +66,7 @@ async function apiCall(widget, endpoint, service) {
     [status, contentType, data, responseHeaders] = await httpProxy(apiUrl);
 
     if (status !== 200) {
-      logger.error("Error getting data from QNAP: %s status %d. Data: %s", apiUrl, status, data);
+      logger.error("Error getting data from QNAP at %s: status %d", sanitizeLogURL(apiUrl), status);
       return { status, contentType, data: null, responseHeaders };
     }
 
@@ -94,16 +94,18 @@ export default async function qnapProxyHandler(req, res) {
     await login(widget, service);
   }
 
-  const { data: systemStatsData } = await apiCall(
+  const { status: systemStatus, data: systemStatsData } = await apiCall(
     widget,
     "{url}/cgi-bin/management/manaRequest.cgi?subfunc=sysinfo&hd=no&multicpu=1",
     service,
   );
-  const { data: volumeStatsData } = await apiCall(
+  if (!systemStatsData) return res.status(systemStatus).json({ error: "Unable to retrieve QNAP system data" });
+  const { status: volumeStatus, data: volumeStatsData } = await apiCall(
     widget,
     "{url}/cgi-bin/management/chartReq.cgi?chart_func=disk_usage&disk_select=all&include=all",
     service,
   );
+  if (!volumeStatsData) return res.status(volumeStatus).json({ error: "Unable to retrieve QNAP volume data" });
 
   return res.status(200).send({
     system: systemStatsData.QDocRoot.func.ownContent.root,

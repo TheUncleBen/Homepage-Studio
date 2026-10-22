@@ -73,3 +73,9 @@ export function jsonArrayFilter(data, filter) {
 export function sanitizeErrorURL(errorURL) {
   return `${new URL(errorURL).hostname} (see logs for details)`;
 }
+
+export function sanitizeLogURL(url) {
+  // Native integrations can put credentials in userinfo, query strings, and
+  // paths (for example Medusa and Peanut). Keep the useful network origin only.
+  return new URL(url).origin;
+}

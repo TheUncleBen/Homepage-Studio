@@ -224,6 +224,10 @@ test('forged routing headers, wrong hosts and foreign origins cannot change dash
   assert.equal((await f.request('/family/api/config', { headers: { host: 'wrong.example.test:3000' } })).status, 403);
   const current = await f.state('family');
   assert.equal((await f.post('/family/__studio/api/save', { revision: current.revision, settingsYaml: 'title: Wrong\n' }, { origin: 'https://foreign.example.test' })).status, 403);
+  for (const headers of [{ origin: 'https://foreign.example.test' }, { 'sec-fetch-site': 'cross-site' }, { 'sec-fetch-site': 'same-site' }]) {
+    assert.equal((await f.request('/family/api/services/proxy?endpoint=Pause', { method: 'POST', body: 'ignored=1', headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers } })).status, 403);
+  }
+  assert.equal((await f.request('/family/api/config', { headers: { origin: ORIGIN, 'sec-fetch-site': 'same-origin' } })).json.id, child.id);
   assert.equal((await f.state('family')).revision, current.revision);
 });
 

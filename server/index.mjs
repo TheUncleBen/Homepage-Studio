@@ -169,15 +169,19 @@ function createDashboardHandlers(options = {}) {
     const host = String(req.headers.host || '').toLowerCase();
     if (!allowedHosts.includes(host)) throw Object.assign(new Error('This dashboard address is not in HOMEPAGE_ALLOWED_HOSTS.'), { status: 403 });
     if (!req.url.startsWith('/') || req.url.startsWith('//')) throw Object.assign(new Error('Unsupported request target.'), { status: 400 });
-    if (req.url.startsWith('/__studio/')) {
-      if (req.headers['sec-fetch-site'] === 'cross-site') throw Object.assign(new Error('Open the editor from your dashboard.'), { status: 403 });
+    // Native integrations can perform actions as well as read data (for example
+    // media playback controls and configured custom-API requests). Protect their
+    // explicit routes too; CORS does not stop a foreign site's simple POST.
+    const editor = req.url.startsWith('/__studio/');
+    if (editor || req.url.startsWith('/api/')) {
+      if (['cross-site', 'same-site'].includes(req.headers['sec-fetch-site'])) throw Object.assign(new Error('Open this request from your dashboard.'), { status: 403 });
       if (req.headers.origin) {
         let origin;
         try { origin = new URL(req.headers.origin); } catch { throw Object.assign(new Error('Invalid request origin.'), { status: 403 }); }
         const expectedOrigin = publicOrigin?.origin || `http://${host}`;
         if (origin.origin !== expectedOrigin || origin.host.toLowerCase() !== host) throw Object.assign(new Error('Open the editor from your dashboard.'), { status: 403 });
       }
-      if (!['GET', 'HEAD'].includes(req.method) && req.headers['x-studio-request'] !== '1') throw Object.assign(new Error('The save request is missing its editor header.'), { status: 403 });
+      if (editor && !['GET', 'HEAD'].includes(req.method) && req.headers['x-studio-request'] !== '1') throw Object.assign(new Error('The save request is missing its editor header.'), { status: 403 });
     }
   }
 
@@ -235,8 +239,12 @@ function createDashboardHandlers(options = {}) {
       if (path === '/__studio/config-ready' && req.method === 'GET') return await readiness(req, res, dashboard, true);
       if (!path.startsWith('/__studio/')) await prepareNative();
       if (path === '/__studio/catalog.json' && req.method === 'GET') return await asset(req, res, 'catalog.json', 'application/json; charset=utf-8');
+      const saveChange = path === '/__studio/api/save' && req.method === 'POST' ? await readBody(req) : undefined;
+      // Complete board replacements must validate against newly discovered
+      // membership. Structured/native-file edits use their revision-checked
+      // local sources and retained discovery identities, without a provider wait.
       if ((req.method === 'GET' && ['/__studio/api/state', '/__studio/api/board', '/__studio/api/export'].includes(path)) ||
-          (req.method === 'POST' && ['/__studio/api/board', '/__studio/api/save', '/__studio/api/restore', '/__studio/api/service', '/__studio/api/info-widget', '/__studio/api/service-widget', '/__studio/api/bookmark', '/__studio/api/settings', '/__studio/api/discovery-visibility'].includes(path))) {
+          (req.method === 'POST' && (path === '/__studio/api/board' || (saveChange && Object.hasOwn(saveChange, 'board'))))) {
         await store.refreshDiscovery(String(req.headers.host).toLowerCase(), dashboard);
       }
       if (path === '/__studio/api/state' && req.method === 'GET') return json(res, 200, await store.load());
@@ -247,7 +255,7 @@ function createDashboardHandlers(options = {}) {
       if (path.startsWith('/__studio/api/backups/') && req.method === 'GET') return json(res, 200, await store.exportBackup(path.slice('/__studio/api/backups/'.length)));
       if (path === '/__studio/api/restore' && req.method === 'POST') return json(res, 200, await store.restoreBackup(await readBody(req)));
       if (path === '/__studio/api/import' && req.method === 'POST') return json(res, 200, await store.importArchive(await readBody(req, MAX_IMPORT_BYTES)));
-      if (path === '/__studio/api/save' && req.method === 'POST') return json(res, 200, await store.save(await readBody(req)));
+      if (path === '/__studio/api/save' && req.method === 'POST') return json(res, 200, await store.save(saveChange));
       if (path === '/__studio/api/service' && req.method === 'POST') return json(res, 200, await store.mutateService(await readBody(req)));
       if (path === '/__studio/api/info-widget' && req.method === 'POST') return json(res, 200, await store.mutateInfoWidget(await readBody(req)));
       if (path === '/__studio/api/service-widget' && req.method === 'POST') return json(res, 200, await store.mutateServiceWidget(await readBody(req)));

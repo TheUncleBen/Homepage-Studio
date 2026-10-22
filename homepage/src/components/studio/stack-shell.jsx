@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { useStackGestures } from "./gestures";
+import { useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
 import { createStackPlayback } from "./playback.mjs";
 import StackTitlePicker from "./stack-title-picker";
@@ -11,6 +11,7 @@ export default function StackShell({
   rect,
   editing,
   busy = false,
+  overlayOpen = false,
   reducedMotion,
   onActive,
   registerController,
@@ -22,7 +23,6 @@ export default function StackShell({
 }) {
   const root = useRef(null);
   const lifecycle = useRef(0);
-  const press = useRef(null);
   const [controller] = useState(() =>
     createStackPlayback({
       ids: stack.panelIds,
@@ -38,22 +38,23 @@ export default function StackShell({
   const pickerOpen = pickerMembers !== null;
   // The restriction is reflected in this same render, so ending an edit/save
   // can never reopen a picker that was open before it began.
-  if (pickerOpen && (editing || busy || pickerMembers !== membership)) setPickerMembers(null);
+  if (pickerOpen && (editing || busy || overlayOpen || pickerMembers !== membership)) setPickerMembers(null);
   const activePanel = panels.find((panel) => panel.id === snapshot.activeId);
   const gestures = useStackGestures({
     controller,
-    disabled: editing || busy || pickerOpen,
+    disabled: editing || busy || pickerOpen || overlayOpen,
     onDrag: onStackDrag,
     onManual: (next) =>
       setAnnouncement(
         `${panels.find((panel) => panel.id === next.activeId)?.title || "Widget"}, ${next.activeIndex + 1} of ${next.ids.length}`,
       ),
   });
-  const cancelPress = () => {
-    clearTimeout(press.current?.timer);
-    press.current = null;
-  };
-  useEffect(() => () => clearTimeout(press.current?.timer), []);
+  const press = useLongPress({
+    disabled: editing || busy || pickerOpen || overlayOpen,
+    onLongPress: (pointer) => onLongPress?.(stack.id, pointer),
+    accepts: (event) =>
+      !event.target.closest("button,input") || Boolean(event.target.closest("[data-studio-stack-title]")),
+  });
 
   useEffect(() => {
     const token = ++lifecycle.current;
@@ -82,6 +83,9 @@ export default function StackShell({
   useEffect(() => {
     controller.setBlocked("editing", editing || busy);
   }, [controller, editing, busy]);
+  useEffect(() => {
+    controller.setBlocked("overlay", overlayOpen);
+  }, [controller, overlayOpen]);
   useEffect(() => {
     controller.setBlocked("picker", pickerOpen && !editing && !busy);
     return () => controller.setBlocked("picker", false);
@@ -120,45 +124,22 @@ export default function StackShell({
       {...gestures}
       onPointerDown={(event) => {
         gestures.onPointerDown(event);
-        if (
-          editing ||
-          busy ||
-          pickerOpen ||
-          event.button !== 0 ||
-          event.isPrimary === false ||
-          (event.target.closest("button,input") && !event.target.closest("[data-studio-stack-title]"))
-        )
-          return;
-        const pointer = {
-          clientX: event.clientX,
-          clientY: event.clientY,
-          pointerId: event.pointerId,
-          currentTarget: event.currentTarget,
-        };
-        press.current = {
-          x: event.clientX,
-          y: event.clientY,
-          timer: setTimeout(() => {
-            onLongPress?.(stack.id, pointer);
-            press.current = null;
-          }, 420),
-        };
+        press.onPointerDown(event);
       }}
       onPointerMove={(event) => {
         gestures.onPointerMove(event);
-        if (press.current && Math.hypot(event.clientX - press.current.x, event.clientY - press.current.y) > 10)
-          cancelPress();
+        press.onPointerMove(event);
       }}
       onPointerUp={(event) => {
-        cancelPress();
+        press.onPointerUp(event);
         gestures.onPointerUp(event);
       }}
       onPointerCancel={(event) => {
-        cancelPress();
+        press.onPointerCancel(event);
         gestures.onPointerCancel(event);
       }}
       onContextMenu={(event) => {
-        cancelPress();
+        press.cancel();
         if (busy || (event.target.closest("button,input") && !event.target.closest("[data-studio-stack-title]")))
           return;
         event.preventDefault();
@@ -174,7 +155,7 @@ export default function StackShell({
           panels={stack.panelIds.map((id) => panels.find((panel) => panel.id === id)).filter(Boolean)}
           activeId={snapshot.activeId}
           open={pickerOpen}
-          disabled={editing || busy}
+          disabled={editing || busy || overlayOpen}
           onOpen={() => setPickerMembers(membership)}
           onClose={() => setPickerMembers(null)}
           onSelect={(id) => {

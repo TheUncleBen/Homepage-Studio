@@ -48,6 +48,7 @@ async function setup(t, serverOptions = {}) {
       return res.end(serverOptions.nativeHealthBody ?? JSON.stringify({ protocolVersion: NATIVE_PROTOCOL, upstreamCommit: UPSTREAM_COMMIT, buildRevision: serverOptions.buildRevision ?? 'unreleased' }));
     }
     if (req.url === '/api/studio/sources') {
+      await serverOptions.beforeNativeDiscovery?.();
       res.writeHead(serverOptions.nativeDiscoveryStatus ?? 200, { 'content-type': 'application/json' });
       return res.end(JSON.stringify({ protocolVersion: NATIVE_PROTOCOL, upstreamCommit: UPSTREAM_COMMIT, sources: serverOptions.nativeDiscoveredSources ?? [], warnings: [] }));
     }
@@ -203,6 +204,26 @@ test('a same-host origin with a different scheme is not treated as same-origin',
   const { request } = await setup(t);
   const response = await request('/__studio/api/state', { headers: { origin: `https://${HOST}`, 'x-forwarded-proto': 'https' } });
   assert.equal(response.status, 403);
+});
+
+test('native integration requests reject foreign browser contexts before dispatching an action', async (t) => {
+  const { request, upstreamCalls } = await setup(t);
+  const target = '/api/services/proxy?group=Media&service=Server&endpoint=Pause';
+  for (const method of ['GET', 'POST']) for (const headers of [
+    { origin: 'http://unrelated.example.test' },
+    { origin: 'null' },
+    { origin: 'not-an-origin' },
+    { origin: `https://${HOST}` },
+    { 'sec-fetch-site': 'cross-site' },
+    { 'sec-fetch-site': 'same-site' },
+    { origin: ORIGIN, 'sec-fetch-site': 'cross-site' },
+  ]) {
+    const response = await request(target, { method, headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers }, body: method === 'POST' ? 'ignored=1' : undefined });
+    assert.equal(response.status, 403);
+  }
+  assert.equal(upstreamCalls.length, 0, 'Rejected media actions must never contact the native renderer.');
+  assert.equal((await request(target, { method: 'POST', headers: { origin: ORIGIN, 'sec-fetch-site': 'same-origin' } })).status, 207);
+  assert.equal((await request(target)).status, 207, 'Direct local clients without browser Origin remain supported.');
 });
 
 test('an explicitly configured public HTTPS origin works without trusting forwarded protocol headers', async (t) => {
@@ -566,4 +587,69 @@ test('discovered panels use read-only native metadata and explicit revision-prot
   assert.equal(shown.status, 200);
   assert.equal(shown.json.board.panels[0].id, id);
   assert.deepEqual(shown.json.hiddenDiscoveredIds, []);
+});
+
+test('structured configuration writes and restore complete while an explicit discovery read is held', async t => {
+  const id = 'discovered-service-0123456789abcdef01234567';
+  const source = { id, kind: 'service', title: 'Discovered service', group: 'Lab', nativeLocator: { discovered: true, discoveryId: id, serviceId: id, groupPath: ['Lab'], name: 'Discovered service', origin: 'docker' } };
+  const entered = Promise.withResolvers(), released = Promise.withResolvers();
+  let hold = false;
+  const { request, post, store, upstreamCalls } = await setup(t, {
+    nativeDiscoveredSources: [source],
+    beforeNativeDiscovery: async () => { if (hold) { entered.resolve(); await released.promise; } },
+  });
+  let state = (await request('/__studio/api/state')).json;
+  const original = state;
+  hold = true;
+  const refresh = request('/__studio/api/board');
+  async function write(endpoint, change) {
+    let timer;
+    try {
+      const result = await Promise.race([
+        post(`/__studio/api/${endpoint}`, { revision: state.revision, ...change }),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${endpoint} waited for the held provider`)), 2000); }),
+      ]);
+      assert.equal(result.status, 200, result.text); state = result.json;
+      return result;
+    } finally { clearTimeout(timer); }
+  }
+  try {
+    await entered.promise;
+    await write('settings', { config: { title: 'Immediate local change' } });
+    await write('service', { action: 'add', name: 'Local service', group: 'Services', config: { href: 'https://service.example.test' } });
+    await write('info-widget', { action: 'add', type: 'greeting', config: { text: 'Hello' } });
+    await write('service-widget', { action: 'add', newService: { name: 'Media', group: 'Services' }, type: 'jellyfin', config: { url: 'http://media.example.test', key: 'synthetic-only' } });
+    await write('bookmark', { action: 'add', name: 'Docs', group: 'Reading', config: { href: 'https://docs.example.test' } });
+    await write('discovery-visibility', { id, hidden: true });
+    await write('save', { customCss: '.review { color: rebeccapurple; }' });
+    const backup = (await store.listBackups()).find(value => value.revision === original.revision);
+    await write('restore', { backupId: backup.id });
+    assert.equal(state.settingsConfig.title, original.settingsConfig.title);
+    assert.equal(upstreamCalls.filter(call => call.url === '/api/studio/sources').length, 2, 'Only the two explicit reads invoke discovery.');
+  } finally { hold = false; released.resolve(); await refresh; }
+});
+
+test('both complete-board save routes await fresh membership and reject an omitted discovery arrival', async t => {
+  const source = number => {
+    const id = `discovered-service-${String(number).padStart(24, '0')}`;
+    return { id, kind: 'service', title: `Discovered ${number}`, group: 'Lab', nativeLocator: { discovered: true, discoveryId: id, serviceId: id, groupPath: ['Lab'], name: `Discovered ${number}`, origin: 'docker' } };
+  };
+  const options = { nativeDiscoveredSources: [source(1)] };
+  const { request, post, store } = await setup(t, options);
+  const before = (await request('/__studio/api/state')).json;
+  options.nativeDiscoveredSources = [source(1), source(2)];
+  for (const endpoint of ['board', 'save']) {
+    const entered = Promise.withResolvers(), released = Promise.withResolvers();
+    options.beforeNativeDiscovery = async () => { entered.resolve(); await released.promise; };
+    let settled = false;
+    const pending = post(`/__studio/api/${endpoint}`, { revision: before.revision, board: before.board }).then(value => { settled = true; return value; });
+    try {
+      await entered.promise;
+      assert.equal(settled, false, 'The board cannot commit before its source membership refresh.');
+    } finally { released.resolve(); }
+    const result = await pending;
+    assert.equal(result.status, 422, result.text);
+    assert.equal((await store.load()).revision, before.revision);
+    assert.equal((await store.listBackups()).length, 0);
+  }
 });

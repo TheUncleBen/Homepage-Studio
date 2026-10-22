@@ -7,35 +7,31 @@ export function setCookieHeader(url, params, { overwrite = false } = {}) {
   const existingCookie = cookieJar.getCookieStringSync(url.toString());
   if (existingCookie) {
     params.headers = params.headers ?? {};
-    const cookieHeader = params.cookieHeader ?? "Cookie";
+    const requestedHeader = params.cookieHeader ?? "Cookie";
+    const cookieHeader =
+      Object.keys(params.headers).find((name) => name.toLowerCase() === requestedHeader.toLowerCase()) ??
+      requestedHeader;
     if (overwrite || !params.headers[cookieHeader]) {
       params.headers[cookieHeader] = existingCookie;
+      return true;
     }
   }
+  return false;
 }
 
 export function addCookieToJar(url, headers) {
   let cookieHeader = headers["set-cookie"];
   if (headers instanceof Headers) {
-    cookieHeader = headers.get("set-cookie");
+    cookieHeader = headers.getSetCookie();
   }
 
   if (!cookieHeader || cookieHeader.length === 0) return;
 
-  let cookies = null;
-  if (cookieHeader instanceof Array) {
-    cookies = cookieHeader.map((c) => {
-      const cookie = Cookie.parse(c);
-      cookie.setMaxAge(60 * 60);
-      return cookie;
-    });
-  } else {
-    const cookie = Cookie.parse(cookieHeader);
-    cookie.setMaxAge(60 * 60);
-    cookies = [cookie];
-  }
-
-  for (let i = 0; i < cookies.length; i += 1) {
-    cookieJar.setCookieSync(cookies[i], url.toString(), { ignoreError: true });
+  for (const value of Array.isArray(cookieHeader) ? cookieHeader : [cookieHeader]) {
+    const cookie = Cookie.parse(value);
+    if (!cookie) continue;
+    // Bound session retention without reviving expired or explicitly deleted cookies.
+    if (cookie.TTL() > 60 * 60 * 1000) cookie.setMaxAge(60 * 60);
+    cookieJar.setCookieSync(cookie, url.toString(), { ignoreError: true });
   }
 }

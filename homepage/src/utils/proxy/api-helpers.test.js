@@ -9,6 +9,7 @@ import {
   jsonArrayTransform,
   parseVersionForUrl,
   sanitizeErrorURL,
+  sanitizeLogURL,
 } from "./api-helpers";
 
 describe("utils/proxy/api-helpers", () => {
@@ -92,5 +93,13 @@ describe("utils/proxy/api-helpers", () => {
     expect(sanitizeErrorURL(new URL("http://192.168.1.10:8080/api?apikey=123"))).toBe(
       "192.168.1.10 (see logs for details)",
     );
+  });
+
+  it("sanitizeLogURL retains origin diagnostics without credentials in any URL component", () => {
+    expect(
+      sanitizeLogURL(
+        "https://PRIVATE_USER:PRIVATE_PASS@example.test:8443/PRIVATE_PATH_KEY?sid=PRIVATE_QUERY#PRIVATE_FRAGMENT",
+      ),
+    ).toBe("https://example.test:8443");
   });
 });

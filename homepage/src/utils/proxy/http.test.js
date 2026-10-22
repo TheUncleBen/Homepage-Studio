@@ -59,6 +59,7 @@ vi.mock("follow-redirects", async () => {
       req.write = vi.fn((chunk) => {
         state.lastWrittenBody = chunk;
       });
+      req.destroy = vi.fn();
       req.end = vi.fn(() => {
         state.lastAgent = params?.agent ?? null;
         state.lastAgentOptions = params?.agent?.opts ?? null;
@@ -345,9 +346,10 @@ describe("utils/proxy/http httpProxy", () => {
     state.lastRequestParams.beforeRedirect(
       { href: "http://example.com/redirect" },
       { headers: { "set-cookie": ["a=b"] } },
+      { url: "http://example.com/", method: "GET" },
     );
 
-    expect(cookieJar.addCookieToJar).toHaveBeenCalledWith("http://example.com/redirect", { "set-cookie": ["a=b"] });
+    expect(cookieJar.addCookieToJar).toHaveBeenCalledWith("http://example.com/", { "set-cookie": ["a=b"] });
     expect(cookieJar.setCookieHeader).toHaveBeenCalledWith("http://example.com/redirect", expect.any(Object), {
       overwrite: true,
     });
@@ -364,7 +366,7 @@ describe("utils/proxy/http httpProxy", () => {
     expect(Buffer.from(data).toString()).toBe("hello");
   });
 
-  it("logs when gzip decoding emits an error", async () => {
+  it("returns a controlled failure when gzip decoding emits an error", async () => {
     const { PassThrough } = await import("node:stream");
 
     vi.doMock("node:zlib", async () => {
@@ -390,11 +392,13 @@ describe("utils/proxy/http httpProxy", () => {
     state.response.headers["content-encoding"] = "gzip";
     state.response.body = Buffer.from("hello");
 
-    await httpMod.httpProxy("http://example.com");
+    const [status, , data] = await httpMod.httpProxy("http://example.com");
 
+    expect(status).toBe(500);
+    expect(data.error.rawError.code).toBe("ERR_INVALID_RESPONSE_ENCODING");
     expect(logger.error).toHaveBeenCalled();
 
-    vi.unmock("node:zlib");
+    vi.doUnmock("node:zlib");
   });
 
   it("applies strict IPv4 agent options when HOMEPAGE_PROXY_DISABLE_IPV6 is true", async () => {
@@ -435,7 +439,8 @@ describe("utils/proxy/http httpProxy", () => {
 
     expect(status).toBe(500);
     expect(contentType).toBe("application/json");
-    expect(data.error.message).toBe("boom");
+    expect(data.error.message).toBe("Host unreachable");
+    expect(data.error.rawError).toEqual({ code: "EHOSTUNREACH", message: "Host unreachable" });
     expect(data.error.url).toBe("example.com (see logs for details)");
   });
 });

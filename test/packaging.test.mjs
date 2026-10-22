@@ -275,10 +275,15 @@ test('runtime and Dockerfile pins agree with the reviewed source lock', async ()
   const native = await fs.readFile(path.join(root, 'Dockerfile'), 'utf8');
   assert.match(lock.pnpmVersion, /^\d+\.\d+\.\d+$/);
   assert.match(lock.pnpmIntegrity, /^sha512-[A-Za-z0-9+/]{86}==$/);
-  assert.ok(native.includes('COPY upstream.lock.json scripts/install-pinned-pnpm.mjs /tmp/studio-toolchain/'));
+  const toolchainFiles = [...native.matchAll(/^COPY\s+(.+)\s+\/tmp\/studio-toolchain\/\s*$/gm)]
+    .flatMap(([, files]) => files.trim().split(/\s+/));
+  for (const file of ['upstream.lock.json', 'scripts/install-pinned-pnpm.mjs', 'scripts/compress-static-assets.mjs']) {
+    assert.ok(toolchainFiles.includes(file), `native builder must receive ${file}`);
+  }
   assert.ok(native.includes('node /tmp/studio-toolchain/install-pinned-pnpm.mjs /tmp/studio-toolchain/upstream.lock.json && pnpm install --frozen-lockfile'));
   assert.ok(native.includes('RUN pnpm lint'));
   assert.ok(native.includes('RUN pnpm test'));
+  assert.ok(native.includes('RUN node /tmp/studio-toolchain/compress-static-assets.mjs /build/homepage/.next/static'));
   assert.ok(native.includes('COPY homepage/ ./'));
   assert.ok(native.includes('homepage/src/utils/config/environment.mjs ./homepage/src/utils/config/environment.mjs'));
   assert.ok(native.includes('homepage/src/utils/config/yaml-parser.mjs ./homepage/src/utils/config/yaml-parser.mjs'));

@@ -104,15 +104,60 @@ export function validateStoredBoard(value) {
 
 export function intersects(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
 
-export function nextPosition(size, occupied) {
-  const w = Math.min(BOARD_COLUMNS, Math.max(1, size.w)), h = Math.max(1, size.h);
-  const bottom = occupied.reduce((n, r) => Math.max(n, r.y + r.h), 0);
-  for (let y = 0; y <= bottom; y++) for (let x = 0; x <= BOARD_COLUMNS - w; x++) {
-    const candidate = { x, y, w, h };
-    if (!occupied.some((r) => intersects(candidate, r))) return candidate;
+function placementIndex(occupied) {
+  // Validated rectangles occupy at most 12 columns. Sparse row masks avoid an
+  // allocation proportional to a distant persisted y coordinate per panel.
+  const rows = new Map(), cursors = new Map();
+  let bottom = 0;
+  const maskOf = ({ x, w }) => ((1 << w) - 1) << x;
+  function add(position) {
+    const mask = maskOf(position), end = position.y + position.h;
+    for (let y = position.y; y < end; y++) rows.set(y, (rows.get(y) ?? 0) | mask);
+    bottom = Math.max(bottom, end);
   }
-  return { x: 0, y: bottom, w, h };
+  function overlaps(position) {
+    const mask = maskOf(position);
+    for (let y = position.y; y < position.y + position.h; y++) if ((rows.get(y) ?? 0) & mask) return true;
+    return false;
+  }
+  function next(size) {
+    const w = Math.min(BOARD_COLUMNS, Math.max(1, size.w)), h = Math.max(1, size.h);
+    const key = `${w}:${h}`, cursor = cursors.get(key) ?? { x: 0, y: 0 };
+    // Occupancy only grows during reconciliation. Positions rejected by an
+    // earlier search of this size cannot become free, so retain its cursor.
+    // Sliding column counts keep even a 1,000-row rectangle search bounded by
+    // rows visited instead of rescanning its entire height at every position.
+    const counts = new Array(BOARD_COLUMNS).fill(0);
+    let blocked = 0;
+    function adjustRow(y, delta) {
+      const mask = rows.get(y) ?? 0;
+      if (!mask) return;
+      for (let column = 0; column < BOARD_COLUMNS; column++) {
+        const bit = 1 << column;
+        if (!(mask & bit)) continue;
+        counts[column] += delta;
+        if (counts[column]) blocked |= bit;
+        else blocked &= ~bit;
+      }
+    }
+    for (let y = cursor.y; y < cursor.y + h; y++) adjustRow(y, 1);
+    const widthMask = (1 << w) - 1;
+    for (let y = cursor.y; y <= bottom; y++) {
+      for (let x = y === cursor.y ? cursor.x : 0; x <= BOARD_COLUMNS - w; x++) {
+        if (!(blocked & (widthMask << x))) {
+          cursors.set(key, { x, y });
+          return { x, y, w, h };
+        }
+      }
+      adjustRow(y, -1); adjustRow(y + h, 1);
+    }
+    return { x: 0, y: bottom, w, h };
+  }
+  occupied.forEach(add);
+  return { add, overlaps, next };
 }
+
+export function nextPosition(size, occupied) { return placementIndex(occupied).next(size); }
 
 export function boardSources({ services, serviceWidgets, infoWidgets, bookmarks }) {
   const sources = [];
@@ -145,13 +190,15 @@ export function reconcileBoard(sources, previous, legacyLayout = { items: {} }) 
   const occupied = stacks.map((s) => s.rect);
   // Reserve valid persisted standalone positions before placing new arrivals.
   for (const s of sources) if (!stacked.has(s.id) && byId.has(s.id)) occupied.push(byId.get(s.id).rect);
+  let placement;
   const panels = sources.map((source) => {
     let position = byId.get(source.id)?.rect;
     if (!position) {
+      placement ??= placementIndex(occupied);
       const legacy = legacyLayout.items?.[source.id];
       try { if (legacy) position = rect(legacy); } catch { /* Old wider layouts are reflowed, not interpreted as new valid coordinates. */ }
-      if (!position || occupied.some((r) => intersects(position, r))) position = nextPosition({ w: 4, h: source.kind === 'serviceWidget' ? 5 : 3 }, occupied);
-      if (!stacked.has(source.id)) occupied.push(position);
+      if (!position || placement.overlaps(position)) position = placement.next({ w: 4, h: source.kind === 'serviceWidget' ? 5 : 3 });
+      if (!stacked.has(source.id)) placement.add(position);
     }
     return { ...source, rect: { ...position } };
   });

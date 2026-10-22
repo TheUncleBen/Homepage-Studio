@@ -1,5 +1,45 @@
 # Verification evidence
 
+## Intensive review checkpoint — 22 October 2026
+
+The [intensive review record](docs/qualification/intensive-review-2026-10-22.md)
+records newly reproduced security, runtime and interaction defects, their
+corrections, measured baseline/corrected helper behavior, retained trust limits,
+and the remaining qualification gates. **A corrected replacement image is not
+yet qualified by this checkpoint.** Historical run 39781710031 passed for source
+`03e48b8bcd214a5de47aaea1d64fbad083c20edb`; it does not qualify subsequent changes.
+
+| Current local evidence | Observed result and binding |
+| --- | --- |
+| Broad native lint/tests/build | Full lint and production build exited 0; **599 files / 2,086 tests passed, zero failed/skipped**, at source `29d2c0be88e05eef4b22e2e23eab82441184ad34`, native manifest `0374b2418ad5f43a6c19a0050c935d3adfcd65a0d4e303b110c0fe630fdbaa32` |
+| Controller | **219 passed, zero failed/skipped** after correcting the review wrapper's fixture build-revision override; the original three readiness failures remain recorded |
+| Packaging/tooling and Python | **89 tooling checks and four Python tests passed** at `a5b75df0c85ee7aba2b54c998de5125f6ac554d4`, after the old exact COPY assertion was corrected; the original 88/89 packaging failure remains recorded |
+| Actual local Swarm parser | **Failed: `spawn docker ENOENT`; 0/2 passed**. Docker was absent, so no actual parser/application failure was established. The combined sequence remains failed and hosted execution is mandatory. |
+| Clean source-input guard | Passed at exact source `a5b75df`; a later final source requires its own guard |
+| Newer native corrections | Accepted-no-op patch `82c5bc19bce153ad4eb865c8ef56405fa7498a43` and mixed-width order correction `a52fd567b163208fefa241c46d7a15a14e0a5202` postdate the broad native tests. Combined focused files passed **38 tests**; independent review checked **3,386 moves / 80 boards / 160 unchanged projections**. |
+| Later native production lint/build | Both passed at `a52fd56`, native manifest `6130e453ba86f8e726e551963b8763f63f1a0beb70bf517a0324cfc9ca7a6bc0`; compression also passed. The complete test rerun for later source remains pending. |
+| Selected patched production Chromium cases | Initial **14/15 passed**, then **1/1 focused passed** with a test-only narrow-toolbar precondition correction integrated as `4299a31`; retries 0 and the same `a52fd56` application. The initial failed run is preserved, not relabeled 15/15. |
+| Measured local performance | At source `a52fd56`, for 32 and 60 panels, all six corrected same-cell trials at each size recorded **1 React commit / 0 native panel memo executions**, versus baseline **121 / 3,840** and **121 / 7,200**. JS/CSS delivered bytes fell **1,063,329 → 294,119**. Three alternating samples under the recorded emulated network gave median ready time **6,261.860407 → 2,419.031202 ms**. Actual native dense-stack motion retained hosts/revision/snapshots, with frame p95 **16.7–16.8 ms** and no observed long tasks/browser errors. These are local production traces, not field INP or physical-device proof. |
+| Later light-theme finding | Settled default-slate service descriptions measured **4.224:1 normal / 3.997:1 hover**, and bookmark hover **4.431:1**. Scoped default-slate patch `83339ea` is integrated as `26f6cc54c104fd902270df38c13e069e50171a07`; native manifest `e28b3f85ecac741c25927f7da2423635646ad805017d28fa982c5797eba90dc7` passed fresh full lint/build/compression and the focused **1/1 production browser case**, retry zero. Service description contrast is now **6.726:1 normal / 6.365:1 hover**, bookmark hover **7.056:1**; dark/system/status/explicit palettes/custom CSS checks passed. The pale title screenshot was explained by the existing 150 ms transition, not a persistent title-color defect. |
+| Advisory review | Fresh controller/native production audits reported zero advisories. Exact baseline OS scans found an available Perl package update; the Dockerfile correction is implemented, but the replacement package version and both exact-image rescans remain pending. |
+
+The controller/tooling aggregate that encountered the packaging failure and the
+later tooling/Python/Swarm aggregate that lacked Docker are **failed aggregates**,
+even though individual earlier steps passed. Their receipts and the initial
+wrapper-related failure are preserved. No gate, assertion budget or retry policy
+was relaxed to reinterpret them as successful complete runs.
+
+Complete native/browser reruns for the frozen source, both native architecture
+hosted image qualifications, exact replacement OS scans and public-ready artifact
+delivery are **pending**. The local performance comparisons for `a52fd56` are complete; an
+interrupted attempt failed before sampling when both local application endpoints were unreachable,
+and remains recorded separately from the subsequent successful measurements.
+The later local build and selected browser executions have their own bindings;
+earlier `--list` output is not counted as execution. The detailed review record
+contains explicit fields for the final source, workflow, image/config digests,
+measurements and receipts to be filled only after execution. The earlier dated
+checkpoints below retain their original results.
+
 ## Hosted qualification history
 
 Hosted results are bound to their exact source and first-attempt workflow run.
@@ -10,6 +50,7 @@ before treating an image as ready for deployment evaluation.
 | --- | --- | --- |
 | [39710951764](docs/qualification/39710951764.md) | `308771961057db5e38985a1055b395eedd9d2c19` | Both native builds passed; container qualification exposed a command-line worker-discovery defect in the harness. No candidate was retained. |
 | [39713698869](docs/qualification/39713698869.md) | `da16fd89f7091138639c352189b4fdd792caffc9` | Corrected process regressions passed on both architectures; both image builds then failed when the registry's production audit request timed out. No candidate was retained. |
+| [39781710031](https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39781710031) | `03e48b8bcd214a5de47aaea1d64fbad083c20edb` | Both native architecture qualifications passed; engineering-qualified/public-ready baseline receipts verified exact image/source and anonymous runtime layers. Human acceptance remained pending. This is the [historical baseline](docs/qualification/intensive-review-2026-10-22.md#historical-successful-baseline), not qualification of intensive-review corrections. |
 
 The second result preserves the required dependency audit as a failed gate. Its
 record does not change application code, dependencies, audit semantics, retry

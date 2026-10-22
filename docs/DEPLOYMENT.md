@@ -59,6 +59,50 @@ the origin. Controller port 3000 is the only product port published. Workers use
 random loopback-only ports inside the container. Native authentication and MCP
 configuration writes are disabled in the controlled runtime.
 
+## Integration transport and trust
+
+Studio and native API routes enforce the accepted Host, configured browser
+Origin and Fetch Metadata checks after selecting the dashboard. Cross-site and
+same-site browser contexts are rejected; native same-origin actions do not need
+the Studio editor header. Direct API clients without an Origin remain supported.
+These checks do not authenticate a caller, and a dashboard slug does not separate
+trusted administrators.
+
+Use the canonical URL for a service that requires credentials. The shared native
+HTTP helper preserves same-origin behavior, but a redirect to a different
+scheme, hostname or port strips credential headers and URL authentication,
+refuses a preserved request body, and disables cookie-jar reads/writes for the
+rest of that chain. A redirect rewritten to GET can continue without its body.
+Direct requests still use the dashboard's normal domain/path cookie jar; cookies
+are not isolated by integration or port. Separate dashboard workers retain
+separate jars.
+
+The shared helper enforces a 45-second total deadline for each outbound request,
+including its full redirect chain, and separate 32 MiB transferred/decoded limits
+on the final response body. Redirect-response bytes are not summed into that
+body budget. A smaller internal caller timeout may finish earlier. Overlong,
+open-ended, oversized or invalidly compressed responses fail with controlled
+diagnostics and socket cleanup. A multi-step login/retry adapter may make several
+separately bounded requests. These bounds are not a process memory ceiling, a
+total multi-step endpoint deadline, or a limit on every separate native
+WebSocket/transport implementation. No new dashboard setting changes them.
+
+The inherited shared HTTPS agent and TrueNAS WebSocket path explicitly disable
+server certificate verification. Traffic is encrypted, but those paths do not
+reject an untrusted certificate or a certificate-presenting network intermediary.
+No exposed configuration switch enables verified TLS for the shared helper;
+adding `NODE_EXTRA_CA_CERTS` does not override `rejectUnauthorized: false`.
+Docker client's separate CA/client-certificate configuration does not change
+widget HTTP behavior. This self-signed/private-service compatibility is retained
+and must be included in the deployment's integration-network trust decision.
+
+Common transport diagnostics omit URL credentials, path/query/fragment and raw
+transport errors. The review corrected the identified shared and selected
+adapter log paths; it did not certify every adapter's upstream error payload or
+legacy debug log. Editor exports can still contain inline configuration secrets
+by design. Keep the whole application origin behind the owner's intended access
+boundary.
+
 ## Persistence and dashboards
 
 Both controller and workers run as UID/GID 1000. Named volumes created by the
@@ -139,6 +183,17 @@ accepts 1–64. Idle duration is bounded to 10 ms–24 hours and startup to
 600/30-second defaults are the normal starting point. These are resource limits
 within one container, not tenant-security guarantees.
 
+Discovery does not occupy the configuration writer queue while waiting on a
+provider or starting a cold worker. Concurrent explicit refreshes for a dashboard
+coalesce. State/board/export reads and complete-board saves attempt fresh
+membership; structured local edits, raw saves without a board, retained-source
+visibility, restores and imports do not wait for that provider. Revision and
+identity checks still apply, and a slow follow-up refresh cannot undo a committed
+save. Failures retain unavailable source metadata and report the condition.
+The metadata request deadline is five seconds after worker acquisition; the
+startup deadline is separate. See the exact endpoint policy in
+[architecture](ARCHITECTURE.md#native-discovery).
+
 ## Build and qualification
 
 The root Dockerfile directly copies the controlled `homepage/` tree. It uses the
@@ -146,7 +201,29 @@ pinned Node image, verifies the pinned pnpm package integrity, installs frozen
 dependencies, runs production dependency audits, redirect security regression
 checks, full native lint/tests and a production standalone build. It packages the
 controller, native runtime, assets, shared configuration helpers, GPL/AGPL and
-font/dependency notices in the final image.
+font/dependency notices in the final image. Eligible immutable Next build assets
+are precompressed as Brotli/gzip representations when smaller. The controller
+negotiates and streams those files with representation-specific cache validators;
+it does not compress configuration or integration responses at request time.
+An external proxy must respect `Vary: Accept-Encoding` and the response's
+Content-Encoding and must not apply a second encoding to an already encoded body.
+
+The runtime apt install explicitly refreshes inherited `perl-base` alongside its
+existing runtime packages. The pinned Node base predates Debian's Bookworm
+`5.36.0-7+deb12u4` security update; the build does not migrate distributions or
+perform a blanket package upgrade. Confirm the resulting package version in each
+qualified image instead of treating the Dockerfile edit as proof of remediation.
+See [Debian's Perl security record](https://security-tracker.debian.org/tracker/source-package/perl).
+
+OS advisory review is separate from npm/pnpm production dependency audits. Record
+the exact architecture child/config digests, scanner provenance, database time,
+package inventory, fixed/unfixed findings and vendor applicability decisions in
+the qualification evidence. Remote image scanning inspects packages without
+executing that architecture. It does not replace container acceptance, prove
+application reachability, or establish that every residual advisory is harmless.
+The reviewed Perl update does not promise zero remaining OS findings; a new image
+needs its own scan. Actual scan results belong in [verification](../VERIFICATION.md),
+not an inferred pass from this build description.
 
 The source guard rejects modified tracked source and ignored/untracked inputs
 within every Docker-copied subtree. Docker-excluded generated dependencies/build

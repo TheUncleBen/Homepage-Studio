@@ -515,6 +515,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
   let cachedDiscoveredSources = [];
   let incomingDiscoveredSources = null;
   let discoveryWarnings = [];
+  let discoveryRefresh = null;
   const discoveryContext = () => ({ cached: cachedDiscoveredSources, incoming: incomingDiscoveredSources });
   let queue = Promise.resolve();
   const serialized = (operation) => {
@@ -613,6 +614,23 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const raw = await rawSnapshot();
     const parsed = parseSnapshot(raw, {}, discoveryContext());
     return { raw, ...parsed, revision: revisionOf(raw), configurationRevision: nativeRevisionOf(raw) };
+  }
+  async function discoverySnapshot(current) {
+    await ready();
+    const revision = current?.configurationRevision ?? nativeRevisionOf(await rawSnapshot());
+    // Byte revisions alone cannot detect a configuration replacement followed
+    // by a rollback to the same bytes while a native provider is still reading.
+    // These filesystem identities stay private and are never sent to clients.
+    const identities = await Promise.all(Object.values(FILES).map(async name => {
+      try {
+        const stat = await fs.lstat(location(name), { bigint: true });
+        return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':');
+      } catch (error) {
+        if (error.code === 'ENOENT') return 'missing';
+        throw error;
+      }
+    }));
+    return revision + '\0' + identities.join('\0');
   }
   function response(current) {
     return {
@@ -905,28 +923,44 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
   return {
     // The caller refreshes discovery only for explicit dashboard API operations.
     // Startup, recovery, native proxy traffic and readiness must never wait on it.
-    refreshDiscovery: (host, dashboard) => serialized(async () => {
-      if (!discoveryReader) return;
-      // Recover and validate local files before the renderer can read them.
-      // A failed configuration must not trigger native discovery traffic.
-      await readCurrent();
-      try {
-        const manifest = validateDiscoveryManifest(await discoveryReader(host, dashboard));
-        cachedDiscoveredSources = mergeDiscoveredSources({ cached: cachedDiscoveredSources, incoming: manifest.sources });
-        incomingDiscoveredSources = manifest.sources;
-        const messages = {
-          AMBIGUOUS_NATIVE_SOURCE: 'Some discovered sources share a native lookup name. Resolve the conflicting names in their native configuration.',
-          POSITIONAL_WIDGET_IDENTITY: 'Reordering repeated widgets of the same native type may change which panel retains its layout. Review those panels after editing the external widget list.',
-          INVALID_NATIVE_SOURCE: 'Some discovered sources could not be represented safely and were omitted.',
-          NATIVE_DISCOVERY_UNAVAILABLE: 'A native discovery provider is unavailable. Retained panels and stack membership are preserved.',
-          SOURCE_LIMIT_REACHED: 'Native discovery reached the supported panel limit.',
-        };
-        discoveryWarnings = manifest.warnings.map((warning) => ({ ...warning, message: messages[warning.code] }));
-      } catch {
-        incomingDiscoveredSources = null;
-        discoveryWarnings = [{ code: 'NATIVE_DISCOVERY_UNAVAILABLE', message: 'Native discovery is temporarily unavailable. Retained panels and stack membership are preserved.' }];
-      }
-    }),
+    refreshDiscovery: (host, dashboard) => {
+      if (!discoveryReader) return Promise.resolve();
+      if (discoveryRefresh) return discoveryRefresh;
+      discoveryRefresh = (async () => {
+        // Recover and validate before allowing the native read, then release
+        // the writer queue while providers or a cold renderer are responding.
+        const before = await serialized(async () => discoverySnapshot(await readCurrent()));
+        let manifest;
+        try { manifest = validateDiscoveryManifest(await discoveryReader(host, dashboard)); }
+        catch { /* Preserve safe retained sources on provider failure. */ }
+        await serialized(async () => {
+          const unchanged = before === await discoverySnapshot();
+          let sources;
+          if (unchanged && manifest) {
+            try { sources = mergeDiscoveredSources({ cached: cachedDiscoveredSources, incoming: manifest.sources }); }
+            catch { /* The retained/fresh union must also stay bounded. */ }
+          }
+          if (!sources) {
+            incomingDiscoveredSources = null;
+            discoveryWarnings = [{ code: 'NATIVE_DISCOVERY_UNAVAILABLE', message: unchanged
+              ? 'Native discovery is temporarily unavailable. Retained panels and stack membership are preserved.'
+              : 'Configuration changed while native discovery refreshed. Retained panels are preserved; refresh again.' }];
+            return;
+          }
+          cachedDiscoveredSources = sources;
+          incomingDiscoveredSources = manifest.sources;
+          const messages = {
+            AMBIGUOUS_NATIVE_SOURCE: 'Some discovered sources share a native lookup name. Resolve the conflicting names in their native configuration.',
+            POSITIONAL_WIDGET_IDENTITY: 'Reordering repeated widgets of the same native type may change which panel retains its layout. Review those panels after editing the external widget list.',
+            INVALID_NATIVE_SOURCE: 'Some discovered sources could not be represented safely and were omitted.',
+            NATIVE_DISCOVERY_UNAVAILABLE: 'A native discovery provider is unavailable. Retained panels and stack membership are preserved.',
+            SOURCE_LIMIT_REACHED: 'Native discovery reached the supported panel limit.',
+          };
+          discoveryWarnings = manifest.warnings.map((warning) => ({ ...warning, message: messages[warning.code] }));
+        });
+      })().finally(() => { discoveryRefresh = null; });
+      return discoveryRefresh;
+    },
     initialize: () => serialized(async () => {
       // Recover before creating defaults: a missing file may be part of an
       // interrupted transaction whose original absence must be restored first.
