@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { networkInterfaces } from 'node:os';
 import { createDashboardFixture, eventually } from './acceptance-fixture.mjs';
+import { rendererProcessProbe } from './renderer-process-probe.mjs';
 
 if (process.env.STUDIO_TEST_CONTAINERS !== '1' || process.env.GITHUB_ACTIONS !== 'true' || process.env.RUNNER_ENVIRONMENT !== 'github-hosted') {
   throw new Error('Container acceptance requires an explicitly enabled, disposable GitHub-hosted runner.');
@@ -103,23 +104,8 @@ async function assertLegacyBytes(container, expected) {
 }
 
 async function workers(container) {
-  return JSON.parse(await docker(['exec', container, 'node', '-e', `
-    const fs = require('node:fs');
-    const records = [];
-    for (const pid of fs.readdirSync('/proc').filter(name => /^\\d+$/.test(name))) {
-      try {
-        const args = fs.readFileSync('/proc/' + pid + '/cmdline', 'utf8').split('\\0');
-        if (!args.includes('/app/homepage/server.js')) continue;
-        const env = Object.fromEntries(fs.readFileSync('/proc/' + pid + '/environ', 'utf8').split('\\0').filter(Boolean).map(value => { const split = value.indexOf('='); return [value.slice(0, split), value.slice(split + 1)]; }));
-        const status = fs.readFileSync('/proc/' + pid + '/status', 'utf8');
-        const port = Number(env.PORT);
-        const sockets = fs.readFileSync('/proc/' + pid + '/net/tcp', 'utf8').trim().split('\\n').slice(1).map(line => line.trim().split(/\\s+/));
-        const listeners = sockets.filter(fields => fields[3] === '0A' && parseInt(fields[1].split(':')[1], 16) === port);
-        records.push({ pid: Number(pid), id: env.STUDIO_DASHBOARD_ID, configDir: env.HOMEPAGE_CONFIG_DIR, hostname: env.HOSTNAME, mcpWrite: env.HOMEPAGE_MCP_ALLOW_WRITE, uid: Number(status.match(/^Uid:\\s+(\\d+)/m)[1]), port, addresses: listeners.map(fields => fields[1].split(':')[0]) });
-      } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
-    }
-    console.log(JSON.stringify(records));
-  `]));
+  // The entrypoint execs the controller as PID 1 in both supplied templates.
+  return JSON.parse(await docker(['exec', container, 'node', '-e', rendererProcessProbe()]));
 }
 
 async function assertWorkers(container, dashboards) {
@@ -133,6 +119,7 @@ async function assertWorkers(container, dashboards) {
     assert.equal(worker.hostname, '127.0.0.1');
     assert.equal(worker.mcpWrite, 'false');
     assert.deepEqual(worker.addresses, ['0100007F'], 'The native TCP listener must bind only IPv4 loopback');
+    assert.equal(worker.listeners[0].port, worker.port, 'The native child must own the listener at its assigned port');
     assert.equal(worker.configDir, id === 'default' ? '/app/config' : `/app/config/dashboards/${id}`);
   }
 }

@@ -2,7 +2,7 @@
 
 Homepage Studio is a controlled [Homepage](https://gethomepage.dev/) application with direct dashboard editing, independently placed native widgets, configurable widget stacks, and independent dashboard pages in one deployment. The default combines charcoal surfaces, soft white text, and a muted eggplant accent. Each dashboard has its own widgets, layout, theme, colors and native CSS/JavaScript.
 
-**Development status: unreleased; the single-container, independent-dashboard revision is undergoing engineering qualification.** It is not yet declared ready for deployment testing. See [VERIFICATION.md](VERIFICATION.md) for current evidence and [implementation plan](docs/IMPLEMENTATION-PLAN.md) for remaining gates. The earlier companion-container candidate is historical and does not qualify this architecture. An official date release requires later owner acceptance of the exact candidate.
+**Deployment readiness is tied to an exact source commit and image digest.** Use the [candidate workflow](https://github.com/TheUncleBen/Homepage-Studio/actions/workflows/candidate-approved.yml), its verification report, and its delivery receipt to establish a candidate's status. Follow [candidate delivery](docs/CANDIDATES.md) to identify and verify that bundle. [VERIFICATION.md](VERIFICATION.md) and the [implementation plan](docs/IMPLEMENTATION-PLAN.md) preserve dated source checkpoints. The earlier companion-container candidate is historical and does not qualify this architecture. An official date release requires later owner acceptance of the exact candidate.
 
 ## Dashboard experience
 
