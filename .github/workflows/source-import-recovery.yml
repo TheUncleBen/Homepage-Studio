@@ -1,0 +1,155 @@
+name: Recover two pinned public Homepage blobs
+
+on:
+  push:
+    branches:
+      - engineering/source-import-recovery-20261022-020833-8ac15ff
+
+permissions:
+  contents: write
+
+concurrency:
+  group: source-import-recovery-20261022-020833-8ac15ff
+  cancel-in-progress: false
+
+jobs:
+  import-two-blobs:
+    if: github.repository == 'TheUncleBen/Homepage-Studio'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify pinned bytes and reuse or create only the two immutable blobs
+        timeout-minutes: 4
+        env:
+          STUDIO_IMPORT_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, signal, sys, urllib.error, urllib.request
+
+          REPOSITORY = "TheUncleBen/Homepage-Studio"
+          BRANCH = "engineering/source-import-recovery-20261022-020833-8ac15ff"
+          REF = "refs/heads/" + BRANCH
+          WORKFLOW_REF = REPOSITORY + "/.github/workflows/source-import-recovery.yml@" + REF
+          UPSTREAM = "51cc1684f9f34a7877ed462b8f94c9cc687b4dde"
+          SOURCE = "https://raw.githubusercontent.com/gethomepage/homepage/" + UPSTREAM + "/"
+          API = "https://api.github.com/repos/" + REPOSITORY + "/git/blobs"
+          ASSETS = (
+              ("docs/assets/homepage_demo_clip.png", 738549,
+               "8ac16f355876af3d018f3faa374f3e98efb05212",
+               "06fa43f5de60ad97ca4f21c9c6db8a13cadd2f27d9f6f62db5c07b698048bf1d"),
+              ("docs/assets/widget_feed_grid.webp", 813076,
+               "15ffc2e8a6f1bcca92eb49727a38bc37a02c8814",
+               "6267f4a896a55ce37ca7f4b92ab10603b6afb3d324a16e65a55a9132785d9d4a"),
+          )
+          BLOB_GETS = frozenset(API + "/" + asset[2] for asset in ASSETS)
+          ALLOWED = frozenset(("GET", SOURCE + asset[0]) for asset in ASSETS) | frozenset(
+              ("GET", url) for url in BLOB_GETS) | {("POST", API)}
+
+          def fail(code):
+              print(json.dumps({"status": "failed", "code": code}), flush=True)
+              raise SystemExit(1)
+
+          def require(condition, code):
+              if not condition:
+                  fail(code)
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+
+          def request(method, url, limit, body=None):
+              require((method, url) in ALLOWED, "ENDPOINT_NOT_ALLOWED")
+              require((method == "GET" and body is None) or
+                      (method == "POST" and isinstance(body, bytes) and len(body) <= 1100000),
+                      "INVALID_REQUEST_BODY")
+              headers = {"Accept-Encoding": "identity", "User-Agent": "Homepage-Studio-fixed-source-import"}
+              if url == API or url in BLOB_GETS:
+                  headers.update({"Accept": "application/vnd.github+json",
+                                  "Authorization": "Bearer " + os.environ["STUDIO_IMPORT_TOKEN"],
+                                  "X-GitHub-Api-Version": "2026-03-10"})
+              if method == "POST":
+                  headers["Content-Type"] = "application/json"
+              req = urllib.request.Request(url, data=body, headers=headers, method=method)
+              try:
+                  with OPENER.open(req, timeout=30) as response:
+                      data = response.read(limit + 1)
+                      require(len(data) <= limit, "RESPONSE_TOO_LARGE")
+                      return response.status, data
+              except urllib.error.HTTPError as error:
+                  code = error.code
+                  error.close()
+                  if method == "GET" and url in BLOB_GETS and code == 404:
+                      return 404, b""
+                  fail("HTTP_" + str(code))
+
+          def verify_bytes(asset, data):
+              require(len(data) == asset[1], "BYTE_COUNT_MISMATCH")
+              git_sha = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+              require(git_sha == asset[2], "GIT_BLOB_MISMATCH")
+              require(hashlib.sha256(data).hexdigest() == asset[3], "SHA256_MISMATCH")
+
+          def verify_identity(record, asset):
+              require(isinstance(record, dict) and record.get("sha") == asset[2], "API_SHA_MISMATCH")
+              require(str(record.get("url", "")).lower() == (API + "/" + asset[2]).lower(),
+                      "API_DESTINATION_MISMATCH")
+
+          def receipt(status, asset):
+              print(json.dumps({"status": status, "path": "homepage/" + asset[0],
+                                "bytes": asset[1], "gitBlobSha1": asset[2], "sha256": asset[3]}), flush=True)
+
+          def main():
+              expected = {"GITHUB_REPOSITORY": REPOSITORY, "GITHUB_REPOSITORY_OWNER": "TheUncleBen",
+                          "GITHUB_REF": REF, "GITHUB_REF_TYPE": "branch", "GITHUB_EVENT_NAME": "push",
+                          "GITHUB_RUN_ATTEMPT": "1", "GITHUB_WORKFLOW_REF": WORKFLOW_REF,
+                          "GITHUB_API_URL": "https://api.github.com", "GITHUB_SERVER_URL": "https://github.com"}
+              require(all(os.environ.get(key) == value for key, value in expected.items()), "CONTEXT_MISMATCH")
+              require(bool(os.environ.get("STUDIO_IMPORT_TOKEN")), "TOKEN_MISSING")
+              prepared = []
+              for asset in ASSETS:
+                  status, data = request("GET", SOURCE + asset[0], asset[1])
+                  require(status == 200, "SOURCE_HTTP_STATUS")
+                  verify_bytes(asset, data)
+                  prepared.append((asset, data))
+                  receipt("source-verified", asset)
+              missing = []
+              for asset, data in prepared:
+                  status, response = request("GET", API + "/" + asset[2], 2 * 1024 * 1024)
+                  if status == 404:
+                      missing.append((asset, data))
+                      continue
+                  require(status == 200, "DESTINATION_HTTP_STATUS")
+                  record = json.loads(response)
+                  verify_identity(record, asset)
+                  require(record.get("encoding") == "base64" and record.get("size") == asset[1]
+                          and isinstance(record.get("content"), str), "EXISTING_BLOB_METADATA_MISMATCH")
+                  encoded = record["content"].replace("\n", "").replace("\r", "")
+                  existing = base64.b64decode(encoded, validate=True)
+                  verify_bytes(asset, existing)
+                  require(existing == data, "EXISTING_BLOB_BYTES_MISMATCH")
+                  receipt("reused", asset)
+              for asset, data in missing:
+                  payload = json.dumps({"encoding": "base64", "content": base64.b64encode(data).decode("ascii")},
+                                       separators=(",", ":")).encode()
+                  status, response = request("POST", API, 16384, payload)
+                  require(status == 201, "CREATE_HTTP_STATUS")
+                  verify_identity(json.loads(response), asset)
+                  receipt("created", asset)
+              print(json.dumps({"status": "complete", "repository": REPOSITORY, "branch": BRANCH,
+                                "runId": os.environ.get("GITHUB_RUN_ID"), "runAttempt": 1,
+                                "created": len(missing), "reused": len(ASSETS) - len(missing),
+                                "commitsWritten": 0, "refsWritten": 0}), flush=True)
+
+          if __name__ == "__main__":
+              signal.signal(signal.SIGALRM, lambda *_: fail("WALL_TIMEOUT"))
+              signal.alarm(180)
+              try:
+                  main()
+              except Exception as error:
+                  # Exception text and response bodies may contain sensitive headers; never print them.
+                  fail(type(error).__name__)
+              finally:
+                  signal.alarm(0)
+          PY
