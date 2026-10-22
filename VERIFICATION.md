@@ -1,5 +1,21 @@
 # Verification evidence
 
+## Hosted qualification history
+
+Hosted results are bound to their exact source and first-attempt workflow run.
+Read the matching candidate manifest, verification report and delivery receipt
+before treating an image as ready for deployment evaluation.
+
+| Run | Exact source | Recorded result |
+| --- | --- | --- |
+| [39710951764](docs/qualification/39710951764.md) | `308771961057db5e38985a1055b395eedd9d2c19` | Both native builds passed; container qualification exposed a command-line worker-discovery defect in the harness. No candidate was retained. |
+| [39713698869](docs/qualification/39713698869.md) | `da16fd89f7091138639c352189b4fdd792caffc9` | Corrected process regressions passed on both architectures; both image builds then failed when the registry's production audit request timed out. No candidate was retained. |
+
+The second result preserves the required dependency audit as a failed gate. Its
+record does not change application code, dependencies, audit semantics, retry
+budgets or workflow policy. Subsequent qualification requires a fresh complete
+run and its own exact source/image/artifact evidence.
+
 ## Dated source checkpoint — 22 October 2026, 01:23 UTC
 
 This record describes the local engineering evidence available at this source
