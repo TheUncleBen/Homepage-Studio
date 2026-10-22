@@ -1,8 +1,13 @@
 node_modules/
 .build/
 .cache/
-config/
-state/
+/config/
+/state/
+/homepage/config/
+/homepage/.next/
+/homepage/.pnpm-store/
+/homepage/next-env.d.ts
+/homepage/*.tsbuildinfo
 coverage/
 playwright-report/
 test-results/

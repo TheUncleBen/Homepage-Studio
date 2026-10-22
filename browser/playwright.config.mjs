@@ -9,7 +9,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   timeout: 180000,
-  globalTimeout: 240000,
+  globalTimeout: 900000,
   expect: { timeout: 10000 },
   reporter: 'line',
   outputDir: '.results',

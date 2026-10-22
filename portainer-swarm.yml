@@ -3,45 +3,22 @@ version: "3.8"
 # checks default operators before required operators, including message text.
 services:
   studio:
-    image: ${STUDIO_IMAGE:?Set STUDIO_IMAGE to the approved configuration service image digest}
+    image: ${STUDIO_IMAGE:?Set STUDIO_IMAGE to the qualified application image digest}
     environment:
-      HOMEPAGE_UPSTREAM: http://homepage:3000
       STUDIO_PUBLIC_ORIGIN: ${STUDIO_PUBLIC_ORIGIN:?Set the exact dashboard URL origin}
       STUDIO_BACKUP_RETENTION: ${STUDIO_BACKUP_RETENTION:-25}
+      STUDIO_RENDERER_MAX_WORKERS: ${STUDIO_RENDERER_MAX_WORKERS:-8}
+      STUDIO_RENDERER_IDLE_SECONDS: ${STUDIO_RENDERER_IDLE_SECONDS:-600}
+      STUDIO_RENDERER_STARTUP_SECONDS: ${STUDIO_RENDERER_STARTUP_SECONDS:-30}
+      LOG_TARGETS: stdout
     ports:
-      - target: 3001
+      - target: 3000
         published: ${STUDIO_PORT:-3000}
         protocol: tcp
         mode: host
     volumes:
       - config:/app/config
       - state:/app/state
-    stop_grace_period: 30s
-    deploy:
-      replicas: 1
-      placement:
-        constraints:
-          - node.hostname == ${STUDIO_NODE:?Set the exact Swarm node hostname that owns the persistent volumes}
-      update_config:
-        parallelism: 1
-        order: stop-first
-        failure_action: rollback
-        monitor: 180s
-      rollback_config:
-        parallelism: 1
-        order: stop-first
-        monitor: 180s
-      restart_policy:
-        condition: any
-        delay: 5s
-  homepage:
-    image: ${HOMEPAGE_IMAGE:?Set HOMEPAGE_IMAGE to the approved native renderer image digest}
-    environment:
-      STUDIO_WRITER_ORIGIN: http://studio:3001
-      STUDIO_PUBLIC_ORIGIN: ${STUDIO_PUBLIC_ORIGIN:?Set the exact dashboard URL origin}
-      LOG_TARGETS: stdout
-    volumes:
-      - config:/app/config:ro
     stop_grace_period: 30s
     deploy:
       replicas: 1

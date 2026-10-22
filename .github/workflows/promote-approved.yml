@@ -1,5 +1,5 @@
-# Dormant definition: this directory is not scanned by GitHub Actions.
-# Activate in .github/workflows only after the concrete delivery/setup review.
+# Official publication requires the exact owner-approved candidate and release.
+# The .github/workflows definition and release/workflows copy must match.
 name: Promote an exact owner-approved release
 
 on:

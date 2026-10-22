@@ -1,83 +1,191 @@
-# Container deployment
+# Deployment
 
-This branch is unreleased. The [candidate delivery process](CANDIDATES.md) produces the tested image pair and digest-pinned Portainer templates for deployment testing; official release assets follow owner acceptance. The source-tree environment example intentionally contains no image digest. Use the exact bundle whose image availability and engineering evidence have been verified.
+Studio deploys one complete application image. Its public Node controller and
+controlled Homepage runtime share one version, image, UID and lifecycle. Native
+workers are private child processes, created on demand per dashboard. The root
+templates define one `studio` service and two persistent volumes; no public
+Homepage or companion renderer service is required.
 
-## Installing a delivered candidate or release
+The single-container revision must complete the gates in
+[VERIFICATION.md](../VERIFICATION.md) before a deployment-ready candidate is
+claimed. The historical companion candidate is not qualification for this source.
 
-A delivered candidate or approved release includes two prebuilt images and separate Portainer templates for Swarm and standalone Docker. The configuration service is the dashboard's entry point; it serves Studio's editing API and forwards native Homepage requests to the renderer. Both images must come from the same accepted build. The native renderer is a pinned Homepage derivative containing the Studio board.
+## Installation contract
 
-Installation uses these steps:
+Use the digest-pinned Compose or Swarm template from a delivered candidate or
+approved release bundle. The candidate image must identify both `linux/amd64`
+and `linux/arm64`, its exact source commit and matching corresponding source.
+Portainer pulls the existing image; it does not compile source.
 
-1. In Portainer, use the delivered bundle's `portainer-swarm.yml` or `portainer-compose.yml`. For an empty first evaluation, use a new stack and its new named volumes. If integrating into an existing stack, include both Studio services and check names, volumes and the published port before deployment.
-2. Set `STUDIO_PUBLIC_ORIGIN` to the exact address used in the browser, including a nondefault port. Set `STUDIO_PORT` if the default published port of `3000` is unsuitable. For Swarm, set `STUDIO_NODE` to the unique hostname of the node selected to hold the data.
-3. Deploy, wait for both services to become healthy, and open the configured address. The first dashboard is empty. Configure native widgets through Studio using the endpoints and credentials required by the widgets you select.
+| Value | Meaning | Default |
+| --- | --- | --- |
+| `STUDIO_IMAGE` | Exact qualified application index digest in source templates; delivered templates already pin it | Required |
+| `STUDIO_PUBLIC_ORIGIN` | Exact external HTTP(S) origin, including a nonstandard port when used, without a dashboard slug | Required |
+| `STUDIO_PORT` | Host port mapped to controller port 3000 | `3000` |
+| `STUDIO_NODE` | Swarm node hostname holding both named volumes | Required for Swarm |
+| `STUDIO_BACKUP_RETENTION` | Snapshots retained for each dashboard | `25` |
+| `STUDIO_RENDERER_MAX_WORKERS` | Maximum simultaneously resident native dashboard workers | `8` |
+| `STUDIO_RENDERER_IDLE_SECONDS` | Idle worker lifetime before reclamation | `600` |
+| `STUDIO_RENDERER_STARTUP_SECONDS` | Native worker startup deadline | `30` |
 
-Delivered templates contain exact image digests. There is no build step in Portainer. The source-tree templates use `STUDIO_IMAGE` and `HOMEPAGE_IMAGE` placeholders so CI can qualify images before publication; they are not a claim that a pullable release already exists.
+For example, the shared origin can be `https://homepage.example.test` while
+dashboard addresses are `/admin`, `/family` and `/dashboard-1`. Configure the
+origin once, then manage slugs inside Studio. A slug does not require another
+accepted hostname or container. HTTPS, DNS, proxy routing and external access
+controls remain part of the deployment owner's network configuration.
 
-The application relies on the deployment's existing private network/access arrangement. The templates expose only the configuration service, do not add a login layer, and do not mount a Docker socket. Native integrations that need credentials, secret files, host paths or Docker API access still require their documented configuration.
+An external proxy must preserve the full dashboard path and query, the original
+accepted Host header, and supported upgrade/streaming traffic when used. It must
+route the entire application origin, including shared `/_next/static/` assets and
+global `/__studio/` management endpoints, to the controller. Do not strip a slug
+or rely on Referer/last-selected state to choose a dashboard. Normal configuration
+requests are bounded to 2 MiB of serialized JSON. Complete dashboard imports can
+use up to 40 MiB of serialized JSON, while each imported file/state remains
+limited to 2 MiB. An external proxy with a lower body limit can reject an otherwise
+valid import before Studio sees it; configure the intended limit externally.
 
-## Storage, startup and updates
+Native `HOMEPAGE_VAR_*` values, `HOMEPAGE_FILE_*` file references and necessary
+secret mounts belong on the single `studio` container. Adding a variable to
+Portainer's substitution list alone does not inject it into that container;
+explicitly declare the corresponding container environment or mount in the
+deployment. These infrastructure inputs are shared by the deployment even though
+each dashboard chooses its own references. Use only the mounts required for the
+actual native integrations; the supplied product templates mount no Docker
+socket and do not presume any service inventory.
 
-| Item | Behavior |
+The entrypoint derives the exact native allowed host and health-check Host header
+from the configured origin. Do not use a wildcard or put a path/query/fragment in
+the origin. Controller port 3000 is the only product port published. Workers use
+random loopback-only ports inside the container. Native authentication and MCP
+configuration writes are disabled in the controlled runtime.
+
+## Persistence and dashboards
+
+Both controller and workers run as UID/GID 1000. Named volumes created by the
+image use that ownership. Existing bind mounts must be writable by the same UID;
+private state directories use mode 0700. The application does not chown arbitrary
+host directories or run as root to repair permissions.
+
+| Persistent location | Contents |
 | --- | --- |
-| `config` named volume | All nine native configuration files. The writer mounts it read/write; the renderer mounts it read-only. |
-| `state` named volume | Studio's panel state, transaction recovery data and snapshots. Only the writer mounts it. |
-| Default process identity | UID `1000`, GID `1000` in both images. Image mount directories are created with that ownership for new named volumes. |
-| First start | Only missing configuration files are created, with empty lists/maps or empty CSS/JavaScript. Existing regular files are preserved. |
-| Interrupted save | A pending transaction prevents entrypoint seeding. The writer recovers it before completing configuration initialization. |
-| Startup coordination | Writer container health checks local configuration readiness. The renderer waits for that live configuration endpoint before starting. The external `/__studio/ready` endpoint additionally verifies the native protocol, source pin and matching build revision. |
-| Snapshot default | The newest `25` snapshots, configurable through `STUDIO_BACKUP_RETENTION`. |
-| Runtime logs | Native Homepage logs to stdout. The read-only configuration mount is not used for log files. |
+| `/app/config` | Original dashboard's nine native files, the dashboard registry and its initialization marker |
+| `/app/state` | Original dashboard identities/layout, journal and snapshots |
+| `/app/config/dashboards/<immutable-id>` | Each additional dashboard's nine native files |
+| `/app/state/dashboards/<immutable-id>` | That dashboard's identities/layout, discovery state, journal and snapshots |
 
-Keep the stack/project name and both named volumes when updating. Change both image references to the approved release's digests and redeploy. Retain the previous release manifest and a configuration/state backup so a rollback has both its images and its data. Restoring a configuration snapshot and reverting an application image are separate actions.
+Each dashboard owns services, service widgets, information widgets, bookmarks,
+native settings, Docker/Kubernetes/Proxmox configuration, custom CSS and custom
+JavaScript. Layout, stack membership/playback preferences, theme and colors are
+independent. Create an empty dashboard or duplicate a configured one, then edit
+either without changing the other. Address/name changes preserve the immutable
+ID. Archiving preserves files and history, reserves its slug and stops serving
+the page; restore returns it with the same data.
 
-The default Swarm template keeps one writer and one renderer on the same selected node. Both update and rollback use `stop-first`; brief downtime during an update is expected. The configured hostname must identify exactly one node. A local named volume is local to its Docker host, so this template does not promise automatic data failover to another node. Moving the application requires an explicit migration of both volumes. Docker documents the placement and local-volume behavior in its [Swarm service guide](https://docs.docker.com/engine/swarm/services/).
+The original dashboard remains in place when registry support is initialized.
+An initialized deployment with a missing/corrupt registry fails visibly instead
+of silently inventing a new empty list. Preserve the registry, marker and both
+volume trees together in host backups. Slugs are organizational addresses, not
+access-control boundaries; trusted users who can use the editor on this origin
+can manage the deployment. Studio adds no user authentication platform.
 
-Standalone Docker uses the same two images and volumes with an ordinary Compose network. Swarm publishes the selected port in host mode on the selected node. The published port, browser origin, and any existing reverse proxy must agree. `HOMEPAGE_ALLOWED_HOSTS` is derived from that origin by the entrypoints, including its nondefault port; wildcard defaults are rejected. See [Homepage's Docker configuration](https://gethomepage.dev/installation/docker/) for its hostname requirement and integration-specific mounts.
+Portable export/import includes one dashboard's nine files and Studio state.
+It does not include deployment environment variables, mounted secret files,
+sockets or external credentials stored outside those files. A snapshot belongs
+to one dashboard. Import into another dashboard is an explicit validated action
+using the destination revision and a recovery snapshot.
 
-Writer container health must not depend on the renderer. Swarm enables service routing after a container becomes healthy, as shown in the [Docker 28.0.4 executor](https://github.com/moby/moby/blob/v28.0.4/daemon/cluster/executor/container/controller.go). Depending on renderer readiness there would prevent the renderer from reaching its own writer prerequisite. Container health uses `/__studio/config-ready`; complete application monitoring should use `/__studio/ready`, which continues to reject an absent or mismatched renderer.
+## Compose and Swarm
 
-Existing bind-mounted configurations are an advanced migration path. Their directories must already be writable by UID/GID `1000:1000` for the writer. Startup does not recursively change ownership of an existing host directory, follow configuration symlinks, or replace existing files with sample content.
+`portainer-compose.yml` runs one service with `restart: unless-stopped` and a
+30-second stop grace. It can be deployed as its own stack or incorporated into an
+existing stack with intentionally distinct service/volume names and an unused
+published port.
 
-## How the images are built
+`portainer-swarm.yml` uses the legacy Compose v3.8 format, one replica, a single
+selected storage node, host-mode publication and stop-first update/rollback.
+Both production stability monitors remain 180 seconds. Local named volumes are
+node-local: moving the service to another node requires deliberately moving the
+complete configuration and state. Do not scale the controller to multiple writers
+against these same volumes. Keep the 30-second container stop grace.
 
-`upstream.lock.json` identifies the Homepage commit, the downloaded archive hash, original and prepared package/lockfile hashes, the Node base-image digest and the pnpm version. `scripts/prepare-homepage.py` verifies the archive before extracting it, rejects unsafe archive entries, removes the upstream unlocked `npx only-allow` package-manager guard, applies only the recorded dependency correction, creates empty build-time config and applies the reviewed overlay/transform. Before replacing the original page and its composition tests, it invokes the overlay's read-only baseline check against their recorded source hashes. Its output is `.build/homepage/`. The prepared dependency files are checked again after the overlay, and `studio-source.json` records their hashes and advisory provenance.
+The actual Docker CLI `stack config` parser is a required gate. Required-value
+messages intentionally contain no hyphens because the tested legacy parser can
+misinterpret default-operator syntax inside those messages. Template guards are
+retained for image, origin and Swarm node.
 
-The reviewed dependency correction pins `follow-redirects` from upstream's `1.16.0` to `1.16.1` without resolving or updating other dependencies. It addresses the maintainer's [array-header redirect advisory](https://github.com/follow-redirects/follow-redirects/security/advisories/GHSA-q3jh-wrc6-jgq8) and [sensitive-header escaping advisory](https://github.com/follow-redirects/follow-redirects/security/advisories/GHSA-8r9p-f939-6h3c). Dedicated real HTTP fixtures verify object/array credential stripping across origins, exact matching of custom header names and retained same-origin credentials. The original source hashes remain recorded separately from the patched runtime hashes.
+## Health and worker behavior
 
-`Dockerfile.homepage` requires a manifest confirming the Studio overlay, runs the complete native `pnpm test` suite, the redirect-security regressions and the production dependency audit, and builds the native standalone Next.js server from this prepared source. Builder and runtime use the same pinned Debian Node image, avoiding a glibc/musl runtime mismatch. Native configuration files and logs are kept out of the image's persistent application state. `Dockerfile` builds the writer from its locked npm dependencies. Both images carry the same immutable `STUDIO_BUILD_REVISION` and the repository source label.
+Global `/__studio/application-ready` validates the dashboard registry, shared
+storage and complete standalone runtime/assets without requiring a dashboard
+worker to start. Docker health uses that endpoint. Selected
+`/[slug]/__studio/config-ready` checks that dashboard's configuration/storage;
+`/[slug]/__studio/ready` also requires its native build/protocol handshake.
 
-For a local development build with Docker already available:
+A broken default dashboard must not restart the container or block other valid
+dashboards, shared assets or deployment management. A shared registry/storage or
+runtime failure makes global health fail. Native worker crashes are recovered on
+a subsequent request, using the same persisted dashboard configuration. Changing
+a slug or archive state drains obsolete worker contexts.
 
-```sh
-npm ci --ignore-scripts
-npm test
-node --test test/*.test.mjs
-python3 -m unittest discover -s test -p 'test_*.py'
-python3 scripts/prepare-homepage.py
-export STUDIO_BUILD_REVISION="$(git rev-parse HEAD)"
-docker build --build-arg STUDIO_BUILD_REVISION --tag homepage-studio:local --file Dockerfile .
-docker build --build-arg STUDIO_BUILD_REVISION --tag homepage-studio-renderer:local --file Dockerfile.homepage .
-```
+Worker limits bound resource use. Idle workers can be reclaimed; active requests
+are not silently evicted when capacity is exhausted. The native process startup
+deadline and global browser/test budgets are not substitutes for adequate memory
+on the target host. The dashboard count and concurrently active workers are
+separate limits.
 
-Source preparation refuses to overwrite an existing build directory. Review or remove an obsolete disposable `.build/homepage` before preparing a new tree. Do not replace the pinned upstream with a moving tag or mix the writer with the unmodified upstream container: the versioned health protocol will correctly reject that pairing.
+The registry supports 64 dashboards including archived entries. Worker count
+accepts 1–64. Idle duration is bounded to 10 ms–24 hours and startup to
+50 ms–120 seconds; environment values are expressed in seconds. The documented
+600/30-second defaults are the normal starting point. These are resource limits
+within one container, not tenant-security guarantees.
 
-## What validation establishes
+## Build and qualification
 
-The native qualification jobs run on `amd64` and `arm64` GitHub-hosted runners. They run unit/fixture tests, prepare the pinned source, build both images into the runner's local Docker daemon, and exercise fresh Compose and one-node Swarm deployments. The integration suite checks empty first-run configuration, native protocol identity, nonroot processes, read-only renderer configuration, edits, snapshots, restart/replacement persistence and restore. It refuses an existing Swarm and is restricted to explicitly enabled disposable GitHub-hosted runners.
+The root Dockerfile directly copies the controlled `homepage/` tree. It uses the
+pinned Node image, verifies the pinned pnpm package integrity, installs frozen
+dependencies, runs production dependency audits, redirect security regression
+checks, full native lint/tests and a production standalone build. It packages the
+controller, native runtime, assets, shared configuration helpers, GPL/AGPL and
+font/dependency notices in the final image.
 
-The lifecycle test first starts only the writer, requires its actual Docker health to succeed, and verifies that aggregate application readiness remains HTTP 503. It then starts the renderer and runs the full application checks. This prevents a renderer-dependent container healthcheck from silently reintroducing the Swarm startup cycle. Failure diagnostics are bounded and omit environment/configuration values; service replacement retains the production stability monitor.
+The source guard rejects modified tracked source and ignored/untracked inputs
+within every Docker-copied subtree. Docker-excluded generated dependencies/build
+outputs are allowed locally and excluded from corresponding source. One
+deterministic `studio-source.tar.gz` binds the complete source and licenses to
+the exact candidate commit. See [native source](NATIVE-SOURCE.md).
 
-Cleanup waits for running and stopped Swarm task containers to disappear before removing fixture volumes. It attempts all cleanup steps even after an error. A cleanup error fails an otherwise successful run; if qualification already failed, that original error remains the primary result.
+Both native architecture jobs must qualify the actual complete image through
+direct Compose/Swarm and pinned Portainer CE 2.45.2. The runtime fixture covers
+fresh nine-file configuration, real-volume adoption of existing root data and
+snapshots, `/admin` address/root-redirect preservation, independent dashboards/layouts/stacks, duplication
+and divergence, rename/archive/restore/import, foreign-snapshot rejection,
+persistence after restart/replacement, actual UID/loopback workers, child-crash
+recovery, default-dashboard failure isolation and exact snapshot retention.
+Portainer tests deploy the unchanged templates and explicit environment through
+its real API, verify image identity, replacement, retained data and cleanup.
+Its temporary loopback registry and Docker socket belong only to the disposable
+test infrastructure and never become product mounts.
 
-Before image builds, `node --test test/swarm-parser.mjs` invokes the actual Docker CLI's daemon-free `stack config` parser. It verifies both image values, origin, node placement and defaults, and rejects unset/empty required values. Keep required-variable help messages free of hyphens: the legacy parser in the tested Docker 28.0.4 client checks default operators before required operators and misreads hyphens in that message text. The production Swarm template retains its `:?` guards. Docker documents that [stack deployment uses the legacy Compose v3 format](https://docs.docker.com/engine/swarm/stack-deploy/); the exact interpolation behavior is in its [versioned parser source](https://github.com/docker/cli/blob/v28.0.4/cli/compose/template/template.go).
+Chromium runs the full production suite, including scoped dashboard behavior and
+intentional stack-title selection. Firefox and WebKit run the designated desktop
+gates. A headed browser checks real hidden-document timer suspension. The
+expanded full suite has a 15-minute aggregate budget and a 16-minute parent
+deadline; individual test/action bounds stay unchanged and retries remain zero.
+Cleanup failure fails qualification. No real external integrations or owner
+host deployment are implied by these fixtures.
 
-`browser/` has a separate development-only lockfile for Playwright. CI installs Chromium, Firefox and WebKit with their required system libraries in the disposable runner using the [official Playwright CI procedure](https://playwright.dev/docs/ci). Chromium exercises the actual two-image deployment: empty first run, native content creation, guided editing, deletion, independent sizing/movement, mixed stacks, persistence across reload, Play/Pause, keyboard/mouse/trackpad controls, manual holds, inactive accessibility state, settings and all-nine-file transactions, revision conflicts, snapshot restoration, embedded content and dense native widgets. Touch input uses Chromium's input protocol; deterministic timer assertions use Playwright's browser clock. The same pointer and native-search persistence scenarios also run in Firefox and WebKit. A separate headed Chromium check uses actual tab activation and elapsed time to verify hidden-document suspension and resumption without fake visibility or focus emulation. These are browser integration checks, separate from unit/jsdom checks. They do not emulate Samsung firmware or prove physical-device gesture feel.
+## Upgrades and rollback
 
-After direct Docker qualification, `scripts/portainer-acceptance.mjs` runs both unchanged templates through pinned Portainer CE 2.45.2 in the disposable hosted runner. It verifies stored template/environment values, asynchronous deployment completion, exact image/source identities, nonroot execution, edits and snapshots, real container replacement, persistence, restore and resource cleanup. Initial Swarm image resolution uses a temporary registry bound to loopback, holding only the already-built test images. The product does not receive a Docker socket or registry credentials. The fixture retains the production Swarm update monitors and fails on cleanup errors. Its local API-contract tests are separate from actual hosted Portainer execution.
+Keep the previous digest-pinned application image and a matching complete backup
+of configuration and state. Stop the old application before another writer uses
+those volumes. Deploy the complete new image and verify global plus selected
+dashboard readiness. For rollback, restore the previous image and its matching
+data set together. Do not combine the controlled controller with a public or
+independently updated Homepage renderer.
 
-Default-branch pushes use the candidate workflow for one complete two-architecture qualification. An explicit `[deliver-candidate]` commit marker or a deliberate manual dispatch also retains the tested images in GHCR and creates the deployment bundle; ordinary pushes stop after validation. Pull requests use the separate nonpublishing validation workflow, which also retains a manual dispatch option. Candidate operations are serialized without cancelling a partial delivery. No candidate operation creates an official Git date tag or GitHub release, or deploys to an owner's host. The temporary loopback registry used for Portainer qualification is removed after those checks. GitHub documents [event and branch filters](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow) and [concurrency behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
-
-GitHub's [hosted-runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) lists native Linux runners for both required architectures. Docker's [test-before-push guide](https://docs.docker.com/build/ci/github-actions/test-before-push/) documents loading an image locally for testing. A requested candidate retains those exact tested images after successful qualification.
-
-A passing automated run does not establish Samsung device gesture quality, every native widget's live credentials/API behavior, or compatibility with an uninspected Portainer host. Browser/device acceptance and the concrete target installation remain required before an official release. See [RELEASES.md](RELEASES.md) for artifact identity and approval gates.
+An engineering candidate contains exact source, image, templates, verification
+and a delivery receipt proving anonymous runtime-layer availability. Human
+acceptance covers the intended physical device, network/Portainer host, real
+integration credentials and visual preference after engineering gates are
+complete. Official dated promotion is separate and reuses those accepted bytes;
+see [candidates](CANDIDATES.md) and [release policy](RELEASES.md).

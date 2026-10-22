@@ -76,6 +76,59 @@ test('reviewed prose-only authentication, volume, locale, and version options ar
   assert.match(widget('komga').setupNotes.join(' '),/takes precedence/);
 });
 
+test('blank documented credentials have reviewed string controls without becoming defaults', () => {
+  for (const [type, key] of [['photoprism', 'key'], ['gamedig', 'gameToken']]) {
+    for (const source of [catalog, shipped]) {
+      const credential = field(type, key, 'service', source);
+      assert.ok(credential, `${type}.${key} must be configurable without copying YAML`);
+      assert.deepEqual(credential.valueTypes, ['string']);
+      assert.equal(credential.sensitive, true);
+      assert.equal(credential.exampleValue, null);
+      assert.equal(Object.hasOwn(widget(type, 'service', source).defaults, key), false);
+    }
+  }
+  assert.match(widget('photoprism').setupNotes.join(' '), /Username plus password takes precedence/);
+});
+
+test('reviewed nonstandard documentation lists expose native field selections', () => {
+  const expected = {
+    backrest: ['num_success_latest', 'num_failure_latest', 'num_success_30', 'num_plans', 'num_failure_30', 'bytes_added_30'],
+    dockhand: ['running', 'stopped', 'paused', 'total', 'cpu', 'memory', 'images', 'volumes', 'events_today', 'pending_updates', 'stacks'],
+    emby: ['movies', 'series', 'episodes', 'songs'],
+    evcc: ['pv_power', 'grid_power', 'home_power', 'charge_power'],
+    suwayomi: ['download', 'nondownload', 'read', 'unread', 'downloadedread', 'downloadedunread', 'nondownloadedread', 'nondownloadedunread'],
+    unraid: ['cpu', 'memoryPercent', 'memoryAvailable', 'memoryUsed', 'notifications', 'arrayFree', 'arrayUsedSpace', 'arrayUsedPercent', 'status', 'pool1UsedSpace', 'pool1FreeSpace', 'pool1UsedPercent', 'pool2UsedSpace', 'pool2FreeSpace', 'pool2UsedPercent', 'pool3UsedSpace', 'pool3FreeSpace', 'pool3UsedPercent', 'pool4UsedSpace', 'pool4FreeSpace', 'pool4UsedPercent'],
+  };
+  for (const [type, choices] of Object.entries(expected)) {
+    for (const source of [catalog, shipped]) {
+      const selection = field(type, 'fields', 'service', source);
+      assert.ok(selection, `${type} documented fields must be available in the form`);
+      assert.deepEqual(selection.choices, choices);
+      assert.deepEqual(selection.valueTypes, ['array']);
+      assert.equal(selection.exampleValue, null);
+      assert.equal(Object.hasOwn(widget(type, 'service', source).defaults, 'fields'), false);
+    }
+  }
+  for (const type of ['backrest', 'dockhand', 'suwayomi', 'unraid']) assert.equal(field(type, 'fields').maxItems, 4);
+  assert.match(widget('emby').setupNotes.join(' '), /enableBlocks/);
+  assert.match(widget('unraid').setupNotes.join(' '), /pool name/);
+  assert.match(field('evcc', 'fields').source, /src\/widgets\/evcc\/component\.jsx$/);
+});
+
+test('Portainer field options retain the Docker and Kubernetes mode boundary', () => {
+  for (const source of [catalog, shipped]) {
+    const selection = field('portainer', 'fields', 'service', source);
+    assert.ok(selection);
+    assert.equal(selection.choices, undefined);
+    assert.deepEqual(selection.optionGroups, [
+      { context: 'Docker mode (kubernetes omitted or false)', choices: ['running', 'stopped', 'total'] },
+      { context: 'Kubernetes mode (kubernetes: true)', choices: ['applications', 'services', 'namespaces'] },
+    ]);
+    assert.equal(Object.hasOwn(widget('portainer', 'service', source).defaults, 'fields'), false);
+    assert.equal(Object.hasOwn(widget('portainer', 'service', source).defaults, 'kubernetes'), false);
+  }
+});
+
 test('valid union types and UPS names retain their native meaning', () => {
   assert.deepEqual(field('resources','network','info').valueTypes,['boolean','string']);
   assert.deepEqual(field('glances','disk','info').valueTypes,['string','array']);

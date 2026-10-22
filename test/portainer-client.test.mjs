@@ -8,9 +8,8 @@ import { promisify } from 'node:util';
 import { PortainerClient, PORTAINER_IMAGE, PORTAINER_VERSION, REGISTRY_IMAGE, cleanupPortainerStack, inspectFixtureManifest, readSwarmClusterId, stackPayload } from '../scripts/portainer-client.mjs';
 
 const environment = {
-  STUDIO_IMAGE: '127.0.0.1:15000/studio-writer@sha256:' + 'a'.repeat(64),
-  HOMEPAGE_IMAGE: '127.0.0.1:15000/studio-renderer@sha256:' + 'b'.repeat(64),
-  STUDIO_PUBLIC_ORIGIN: 'http://localhost:17779', STUDIO_PORT: '17779', STUDIO_BACKUP_RETENTION: '25', STUDIO_NODE: 'disposable-node',
+  STUDIO_IMAGE: '127.0.0.1:15000/studio-application@sha256:' + 'a'.repeat(64),
+  STUDIO_PUBLIC_ORIGIN: 'http://localhost:17779', STUDIO_PORT: '17779', STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30', STUDIO_NODE: 'disposable-node',
   UNRELATED_SECRET: 'must-not-be-sent',
 };
 const json = (value, status = 200) => new Response(status === 204 ? null : JSON.stringify(value), { status });
@@ -41,7 +40,7 @@ test('Portainer acceptance refuses missing opt-ins and self-hosted runners befor
     });
   }
   await assert.rejects(execute(process.execPath, [script], { env: { ...enabled, RUNNER_ENVIRONMENT: 'self-hosted' }, timeout: 10000 }), /disposable GitHub-hosted runner/);
-  await assert.rejects(execute(process.execPath, [script], { env: enabled, timeout: 10000 }), /both already-built local images and their exact expected source revision/);
+  await assert.rejects(execute(process.execPath, [script], { env: enabled, timeout: 10000 }), /the already-built application image and its exact expected source revision/);
 });
 
 test('Portainer fixture is digest pinned and supports only a loopback test origin', () => {
@@ -60,7 +59,7 @@ test('both exact product templates use the documented Portainer payload and expl
     const payload = stackPayload(input);
     assert.equal(payload.StackFileContent, template);
     assert.equal(payload.SwarmID, swarm ? 'synthetic-swarm' : undefined);
-    assert.equal(payload.Env.length, swarm ? 6 : 5);
+    assert.equal(payload.Env.length, swarm ? 8 : 7);
     assert.ok(payload.Env.every(item => Object.keys(item).join(',') === 'name,value'));
     assert.ok(!JSON.stringify(payload).includes(environment.UNRELATED_SECRET));
     for (const key of payload.Env.map(item => item.name)) {
@@ -68,7 +67,7 @@ test('both exact product templates use the documented Portainer payload and expl
     }
     assert.match(payload.StackFileContent, /\$\{STUDIO_IMAGE:\?/);
     assert.doesNotMatch(payload.StackFileContent, /docker\.sock|portainer-ce/);
-    if (swarm) assert.equal((payload.StackFileContent.match(/monitor: 180s/g) || []).length, 4);
+    if (swarm) assert.equal((payload.StackFileContent.match(/monitor: 180s/g) || []).length, 2);
   }
 });
 
@@ -162,13 +161,13 @@ test('registry transfer verifies exact manifest bytes and the already-built conf
   const bytes = JSON.stringify(manifest);
   const digest = 'sha256:' + createHash('sha256').update(bytes).digest('hex');
   const fetchImpl = async url => {
-    assert.equal(url, 'http://127.0.0.1:15000/v2/studio-writer/manifests/source');
+    assert.equal(url, 'http://127.0.0.1:15000/v2/studio-application/manifests/source');
     return new Response(bytes, { headers: { 'docker-content-digest': digest } });
   };
-  const value = await inspectFixtureManifest({ repository: 'studio-writer', expectedConfig, architecture: 'amd64' }, { fetchImpl });
-  assert.deepEqual(value, { reference: `127.0.0.1:15000/studio-writer@${digest}`, manifestDigest: digest, configDigest: expectedConfig });
-  await assert.rejects(inspectFixtureManifest({ repository: 'studio-writer', expectedConfig: 'wrong-config', architecture: 'amd64' }, { fetchImpl }), /preserve/);
-  await assert.rejects(inspectFixtureManifest({ repository: 'studio-writer', expectedConfig, architecture: 'amd64' }, { fetchImpl: async () => new Response(bytes, { headers: { 'docker-content-digest': 'sha256:' + 'd'.repeat(64) } }) }), /advertised digest/);
+  const value = await inspectFixtureManifest({ repository: 'studio-application', expectedConfig, architecture: 'amd64' }, { fetchImpl });
+  assert.deepEqual(value, { reference: `127.0.0.1:15000/studio-application@${digest}`, manifestDigest: digest, configDigest: expectedConfig });
+  await assert.rejects(inspectFixtureManifest({ repository: 'studio-application', expectedConfig: 'wrong-config', architecture: 'amd64' }, { fetchImpl }), /preserve/);
+  await assert.rejects(inspectFixtureManifest({ repository: 'studio-application', expectedConfig, architecture: 'amd64' }, { fetchImpl: async () => new Response(bytes, { headers: { 'docker-content-digest': 'sha256:' + 'd'.repeat(64) } }) }), /advertised digest/);
   await assert.rejects(inspectFixtureManifest({ repository: 'example.test/public', expectedConfig, architecture: 'amd64' }, { fetchImpl }));
 });
 
@@ -181,10 +180,10 @@ test('registry index selection requires one exact native platform and verifies c
   const fetchImpl = async url => url.endsWith('/source')
     ? new Response(index, { headers: { 'docker-content-digest': indexDigest } })
     : new Response(child, { headers: { 'docker-content-digest': childDigest } });
-  const value = await inspectFixtureManifest({ repository: 'studio-renderer', expectedConfig, architecture: 'arm64' }, { fetchImpl });
+  const value = await inspectFixtureManifest({ repository: 'studio-application', expectedConfig, architecture: 'arm64' }, { fetchImpl });
   assert.equal(value.manifestDigest, indexDigest);
   assert.equal(value.configDigest, expectedConfig);
-  await assert.rejects(inspectFixtureManifest({ repository: 'studio-renderer', expectedConfig, architecture: 'amd64' }, { fetchImpl }), /exactly one current-platform/);
+  await assert.rejects(inspectFixtureManifest({ repository: 'studio-application', expectedConfig, architecture: 'amd64' }, { fetchImpl }), /exactly one current-platform/);
 });
 
 function cleanupFixture({ apiFails = false, firstVolumeFails = false } = {}) {

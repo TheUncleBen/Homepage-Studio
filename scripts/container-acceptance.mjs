@@ -10,15 +10,15 @@ import { createDashboardFixture, eventually } from './acceptance-fixture.mjs';
 if (process.env.STUDIO_TEST_CONTAINERS !== '1' || process.env.GITHUB_ACTIONS !== 'true' || process.env.RUNNER_ENVIRONMENT !== 'github-hosted') {
   throw new Error('Container acceptance requires an explicitly enabled, disposable GitHub-hosted runner.');
 }
-if (!process.env.STUDIO_IMAGE || !process.env.HOMEPAGE_IMAGE || !/^[a-f0-9]{40}$/.test(process.env.STUDIO_EXPECTED_REVISION || '')) {
-  throw new Error('Provide both locally built image names and the exact expected source commit.');
+if (!process.env.STUDIO_IMAGE || !/^[a-f0-9]{40}$/.test(process.env.STUDIO_EXPECTED_REVISION || '')) {
+  throw new Error('Provide the locally built application image and the exact expected source commit.');
 }
 
 const execute = promisify(execFile);
 const identity = `studio-acceptance-${process.pid}`;
 const port = 17778;
 const origin = `http://localhost:${port}`;
-const env = { ...process.env, STUDIO_PUBLIC_ORIGIN: origin, STUDIO_PORT: String(port), STUDIO_BACKUP_RETENTION: '25' };
+const env = { ...process.env, STUDIO_PUBLIC_ORIGIN: origin, STUDIO_PORT: String(port), STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30' };
 const composeArgs = ['compose', '--project-name', identity, '--file', 'portainer-compose.yml'];
 let composeStarted = false;
 let swarmStarted = false;
@@ -34,16 +34,139 @@ async function docker(args, options = {}) {
   }
 }
 
-const { request, ready, state, freshAndEdit, assertPersisted, restoreEmpty } = createDashboardFixture({
+const { request, ready, state, freshAndEdit, assertPersisted, restoreEmpty, assertLegacyAdopted, multiDashboard, assertDashboardsPersisted } = createDashboardFixture({
   origin, expectedRevision: env.STUDIO_EXPECTED_REVISION,
 });
 
-async function composeHealth(services = ['studio', 'homepage']) {
+async function composeHealth(services = ['studio']) {
   await eventually(async () => {
     const ids = (await docker([...composeArgs, 'ps', '--quiet', ...services])).split('\n').filter(Boolean);
     assert.equal(ids.length, services.length);
     for (const id of ids) assert.equal(await docker(['inspect', '--format', '{{.State.Health.Status}}', id]), 'healthy');
   }, `Docker health: ${services.join(', ')}`);
+}
+
+async function seedLegacyRootVolumes() {
+  // Initialize the pre-registry root file/state format on real product volumes,
+  // without starting the controller or creating a dashboard registry. This is
+  // synthetic existing-installation data, never an owner's deployment.
+  await docker([...composeArgs, 'create', '--no-build', '--pull', 'never']);
+  const id = await docker([...composeArgs, 'ps', '--all', '--quiet', 'studio']);
+  const container = JSON.parse(await docker(['inspect', id]))[0];
+  const mounts = ['/app/config', '/app/state'].map(target => {
+    const mount = container.Mounts.find(item => item.Destination === target);
+    assert.ok(mount?.Name, 'Legacy fixture requires disposable named product volumes');
+    return `type=volume,source=${mount.Name},target=${target}`;
+  });
+  const program = `
+    import fs from 'node:fs/promises';
+    import { createHash } from 'node:crypto';
+    import { createConfigStore } from './server/config.mjs';
+    const store = createConfigStore({ configDir: '/app/config', stateDir: '/app/state' });
+    await store.initialize();
+    const initial = await store.load();
+    await store.save({ revision: initial.revision,
+      servicesYaml: '- Existing:\\n    - Retained service:\\n        href: https://example.test/legacy\\n',
+      settingsYaml: '# Existing root settings\\ntitle: Legacy adoption fixture\\n',
+      widgetsYaml: '- greeting:\\n    text: Retained existing content\\n',
+      bookmarksYaml: '- Existing:\\n    - Reference:\\n        - href: https://example.test/reference\\n',
+      dockerYaml: '# Existing Docker configuration\\n{}\\n',
+      kubernetesYaml: '# Existing Kubernetes configuration\\n{}\\n',
+      proxmoxYaml: '# Existing Proxmox configuration\\n{}\\n',
+      customCss: ':root { --legacy-fixture: retained; }\\n',
+      customJs: 'window.__legacyFixture = "retained";\\n',
+    });
+    const archive = await store.exportCurrent();
+    const backups = await store.listBackups();
+    const hashes = {};
+    for (const name of Object.keys(archive.files)) {
+      const file = name === 'state.json' ? '/app/state/state.json' : '/app/config/' + name;
+      hashes[file] = createHash('sha256').update(await fs.readFile(file)).digest('hex');
+    }
+    for (const entry of backups) {
+      const file = '/app/state/backups/' + entry.id + '.json';
+      hashes[file] = createHash('sha256').update(await fs.readFile(file)).digest('hex');
+    }
+    if ((await fs.readdir('/app/config')).some(name => name.startsWith('studio-dashboards.'))) throw new Error('Fixture unexpectedly created a registry');
+    console.log(JSON.stringify({ archive, backups, hashes }));
+  `;
+  return JSON.parse(await docker(['run', '--rm', '--network', 'none', '--mount', mounts[0], '--mount', mounts[1], '--entrypoint', 'node', env.STUDIO_IMAGE, '--input-type=module', '-e', program]));
+}
+
+async function assertLegacyBytes(container, expected) {
+  const actual = JSON.parse(await docker(['exec', container, 'node', '-e', `
+    const fs = require('node:fs'), crypto = require('node:crypto');
+    const files = JSON.parse(process.argv[1]);
+    console.log(JSON.stringify(Object.fromEntries(files.map(file => [file, crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')]))));
+  `, JSON.stringify(Object.keys(expected.hashes))]));
+  assert.deepEqual(actual, expected.hashes, 'Registry adoption and default address changes must preserve every original file and snapshot byte');
+}
+
+async function workers(container) {
+  return JSON.parse(await docker(['exec', container, 'node', '-e', `
+    const fs = require('node:fs');
+    const records = [];
+    for (const pid of fs.readdirSync('/proc').filter(name => /^\\d+$/.test(name))) {
+      try {
+        const args = fs.readFileSync('/proc/' + pid + '/cmdline', 'utf8').split('\\0');
+        if (!args.includes('/app/homepage/server.js')) continue;
+        const env = Object.fromEntries(fs.readFileSync('/proc/' + pid + '/environ', 'utf8').split('\\0').filter(Boolean).map(value => { const split = value.indexOf('='); return [value.slice(0, split), value.slice(split + 1)]; }));
+        const status = fs.readFileSync('/proc/' + pid + '/status', 'utf8');
+        const port = Number(env.PORT);
+        const sockets = fs.readFileSync('/proc/' + pid + '/net/tcp', 'utf8').trim().split('\\n').slice(1).map(line => line.trim().split(/\\s+/));
+        const listeners = sockets.filter(fields => fields[3] === '0A' && parseInt(fields[1].split(':')[1], 16) === port);
+        records.push({ pid: Number(pid), id: env.STUDIO_DASHBOARD_ID, configDir: env.HOMEPAGE_CONFIG_DIR, hostname: env.HOSTNAME, mcpWrite: env.HOMEPAGE_MCP_ALLOW_WRITE, uid: Number(status.match(/^Uid:\\s+(\\d+)/m)[1]), port, addresses: listeners.map(fields => fields[1].split(':')[0]) });
+      } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
+    }
+    console.log(JSON.stringify(records));
+  `]));
+}
+
+async function assertWorkers(container, dashboards) {
+  assert.equal(await docker(['exec', container, 'id', '-u']), '1000');
+  const found = await workers(container);
+  for (const id of ['default', ...dashboards.map(item => item.dashboard.id)]) {
+    const selected = found.filter(item => item.id === id);
+    assert.equal(selected.length, 1, 'Each selected dashboard must have exactly one native child');
+    const worker = selected[0];
+    assert.equal(worker.uid, 1000);
+    assert.equal(worker.hostname, '127.0.0.1');
+    assert.equal(worker.mcpWrite, 'false');
+    assert.deepEqual(worker.addresses, ['0100007F'], 'The native TCP listener must bind only IPv4 loopback');
+    assert.equal(worker.configDir, id === 'default' ? '/app/config' : `/app/config/dashboards/${id}`);
+  }
+}
+
+async function crashWorker(container, record) {
+  const before = (await workers(container)).find(item => item.id === record.dashboard.id);
+  assert.ok(before, 'The crash scenario requires an actual running native child');
+  await docker(['exec', container, 'node', '-e', 'process.kill(Number(process.argv[1]), "SIGKILL")', String(before.pid)]);
+  await eventually(async () => {
+    await ready(`/${record.dashboard.slug}`);
+    const after = (await workers(container)).find(item => item.id === record.dashboard.id);
+    assert.ok(after && after.pid !== before.pid, 'A subsequent request must restart the crashed worker');
+  }, 'Native child crash recovery');
+  await assertDashboardsPersisted([record]);
+  assert.equal((await request('/__studio/application-ready')).json().status, 'ready');
+}
+
+async function assertBadDefaultIsolation(container, record) {
+  const settings = (await state()).settingsYaml;
+  try {
+    await docker(['exec', container, 'node', '-e', 'require("node:fs").writeFileSync("/app/config/settings.yaml", "invalid: [\\n")']);
+    await request('/__studio/ready', undefined, 503);
+    assert.equal((await request('/__studio/application-ready')).json().status, 'ready');
+    await assertDashboardsPersisted([record]);
+    const page = await request(`/${record.dashboard.slug}/`);
+    const sharedAsset = page.text.match(/(?:src|href)="([^" ]*\/_next\/static\/[^" ]+)"/);
+    assert.ok(sharedAsset, 'The actual native HTML must identify a shared build asset');
+    const assetPath = sharedAsset[1].slice(sharedAsset[1].indexOf('/_next/static/')).replaceAll('&amp;', '&');
+    await request(assetPath);
+    await docker(['exec', container, 'node', 'scripts/healthcheck.mjs', 'application']);
+  } finally {
+    await docker(['exec', container, 'node', '-e', 'require("node:fs").writeFileSync("/app/config/settings.yaml", Buffer.from(process.argv[1], "base64"))', Buffer.from(settings).toString('base64')]);
+  }
+  await ready();
 }
 
 async function diagnostic(label, operation) {
@@ -52,7 +175,7 @@ async function diagnostic(label, operation) {
 }
 
 async function swarmDiagnostics() {
-  for (const service of ['studio', 'homepage']) {
+  for (const service of ['studio']) {
     const name = `${identity}_${service}`;
     await diagnostic(`${name} tasks`, () => docker(['service', 'ps', '--no-trunc', name], { timeout: 15000 }));
     await diagnostic(`${name} specification`, async () => {
@@ -70,14 +193,10 @@ async function swarmDiagnostics() {
           import http from 'node:http';
           import https from 'node:https';
           const host = new URL(process.env.STUDIO_PUBLIC_ORIGIN).host;
-          const writer = process.argv[1] === 'studio';
-          const targets = writer ? [
-            ['local configuration', 'http://127.0.0.1:3001/__studio/config-ready'],
-            ['local aggregate', 'http://127.0.0.1:3001/__studio/ready'],
-            ['native service', new URL('/api/studio/health', process.env.HOMEPAGE_UPSTREAM)],
-          ] : [
-            ['local native', 'http://127.0.0.1:3000/api/studio/health'],
-            ['writer service', new URL('/__studio/config-ready', process.env.STUDIO_WRITER_ORIGIN)],
+          const targets = [
+            ['application', 'http://127.0.0.1:3000/__studio/application-ready'],
+            ['selected configuration', 'http://127.0.0.1:3000/__studio/config-ready'],
+            ['selected native readiness', 'http://127.0.0.1:3000/__studio/ready'],
           ];
           for (const [endpoint, url] of targets) {
             try {
@@ -108,28 +227,35 @@ try {
   assert.equal(await docker(['info', '--format', '{{.Swarm.LocalNodeState}}']), 'inactive', 'Refuse to use or alter an existing Swarm');
   await docker([...composeArgs, 'config', '--quiet']);
   composeStarted = true;
-  await docker([...composeArgs, 'up', '--detach', '--no-build', '--pull', 'never', 'studio']);
-  await composeHealth(['studio']);
-  assert.equal((await request('/__studio/config-ready')).json().status, 'ready');
-  const missingNative = await fetch(new URL('/__studio/ready', origin), { signal: AbortSignal.timeout(5000) });
-  assert.equal(missingNative.status, 503);
-  assert.equal((await missingNative.json()).code, 'HOMEPAGE_UNREACHABLE');
-  console.log('PASS: writer container health succeeds before native startup while aggregate readiness stays unavailable.');
+  const legacy = await seedLegacyRootVolumes();
   await docker([...composeArgs, 'up', '--detach', '--no-build', '--pull', 'never']);
-  const composeFixture = await freshAndEdit();
+  await assertLegacyAdopted(legacy);
   await composeHealth();
-  for (const service of ['studio', 'homepage']) assert.equal(await docker([...composeArgs, 'exec', '-T', service, 'id', '-u']), '1000');
-  await docker([...composeArgs, 'exec', '-T', 'homepage', 'node', '-e', `
-    const fs = require('node:fs');
-    const file = '/app/config/.studio-readonly-probe';
-    try { fs.writeFileSync(file, 'fixture'); fs.unlinkSync(file); process.exit(1); }
-    catch (error) { if (!['EROFS', 'EACCES'].includes(error.code)) throw error; }
-  `]);
+  await assertLegacyBytes(await docker([...composeArgs, 'ps', '--quiet', 'studio']), legacy);
+  await docker([...composeArgs, 'restart']);
+  await assertLegacyAdopted(legacy);
+  await assertLegacyBytes(await docker([...composeArgs, 'ps', '--quiet', 'studio']), legacy);
+  await docker([...composeArgs, 'down', '--volumes', '--remove-orphans']);
+  console.log('PASS: real legacy-root volume adoption, root-to-/admin redirect, native CSS/JS, complete byte/history preservation and idempotent restart.');
+  await docker([...composeArgs, 'up', '--detach', '--no-build', '--pull', 'never']);
+  await composeHealth();
+  assert.equal((await request('/__studio/application-ready')).json().status, 'ready');
+  const composeFixture = await freshAndEdit();
+  const dashboards = await multiDashboard();
+  const application = await docker([...composeArgs, 'ps', '--quiet', 'studio']);
+  await assertWorkers(application, dashboards);
+  await crashWorker(application, dashboards[0]);
+  await assertBadDefaultIsolation(application, dashboards[0]);
   await docker([...composeArgs, 'restart']);
   await assertPersisted(composeFixture);
+  await assertDashboardsPersisted(dashboards);
   await docker([...composeArgs, 'up', '--detach', '--force-recreate', '--no-build', '--pull', 'never']);
   await assertPersisted(composeFixture);
+  await assertDashboardsPersisted(dashboards);
   await restoreEmpty(composeFixture);
+  const recreated = JSON.parse(await docker(['inspect', await docker([...composeArgs, 'ps', '--quiet', 'studio'])]))[0];
+  const gateway = Object.values(recreated.NetworkSettings.Networks).map(item => item.Gateway).find(value => /^\d+\.\d+\.\d+\.\d+$/.test(value));
+  assert.ok(gateway, 'The disposable browser fixture needs the container bridge gateway');
   if (env.STUDIO_BROWSER_TESTS !== '1') throw new Error('The real browser gates must be enabled for container qualification.');
   for (const [label, command, args] of [
     ['Chromium dashboard', process.execPath, ['browser/node_modules/@playwright/test/cli.js', 'test', '--config', 'browser/playwright.config.mjs']],
@@ -138,7 +264,7 @@ try {
   ]) {
     try {
       const browserResult = await execute(command, args, {
-        env: { ...env, STUDIO_BROWSER_ORIGIN: origin }, timeout: 300000, maxBuffer: 8 * 1024 * 1024,
+        env: { ...env, STUDIO_BROWSER_ORIGIN: origin, STUDIO_BROWSER_FIXTURE_HOST: gateway }, timeout: 960000, maxBuffer: 8 * 1024 * 1024,
       });
       console.log(browserResult.stdout.trim());
     } catch (error) {
@@ -170,7 +296,7 @@ try {
   console.log('PASS: real Docker volume retains the exact newest25 pre-save revisions after26 committed saves; API history and on-volume snapshot identities agree.');
   await docker([...composeArgs, 'down', '--volumes', '--remove-orphans']);
   composeStarted = false;
-  console.log('PASS: fresh standalone volumes, native protocol, nonroot processes, read-only renderer configuration, edit/snapshot, restart, replacement, restore, Chromium dashboard/mobile, Firefox/WebKit desktop and real hidden-document qualification.');
+  console.log('PASS: fresh standalone volumes, native protocol, nonroot controller and loopback workers, independently configured dashboards, child-crash recovery and broken-default isolation, edit/snapshot, restart, replacement, restore, Chromium dashboard/mobile, Firefox/WebKit desktop and real hidden-document qualification.');
 
   const address = Object.values(networkInterfaces()).flat().find(item => item && item.family === 'IPv4' && !item.internal)?.address;
   assert.ok(address, 'A disposable runner network address is required for the one-node Swarm');
@@ -181,16 +307,21 @@ try {
   stackStarted = true;
   await docker(['stack', 'deploy', '--resolve-image', 'never', '--compose-file', 'portainer-swarm.yml', identity]);
   const swarmFixture = await freshAndEdit();
-  for (const service of ['studio', 'homepage']) {
+  const swarmDashboards = await multiDashboard();
+  const swarmContainer = await docker(['ps', '--quiet', '--filter', `label=com.docker.swarm.service.name=${identity}_studio`]);
+  await assertWorkers(swarmContainer, swarmDashboards);
+  await crashWorker(swarmContainer, swarmDashboards[0]);
+  for (const service of ['studio']) {
     const specification = JSON.parse(await docker(['service', 'inspect', `${identity}_${service}`]))[0].Spec;
     assert.equal(specification.Mode.Replicated.Replicas, 1);
     assert.equal(specification.UpdateConfig.Order, 'stop-first');
     assert.deepEqual(specification.TaskTemplate.Placement.Constraints, [`node.hostname == ${env.STUDIO_NODE}`]);
     await docker(['service', 'update', '--force', '--update-order', 'stop-first', `${identity}_${service}`], { timeout: 360000 });
     await assertPersisted(swarmFixture);
+    await assertDashboardsPersisted(swarmDashboards);
   }
   await restoreEmpty(swarmFixture);
-  console.log('PASS: fresh one-node Swarm, same-node single writer, stop-first service replacement, edit/snapshot persistence and restore.');
+  console.log('PASS: fresh one-node Swarm, same-node single application, stop-first service replacement, edit/snapshot persistence and restore.');
 } catch (error) {
   primaryFailure = error;
   if (composeStarted) {

@@ -2,6 +2,38 @@ import { expect, finishArrangement, mouseDrag, setPanelSize, studioApi, test } f
 import { activePanel, carousel, expectPageFits } from '../helpers/engineering.mjs';
 import { installDenseResponses, installEmbeddedDocument, seedDenseContent, seedEmbeddedContent } from '../helpers/native-fixtures.mjs';
 
+async function expectListHeadingsInsidePanel(list) {
+  const host = await list.locator('.studio-native-content').boundingBox();
+  for (const name of ['CPU', 'MEM']) {
+    const heading = list.getByText(name, { exact: true });
+    await expect(heading).toBeVisible();
+    const bounds = await heading.boundingBox();
+    expect(bounds.y, `${name} heading must not be clipped above the native scroll area`).toBeGreaterThanOrEqual(host.y);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(host.y + host.height);
+    expect(bounds.x).toBeGreaterThanOrEqual(host.x);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(host.x + host.width);
+  }
+  const values = await list.evaluate(element => {
+    const headings = [...element.querySelectorAll('.w-14.text-right')].slice(0, 2).map(cell => cell.getBoundingClientRect().right);
+    const cells = [...element.querySelectorAll('.opacity-25.w-14.text-right')];
+    return cells.map((cell, index) => {
+      const bounds = cell.getBoundingClientRect();
+      const row = cell.parentElement.getBoundingClientRect();
+      return { index, left: bounds.left, right: bounds.right, top: row.top, bottom: row.bottom,
+        headingRight: headings[index % 2], fits: cell.scrollWidth <= cell.clientWidth + 1, opacity: getComputedStyle(cell).opacity };
+    });
+  });
+  expect(values).toHaveLength(10);
+  for (const value of values) {
+    expect(value.opacity, 'Live native numeric values must remain readable').toBe('1');
+    expect(value.fits, 'Numeric values must fit without clipping').toBe(true);
+    expect(Math.abs(value.right - value.headingRight), 'CPU and memory columns align with their headings').toBeLessThanOrEqual(1);
+    expect(value.left).toBeGreaterThanOrEqual(host.x);
+    expect(value.right).toBeLessThanOrEqual(host.x + host.width);
+    if (value.index >= 2) expect(value.top, 'Enlarged list rows must not overlap').toBeGreaterThanOrEqual(values[value.index - 2].bottom - 1);
+  }
+}
+
 test('native calendar, chart and process list fit their minima at desktop and narrow widths without losing local state', async ({ page, request }, testInfo) => {
   const fixture = await installDenseResponses(page);
   const seeded = await seedDenseContent(request);
@@ -17,6 +49,7 @@ test('native calendar, chart and process list fit their minima at desktop and na
   await expect(calendar.getByText('Calendar fixture event 8', { exact: true })).toHaveCount(1);
   await expect(chart.locator('svg.recharts-surface')).toBeVisible();
   await expect(list).toContainText('native-process-5');
+  await expectListHeadingsInsidePanel(list);
   await expect.poll(() => fixture.cpuSamples).toBeGreaterThan(1);
   await page.clock.pauseAt(new Date('2026-10-20T13:00:00Z'));
   const chartNode = await chart.locator('svg.recharts-surface').elementHandle();
@@ -42,6 +75,7 @@ test('native calendar, chart and process list fit their minima at desktop and na
     expect((await chart.locator('svg.recharts-surface').boundingBox()).width).toBeGreaterThan(200);
     await list.scrollIntoViewIfNeeded();
     await expect(list.getByText('native-process-5', { exact: true })).toBeVisible();
+    await expectListHeadingsInsidePanel(list);
     await calendar.locator('.studio-native-content').evaluate(element => { element.scrollTop = 0; });
     await page.evaluate(() => scrollTo(0, 0));
     await page.screenshot({ path: testInfo.outputPath(`dense-native-${width}.png`), fullPage: true });
@@ -60,6 +94,11 @@ test('native calendar, chart and process list fit their minima at desktop and na
   await page.setViewportSize({ width: 1440, height: 1080 });
   await page.evaluate(() => scrollTo(0, 0));
   await page.screenshot({ path: testInfo.outputPath('dense-native-desktop.png'), fullPage: true });
+  await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+  await expectListHeadingsInsidePanel(list);
+  await list.getByText('native-process-5', { exact: true }).scrollIntoViewIfNeeded();
+  await expect(list.getByText('native-process-5', { exact: true })).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('dense-native-enlarged-text.png'), fullPage: true });
 });
 
 test('an actual native iframe keeps its document and controls through move, resize, stack navigation and unstack', async ({ page, request }) => {

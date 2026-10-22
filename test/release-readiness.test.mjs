@@ -38,7 +38,7 @@ function imageFixture(name, change = () => {}) {
       'org.opencontainers.image.source': 'https://github.com/TheUncleBen/Homepage-Studio',
       'org.opencontainers.image.revision': commit,
       'org.opencontainers.image.licenses': 'AGPL-3.0-or-later',
-      ...(name === 'homepage' ? { 'io.homepage-studio.upstream': UPSTREAM_COMMIT } : {}),
+      'io.homepage-studio.upstream': UPSTREAM_COMMIT,
     }, Env: [`STUDIO_BUILD_REVISION=${commit}`] } };
     change(config, platform);
     const manifest = { schemaVersion: 2, mediaType: OCI_MANIFEST, config: add(OCI_CONFIG, config), layers: [{ mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip', digest: `sha256:${'e'.repeat(64)}`, size: 10 }] };
@@ -63,7 +63,7 @@ async function fixture() {
       checks: Object.fromEntries(QUALIFICATION_CHECKS.map(name => [name, 'passed'])),
     }])),
   };
-  const files = { 'studio-source.tar.gz': Buffer.from('synthetic writer source archive'), 'homepage-source.tar.gz': Buffer.from('synthetic native source archive'), 'verification.json': json(report) };
+  const files = { 'studio-source.tar.gz': Buffer.from('synthetic complete application source archive'), 'verification.json': json(report) };
   const templates = Object.fromEntries(await Promise.all(TEMPLATE_FILES.map(async name => [name, sha256(await fs.readFile(path.join(root, name)))])));
   const candidate = {
     schemaVersion: 1, status: 'engineering-qualified', sourceCommit: commit, sourceTree: tree, upstreamCommit: UPSTREAM_COMMIT,
@@ -98,23 +98,23 @@ function approvedContext(candidate, release) {
 }
 
 test('OCI inspection binds raw index, each architecture, config and native source identity', async () => {
-  const f = imageFixture('homepage');
-  const actual = await inspectImageIndex(f.indexBytes, value => f.blobs.get(value), { imageName: 'homepage', sourceCommit: commit });
-  assert.equal(actual.reference, `${IMAGE_REPOSITORIES.homepage}@sha256:${sha256(f.indexBytes)}`);
+  const f = imageFixture('studio');
+  const actual = await inspectImageIndex(f.indexBytes, value => f.blobs.get(value), { imageName: 'studio', sourceCommit: commit });
+  assert.equal(actual.reference, `${IMAGE_REPOSITORIES.studio}@sha256:${sha256(f.indexBytes)}`);
   assert.deepEqual(actual.platforms, PLATFORMS);
   for (const descriptor of f.index.manifests) assert.equal(actual.manifests[`linux/${descriptor.platform.architecture}`].digest, descriptor.digest);
 });
 
 test('OCI inspection rejects corrupt blobs, duplicate/missing platforms and mislabeled images', async () => {
-  const options = { imageName: 'homepage', sourceCommit: commit };
-  const f = imageFixture('homepage');
+  const options = { imageName: 'studio', sourceCommit: commit };
+  const f = imageFixture('studio');
   await assert.rejects(inspectImageIndex(f.indexBytes, () => Buffer.from('changed'), options), /immutable descriptor/);
   for (const mutate of [index => index.manifests.pop(), index => index.manifests.push(index.manifests[0]), index => { index.manifests[0].platform.architecture = '386'; }, index => { index.manifests[0].digest = 'sha256:../../path'; }]) {
     const index = clone(f.index); mutate(index);
     await assert.rejects(inspectImageIndex(json(index), value => f.blobs.get(value), options));
   }
   for (const mutate of [config => { config.architecture = '386'; }, config => { config.config.Labels['org.opencontainers.image.revision'] = 'c'.repeat(40); }, config => { config.config.Labels['io.homepage-studio.upstream'] = 'c'.repeat(40); }, config => { config.config.Env.push(`STUDIO_BUILD_REVISION=${commit}`); }]) {
-    const altered = imageFixture('homepage', mutate);
+    const altered = imageFixture('studio', mutate);
     await assert.rejects(inspectImageIndex(altered.indexBytes, value => altered.blobs.get(value), options));
   }
 });
@@ -148,7 +148,7 @@ test('candidate validation has no official date or fabricated human approval and
   assert.equal(validateCandidateManifest(candidate).artifactSetSha256, candidate.artifactSetSha256);
   const reordered = Object.fromEntries(Object.entries(candidate).reverse());
   assert.equal(candidateFingerprint(reordered), candidate.artifactSetSha256);
-  for (const mutate of [value => { value.verification.human = 'passed'; }, value => { value.status = 'owner-approved'; }, value => { value.version = '2026.10.20'; }, value => { value.images.studio.reference = `${IMAGE_REPOSITORIES.studio}:latest`; }, value => { value.images.studio.buildRevision = 'c'.repeat(40); }, value => { value.images.homepage.platforms.pop(); }, value => { value.images.homepage.manifests['linux/arm64'].configDigest = ''; }, value => { value.files['verification.json'] = 'e'.repeat(64); }, value => { value.templates['portainer-compose.yml'] = ''; }]) {
+  for (const mutate of [value => { value.verification.human = 'passed'; }, value => { value.status = 'owner-approved'; }, value => { value.version = '2026.10.20'; }, value => { value.images.studio.reference = `${IMAGE_REPOSITORIES.studio}:latest`; }, value => { value.images.studio.buildRevision = 'c'.repeat(40); }, value => { value.images.studio.platforms.pop(); }, value => { value.images.studio.manifests['linux/arm64'].configDigest = ''; }, value => { value.files['verification.json'] = 'e'.repeat(64); }, value => { value.templates['portainer-compose.yml'] = ''; }]) {
     const altered = clone(candidate); mutate(altered); altered.artifactSetSha256 = candidateFingerprint(altered);
     assert.throws(() => validateCandidateManifest(altered));
   }
@@ -188,7 +188,7 @@ test('candidate materialization pins Portainer assets, verifies source/evidence 
   const sums = (await fs.readFile(path.join(output, 'SHA256SUMS'), 'utf8')).trim().split('\n');
   for (const line of sums) { const [digest, filename] = line.split('  '); assert.equal(sha256(await fs.readFile(path.join(output, filename))), digest); }
   await assert.rejects(materializeCandidate(candidate, inputs, root, output), { code: 'EEXIST' });
-  await fs.appendFile(path.join(inputs, 'homepage-source.tar.gz'), 'changed');
+  await fs.appendFile(path.join(inputs, 'studio-source.tar.gz'), 'changed');
   await assert.rejects(materializeCandidate(candidate, inputs, root, path.join(temp, 'wrong')), /input hash differs/);
   await assert.rejects(fs.lstat(path.join(temp, 'wrong')), { code: 'ENOENT' });
 });
@@ -196,7 +196,7 @@ test('candidate materialization pins Portainer assets, verifies source/evidence 
 test('official matching refuses rebuilding either image or substituting engineering evidence', async () => {
   const { candidate, release } = await fixture();
   matchCandidateToRelease(candidate, release);
-  for (const mutate of [value => { value.images.studio.reference = IMAGE_REPOSITORIES.studio + '@sha256:' + '1'.repeat(64); }, value => { value.images.homepage.reference = IMAGE_REPOSITORIES.homepage + '@sha256:' + '1'.repeat(64); }, value => { value.verification.reportSha256 = '1'.repeat(64); }]) {
+  for (const mutate of [value => { value.images.studio.reference = IMAGE_REPOSITORIES.studio + '@sha256:' + '1'.repeat(64); }, value => { value.images.studio.reference = IMAGE_REPOSITORIES.studio + '@sha256:' + '1'.repeat(64); }, value => { value.verification.reportSha256 = '1'.repeat(64); }]) {
     const altered = clone(release); mutate(altered); altered.approval.artifactSetSha256 = artifactFingerprint(altered);
     assert.throws(() => matchCandidateToRelease(candidate, altered), /preserve|retain/);
   }
@@ -298,7 +298,7 @@ async function publicationFixture(t) {
   for (const name of QUALIFIED_BUNDLE_FILES) await fs.writeFile(path.join(bundleDirectory, name), assets[name]);
   const qualifiedBundle = await loadQualifiedCandidateBundle(bundleDirectory);
   const templateSources = Object.fromEntries(await Promise.all(TEMPLATE_FILES.map(async name => [name, await fs.readFile(path.join(root, name))])));
-  const state = { writes: [], docker: [], uploads: [], tagged: new Set(), ref: null, existingTag: false, existingRef: false, badUpload: false, badPromotion: false, workflowMismatch: false };
+  const state = { writes: [], docker: [], uploads: [], layerReads: [], tagged: new Set(), ref: null, existingTag: false, existingRef: false, badUpload: false, badPromotion: false, workflowMismatch: false };
   const request = async (suffix, options = {}) => {
     if (!options.method || options.method === 'GET') {
       if (Object.hasOwn(context.responses, suffix)) return context.responses[suffix];
@@ -318,16 +318,24 @@ async function publicationFixture(t) {
     throw new Error('Unexpected fixture write: ' + suffix);
   };
   const imageFixtures = Object.fromEntries(Object.keys(IMAGE_REPOSITORIES).map(name => [name, imageFixture(name)]));
-  const registry = name => async (kind, reference, options = {}) => {
-    const item = imageFixtures[name];
-    if (reference === release.version) {
-      if (options.absent && !state.tagged.has(name)) return state.existingTag ? item.indexBytes : null;
-      assert.ok(state.tagged.has(name));
-      return state.badPromotion ? Buffer.from('different image bytes') : item.indexBytes;
-    }
-    if (reference === candidate.images[name].reference.split('@')[1]) return item.indexBytes;
-    assert.ok(item.blobs.has(reference));
-    return item.blobs.get(reference);
+  const registry = name => {
+    const read = async (kind, reference, options = {}) => {
+      const item = imageFixtures[name];
+      if (reference === release.version) {
+        if (options.absent && !state.tagged.has(name)) return state.existingTag ? item.indexBytes : null;
+        assert.ok(state.tagged.has(name));
+        return state.badPromotion ? Buffer.from('different image bytes') : item.indexBytes;
+      }
+      if (reference === candidate.images[name].reference.split('@')[1]) return item.indexBytes;
+      assert.ok(item.blobs.has(reference));
+      return item.blobs.get(reference);
+    };
+    read.verifyBlob = async (digest, size) => {
+      state.layerReads.push({ name, digest, size });
+      if (state.layerUnavailable) throw new Error('Synthetic public runtime layer unavailable');
+      return { digest, size };
+    };
+    return read;
   };
   const docker = async (args, input) => {
     state.docker.push(args);
@@ -351,10 +359,31 @@ test('official promotion preserves image bytes, creates one fresh ref and publis
   const receipt = await promoteRelease(f.candidate, f.release, f.assets, f.options);
   assert.equal(receipt.releaseId, 999);
   assert.equal(receipt.githubImmutable, false, 'GitHub optional immutability is not fabricated or required.');
-  assert.equal(f.state.docker.length, 3);
-  assert.equal(f.state.uploads.length, 9);
+  assert.equal(f.state.docker.length, 2);
+  assert.equal(f.state.uploads.length, 8);
+  assert.equal(f.state.layerReads.length, 1, 'Shared layers are verified once within the application repository.');
   assert.deepEqual(f.state.writes.map(item => [item.method, item.suffix]), [['POST', '/git/refs'], ['POST', '/releases'], ['PATCH', '/releases/999']]);
   assert.equal(f.state.writes.at(-1).body.draft, false);
+});
+
+test('official promotion stops before any write when anonymous runtime layers are unavailable despite valid metadata', async t => {
+  const f = await publicationFixture(t);
+  f.state.layerUnavailable = true;
+  await assert.rejects(promoteRelease(f.candidate, f.release, f.assets, f.options), /runtime layer unavailable/);
+  assert.equal(f.state.layerReads.length, 1);
+  assert.deepEqual(f.state.writes, []);
+  assert.deepEqual(f.state.docker, []);
+  assert.deepEqual(f.state.uploads, []);
+});
+
+test('official promotion stops before any write while the accepted package remains private', async t => {
+  const f = await publicationFixture(t);
+  const registry = f.options.registry;
+  f.options.registry = name => name === 'studio' ? async () => { throw new RegistryAccessError(403, true); } : registry(name);
+  await assert.rejects(promoteRelease(f.candidate, f.release, f.assets, f.options), /publicly readable/);
+  assert.deepEqual(f.state.writes, []);
+  assert.deepEqual(f.state.docker, []);
+  assert.deepEqual(f.state.uploads, []);
 });
 
 test('failed approval, changed assets and existing date tags produce no remote writes', async t => {
@@ -469,7 +498,8 @@ async function candidatePipelineFixture({ event = 'push', publicAccess = false }
         assert.ok(actual, 'Inspect only an image that this daemon actually pulled.');
         return JSON.stringify([{ ...actual, Id: state.wrongPull ? 'sha256:' + 'e'.repeat(64) : actual.Id, Os: state.wrongPullOs ? 'windows' : actual.Os, Architecture: state.wrongPullArchitecture ? '386' : actual.Architecture }]);
       }
-      const name = args[2] === 'homepage-studio-ci:writer' ? 'studio' : 'homepage';
+      assert.equal(args[2], 'homepage-studio-ci:application');
+      const name = 'studio';
       const id = f.candidate.images[name].manifests[state.runnerPlatform].configDigest;
       return JSON.stringify([{ Id: state.wrongLocalId ? 'sha256:' + 'e'.repeat(64) : id, Os: 'linux', Architecture: state.runnerPlatform.split('/')[1], Config: { Labels: { 'org.opencontainers.image.revision': state.wrongLocalRevision ? 'c'.repeat(40) : commit } } }]);
     }
@@ -477,7 +507,7 @@ async function candidatePipelineFixture({ event = 'push', publicAccess = false }
       if (state.failPush) throw new Error('Synthetic authenticated push failure.');
       const repository = args[1].split(':')[0];
       const name = Object.keys(IMAGE_REPOSITORIES).find(name => IMAGE_REPOSITORIES[name] === repository);
-      assert.ok(name, 'Only the two intended application packages may be written.');
+      assert.ok(name, 'Only the intended application package may be written.');
       assert.equal(args[1], `${repository}:${identity}-${state.runnerPlatform.split('/')[1]}`);
       assert.ok(!state.tags.has(args[1]), 'Fresh run/architecture identities must not reuse tags.');
       const descriptor = fixtures[name].index.manifests.find(item => item.platform.architecture === state.runnerPlatform.split('/')[1]);
@@ -513,7 +543,6 @@ async function stageFixtureTargets(f) {
 async function candidateInputs(t, f) {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-candidate-assembly-')); t.after(() => fs.rm(temp, { recursive: true, force: true }));
   await fs.writeFile(path.join(temp, 'studio-source.tar.gz'), f.files['studio-source.tar.gz']);
-  await fs.writeFile(path.join(temp, 'homepage-source.tar.gz'), f.files['homepage-source.tar.gz']);
   return temp;
 }
 
@@ -537,19 +566,19 @@ test('native candidate retention rejects emulation, unrelated runs, missing deli
   }
 });
 
-test('first-use direct delivery uses the standard workflow token and preserves both exact tested image IDs without owner approval or metadata probes', async () => {
+test('first-use direct delivery uses the standard workflow token and preserves the exact tested application image ID without owner approval or metadata probes', async () => {
   for (const event of ['push', 'workflow_dispatch']) {
     const f = await candidatePipelineFixture({ event });
     const target = await stageNativeTarget('linux/amd64', tree, { ...f.options, runnerPlatform: 'linux/amd64' });
     assert.equal(target.images.studio.configDigest, f.candidate.images.studio.manifests['linux/amd64'].configDigest);
     assert.deepEqual(target.checks, Object.fromEntries(QUALIFICATION_CHECKS.map(name => [name, 'passed'])));
-    assert.equal(f.state.docker.filter(args => args[0] === 'push').length, 2);
+    assert.equal(f.state.docker.filter(args => args[0] === 'push').length, 1);
     assert.ok(f.state.docker.filter(args => args[0] === 'push').every(args => !args[1].includes('-staging')));
     assert.deepEqual(f.state.calls, ['', '/actions/runs/123']);
   }
   const bad = await candidatePipelineFixture(); bad.state.wrongLocalId = true;
   await assert.rejects(stageNativeTarget('linux/amd64', tree, { ...bad.options, runnerPlatform: 'linux/amd64' }), /differ from the exact locally tested/);
-  assert.equal(bad.state.docker.filter(args => args[0] === 'push').length, 1, 'A mismatched first image must stop before the second push.');
+  assert.equal(bad.state.docker.filter(args => args[0] === 'push').length, 1, 'A mismatched image must stop before candidate completion.');
   const wrongRevision = await candidatePipelineFixture(); wrongRevision.state.wrongLocalRevision = true;
   await assert.rejects(stageNativeTarget('linux/amd64', tree, { ...wrongRevision.options, runnerPlatform: 'linux/amd64' }), /locally qualified image identity/);
   assert.equal(wrongRevision.state.docker.filter(args => args[0] === 'push').length, 0);
@@ -570,7 +599,7 @@ test('complete native receipts bind both Portainer gates, every browser gate and
   validateQualificationReport(JSON.parse(await fs.readFile(path.join(temp, 'verification.json'), 'utf8')), candidate);
   assert.deepEqual(candidate.images, f.candidate.images);
   assert.equal(candidate.verification.human, 'pending');
-  assert.equal(f.state.docker.filter(args => args[0] === 'buildx').length, 2);
+  assert.equal(f.state.docker.filter(args => args[0] === 'buildx').length, 1);
 });
 
 test('changed index tags and partial assembly failures never overwrite or invent a completed candidate', async t => {
@@ -593,31 +622,31 @@ test('first private package access preserves the qualified candidate and exact a
   assert.equal(result.anonymousAccess, 'pending');
   assert.equal(result.officialRelease, false);
   assert.deepEqual(result.pendingPackages, Object.values(IMAGE_REPOSITORIES));
-  assert.equal(f.state.docker.filter(args => args[0] === 'pull').length, 4);
+  assert.equal(f.state.docker.filter(args => args[0] === 'pull').length, 2);
   assert.ok(f.state.docker.every(args => !['build', 'buildx', 'push'].includes(args[0])));
   f.state.publicAccess = true; // Simulates the one-time GitHub package setting only.
   const verified = await verifyPublicCandidate(f.candidate, f.options);
   assert.equal(verified.anonymousAccess, 'passed');
   assert.equal(verified.verificationMethod, 'registry-stream-sha256');
   assert.deepEqual(verified.pendingPackages, []);
-  assert.equal(verified.layers.length, 2, 'Shared architecture layers are deduplicated within each repository, never across repository permissions.');
-  assert.equal(f.state.layerReads.length, 2);
-  assert.equal(f.state.docker.filter(args => args[0] === 'pull').length, 4, 'Post-visibility verification runs without Docker.');
+  assert.equal(verified.layers.length, 1, 'Shared architecture layers are deduplicated within each repository, never across repository permissions.');
+  assert.equal(f.state.layerReads.length, 1);
+  assert.equal(f.state.docker.filter(args => args[0] === 'pull').length, 2, 'Post-visibility verification runs without Docker.');
   assert.ok(f.state.docker.every(args => !['build', 'buildx', 'push'].includes(args[0])));
 });
 
-test('public candidate completion verifies both images and architectures anonymously and creates no release or moving tags', async () => {
+test('public candidate completion verifies the application on both architectures anonymously and creates no release or moving tags', async () => {
   const f = await candidatePipelineFixture({ publicAccess: true }); f.seedIndexes();
   const result = await verifyCandidateDelivery(f.candidate, f.options);
   assert.equal(result.status, 'public-ready');
   assert.equal(result.anonymousAccess, 'passed');
   assert.equal(result.officialRelease, false);
   const authenticated = f.state.docker.filter(args => args[0] === 'pull');
-  assert.equal(authenticated.length, 4);
+  assert.equal(authenticated.length, 2);
   assert.deepEqual(authenticated.map(args => [args[2], args[3]]).sort(), Object.entries(f.candidate.images).flatMap(([name, image]) => PLATFORMS.map(platform => [platform, `${IMAGE_REPOSITORIES[name]}@${image.manifests[platform].digest}`])).sort());
   assert.equal(result.verificationMethod, 'registry-stream-sha256');
-  assert.equal(result.layers.length, 2);
-  assert.equal(f.state.layerReads.length, 2);
+  assert.equal(result.layers.length, 1);
+  assert.equal(f.state.layerReads.length, 1);
   assert.ok(f.state.docker.every(args => !args.some(arg => arg === 'latest' || /^\d{4}\.\d{2}\.\d{2}$/.test(arg))));
 });
 
@@ -634,7 +663,7 @@ test('authenticated candidate delivery avoids classic-store digest collisions wh
   assert.equal(result.anonymousAccess, 'passed');
   const expected = Object.entries(f.candidate.images).flatMap(([name, image]) => PLATFORMS.map(platform => [`${IMAGE_REPOSITORIES[name]}@${image.manifests[platform].digest}`, image.manifests[platform].configDigest]));
   assert.deepEqual([...f.state.pulledReferences], expected);
-  assert.equal(f.state.pulledImages.size, 4);
+  assert.equal(f.state.pulledImages.size, 2);
   assert.deepEqual(f.state.docker.filter(args => args[0] === 'image').map(args => args[2]), expected.map(([, config]) => config));
   assert.ok(f.state.docker.every(args => ['login', 'pull', 'image', 'logout'].includes(args[0])), 'Delivery verification must not delete, retag or rebuild images to avoid a local reference collision.');
 });
@@ -679,7 +708,9 @@ test('workflow contracts run full native qualification once per push and retain 
   const candidateText = await fs.readFile(path.join(root, '.github/workflows/candidate-approved.yml'), 'utf8');
   assert.equal(candidateText, await fs.readFile(path.join(root, 'release/workflows/candidate-approved.yml'), 'utf8'));
   const candidate = parse(candidateText);
-  const official = parse(await fs.readFile(path.join(root, 'release/workflows/promote-approved.yml'), 'utf8'));
+  const officialText = await fs.readFile(path.join(root, '.github/workflows/promote-approved.yml'), 'utf8');
+  assert.equal(officialText, await fs.readFile(path.join(root, 'release/workflows/promote-approved.yml'), 'utf8'));
+  const official = parse(officialText);
   const validation = parse(await fs.readFile(path.join(root, '.github/workflows/validate.yml'), 'utf8'));
   assert.deepEqual(Object.keys(candidate.on), ['push', 'workflow_dispatch']);
   assert.deepEqual(candidate.on.push.branches, ['implementation/native-dashboard']);

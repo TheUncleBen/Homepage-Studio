@@ -9,12 +9,11 @@ import { validateReleaseManifest } from './release-manifest.mjs';
 
 export const IMAGE_REPOSITORIES = Object.freeze({
   studio: 'ghcr.io/theuncleben/homepage-studio',
-  homepage: 'ghcr.io/theuncleben/homepage-studio-renderer',
 });
 export const PLATFORMS = Object.freeze(['linux/amd64', 'linux/arm64']);
-export const CANDIDATE_FILES = Object.freeze(['studio-source.tar.gz', 'homepage-source.tar.gz', 'verification.json']);
+export const CANDIDATE_FILES = Object.freeze(['studio-source.tar.gz', 'verification.json']);
 export const TEMPLATE_FILES = Object.freeze(['portainer-compose.yml', 'portainer-swarm.yml']);
-export const QUALIFICATION_CHECKS = Object.freeze(['writer', 'packaging', 'native', 'dependencies', 'browser', 'desktopFirefox', 'desktopWebKit', 'hiddenDocument', 'compose', 'swarm', 'portainerCompose', 'portainerSwarm']);
+export const QUALIFICATION_CHECKS = Object.freeze(['controller', 'packaging', 'native', 'dependencies', 'browser', 'desktopFirefox', 'desktopWebKit', 'hiddenDocument', 'compose', 'swarm', 'portainerCompose', 'portainerSwarm']);
 export const sha256 = value => createHash('sha256').update(value).digest('hex');
 export const isHash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) && !/^0+$/.test(value);
 export const isCommit = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value) && !/^0+$/.test(value);
@@ -32,7 +31,7 @@ export function validateCandidateManifest(manifest) {
   if (!exactKeys(manifest, ['schemaVersion', 'status', 'sourceCommit', 'sourceTree', 'upstreamCommit', 'images', 'verification', 'files', 'templates', 'artifactSetSha256']) || manifest.schemaVersion !== 1 || manifest.status !== 'engineering-qualified') throw new Error('Expected an engineering-qualified candidate, without official approval or a date version.');
   if (!isCommit(manifest.sourceCommit) || !isCommit(manifest.sourceTree)) throw new Error('A candidate requires the actual full build commit and source tree.');
   if (manifest.upstreamCommit !== UPSTREAM_COMMIT) throw new Error('Candidate upstream pin does not match this build definition.');
-  if (!exactKeys(manifest.images, Object.keys(IMAGE_REPOSITORIES))) throw new Error('A candidate contains both and only the writer and native renderer.');
+  if (!exactKeys(manifest.images, Object.keys(IMAGE_REPOSITORIES))) throw new Error('A candidate contains only the complete application image.');
   for (const [name, repository] of Object.entries(IMAGE_REPOSITORIES)) {
     const image = manifest.images[name];
     const prefix = `${repository}@sha256:`;
@@ -45,7 +44,7 @@ export function validateCandidateManifest(manifest) {
     }
   }
   if (!exactKeys(manifest.verification, ['automated', 'human', 'reportSha256']) || manifest.verification.automated !== 'passed' || manifest.verification.human !== 'pending' || !isHash(manifest.verification.reportSha256)) throw new Error('Candidates require engineering evidence and must leave human acceptance pending.');
-  if (!exactKeys(manifest.files, CANDIDATE_FILES) || CANDIDATE_FILES.some(name => !isHash(manifest.files[name])) || manifest.files['verification.json'] !== manifest.verification.reportSha256) throw new Error('Candidate evidence and both corresponding-source archives require exact hashes.');
+  if (!exactKeys(manifest.files, CANDIDATE_FILES) || CANDIDATE_FILES.some(name => !isHash(manifest.files[name])) || manifest.files['verification.json'] !== manifest.verification.reportSha256) throw new Error('Candidate evidence and the corresponding-source archive require exact hashes.');
   if (!exactKeys(manifest.templates, TEMPLATE_FILES) || TEMPLATE_FILES.some(name => !isHash(manifest.templates[name]))) throw new Error('Candidate deployment template inputs must be bound by hash.');
   const fingerprint = candidateFingerprint(manifest);
   if (manifest.artifactSetSha256 !== fingerprint) throw new Error('Candidate fingerprint does not match its exact artifact set.');
@@ -72,7 +71,7 @@ export function matchCandidateToRelease(candidate, release) {
   for (const name of Object.keys(IMAGE_REPOSITORIES)) {
     const before = candidate.images[name];
     const after = release.images[name];
-    if (before.reference !== after.reference || before.buildRevision !== after.buildRevision || [...after.platforms].sort().join(',') !== [...before.platforms].sort().join(',')) throw new Error('Official promotion must preserve both candidate image index digests and build identities.');
+    if (before.reference !== after.reference || before.buildRevision !== after.buildRevision || [...after.platforms].sort().join(',') !== [...before.platforms].sort().join(',')) throw new Error('Official promotion must preserve the candidate image index digest and build identities.');
   }
 }
 
@@ -97,7 +96,7 @@ export async function materializeCandidate(manifest, inputDirectory, sourceRoot,
     const bytes = await readRegular(path.join(sourceRoot, name), 1024 * 1024);
     if (sha256(bytes) !== manifest.templates[name]) throw new Error(`Deployment template input hash differs: ${name}`);
     let contents = bytes.toString('utf8');
-    for (const [variable, image] of [['STUDIO_IMAGE', 'studio'], ['HOMEPAGE_IMAGE', 'homepage']]) {
+    for (const [variable, image] of [['STUDIO_IMAGE', 'studio']]) {
       const expression = new RegExp(`\\$\\{${variable}:\\?[^}]+\\}`, 'g');
       if ([...contents.matchAll(expression)].length !== 1) throw new Error('Each deployment template needs exactly one substitution for each image.');
       contents = contents.replace(expression, manifest.images[image].reference);
@@ -105,8 +104,8 @@ export async function materializeCandidate(manifest, inputDirectory, sourceRoot,
     files.set(name, Buffer.from(contents));
   }
   files.set('candidate-manifest.json', Buffer.from(JSON.stringify(manifest, null, 2) + '\n'));
-  files.set('portainer.env.example', Buffer.from('STUDIO_PUBLIC_ORIGIN=http://homepage.example.test:3000\nSTUDIO_PORT=3000\n# Swarm only: the node holding the named volumes.\nSTUDIO_NODE=<docker-node-hostname>\nSTUDIO_BACKUP_RETENTION=25\n'));
-  files.set('READ-ME-FIRST.txt', Buffer.from(`Homepage Studio human-test candidate\n\nSource: ${manifest.sourceCommit}\nArtifact set: ${result.artifactSetSha256}\nHuman acceptance: pending. No official version is assigned.\n\nCheck delivery-receipt.json for registry access. The build retains the exact\nqualified images; GitHub may require a one-time package visibility setting\nbefore anonymous deployment. No candidate workflow approval is required.\nAn access-pending receipt is not a completed public deployment handoff.\n\nDeploy both service blocks and their volumes as one matched image pair.\nThey can be added to your existing Portainer stack with unused service/volume\nnames and port; keep the internal service references consistent if renamed.\nA separate test stack can use the template unchanged and is also supported.\nSet the exact dashboard origin and, for Swarm, the node holding the volumes.\nUse fresh configuration/state volumes for the empty first evaluation.\nRetain the existing dashboard configuration so you can return to it.\n\nHuman checks: your phone's touch/scroll feel and Samsung-style stack behavior;\ntheme and readability on your displays; actual service credentials and widget\ndata; hostname/NetBird access and storage on your Portainer host.\n\nRecord findings against this artifact set. Do not upgrade one image alone.\nFor rollback, retain the previous digest-pinned image pair and its matching\nconfiguration/state backup. Restore the full pair and matching data together.\nA first evaluation on a new stack can be stopped without altering the old one.\n`));
+  files.set('portainer.env.example', Buffer.from('STUDIO_PUBLIC_ORIGIN=http://homepage.example.test:3000\nSTUDIO_PORT=3000\n# Swarm only: the node holding the named volumes.\nSTUDIO_NODE=<docker-node-hostname>\nSTUDIO_BACKUP_RETENTION=25\nSTUDIO_RENDERER_MAX_WORKERS=8\nSTUDIO_RENDERER_IDLE_SECONDS=600\nSTUDIO_RENDERER_STARTUP_SECONDS=30\n'));
+  files.set('READ-ME-FIRST.txt', Buffer.from(`Homepage Studio human-test candidate\n\nSource: ${manifest.sourceCommit}\nArtifact set: ${result.artifactSetSha256}\nHuman acceptance: pending. No official version is assigned.\n\nCheck delivery-receipt.json for registry access. The build retains the exact\nqualified images; GitHub may require a one-time package visibility setting\nbefore anonymous deployment. No candidate workflow approval is required.\nAn access-pending receipt is not a completed public deployment handoff.\n\nDeploy the studio service with its configuration and state volumes.\nIt can be added to an existing Portainer stack with unused service/volume\nnames and port. All native workers are managed inside this same container.\nA separate test stack can use the template unchanged and is also supported.\nSet the exact dashboard origin and, for Swarm, the node holding the volumes.\nUse fresh configuration/state volumes for the empty first evaluation.\nRetain the existing dashboard configuration so you can return to it.\n\nHuman checks: your phone's touch/scroll feel and Samsung-style stack behavior;\ntheme and readability on your displays; actual service credentials and widget\ndata; hostname/NetBird access and storage on your Portainer host.\n\nRecord findings against this artifact set. Keep the image and its matching configuration/state backup together.\nFor rollback, retain the previous digest-pinned application image and its matching\nconfiguration/state backup. Restore the application image and matching data together.\nA first evaluation on a new stack can be stopped without altering the old one.\n`));
   files.set('SHA256SUMS', Buffer.from([...files.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, bytes]) => `${sha256(bytes)}  ${name}\n`).join('')));
   const output = path.resolve(outputDirectory);
   await fs.mkdir(path.dirname(output), { recursive: true });

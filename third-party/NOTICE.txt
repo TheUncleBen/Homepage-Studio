@@ -15,8 +15,10 @@ prototype archive remains unchanged.
 Homepage-derived material:
 The native renderer and widget catalog derive from gethomepage/homepage
 v2.6.0, commit 51cc1684f9f34a7877ed462b8f94c9cc687b4dde. Retain upstream
-copyright and GPL-3.0 terms; see homepage-LICENSE. Source preparation fetches
-and verifies the exact upstream archive before applying the Studio overlay.
+copyright and GPL-3.0 terms; see homepage-LICENSE and ../homepage/LICENSE.
+The complete controlled fork is tracked under homepage/ and copied directly
+into the single application build. The current Git source commit/tree binds
+all Studio and native changes; upstream.lock.json retains baseline provenance.
 Studio's original-code license does not broaden the upstream grant.
 The catalog preserves source attribution and documentation example notices;
 see catalog-NOTICE.txt. It is a catalog of native examples and known fields,
@@ -26,3 +28,27 @@ YAML parser:
 yaml 2.8.3 by Eemeli Aro is licensed under ISC. The exact installed notice is
 preserved in yaml-LICENSE. Keep dependency notices in corresponding-source
 and distribution artifacts.
+Bundled fonts:
+IBM Plex Mono retains its bundled SIL Open Font License notice, copied without
+changes from homepage/src/styles/font/IBMPlexMono-LICENSE.txt to
+IBMPlexMono-LICENSE.txt. Its original copyright and Reserved Font Name remain
+intact. The font files are included in the controlled native source.
+
+Manrope.ttf and Manrope.woff2 identify Manrope version 4.505 and retain this
+embedded notice: Copyright 2019-2021 The Manrope Project Authors
+(https://github.com/sharanda/manrope). Both embedded metadata records identify
+the SIL Open Font License, Version 1.1. Manrope-OFL.txt preserves the full
+license and its source copyright notice (2018) without replacing either
+historical notice with the other. It was verified from Google's fonts source:
+https://github.com/google/fonts/blob/16c2976c68c3137c09c69c8e9d3deada699d157e/ofl/manrope/OFL.txt
+SHA-256: 58172e0c0fac2cda8a37b348164bb55e44b0e69051e557e92b1d3f6910141f7b
+The bundled font binaries and their embedded notices are unchanged.
+
+The root Dockerfile copies this entire third-party directory into the runtime
+image. The single corresponding-source archive includes these notices, the
+complete native fork, font files, original license files and build definitions.
+
+Shared native YAML parser:
+js-yaml 5.4.3 is used by the native configuration reader and controller indexing
+policy. Its installed MIT notice is preserved unchanged in js-yaml-LICENSE.
+The shared parser source and exact dependency version are committed together.

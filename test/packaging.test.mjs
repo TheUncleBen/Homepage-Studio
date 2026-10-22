@@ -127,7 +127,7 @@ test('readiness accepts configuration-only readiness and rejects HTTP/JSON failu
   await assert.rejects(checkHealth({ ...options, kind: 'unknown' }), /Invalid health protocol/);
 });
 
-test('the exact writer Docker health command succeeds without native readiness and rejects invalid configuration', async t => {
+test('the exact application health command is independent of a broken dashboard and rejects shared runtime damage', async t => {
   const dirs = await directories(t);
   await seedConfig(dirs);
   let nativeRequests = 0;
@@ -137,7 +137,11 @@ test('the exact writer Docker health command succeeds without native readiness a
     res.end('{"status":"starting"}');
   });
   const host = 'dashboard.example.test:3000';
-  const { server, initialization } = createStudioServer({ ...dirs, upstream, allowedHosts: host });
+  const rendererDir = path.join(dirs.temp, 'runtime');
+  await fs.mkdir(path.join(rendererDir, '.next/static'), { recursive: true });
+  await fs.mkdir(path.join(rendererDir, 'public'));
+  for (const name of ['server.js', '.next/BUILD_ID', '.next/build-manifest.json']) await fs.writeFile(path.join(rendererDir, name), '{}');
+  const { server, initialization } = createStudioServer({ ...dirs, rendererDir, upstream, allowedHosts: host });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
@@ -166,6 +170,8 @@ test('the exact writer Docker health command succeeds without native readiness a
   await assert.rejects(execute(process.execPath, ['scripts/healthcheck.mjs', 'writer'], options), { code: 1 });
   assert.equal(nativeRequests, 2, 'Explicit aggregate readiness must still inspect native health.');
   await fs.writeFile(path.join(dirs.configDir, 'settings.yaml'), 'invalid: [\n');
+  await execute(process.execPath, command.slice(1), options);
+  await fs.unlink(path.join(rendererDir, '.next/BUILD_ID'));
   await assert.rejects(execute(process.execPath, command.slice(1), options), { code: 1 });
 });
 
@@ -176,40 +182,25 @@ test('health checks bound unresponsive and oversized endpoints', async t => {
   await assert.rejects(checkHealth({ url: oversized, host: 'localhost', kind: 'writer' }), /too large/);
 });
 
-test('renderer startup retries the live configuration endpoint before starting native code', async t => {
-  let requests = 0;
-  const url = await endpoint(t, (req, res) => {
-    assert.equal(req.url, '/__studio/config-ready');
-    assert.equal(req.headers.host, 'dashboard.example.test:3000');
-    requests += 1;
-    res.statusCode = requests > 1 ? 200 : 503;
-    res.end(JSON.stringify({ status: requests > 1 ? 'ready' : 'starting' }));
-  });
-  await execute(process.execPath, [path.join(root, 'scripts/wait-for-config.mjs')], {
-    timeout: 6000,
-    env: { ...process.env, STUDIO_WRITER_ORIGIN: url, STUDIO_PUBLIC_ORIGIN: 'http://dashboard.example.test:3000', STUDIO_STARTUP_TIMEOUT_SECONDS: '4', HOMEPAGE_ALLOWED_HOSTS: '', STUDIO_HEALTH_HOST: '' },
-  });
-  assert.ok(requests >= 2);
-});
-
-test('deployment templates preserve a single writer and do not expose or mount native host controls', async () => {
+test('deployment templates publish one application and preserve bounded internal worker controls', async () => {
   for (const file of ['portainer-compose.yml', 'portainer-swarm.yml']) {
     const template = parse(await fs.readFile(path.join(root, file), 'utf8'));
-    assert.deepEqual(Object.keys(template.services).sort(), ['homepage', 'studio']);
-    assert.deepEqual(template.services.homepage.volumes, ['config:/app/config:ro']);
+    assert.deepEqual(Object.keys(template.services), ['studio']);
     assert.deepEqual(template.services.studio.volumes, ['config:/app/config', 'state:/app/state']);
-    assert.equal(template.services.homepage.ports, undefined);
+    assert.equal(template.services.studio.ports[0].target, 3000);
+    assert.equal(template.services.studio.stop_grace_period, '30s');
+    for (const [key, value] of Object.entries({ STUDIO_RENDERER_MAX_WORKERS: 8, STUDIO_RENDERER_IDLE_SECONDS: 600, STUDIO_RENDERER_STARTUP_SECONDS: 30 })) {
+      assert.equal(template.services.studio.environment[key], '${' + key + ':-' + value + '}');
+    }
     assert.ok(!JSON.stringify(template).includes('docker.sock'));
     assert.equal(template.services.studio.environment.STUDIO_BACKUP_RETENTION, '${STUDIO_BACKUP_RETENTION:-25}');
     assert.equal(template.services.studio.depends_on, undefined);
-    assert.equal(template.services.homepage.depends_on, undefined);
     if (file.includes('swarm')) {
       for (const service of Object.values(template.services)) {
         assert.equal(service.deploy.replicas, 1);
         assert.equal(service.deploy.update_config.order, 'stop-first');
         assert.equal(service.deploy.rollback_config.order, 'stop-first');
       }
-      assert.deepEqual(template.services.studio.deploy.placement, template.services.homepage.deploy.placement);
       assert.equal(template.services.studio.ports[0].mode, 'host');
     }
   }
@@ -230,7 +221,6 @@ function acceptedFixture() {
     schemaVersion: 1, status: 'owner-approved', version: '2026.10.20', sourceCommit, upstreamCommit: UPSTREAM_COMMIT,
     images: {
       studio: { reference: `ghcr.io/theuncleben/homepage-studio@sha256:${'b'.repeat(64)}`, buildRevision: sourceCommit, platforms: ['linux/amd64', 'linux/arm64'] },
-      homepage: { reference: `ghcr.io/theuncleben/homepage-studio-renderer@sha256:${'c'.repeat(64)}`, buildRevision: sourceCommit, platforms: ['linux/amd64', 'linux/arm64'] },
     },
     verification: { automated: 'passed', human: 'passed', reportSha256: 'd'.repeat(64), humanAcceptanceSha256: 'e'.repeat(64) },
     approval: { actor: 'TheUncleBen', approvedAt: '2026-10-21T03:00:00Z' },
@@ -246,8 +236,8 @@ test('release manifests bind the exact artifacts and Chicago approval date witho
     value => { value.status = 'unapproved'; },
     value => { value.version = '2026.10.21'; },
     value => { value.version = '2026.02.30'; },
-    value => { value.images.homepage.reference = 'ghcr.io/theuncleben/homepage-studio-renderer:latest'; },
-    value => { value.images.homepage.buildRevision = 'f'.repeat(40); },
+    value => { value.images.studio.reference = 'ghcr.io/theuncleben/homepage-studio:latest'; },
+    value => { value.images.studio.buildRevision = 'f'.repeat(40); },
     value => { value.images.studio.platforms.pop(); },
     value => { value.images.studio.reference = `ghcr.io/theuncleben/homepage-studio@sha256:${'f'.repeat(64)}`; },
     value => { value.verification.human = 'not_run'; },
@@ -267,7 +257,7 @@ test('release materialization pins both templates by digest and refuses overwrit
   await materializeRelease(accepted, output);
   for (const file of ['portainer-compose.yml', 'portainer-swarm.yml']) {
     const template = parse(await fs.readFile(path.join(output, file), 'utf8'));
-    for (const name of ['studio', 'homepage']) assert.equal(template.services[name].image, accepted.images[name].reference);
+    for (const name of ['studio']) assert.equal(template.services[name].image, accepted.images[name].reference);
   }
   await assert.rejects(materializeRelease(accepted, output), /already exists/);
   const example = JSON.parse(await fs.readFile(path.join(root, 'release-manifest.example.json'), 'utf8'));
@@ -277,13 +267,22 @@ test('release materialization pins both templates by digest and refuses overwrit
 test('runtime and Dockerfile pins agree with the reviewed source lock', async () => {
   const lock = JSON.parse(await fs.readFile(path.join(root, 'upstream.lock.json'), 'utf8'));
   assert.equal(lock.homepage.commit, UPSTREAM_COMMIT);
-  for (const file of ['Dockerfile', 'Dockerfile.homepage']) {
+  for (const file of ['Dockerfile']) {
     const text = await fs.readFile(path.join(root, file), 'utf8');
     assert.ok(text.includes(`ARG NODE_IMAGE=${lock.nodeImage}`));
     assert.ok(text.includes('USER 1000:1000'));
   }
-  const native = await fs.readFile(path.join(root, 'Dockerfile.homepage'), 'utf8');
-  assert.ok(native.includes(`pnpm@${lock.pnpmVersion}`));
+  const native = await fs.readFile(path.join(root, 'Dockerfile'), 'utf8');
+  assert.match(lock.pnpmVersion, /^\d+\.\d+\.\d+$/);
+  assert.match(lock.pnpmIntegrity, /^sha512-[A-Za-z0-9+/]{86}==$/);
+  assert.ok(native.includes('COPY upstream.lock.json scripts/install-pinned-pnpm.mjs /tmp/studio-toolchain/'));
+  assert.ok(native.includes('node /tmp/studio-toolchain/install-pinned-pnpm.mjs /tmp/studio-toolchain/upstream.lock.json && pnpm install --frozen-lockfile'));
+  assert.ok(native.includes('RUN pnpm lint'));
   assert.ok(native.includes('RUN pnpm test'));
-  assert.ok(native.includes('STUDIO_NATIVE_SOURCE=/app node --test'));
+  assert.ok(native.includes('COPY homepage/ ./'));
+  assert.ok(native.includes('homepage/src/utils/config/environment.mjs ./homepage/src/utils/config/environment.mjs'));
+  assert.ok(native.includes('homepage/src/utils/config/yaml-parser.mjs ./homepage/src/utils/config/yaml-parser.mjs'));
+  assert.ok(!native.includes('prepare-homepage'));
+  assert.ok(!native.includes('apply-homepage-overlay'));
+  assert.ok(native.includes('STUDIO_NATIVE_SOURCE=/build/homepage node --test'));
 });

@@ -1,4 +1,4 @@
-// Disposable qualification client, not part of either production image.
+// Disposable qualification client, not part of the production image.
 // Contract: Portainer CE 2.45.2, source 6981dc67c177ab64d12bd74e1ccc02abf19bb057.
 // https://github.com/portainer/portainer/blob/2.45.2/api/docs/swagger.yaml
 import assert from 'node:assert/strict';
@@ -21,7 +21,7 @@ export async function readSwarmClusterId(docker) {
 }
 
 export async function inspectFixtureManifest({ repository, expectedConfig, architecture }, { fetchImpl = fetch } = {}) {
-  assert.match(repository, /^studio-(writer|renderer)(-replacement)?$/);
+  assert.match(repository, /^studio-application(-replacement)?$/);
   assert.ok(['amd64', 'arm64'].includes(architecture));
   const origin = 'http://127.0.0.1:15000';
   const accept = 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json';
@@ -49,7 +49,7 @@ export function stackPayload({ name, template, environment, swarmId }) {
   assert.match(name, /^[a-z][a-z0-9-]+$/, 'Use a disposable lowercase stack name');
   assert.equal(typeof template, 'string');
   assert.ok(template.trim(), 'The exact deployment template is required');
-  const keys = ['STUDIO_IMAGE', 'HOMEPAGE_IMAGE', 'STUDIO_PUBLIC_ORIGIN', 'STUDIO_PORT', 'STUDIO_BACKUP_RETENTION'];
+  const keys = ['STUDIO_IMAGE', 'STUDIO_PUBLIC_ORIGIN', 'STUDIO_PORT', 'STUDIO_BACKUP_RETENTION', 'STUDIO_RENDERER_MAX_WORKERS', 'STUDIO_RENDERER_IDLE_SECONDS', 'STUDIO_RENDERER_STARTUP_SECONDS'];
   if (swarmId !== undefined) {
     assert.equal(typeof swarmId, 'string');
     assert.ok(swarmId, 'An explicit Swarm ID is required');

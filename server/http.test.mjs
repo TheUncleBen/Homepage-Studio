@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from './index.mjs';
-import { createConfigStore } from './config.mjs';
+import { createConfigStore, MAX_IMPORT_BYTES } from './config.mjs';
 
 const HOST = 'dashboard.example.test:3001';
 const ORIGIN = `http://${HOST}`;
@@ -57,12 +57,12 @@ async function setup(t, serverOptions = {}) {
       res.writeHead(200, { 'content-type': name.endsWith('.css') ? 'text/css' : 'application/javascript', 'content-length': body.length, 'cache-control': 'no-store' });
       return res.end(req.method === 'HEAD' ? undefined : body);
     }
-    if (req.url === '/native-config') return res.end(await fs.readFile(path.join(configDir, 'services.yaml'), 'utf8'));
-    if (req.url === '/native.gz') {
+    if (req.url === '/api/native-config') return res.end(await fs.readFile(path.join(configDir, 'services.yaml'), 'utf8'));
+    if (req.url === '/api/native.gz') {
       res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-encoding': 'gzip', 'content-length': compressed.length, etag: '"native-etag"' });
       return res.end(compressed);
     }
-    if (req.url === '/native-missing') {
+    if (req.url === '/api/native-missing') {
       res.writeHead(404, { 'content-type': 'application/json' });
       return res.end('{"native":"missing"}');
     }
@@ -144,11 +144,11 @@ test('native requests preserve method, query, body, Host, credentials and respon
 
 test('native compressed bytes and native error status pass through unchanged', async (t) => {
   const { request, compressed } = await setup(t);
-  const binary = await request('/native.gz');
+  const binary = await request('/api/native.gz');
   assert.deepEqual(binary.buffer, compressed);
   assert.equal(binary.headers['content-encoding'], 'gzip');
   assert.equal(binary.headers.etag, '"native-etag"');
-  const missing = await request('/native-missing');
+  const missing = await request('/api/native-missing');
   assert.equal(missing.status, 404);
   assert.deepEqual(missing.json, { native: 'missing' });
 });
@@ -255,6 +255,48 @@ test('oversized JSON receives HTTP 413 and leaves state untouched', async (t) =>
   assert.equal((await request('/__studio/api/state')).json.revision, before.revision);
 });
 
+test('complete dashboard import accepts JSON escaping overhead and retains the ordinary mutation request limit', async (t) => {
+  const { request, post, store } = await setup(t);
+  const before = (await request('/__studio/api/state')).json;
+  const archive = (await request('/__studio/api/export')).json;
+  // A valid native text file below 2 MiB can exceed 2 MiB once JSON-escaped.
+  const css = `/*${'"'.repeat(1100 * 1024)}*/`;
+  archive.files['custom.css'] = css;
+  const value = { revision: before.revision, archive };
+  assert.ok(Buffer.byteLength(css) < 2 * 1024 * 1024);
+  assert.ok(Buffer.byteLength(JSON.stringify(value)) > 2 * 1024 * 1024);
+  const ordinary = await post('/__studio/api/save', { revision: before.revision, customCss: css });
+  assert.equal(ordinary.status, 413);
+  assert.equal((await store.listBackups()).length, 0);
+  for (const headers of [
+    { origin: 'https://other.example.test' },
+    { 'x-studio-request': '' },
+    { host: 'other.example.test' },
+  ]) assert.equal((await post('/__studio/api/import', value, { headers })).status, 403);
+  assert.equal((await store.listBackups()).length, 0);
+  const result = await post('/__studio/api/import', value);
+  assert.equal(result.status, 200);
+  assert.equal(result.json.customCss, css);
+  assert.equal(result.headers['cache-control'], 'no-store');
+  assert.deepEqual(result.json.board, before.board);
+  assert.equal((await store.listBackups()).length, 1);
+  assert.equal((await post('/__studio/api/import', value)).status, 409);
+});
+
+test('dashboard import rejects its aggregate request limit before creating a snapshot', async (t) => {
+  const { request, store } = await setup(t);
+  const before = (await request('/__studio/api/state')).json;
+  const body = JSON.stringify({ revision: before.revision, archive: { padding: 'x'.repeat(MAX_IMPORT_BYTES) } });
+  const result = await request('/__studio/api/import', {
+    method: 'POST', body,
+    headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), origin: ORIGIN, 'x-studio-request': '1' },
+  });
+  assert.equal(result.status, 413);
+  assert.match(result.json.error, /40 MiB dashboard import limit/);
+  assert.equal((await store.load()).revision, before.revision);
+  assert.equal((await store.listBackups()).length, 0);
+});
+
 test('HTTP state, native service and info-widget mutations, stale revisions, backups and restore work end to end', async (t) => {
   const { request, post, upstreamCalls } = await setup(t);
   const before = (await request('/__studio/api/state')).json;
@@ -313,7 +355,7 @@ test('a stopped native upstream produces a useful 502 while editor state remains
   await close(upstream);
   const response = await request('/');
   assert.equal(response.status, 502);
-  assert.match(response.json.error, /Homepage is not reachable/);
+  assert.match(response.json.error, /dashboard renderer is temporarily unavailable/);
   assert.equal((await request('/__studio/api/state')).status, 200);
 });
 
@@ -346,7 +388,7 @@ test('the first native request after restart cannot observe an interrupted multi
     },
   });
   // No editor/state/readiness request is allowed to trigger recovery first.
-  const native = await request('/native-config');
+  const native = await request('/api/native-config');
   assert.equal(native.status, 200);
   assert.equal(native.text, before.servicesYaml);
   assert.equal(upstreamCalls.length, 1);
@@ -365,10 +407,10 @@ test('an unresolved startup recovery blocks HTTP and WebSocket proxy traffic whi
       await fs.writeFile(path.join(options.stateDir, 'transaction.json'), JSON.stringify({ version: 1, backupId: backup.id }));
     },
   });
-  const native = await request('/native-config');
+  const native = await request('/api/native-config');
   assert.equal(native.status, 503);
   assert.equal(native.json.code, 'RECOVERY_REQUIRED');
-  assert.equal((await request('/socket', { headers: { connection: 'Upgrade', upgrade: 'websocket' } })).status, 503);
+  assert.equal((await request('/api/socket', { headers: { connection: 'Upgrade', upgrade: 'websocket' } })).status, 503);
   assert.equal((await request('/__studio/live')).status, 200);
   const readiness = await request('/__studio/ready');
   assert.equal(readiness.status, 503);
@@ -410,10 +452,10 @@ test('invalid startup YAML is unready and blocks native access; correcting it re
   const ready = await request('/__studio/ready');
   assert.equal(ready.status, 503);
   assert.equal(ready.json.code, 'INVALID_YAML');
-  assert.equal((await request('/native-config')).status, 503);
+  assert.equal((await request('/api/native-config')).status, 503);
   assert.equal(upstreamCalls.length, 0);
   await fs.writeFile(path.join(configDir, 'services.yaml'), '[]\n');
-  assert.equal((await request('/native-config')).text, '[]\n');
+  assert.equal((await request('/api/native-config')).text, '[]\n');
   assert.equal((await request('/__studio/ready')).status, 200);
 });
 

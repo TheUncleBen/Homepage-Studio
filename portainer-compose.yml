@@ -1,27 +1,20 @@
 services:
   studio:
-    image: ${STUDIO_IMAGE:?Set STUDIO_IMAGE to the approved configuration-service image digest}
+    image: ${STUDIO_IMAGE:?Set STUDIO_IMAGE to the qualified application image digest}
     environment:
-      HOMEPAGE_UPSTREAM: http://homepage:3000
       STUDIO_PUBLIC_ORIGIN: ${STUDIO_PUBLIC_ORIGIN:?Set the exact dashboard URL origin}
       STUDIO_BACKUP_RETENTION: ${STUDIO_BACKUP_RETENTION:-25}
+      STUDIO_RENDERER_MAX_WORKERS: ${STUDIO_RENDERER_MAX_WORKERS:-8}
+      STUDIO_RENDERER_IDLE_SECONDS: ${STUDIO_RENDERER_IDLE_SECONDS:-600}
+      STUDIO_RENDERER_STARTUP_SECONDS: ${STUDIO_RENDERER_STARTUP_SECONDS:-30}
+      LOG_TARGETS: stdout
     ports:
-      - target: 3001
+      - target: 3000
         published: "${STUDIO_PORT:-3000}"
         protocol: tcp
     volumes:
       - config:/app/config
       - state:/app/state
-    restart: unless-stopped
-    stop_grace_period: 30s
-  homepage:
-    image: ${HOMEPAGE_IMAGE:?Set HOMEPAGE_IMAGE to the approved native-renderer image digest}
-    environment:
-      STUDIO_WRITER_ORIGIN: http://studio:3001
-      STUDIO_PUBLIC_ORIGIN: ${STUDIO_PUBLIC_ORIGIN:?Set the exact dashboard URL origin}
-      LOG_TARGETS: stdout
-    volumes:
-      - config:/app/config:ro
     restart: unless-stopped
     stop_grace_period: 30s
 volumes:

@@ -1,66 +1,74 @@
 # Candidates for Portainer testing
 
-A candidate is the complete configuration writer and native renderer, each for `linux/amd64` and `linux/arm64`, with matching source, verification evidence and digest-pinned deployment templates. Candidate delivery is engineering work and requires no owner-only dispatch, candidate review environment or second approval before image publication. Official `YYYY.MM.DD` releases still require the owner's later acceptance of the exact candidate.
+A candidate is one complete controller/native application image for `linux/amd64` and `linux/arm64`, with matching source, verification evidence and digest-pinned deployment templates. Candidate delivery is engineering work and requires no owner-only dispatch, candidate review environment or second approval before image publication. Official `YYYY.MM.DD` releases still require the owner's later acceptance of the exact candidate.
 
 The active workflow is **Validate and prepare deployment candidate**, at `.github/workflows/candidate-approved.yml`; `release/workflows/candidate-approved.yml` preserves its matching source copy. The filename is retained for workflow identity. Ordinary default-branch pushes run the complete native qualification without retaining images. An explicit `[deliver-candidate]` marker in the pushed head commit message, or a deliberate manual dispatch from the default branch, requests candidate delivery. Pull requests use the separate nonpublishing validation workflow, so a default-branch push runs one native matrix rather than duplicating that work.
 
 ## Images and access
 
-The workflow uses two packages:
+The sole product image repository is `ghcr.io/theuncleben/homepage-studio`.
+Its one multiarchitecture index contains the exact qualified AMD64 and ARM64
+application builds. The former companion-renderer package is historical.
 
-| Component | Image repository |
-| --- | --- |
-| Configuration writer and dashboard entry point | `ghcr.io/theuncleben/homepage-studio` |
-| Homepage-derived native renderer | `ghcr.io/theuncleben/homepage-studio-renderer` |
-
-The workflow uses its normal `GITHUB_TOKEN` with package-write permission for delivery, as supported by [GitHub's container registry authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry). The image source label links both packages to this repository. No supplemental package-metadata token, separate staging packages or account-wide package listing is required.
+The workflow uses its normal `GITHUB_TOKEN` with package-write permission for delivery, as supported by [GitHub's container registry authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry). The image source label links the application package to this repository. No supplemental package-metadata token, separate staging packages or account-wide package listing is required.
 
 Architecture images use `build-<full-source-commit>-<run-id>-<architecture>` tags. The complete multiarchitecture images use `build-<full-source-commit>-<run-id>`. These unique build tags retain the tested images; the installable templates use immutable index digests. An existing complete-candidate index tag stops assembly; architecture tags include the fresh run identity and are never reused by a rerun. The workflow creates no moving preview channel, `latest` image tag, official date tag or GitHub release.
 
-GitHub documents that [new GHCR packages start private](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry), and that repository linkage inherits [access permissions rather than visibility](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility). Actual anonymous access is checked after the images exist. If first-use visibility prevents anonymous access, the completed images and bundle remain available and the delivery report records that remaining setting. The package administrator changes each of these two packages to **Public** once in its package settings, then anonymous verification can resume against the same digests without rebuilding or approving another workflow. This setting applies to every version in the package and cannot be changed back to private. It is separate from an approval gate on individual builds.
+GitHub documents that [new GHCR packages start private](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry), and that repository linkage inherits [access permissions rather than visibility](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility). Actual anonymous access is checked after the image exists. If first-use visibility prevents anonymous access, the completed image and bundle remain available and the delivery report records that remaining setting. The package administrator changes the application package to **Public** once in its package settings, then anonymous verification can resume against the same digests without rebuilding or approving another workflow. This setting applies to every version in the package and cannot be changed back to private. It is separate from an approval gate on individual builds.
 
 ## What qualification and delivery do
 
 The delivery guard binds the live GitHub run to this repository, the trusted default branch, the exact source and the expected workflow. It accepts the supported push or manual event, requires a fresh run, and does not require the initiating actor to be the repository owner. Forks, other branches, mismatched source and a reused run are rejected.
 
-Two native GitHub-hosted jobs run on AMD64 and ARM64. Each installs the locked dependencies, executes source/writer/packaging checks, prepares the pinned Homepage source and builds both images locally. Those images undergo actual production-browser, Compose, Swarm and Portainer lifecycle checks. Portainer qualification exercises both unchanged templates through the real API, including replacement, persistence, restore and cleanup. Unit fixtures do not satisfy that gate.
+Two native GitHub-hosted jobs run on AMD64 and ARM64. Each installs the locked dependencies, executes source/writer/packaging checks, checks the tracked controlled Homepage source and builds the complete application image locally. That image undergoes actual production-browser, Compose, Swarm and Portainer lifecycle checks. Portainer qualification exercises both unchanged templates through the real API, including replacement, persistence, restore and cleanup. Unit fixtures do not satisfy that gate.
 
 The qualification report records the following required checks for **each** native target:
 
 | Keys | Actual prerequisite |
 | --- | --- |
-| `writer`, `packaging`, `native`, `dependencies` | Writer and release-tool tests, packaging and source checks, full native tests/build, locked production dependency audits |
-| `browser` | Expanded Chromium acceptance suite, currently 17 scenarios |
-| `desktopFirefox`, `desktopWebKit` | Four total desktop scenarios across the two engines |
+| `controller`, `packaging`, `native`, `dependencies` | Controller and release-tool tests, packaging and source checks, full native tests/build, locked production dependency audits |
+| `browser` | The production Chromium acceptance suite configured in the accepted source |
+| `desktopFirefox`, `desktopWebKit` | The configured desktop acceptance scenarios in each engine |
 | `hiddenDocument` | Real headed-browser document hiding and timer suspension/resume |
-| `compose`, `swarm` | Direct two-image deployment and full lifecycle acceptance |
+| `compose`, `swarm` | Direct single-container deployment and full lifecycle acceptance |
 | `portainerCompose`, `portainerSwarm` | Actual Portainer API qualification for both templates, including cleanup |
 
 The workflow order is part of this contract. Each native image push occurs only after that target's preceding checks succeed. Assembly requires both native jobs to succeed. The report binds the commit, Git tree, pinned Homepage commit, run identity and the locally tested image configuration digests. A field saying `passed` outside that execution does not prove a test ran.
 
-Only the already-tested image objects are pushed to the two image repositories. Their registry architecture manifests and configuration bytes must match the local image IDs tested on their native runners. Assembly constructs the two multiarchitecture indexes from those exact architecture digests and verifies the complete pair. It produces corresponding-source archives, the original qualification report, candidate manifest, digest-pinned templates, environment example and checksums.
+Only the already-tested application image objects are pushed to the application repository. Their registry architecture manifests and configuration bytes must match the local image IDs tested on their native runners. Assembly constructs one multiarchitecture index from the exact architecture digests and verifies every manifest/configuration identity. It produces one corresponding-source archive, the original qualification report, candidate manifest, digest-pinned templates, environment example and checksums.
+
+Corresponding-source packing requires the exact accepted commit with no tracked
+changes. Its prebuild guard inspects every local Docker COPY input and rejects
+untracked or ignored source within those copied trees. Actual Docker-excluded
+dependencies/build outputs are allowed locally; unrelated untracked files outside
+build inputs do not enter the archive. The deterministic `studio-source.tar.gz`
+contains the complete controller and native fork, build instructions and license
+notices. Its hash is bound into the candidate, and promotion reuses the same
+bytes. The build verifies the pinned pnpm tarball before frozen installation.
+See [native source](NATIVE-SOURCE.md).
+
 
 The bundle's `delivery-receipt.json` keeps image integrity and anonymous availability separate. It records the build identity, artifact fingerprint, exact image references, `authenticatedPulls`, `anonymousAccess` and any pending packages. The anonymous verification method is `registry-stream-sha256`; its `layers` list records each verified repository, layer digest and size. Its status is `public-ready` or `package-access-pending`. Image/configuration mismatches, incomplete architecture receipts or failed tests stop delivery. A first-use visibility restriction leaves anonymous access pending while preserving the already-qualified images and bundle. Successful public verification reads the exact indexes and architecture/configuration bytes without credentials, then streams and SHA-256 checks every unique runtime layer within each repository for both architectures. It uses neither a Docker daemon nor cached layers.
 
-The hosted delivery check also performs four authenticated Docker pulls using the verified platform-specific child manifest digests, then checks each expected image configuration ID, operating system and architecture. The registry index must already bind those exact children and configurations to the tested source; deployment templates continue to use immutable multiarchitecture index digests. Pulling separate children avoids binding one index digest to two local image IDs in Docker's classic store, the collision recorded in [Moby issue 43188](https://github.com/moby/moby/issues/43188). No image deletion, retagging or rebuild is part of this verification.
+The hosted delivery check also performs two authenticated Docker pulls, one per native architecture, using the verified platform-specific child manifest digests, then checks each expected image configuration ID, operating system and architecture. The registry index must already bind those exact children and configurations to the tested source; deployment templates continue to use immutable multiarchitecture index digests. Pulling separate children avoids binding one index digest to two local image IDs in Docker's classic store, the collision recorded in [Moby issue 43188](https://github.com/moby/moby/issues/43188). No image deletion, retagging or rebuild is part of this verification.
 
 A successful build alone does not establish that the owner can pull the images. After a visibility change, the operator verifies the same candidate manifest and registry bytes without rebuilding; `node scripts/candidate-pipeline.mjs verify-public <candidate-manifest.json>` performs that same anonymous streaming check without Docker or credentials. The operator retains the later verification result alongside the original build receipt, whose earlier pending status remains historical. This verification is engineering work, not an installation command for the owner.
 
 ## Portainer handoff
 
-A deployment handoff requires the complete engineering result for these bytes, the retained image pair, verified bundle hashes and successful anonymous image access. The bundle contains no registry credentials or private runtime configuration. Human acceptance is still pending.
+A deployment handoff requires the complete engineering result for these bytes, the retained application image, verified bundle hashes and successful anonymous image access. The bundle contains no registry credentials or private runtime configuration. Human acceptance is still pending.
 
-Use `portainer-swarm.yml` for Docker Swarm or `portainer-compose.yml` for standalone Docker. Both image digests are already filled in. Supply the exact dashboard origin and published port; Swarm also requires the unique hostname of the storage node. Deploy both components together. No compilation or registry password is needed for the public candidate. New volumes open an empty dashboard for the first evaluation.
+Use `portainer-swarm.yml` for Docker Swarm or `portainer-compose.yml` for standalone Docker. Both templates already contain the same immutable application image index digest, covering AMD64 and ARM64. Supply the exact dashboard origin and published port; Swarm also requires the unique hostname of the storage node. Deploy the single `studio` service with its configuration and state volumes. No compilation or registry password is needed for the public candidate. New volumes open an empty dashboard for the first evaluation.
 
-For an existing stack, review the two service definitions, named volumes and published port before incorporating them. The customized native renderer and writer are a matched pair; changing only the old Homepage image is insufficient. The [deployment guide](DEPLOYMENT.md) explains placement, storage and health checks.
+For an existing stack, review the single `studio` service definition, both named volumes and published port before incorporating the template. The application image contains the controller and managed native dashboard workers together. The bundle includes one matching corresponding-source archive for this complete application. The [deployment guide](DEPLOYMENT.md) explains placement, storage and health checks.
 
 The remaining human review concerns the owner's real host/network resolution and storage, actual service credentials and data, phone gesture feel, and theme/readability on their displays. Known engineering failures, missing browser checks, generic Portainer deployment or registry delivery checks are completed before that handoff. Record human results against the candidate fingerprint.
 
-Keep the previous image pair and matching configuration/state backup for rollback; restore the complete pair and data together. The bundle includes a concise handoff and rollback note. After human acceptance, [official promotion](RELEASES.md#controlled-official-promotion) associates these same image bytes with an approved `YYYY.MM.DD` version in `America/Chicago`.
+Keep the previous application image and matching configuration/state backup for rollback; restore the application image and matching data together. The bundle includes a concise handoff and rollback note. After human acceptance, [official promotion](RELEASES.md#controlled-official-promotion) associates these same image bytes with an approved `YYYY.MM.DD` version in `America/Chicago`.
 
 ## Failure evidence
 
-[Run 39537323749](https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39537323749) passed both native qualification jobs and retained all four architecture images, then failed the authenticated pull check when a second platform reused one index digest in the local Docker store. Bundle upload was skipped and anonymous verification was not reached. The child-digest repair preserves the complete index-to-child-to-configuration/platform checks; its 27-case local fixture suite and independent review pass, but actual hosted delivery remains pending. Exact results and the historical browser-cleanup failure are recorded in [VERIFICATION.md](../VERIFICATION.md).
+[Run 39537323749](https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39537323749) passed both native qualification jobs and retained all four architecture images, then failed the authenticated pull check when a second platform reused one index digest in the local Docker store. Bundle upload was skipped and anonymous verification was not reached. The child-digest repair preserves the complete index-to-child-to-configuration/platform checks. This failed run remains historical evidence; consult [VERIFICATION.md](../VERIFICATION.md) for later exact-source results, current delivery status and the historical browser-cleanup failure.
 
 [Run 39533793508](https://github.com/TheUncleBen/Homepage-Studio/actions/runs/39533793508) exercised the earlier owner-dispatched workflow at `e80f83f610d572d6c41df548cd0779be52a1de34`. Its package-metadata preflight received HTTP 400. Both native builds, assembly and publication were skipped; no image publication was reached. That failed preflight is retained as evidence, and the unnecessary metadata and candidate-approval dependencies are removed by this delivery revision.
 

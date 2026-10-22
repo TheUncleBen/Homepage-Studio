@@ -8,7 +8,7 @@ export const UPSTREAM_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
 
 export function checkHealth({ url, host, kind, buildRevision, timeoutMs = 2500 }) {
   return new Promise((resolvePromise, reject) => {
-    if (!['renderer', 'writer', 'configuration'].includes(kind)) return reject(new Error('Invalid health protocol.'));
+    if (!['application', 'renderer', 'writer', 'configuration'].includes(kind)) return reject(new Error('Invalid health protocol.'));
     const target = new URL(url);
     if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password) return reject(new Error('Invalid health endpoint.'));
     const transport = target.protocol === 'https:' ? https : http;
@@ -29,6 +29,7 @@ export function checkHealth({ url, host, kind, buildRevision, timeoutMs = 2500 }
         if (kind === 'renderer') {
           if (data.protocolVersion !== 1 || data.upstreamCommit !== UPSTREAM_COMMIT || (buildRevision && data.buildRevision !== buildRevision)) return finish(new Error('Renderer build/protocol mismatch.'));
         } else if (data.status !== 'ready') return finish(new Error('Configuration or service is not ready.'));
+        if (kind === 'application' && (data.nativeProtocol !== 1 || data.upstreamCommit !== UPSTREAM_COMMIT || (buildRevision && data.buildRevision !== buildRevision) || ['dashboardRegistry', 'sharedStorage', 'runtimeFiles'].some(key => data.checks?.[key] !== 'ok'))) return finish(new Error('Application build or shared runtime is not ready.'));
         finish(undefined, data);
       });
     });
@@ -39,10 +40,10 @@ export function checkHealth({ url, host, kind, buildRevision, timeoutMs = 2500 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const kind = process.argv[2] || 'writer';
+    const kind = process.argv[2] || 'application';
     const host = process.env.STUDIO_HEALTH_HOST || runtimeHost(process.env.STUDIO_PUBLIC_ORIGIN, process.env.HOMEPAGE_ALLOWED_HOSTS).healthHost;
-    const port = process.env.PORT || (kind === 'renderer' ? '3000' : '3001');
-    const endpoint = kind === 'renderer' ? '/api/studio/health' : kind === 'configuration' ? '/__studio/config-ready' : '/__studio/ready';
+    const port = process.env.PORT || '3000';
+    const endpoint = kind === 'application' ? '/__studio/application-ready' : kind === 'renderer' ? '/api/studio/health' : kind === 'configuration' ? '/__studio/config-ready' : '/__studio/ready';
     await checkHealth({ url: `http://127.0.0.1:${port}${endpoint}`, host, kind, buildRevision: process.env.STUDIO_BUILD_REVISION });
   } catch { process.exitCode = 1; }
 }

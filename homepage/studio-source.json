@@ -1,0 +1,21 @@
+{
+  "upstreamCommit": "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
+  "upstreamVersion": "2.6.0",
+  "sourceArchiveSha256": "c2a66259f3e1c0f085404b5402815920ca922dab84774db3617a541692ff174a",
+  "pnpmVersion": "10.34.7",
+  "overlayApplied": true,
+  "packageManagerGuardRemoved": true,
+  "runtimePackageSha256": "d96ea74d856187d34492e8618ceb9f331b68e681e13481db41d8c98c34f5a08e",
+  "runtimeLockfileSha256": "e27ba2588820af92b44ef11abed7b78d040d457dacfcb1871919b17c8fbac57b",
+  "dependencyPatches": [
+    {
+      "name": "follow-redirects",
+      "fromVersion": "1.16.0",
+      "toVersion": "1.16.1",
+      "advisories": [
+        "GHSA-q3jh-wrc6-jgq8",
+        "GHSA-8r9p-f939-6h3c"
+      ]
+    }
+  ]
+}

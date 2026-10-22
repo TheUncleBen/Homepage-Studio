@@ -4,6 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createConfigStore } from './config.mjs';
+import crypto from 'node:crypto';
+import { syncBuiltinESMExports } from 'node:module';
 
 const INITIAL = `# Ben's dashboard\n- Infrastructure:\n    # Firewall status\n    - pfSense:\n        href: https://firewall.example.test\n        icon: pfsense\n        widget:\n          type: pfsense\n          url: http://firewall.internal\n          key: {{HOMEPAGE_VAR_FIREWALL_KEY}} # keep this reference\n        customUnknown: keep-me\n    - Hosts:\n        - Portainer:\n            href: https://portainer.example.test\n            widget:\n              type: portainer\n              url: http://portainer.internal\n              env: 1\n              key: '{{HOMEPAGE_FILE_PORTAINER_KEY}}'\n- Media: []\n`;
 
@@ -402,4 +404,36 @@ test('an injected mid-save storage failure restores the exact previous revision 
   const backups = await store.listBackups();
   assert.equal(backups.length, 1);
   assert.equal(backups[0].revision, before.revision);
+});
+
+test('snapshot retention follows commit order through tied clocks, clock rollback and a writer restart', async (t) => {
+  const { store, options } = await fixture(t, INITIAL, { backupRetention: 3 });
+  const RealDate = globalThis.Date, realRandomUUID = crypto.randomUUID;
+  let clock = RealDate.parse('2026-01-01T12:00:00.000Z'), sequence = 1000000;
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [clock])); }
+    static now() { return clock; }
+  };
+  // Descending UUIDs deliberately oppose insertion order when time is tied.
+  crypto.randomUUID = () => `00000000-0000-4000-8000-${(sequence--).toString(16).padStart(12, '0')}`;
+  syncBuiltinESMExports();
+  const before = [];
+  try {
+    let current = await store.load(), active = store;
+    for (let i = 0; i < 8; i++) {
+      if (i === 4) { clock -= 3600000; active = createConfigStore(options); }
+      before.push(current.revision);
+      current = await active.mutateSettings({ revision: current.revision, config: { title: `Operation ${i}` } });
+    }
+    const backups = await active.listBackups();
+    assert.deepEqual(backups.map((entry) => entry.revision), before.slice(-3).reverse());
+    assert.equal(new Set(backups.map((entry) => entry.id)).size, 3);
+    assert.ok(backups.every((entry) => entry.createdAt === new RealDate(clock).toISOString()), 'Display dates retain the real wall clock.');
+    const restored = await active.restoreBackup({ revision: current.revision, backupId: backups[0].id });
+    assert.equal(restored.settingsConfig.title, 'Operation 6');
+  } finally {
+    globalThis.Date = RealDate;
+    crypto.randomUUID = realRandomUUID;
+    syncBuiltinESMExports();
+  }
 });

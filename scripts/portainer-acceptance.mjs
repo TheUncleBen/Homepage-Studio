@@ -12,8 +12,8 @@ import { PortainerClient, PORTAINER_IMAGE, PORTAINER_VERSION, REGISTRY_IMAGE, cl
 if (process.env.STUDIO_TEST_CONTAINERS !== '1' || process.env.STUDIO_PORTAINER_TESTS !== '1' || process.env.GITHUB_ACTIONS !== 'true' || process.env.RUNNER_ENVIRONMENT !== 'github-hosted') {
   throw new Error('Portainer acceptance requires an explicitly enabled, disposable GitHub-hosted runner.');
 }
-if (!process.env.STUDIO_IMAGE || !process.env.HOMEPAGE_IMAGE || !/^[a-f0-9]{40}$/.test(process.env.STUDIO_EXPECTED_REVISION || '')) {
-  throw new Error('Provide both already-built local images and their exact expected source revision.');
+if (!process.env.STUDIO_IMAGE || !/^[a-f0-9]{40}$/.test(process.env.STUDIO_EXPECTED_REVISION || '')) {
+  throw new Error('Provide the already-built application image and its exact expected source revision.');
 }
 const architecture = { x64: 'amd64', arm64: 'arm64' }[process.arch];
 assert.ok(architecture, 'Portainer qualification supports native amd64 and arm64 runners');
@@ -22,7 +22,7 @@ const identity = `studio-portainer-${process.pid}`;
 const origin = 'http://localhost:17779';
 const portainer = new PortainerClient('http://127.0.0.1:19000');
 const fixture = createDashboardFixture({ origin, expectedRevision: process.env.STUDIO_EXPECTED_REVISION });
-const env = { ...process.env, STUDIO_PUBLIC_ORIGIN: origin, STUDIO_PORT: '17779', STUDIO_BACKUP_RETENTION: '25' };
+const env = { ...process.env, STUDIO_PUBLIC_ORIGIN: origin, STUDIO_PORT: '17779', STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30' };
 const infra = [];
 const stacks = [];
 const localTags = [];
@@ -46,30 +46,31 @@ const label = stack => `${stack.swarm ? 'com.docker.stack.namespace' : 'com.dock
 async function healthyContainers(stack) {
   return eventually(async () => {
     const ids = (await docker(['ps', '--quiet', '--filter', `label=${label(stack)}`])).split('\n').filter(Boolean);
-    assert.equal(ids.length, 2, 'Exactly one writer and one renderer must be running');
+    assert.equal(ids.length, 1, 'Exactly one complete application container must be running');
     const result = {};
     for (const id of ids) {
       const item = JSON.parse(await docker(['inspect', id]))[0];
       const service = stack.swarm ? item.Config.Labels['com.docker.swarm.service.name'].replace(`${stack.name}_`, '') : item.Config.Labels['com.docker.compose.service'];
-      assert.ok(['studio', 'homepage'].includes(service));
+      assert.ok(['studio'].includes(service));
       assert.equal(item.State.Health.Status, 'healthy');
       assert.equal(item.Image, imageIdentities[service], 'Portainer must run the same already-built image config');
       assert.equal(item.Config.Labels['org.opencontainers.image.revision'], env.STUDIO_EXPECTED_REVISION);
-      assert.equal(item.Config.Image, stack.environment[service === 'studio' ? 'STUDIO_IMAGE' : 'HOMEPAGE_IMAGE']);
+      assert.equal(item.Config.Image, stack.environment.STUDIO_IMAGE);
       assert.equal(item.Config.User, '1000:1000');
       const configMount = item.Mounts.find(mount => mount.Destination === '/app/config');
-      assert.equal(configMount?.RW, service === 'studio', 'Only the writer may write configuration');
-      assert.ok(!item.Mounts.some(mount => mount.Source === '/var/run/docker.sock'), 'The product image pair must never inherit the test Docker socket');
+      assert.equal(configMount?.RW, true, 'The controller owns persistent configuration');
+      assert.equal(item.Mounts.find(mount => mount.Destination === '/app/state')?.RW, true);
+      assert.ok(!item.Mounts.some(mount => mount.Source === '/var/run/docker.sock'), 'The product application must never inherit the test Docker socket');
       result[service] = id;
     }
-    assert.deepEqual(Object.keys(result).sort(), ['homepage', 'studio']);
+    assert.deepEqual(Object.keys(result).sort(), ['studio']);
     return result;
   }, `Portainer ${stack.name} image identity and container health`);
 }
 
 async function verifySwarm(stack, completedUpdate = false) {
   await eventually(async () => {
-    for (const service of ['studio', 'homepage']) {
+    for (const service of ['studio']) {
       const item = JSON.parse(await docker(['service', 'inspect', `${stack.name}_${service}`]))[0];
       assert.equal(item.Spec.Mode.Replicated.Replicas, 1);
       assert.deepEqual(item.Spec.TaskTemplate.Placement.Constraints, [`node.hostname == ${env.STUDIO_NODE}`]);
@@ -77,7 +78,7 @@ async function verifySwarm(stack, completedUpdate = false) {
       assert.equal(item.Spec.UpdateConfig.Monitor, 180000000000);
       assert.equal(item.Spec.RollbackConfig.Order, 'stop-first');
       assert.equal(item.Spec.RollbackConfig.Monitor, 180000000000);
-      if (completedUpdate) assert.equal(item.UpdateStatus?.State, 'completed', 'Both production update monitors must complete');
+      if (completedUpdate) assert.equal(item.UpdateStatus?.State, 'completed', 'The production update monitor must complete');
     }
   }, 'Portainer Swarm placement and production update monitoring', completedUpdate ? 360000 : 180000);
 }
@@ -87,20 +88,22 @@ const removeStackResources = stack => cleanupPortainerStack(stack, { portainer, 
 async function runStack(swarm) {
   const name = `${identity}-${swarm ? 'swarm' : 'compose'}`;
   const template = await readFile(swarm ? 'portainer-swarm.yml' : 'portainer-compose.yml', 'utf8');
-  const stack = { name, swarm, environment: { ...env, STUDIO_IMAGE: references.studio.initial, HOMEPAGE_IMAGE: references.homepage.initial } };
+  const stack = { name, swarm, environment: { ...env, STUDIO_IMAGE: references.studio.initial } };
   const swarmId = swarm ? await readSwarmClusterId(docker) : undefined;
   const payload = stackPayload({ name, template, environment: stack.environment, swarmId });
   stacks.push(stack);
   stack.id = await portainer.createStack(endpointId, payload);
   await portainer.verifyStoredStack(stack.id, endpointId, payload);
   const saved = await fixture.freshAndEdit();
+  const dashboards = await fixture.multiDashboard();
   const before = await healthyContainers(stack);
   if (swarm) await verifySwarm(stack);
   else {
-    await docker(['restart', before.studio, before.homepage]);
+    await docker(['restart', before.studio]);
     await fixture.assertPersisted(saved);
+    await fixture.assertDashboardsPersisted(dashboards);
   }
-  stack.environment = { ...stack.environment, STUDIO_IMAGE: references.studio.replacement, HOMEPAGE_IMAGE: references.homepage.replacement };
+  stack.environment = { ...stack.environment, STUDIO_IMAGE: references.studio.replacement };
   const replacement = stackPayload({ name, template, environment: stack.environment, swarmId });
   // A different local repository with identical manifest/config bytes forces a
   // real replacement even when Swarm sees the same content-addressed image.
@@ -108,16 +111,17 @@ async function runStack(swarm) {
   await portainer.updateStack(stack.id, endpointId, replacement, { repull: true });
   if (swarm) await verifySwarm(stack, true);
   const after = await healthyContainers(stack);
-  for (const service of ['studio', 'homepage']) assert.notEqual(after[service], before[service], 'Portainer API redeployment must actually replace both containers');
+  for (const service of ['studio']) assert.notEqual(after[service], before[service], 'Portainer API redeployment must actually replace the application container');
   await fixture.assertPersisted(saved);
+  await fixture.assertDashboardsPersisted(dashboards);
   await fixture.restoreEmpty(saved);
-  console.log(`PASS: Portainer CE ${PORTAINER_VERSION} ${swarm ? 'Swarm' : 'standalone'} API deployment, unchanged stored template, explicit environment, immutable image identity, edit/snapshot persistence, real replacement and restore.`);
+  console.log(`PASS: Portainer CE ${PORTAINER_VERSION} ${swarm ? 'Swarm' : 'standalone'} API deployment, unchanged stored template, explicit environment, immutable image identity, edit/snapshot persistence, independent dashboard lifecycles, real replacement and restore.`);
   await removeStackResources(stack);
 }
 
 try {
   assert.equal(await docker(['info', '--format', '{{.Swarm.LocalNodeState}}']), 'inactive', 'Refuse to alter an existing Swarm');
-  for (const [service, sourceImage] of [['studio', env.STUDIO_IMAGE], ['homepage', env.HOMEPAGE_IMAGE]]) {
+  for (const [service, sourceImage] of [['studio', env.STUDIO_IMAGE]]) {
     const image = JSON.parse(await docker(['image', 'inspect', sourceImage]))[0];
     assert.equal(image.Config.Labels['org.opencontainers.image.revision'], env.STUDIO_EXPECTED_REVISION);
     imageIdentities[service] = image.Id;
@@ -128,7 +132,7 @@ try {
     '--publish', '127.0.0.1:15000:5000', '--tmpfs', '/var/lib/registry:rw,nosuid,size=2g',
     '--env', 'OTEL_TRACES_EXPORTER=none', '--env', 'REGISTRY_LOG_LEVEL=warn', REGISTRY_IMAGE]);
   await eventually(async () => assert.equal((await fetch('http://127.0.0.1:15000/v2/', { signal: AbortSignal.timeout(5000) })).status, 200), 'Disposable loopback registry');
-  for (const [service, role, sourceImage] of [['studio', 'writer', env.STUDIO_IMAGE], ['homepage', 'renderer', env.HOMEPAGE_IMAGE]]) {
+  for (const [service, role, sourceImage] of [['studio', 'application', env.STUDIO_IMAGE]]) {
     references[service] = {};
     for (const [variant, suffix] of [['initial', ''], ['replacement', '-replacement']]) {
       const repository = `studio-${role}${suffix}`;

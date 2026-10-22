@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createStackPlayback } from '../overlay/src/components/studio/playback.mjs';
+import { createStackPlayback } from '../homepage/src/components/studio/playback.mjs';
 
 function fakeClock() {
   let time = 0, sequence = 0;

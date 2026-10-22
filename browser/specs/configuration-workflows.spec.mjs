@@ -27,10 +27,19 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
   dialog = await openFiles(page);
   const widgets = '- greeting:\n    text: Imported native greeting\n';
   await fileText(dialog, 'widgets.yaml');
-  await dialog.locator('input[type="file"]').setInputFiles({ name: 'widgets.yaml', mimeType: 'application/yaml', buffer: Buffer.from(widgets) });
+  const fileChooser = page.waitForEvent('filechooser');
+  await dialog.getByRole('button', { name: 'Import into this file', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await (await fileChooser).setFiles({ name: 'widgets.yaml', mimeType: 'application/yaml', buffer: Buffer.from(widgets) });
   await expect(dialog.getByRole('textbox', { name: 'widgets.yaml', exact: true })).toHaveValue(widgets);
   expect((await studioApi(request, '/__studio/api/state')).widgetsYaml).toBe(settingsState.widgetsYaml);
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'Keep editing', exact: true })).toBeFocused();
+  await dialog.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(dialog.getByRole('textbox', { name: 'widgets.yaml', exact: true })).toHaveValue(widgets);
+  await page.keyboard.press('Escape');
+  await dialog.getByRole('button', { name: 'Discard changes', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   expect((await studioApi(request, '/__studio/api/state')).revision).toBe(settingsState.revision);
 
   const drafts = {

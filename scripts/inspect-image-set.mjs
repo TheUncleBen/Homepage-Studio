@@ -32,7 +32,7 @@ async function inspectRuntime(child, readBlob, { imageName, sourceCommit, platfo
   const labels = config.config.Labels;
   if (!object(labels) || labels['org.opencontainers.image.source'] !== 'https://github.com/TheUncleBen/Homepage-Studio' || labels['org.opencontainers.image.revision'] !== sourceCommit || labels['org.opencontainers.image.licenses'] !== 'AGPL-3.0-or-later') throw new Error('Image source, revision or license labels do not match the accepted build.');
   if (!Array.isArray(config.config.Env) || config.config.Env.filter(value => typeof value === 'string' && value.startsWith('STUDIO_BUILD_REVISION=')).join() !== `STUDIO_BUILD_REVISION=${sourceCommit}`) throw new Error('Runtime build identity does not match the accepted source.');
-  if (imageName === 'homepage' && labels['io.homepage-studio.upstream'] !== UPSTREAM_COMMIT) throw new Error('Native renderer upstream label differs from the reviewed pin.');
+  if (labels['io.homepage-studio.upstream'] !== UPSTREAM_COMMIT) throw new Error('Native renderer upstream label differs from the reviewed pin.');
   if (child.layers.some(layer => !object(layer) || !validDigest(layer.digest) || !Number.isSafeInteger(layer.size) || layer.size < 0)) throw new Error('Invalid image layer descriptor.');
   return child.config.digest;
 }
@@ -45,7 +45,7 @@ export async function inspectArchitectureManifest(bytes, readBlob, options) {
 export async function inspectImageIndex(indexBytes, readBlob, { imageName, sourceCommit }) {
   if (!Object.hasOwn(IMAGE_REPOSITORIES, imageName) || !isCommit(sourceCommit)) throw new Error('Inspect a known image and an exact source commit.');
   const index = parse(indexBytes);
-  if (!object(index) || index.schemaVersion !== 2 || !indexes.has(index.mediaType) || !Array.isArray(index.manifests) || index.manifests.length < 2 || index.manifests.length > 32) throw new Error('An image pair requires complete multiarchitecture image indexes.');
+  if (!object(index) || index.schemaVersion !== 2 || !indexes.has(index.mediaType) || !Array.isArray(index.manifests) || index.manifests.length < 2 || index.manifests.length > 32) throw new Error('An application image requires complete multiarchitecture image indexes.');
   const found = {};
   const auxiliary = [];
   for (const descriptor of index.manifests) {
@@ -85,7 +85,7 @@ export async function inspectImageDirectory(indexFile, blobDirectory, options) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const [indexFile, blobDirectory, imageName, sourceCommit, ...extra] = process.argv.slice(2);
-    if (!sourceCommit || extra.length) throw new Error('Usage: node scripts/inspect-image-set.mjs <raw-index.json> <sha256-blob-directory> <studio|homepage> <build-commit>');
+    if (!sourceCommit || extra.length) throw new Error('Usage: node scripts/inspect-image-set.mjs <raw-index.json> <sha256-blob-directory> <studio> <build-commit>');
     console.log(JSON.stringify(await inspectImageDirectory(indexFile, blobDirectory, { imageName, sourceCommit }), null, 2));
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

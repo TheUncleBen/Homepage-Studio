@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Candidate delivery retains the exact natively qualified image pair.
+// Candidate delivery retains the exact natively qualified application image.
 // A marked default-branch push or manual run requests delivery; no owner review
 // is needed for engineering candidates. Official promotion remains separate.
 import fs from 'node:fs/promises';
@@ -15,7 +15,7 @@ import { RegistryAccessError, registryReader, publicRegistry } from './ghcr-read
 
 export { CANDIDATE_WORKFLOW };
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const localNames = { studio: 'homepage-studio-ci:writer', homepage: 'homepage-studio-ci:renderer' };
+const localNames = { studio: 'homepage-studio-ci:application' };
 
 export function buildIdentity(environment = process.env) {
   if (!isCommit(environment.GITHUB_SHA) || !/^[1-9][0-9]*$/.test(environment.GITHUB_RUN_ID || '') || environment.GITHUB_RUN_ATTEMPT !== '1' || environment.STUDIO_CANDIDATE_SOURCE !== environment.GITHUB_SHA) throw new Error('Build only the identified default-branch source in a fresh run.');
@@ -75,7 +75,7 @@ export function validateTargetReceipts(receipts, environment = process.env) {
   if (!Array.isArray(receipts) || receipts.length !== 2 || receipts.map(item => item.runnerPlatform).sort().join(',') !== PLATFORMS.join(',')) throw new Error('Both native target receipts are required exactly once.');
   const sourceTree = receipts[0].sourceTree;
   for (const item of receipts) {
-    if (item.schemaVersion !== 1 || item.sourceCommit !== environment.GITHUB_SHA || item.sourceTree !== sourceTree || !isCommit(sourceTree) || item.upstreamCommit !== UPSTREAM_COMMIT || item.buildIdentity !== identity || Object.keys(item.images || {}).sort().join(',') !== 'homepage,studio' || Object.keys(item.checks || {}).sort().join(',') !== [...QUALIFICATION_CHECKS].sort().join(',') || QUALIFICATION_CHECKS.some(name => item.checks[name] !== 'passed') || Object.values(item.images).some(value => !digest(value.digest) || !digest(value.configDigest))) throw new Error('Native target receipts must belong to this complete successful build and image pair.');
+    if (item.schemaVersion !== 1 || item.sourceCommit !== environment.GITHUB_SHA || item.sourceTree !== sourceTree || !isCommit(sourceTree) || item.upstreamCommit !== UPSTREAM_COMMIT || item.buildIdentity !== identity || Object.keys(item.images || {}).sort().join(',') !== 'studio' || Object.keys(item.checks || {}).sort().join(',') !== [...QUALIFICATION_CHECKS].sort().join(',') || QUALIFICATION_CHECKS.some(name => item.checks[name] !== 'passed') || Object.values(item.images).some(value => !digest(value.digest) || !digest(value.configDigest))) throw new Error('Native target receipts must belong to this complete successful application build.');
   }
   return { identity, sourceTree };
 }
@@ -209,8 +209,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       await fs.writeFile('candidate-bundle/delivery-receipt.json', deliveryBytes, { flag: 'wx' });
       await fs.appendFile('candidate-bundle/SHA256SUMS', `${sha256(deliveryBytes)}  delivery-receipt.json\n`);
       const accessNote = delivery.anonymousAccess === 'passed'
-        ? 'Anonymous metadata and every unique image layer were downloaded and SHA-256 verified for both images and native architectures. Use the digest-pinned Portainer templates in the candidate bundle.'
-        : `The exact images are built, qualified and retained. Authenticated pulls passed for both images and architectures. GitHub starts new packages private; anonymous access is still pending. Change only these intended application packages to Public once, then verify the same image digests without rebuilding:\n\n${delivery.pendingPackages.map(repository => `- [${repository}](https://github.com/users/${RELEASE_OWNER}/packages/container/package/${repository.split('/').at(-1)})`).join('\n')}`;
+        ? 'Anonymous metadata and every unique image layer were downloaded and SHA-256 verified for the application image on both native architectures. Use the digest-pinned Portainer templates in the candidate bundle.'
+        : `The exact images are built, qualified and retained. Authenticated pulls passed for the application image on both architectures. GitHub starts new packages private; anonymous access is still pending. Change only these intended application packages to Public once, then verify the same image digests without rebuilding:\n\n${delivery.pendingPackages.map(repository => `- [${repository}](https://github.com/users/${RELEASE_OWNER}/packages/container/package/${repository.split('/').at(-1)})`).join('\n')}`;
       if (process.env.GITHUB_STEP_SUMMARY) await fs.appendFile(process.env.GITHUB_STEP_SUMMARY, `### Candidate built: ${delivery.status}\n\nBuild: ${identity}\n\nArtifact set: \`${candidate.artifactSetSha256}\`\n\n${Object.entries(candidate.images).map(([name, value]) => `${name}: \`${value.reference}\``).join('\n\n')}\n\n${accessNote}\n\nNo candidate workflow approval is required. Human testing is pending; no official date version or GitHub release was created.\n`);
       console.log(JSON.stringify(delivery));
     } else if (operation === 'verify-public' && argument) {

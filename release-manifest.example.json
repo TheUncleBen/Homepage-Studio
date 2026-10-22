@@ -8,12 +8,10 @@
     "studio": {
       "reference": null,
       "buildRevision": null,
-      "platforms": ["linux/amd64", "linux/arm64"]
-    },
-    "homepage": {
-      "reference": null,
-      "buildRevision": null,
-      "platforms": ["linux/amd64", "linux/arm64"]
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
     }
   },
   "verification": {

@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { isDeepStrictEqual } from 'node:util';
 import { materializeRelease } from './release-manifest.mjs';
 import { IMAGE_REPOSITORIES, CANDIDATE_FILES, TEMPLATE_FILES, sha256, matchCandidateToRelease, validateQualificationReport } from './candidate-manifest.mjs';
-import { inspectImageIndex } from './inspect-image-set.mjs';
+import { verifyPublicCandidate } from './candidate-pipeline.mjs';
 import { RELEASE_REPOSITORY, RELEASE_OWNER, verifyTrustedApproval, verifyQualifiedCandidateRun, githubApi, boundedResponse } from './release-guard.mjs';
 import { publicRegistry } from './ghcr-read.mjs';
 
@@ -76,27 +76,24 @@ export async function promoteRelease(candidate, release, assets, {
     const source = templateSources?.[name];
     if (!Buffer.isBuffer(source) || sha256(source) !== expectedHash) throw new Error('Promotion must recheck the exact accepted template source.');
     let rendered = source.toString('utf8');
-    for (const [variable, image] of [['STUDIO_IMAGE', 'studio'], ['HOMEPAGE_IMAGE', 'homepage']]) {
+    for (const [variable, image] of [['STUDIO_IMAGE', 'studio']]) {
       const pattern = new RegExp(`\\$\\{${variable}:\\?[^}]+\\}`, 'g');
       if ([...rendered.matchAll(pattern)].length !== 1) throw new Error('Accepted template image substitution is ambiguous.');
       rendered = rendered.replace(pattern, candidate.images[image].reference);
     }
-    if (!assets[name].equals(Buffer.from(rendered))) throw new Error('Prepared Portainer asset differs from the accepted template and image pair.');
+    if (!assets[name].equals(Buffer.from(rendered))) throw new Error('Prepared Portainer asset differs from the accepted template and application image.');
   }
   const sums = expectedAssetNames.filter(name => name !== 'SHA256SUMS').map(name => `${sha256(assets[name])}  ${name}\n`).join('');
   if (assets.SHA256SUMS.toString('utf8') !== sums) throw new Error('The official asset checksum list differs from the prepared bytes.');
   const readers = Object.fromEntries(Object.keys(IMAGE_REPOSITORIES).map(name => [name, registry ? registry(name) : publicRegistry(name, fetcher)]));
+  // Recheck complete public deployability even if the original delivery receipt
+  // predates a package visibility change. Metadata alone cannot prove that its
+  // runtime layers are readable; use the same streamed verifier as delivery.
+  const publicAccess = await verifyPublicCandidate(candidate, { registry: name => readers[name] });
+  if (publicAccess.anonymousAccess !== 'passed') throw new Error('The accepted application image and every runtime layer must be publicly readable before official publication.');
   // All preconditions, including anonymous readback, precede the first write.
   for (const [name, repository] of Object.entries(IMAGE_REPOSITORIES)) {
     const read = readers[name];
-    const bytes = await read('manifests', candidate.images[name].reference.split('@')[1]);
-    const actual = await inspectImageIndex(bytes, async digest => {
-      // Both config and manifest digests are immutable; try manifest first only for known children.
-      const index = JSON.parse(bytes.toString('utf8'));
-      const isManifest = index.manifests.some(item => item.digest === digest);
-      return read(isManifest ? 'manifests' : 'blobs', digest);
-    }, { imageName: name, sourceCommit: candidate.sourceCommit });
-    if (!isDeepStrictEqual(actual, candidate.images[name])) throw new Error(`Registry identity differs from the accepted ${name} image.`);
     if (await read('manifests', release.version, { absent: true }) !== null) throw new Error(`The official image tag already exists in ${repository}.`);
   }
   if (await api(`/git/ref/tags/${release.version}`, { absent: true }) !== null || await api(`/releases/tags/${release.version}`, { absent: true }) !== null) throw new Error('The official Git tag or release already exists.');
@@ -126,7 +123,7 @@ export async function promoteRelease(candidate, release, assets, {
   }
   const draft = await api('/releases', { method: 'POST', body: {
     tag_name: release.version, target_commitish: candidate.sourceCommit, name: release.version, draft: true, prerelease: false,
-    body: `Owner-approved Homepage Studio ${release.version}\n\nSource: ${candidate.sourceCommit}\nCandidate artifact set: ${candidate.artifactSetSha256}\nRelease artifact set: ${authorization.releaseArtifactSetSha256}\n\nInstall with the digest-pinned Portainer Compose or Swarm asset and set the dashboard origin. Both image digests and corresponding source are preserved from the accepted candidate. Upgrade manually and retain the previous image pair and matching data backup for rollback.\n`,
+    body: `Owner-approved Homepage Studio ${release.version}\n\nSource: ${candidate.sourceCommit}\nCandidate artifact set: ${candidate.artifactSetSha256}\nRelease artifact set: ${authorization.releaseArtifactSetSha256}\n\nInstall with the digest-pinned Portainer Compose or Swarm asset and set the dashboard origin. The application image digest and corresponding source are preserved from the accepted candidate. Upgrade manually and retain the previous application image and matching data backup for rollback.\n`,
   } });
   if (!Number.isSafeInteger(draft.id) || draft.draft !== true || draft.tag_name !== release.version) throw new Error('Draft release creation did not return the expected identity.');
   const uploadAsset = upload || (async (name, bytes) => {

@@ -121,6 +121,46 @@
       "path": "docs/widgets/services/azuredevops.md",
       "sha256": "e7099696f0ebcb6ca146be50ec93f659d1b198267f6c4a566b78a306c4266465",
       "url": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/widgets/services/azuredevops.md"
+    },
+    {
+      "path": "docs/widgets/services/backrest.md",
+      "sha256": "365fea602ab18c4d3d858da28a2edac669ce02a0370966aaaf730a008a4aff3e",
+      "url": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/widgets/services/backrest.md"
+    },
+    {
+      "path": "docs/widgets/services/dockhand.md",
+      "sha256": "996199779b335ab46cef315c27165fbe4bce1920178760f3d6806a44d16b2154",
+      "url": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/widgets/services/dockhand.md"
+    },
+    {
+      "path": "docs/widgets/services/emby.md",
+      "sha256": "58620c64896bb5e54458bf872d6d377e9b917142a632325c90a9cd38f107bd32",
+      "url": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/widgets/services/emby.md"
+    },
+    {
+      "path": "docs/widgets/services/evcc.md",
+      "sha256": "da2b0c2bea3e6b892a7a584c4779e9a2a373c6affa71c27b93d675cf2387edd1",
+      "url": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/widgets/services/evcc.md"
+    },
+    {
+      "path": "docs/widgets/services/gamedig.md",
+      "sha256": "9f7e866f7095f3e7ee658a150ebcc84fa8dbeda7f05badde53c56ecfff6bb0e5",
+      "url": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/widgets/services/gamedig.md"
+    },
+    {
+      "path": "docs/widgets/services/photoprism.md",
+      "sha256": "e231f69523fa33acc1a8b28c2a18f43ae475a317ef983fc496f91d955c9cb87f",
+      "url": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/widgets/services/photoprism.md"
+    },
+    {
+      "path": "docs/widgets/services/suwayomi.md",
+      "sha256": "72894ba6a75335c8c4b1fbe1e4f92114626012a96d9d54a7840583155fa09ac6",
+      "url": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/widgets/services/suwayomi.md"
+    },
+    {
+      "path": "docs/widgets/services/unraid.md",
+      "sha256": "340e7f361769e34b55f93665c66305fb631e63505b6932f3ef53abe6945f4801",
+      "url": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/widgets/services/unraid.md"
     }
   ]
 }

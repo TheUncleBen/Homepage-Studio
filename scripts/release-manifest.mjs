@@ -10,7 +10,7 @@ import { UPSTREAM_COMMIT } from './healthcheck.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const fullHash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) && !/^0+$/.test(value);
-const imageNames = { studio: 'ghcr.io/theuncleben/homepage-studio', homepage: 'ghcr.io/theuncleben/homepage-studio-renderer' };
+const imageNames = { studio: 'ghcr.io/theuncleben/homepage-studio' };
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 
 export function artifactFingerprint(manifest) {
@@ -41,7 +41,7 @@ export function validateReleaseManifest(manifest) {
   const [year, month, day] = manifest.version.split('.').map(Number);
   const calendar = new Date(Date.UTC(year, month - 1, day));
   if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day) throw new Error('The version must be a valid calendar date.');
-  if (!object(manifest.images) || Object.keys(manifest.images).sort().join(',') !== 'homepage,studio') throw new Error('Both and only the writer and native renderer images are required.');
+  if (!object(manifest.images) || Object.keys(manifest.images).sort().join(',') !== 'studio') throw new Error('Only the complete application image is required.');
   for (const [name, expectedName] of Object.entries(imageNames)) {
     const image = manifest.images[name];
     if (!object(image) || !image.reference?.startsWith(`${expectedName}@sha256:`) || !fullHash(image.reference.slice(`${expectedName}@sha256:`.length))) throw new Error('Images must use the expected GHCR repository and an exact digest.');
@@ -75,7 +75,7 @@ export async function materializeRelease(manifest, outputDirectory, sourceRoot =
   try {
     for (const name of ['portainer-compose.yml', 'portainer-swarm.yml']) {
       let contents = await fs.readFile(path.join(sourceRoot, name), 'utf8');
-      for (const [variable, imageName] of [['STUDIO_IMAGE', 'studio'], ['HOMEPAGE_IMAGE', 'homepage']]) {
+      for (const [variable, imageName] of [['STUDIO_IMAGE', 'studio']]) {
         const expression = new RegExp(`\\$\\{${variable}:\\?[^}]+\\}`, 'g');
         if ([...contents.matchAll(expression)].length !== 1) throw new Error('The reviewed deployment template has changed; review its image substitution.');
         contents = contents.replace(expression, manifest.images[imageName].reference);
@@ -83,7 +83,7 @@ export async function materializeRelease(manifest, outputDirectory, sourceRoot =
       await fs.writeFile(path.join(temporary, name), contents, { mode: 0o644 });
     }
     await fs.writeFile(path.join(temporary, 'release-manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o644 });
-    await fs.writeFile(path.join(temporary, 'portainer.env.example'), '# Set the dashboard address; image digests are already in the release templates.\nSTUDIO_PUBLIC_ORIGIN=http://homepage.example.test:3000\nSTUDIO_PORT=3000\n# Swarm only: exact node hostname holding the named volumes.\nSTUDIO_NODE=<docker-node-hostname>\n# Optional, default 25.\nSTUDIO_BACKUP_RETENTION=25\n', { mode: 0o644 });
+    await fs.writeFile(path.join(temporary, 'portainer.env.example'), '# Set the dashboard address; image digests are already in the release templates.\nSTUDIO_PUBLIC_ORIGIN=http://homepage.example.test:3000\nSTUDIO_PORT=3000\n# Swarm only: exact node hostname holding the named volumes.\nSTUDIO_NODE=<docker-node-hostname>\n# Optional, default 25.\nSTUDIO_BACKUP_RETENTION=25\nSTUDIO_RENDERER_MAX_WORKERS=8\nSTUDIO_RENDERER_IDLE_SECONDS=600\nSTUDIO_RENDERER_STARTUP_SECONDS=30\n', { mode: 0o644 });
     await fs.rename(temporary, output);
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
   return result;

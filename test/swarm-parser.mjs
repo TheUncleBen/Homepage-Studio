@@ -1,6 +1,6 @@
 // Run the actual Docker CLI legacy Swarm parser; no daemon is needed.
 // This deliberately lives outside *.test.mjs because ordinary unit runs do not
-// require Docker. CI invokes it explicitly before building either image.
+// require Docker. CI invokes it explicitly before building the application image.
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -14,10 +14,9 @@ import { parse } from 'yaml';
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL('..', import.meta.url));
 const cli = process.env.STUDIO_DOCKER_CLI || 'docker';
-const required = ['STUDIO_IMAGE', 'HOMEPAGE_IMAGE', 'STUDIO_PUBLIC_ORIGIN', 'STUDIO_NODE'];
+const required = ['STUDIO_IMAGE', 'STUDIO_PUBLIC_ORIGIN', 'STUDIO_NODE'];
 const fixture = {
-  STUDIO_IMAGE: 'homepage-studio-ci:writer',
-  HOMEPAGE_IMAGE: 'homepage-studio-ci:renderer',
+  STUDIO_IMAGE: 'homepage-studio-ci:application',
   STUDIO_PUBLIC_ORIGIN: 'http://localhost:17778',
   STUDIO_NODE: 'fixture-node',
   STUDIO_PORT: '17778',
@@ -39,7 +38,7 @@ test('the actual Swarm parser preserves required image, origin and node values',
     const { stdout } = await render();
     const result = parse(stdout);
     assert.equal(result.services.studio.image, fixture.STUDIO_IMAGE);
-    assert.equal(result.services.homepage.image, fixture.HOMEPAGE_IMAGE);
+    assert.deepEqual(Object.keys(result.services), ['studio']);
     for (const service of Object.values(result.services)) {
       assert.equal(service.environment.STUDIO_PUBLIC_ORIGIN, fixture.STUDIO_PUBLIC_ORIGIN);
       assert.deepEqual(service.deploy.placement.constraints, [`node.hostname == ${fixture.STUDIO_NODE}`]);

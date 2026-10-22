@@ -1,11 +1,17 @@
 import http from 'node:http';
 import https from 'node:https';
-import { readFile } from 'node:fs/promises';
+import fs, { readFile } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createConfigStore, ConfigError } from './config.mjs';
+import { createConfigStore, ConfigError, MAX_IMPORT_BYTES } from './config.mjs';
 import { BoardError } from './board.mjs';
 import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
+import { createDashboardRegistry, resolveDashboardRoute } from './dashboards.mjs';
+import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath } from './dashboard-paths.mjs';
+import { createRendererPool, RendererError } from './renderer-pool.mjs';
+import { serveSharedAsset } from './static-assets.mjs';
+import { checkApplicationReadiness } from './application-health.mjs';
+import { renderRobotsPolicy } from './indexing-policy.mjs';
 
 const base = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const studioVersion = (await readFile(join(base, 'VERSION'), 'utf8')).trim();
@@ -20,12 +26,31 @@ function headersWithoutHop(headers) {
 }
 
 function json(res, code, value) {
+  if (res.destroyed || res.writableEnded) return;
   const data = JSON.stringify(value);
   res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(data) });
   res.end(data);
 }
 
-async function readBody(req) {
+function nativeLocation(location, { basePath, upstream, host, requestPath }) {
+  if (!basePath || typeof location !== 'string') return location;
+  let target;
+  try { target = new URL(location, new URL(requestPath, upstream)); } catch { return location; }
+  if (!['http:', 'https:'].includes(target.protocol) || (target.origin !== upstream.origin && target.host.toLowerCase() !== host)) return location;
+  const path = target.pathname;
+  const scoped = path === basePath || path.startsWith(basePath + '/') ? path : basePath + (path === '/' ? '' : path);
+  return scoped + target.search + target.hash;
+}
+function nativeRefresh(value, context) {
+  if (typeof value !== 'string') return value;
+  const match = value.match(/^(\s*\d+(?:\.\d+)?\s*;\s*url\s*=\s*)(?:"([^"]*)"|'([^']*)'|(.*))$/i);
+  if (!match) return value;
+  const url = match[2] ?? match[3] ?? match[4].trim();
+  const quote = match[2] !== undefined ? '"' : match[3] !== undefined ? "'" : '';
+  return match[1] + quote + nativeLocation(url, context) + quote;
+}
+
+async function readBody(req, maxBytes = 2 * 1024 * 1024) {
   if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) {
     throw Object.assign(new Error('Send JSON when saving changes.'), { status: 415 });
   }
@@ -33,7 +58,7 @@ async function readBody(req) {
   const chunks = [];
   for await (const chunk of req) {
     length += chunk.length;
-    if (length > 2 * 1024 * 1024) throw Object.assign(new Error('This request exceeds the 2 MiB configuration limit.'), { status: 413 });
+    if (length > maxBytes) throw Object.assign(new Error(`This request exceeds the ${maxBytes / (1024 * 1024)} MiB ${maxBytes === MAX_IMPORT_BYTES ? 'dashboard import' : 'configuration'} limit.`), { status: 413 });
     chunks.push(chunk);
   }
   let value;
@@ -43,11 +68,10 @@ async function readBody(req) {
   return value;
 }
 
-export function createStudioServer(options = {}) {
+function createDashboardHandlers(options = {}) {
   const configDir = resolve(options.configDir || process.env.HOMEPAGE_CONFIG_DIR || join(base, 'config'));
   const stateDir = resolve(options.stateDir || process.env.STUDIO_STATE_DIR || join(base, 'state'));
-  const upstream = new URL(options.upstream || process.env.HOMEPAGE_UPSTREAM || 'http://homepage:3000');
-  if (!['http:', 'https:'].includes(upstream.protocol) || upstream.username || upstream.password || upstream.pathname !== '/') throw new Error('HOMEPAGE_UPSTREAM must be an HTTP(S) origin such as http://homepage:3000.');
+  const acquireNative = (host, dashboard) => options.rendererPool.acquire(dashboard, host);
   const allowedHosts = (options.allowedHosts || process.env.HOMEPAGE_ALLOWED_HOSTS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   if (!allowedHosts.length || allowedHosts.includes('*')) throw new Error('Set HOMEPAGE_ALLOWED_HOSTS to the actual local hostname:port used to open the dashboard.');
   const externalOrigin = options.publicOrigin || process.env.STUDIO_PUBLIC_ORIGIN;
@@ -58,10 +82,12 @@ export function createStudioServer(options = {}) {
       throw new Error('STUDIO_PUBLIC_ORIGIN must be the exact HTTP(S) dashboard origin, with a host present in HOMEPAGE_ALLOWED_HOSTS.');
     }
   }
-  const transport = upstream.protocol === 'https:' ? https : http;
   const backupRetention = options.backupRetention ?? (process.env.STUDIO_BACKUP_RETENTION === undefined ? undefined : Number(process.env.STUDIO_BACKUP_RETENTION));
-  const discovery = createDiscoveryClient({ upstream: upstream.href });
-  const store = createConfigStore({ configDir, stateDir, backupRetention, discoveryReader: (host) => discovery.read(host) });
+  const store = createConfigStore({ configDir, stateDir, backupRetention, discoveryReader: async (host, dashboard) => {
+    const lease = await acquireNative(host, dashboard);
+    try { return await createDiscoveryClient({ upstream: lease.origin.href }).read(host); }
+    finally { lease.release(); }
+  } });
   const buildRevision = options.buildRevision ?? process.env.STUDIO_BUILD_REVISION ?? 'unreleased';
   let initialized = false;
   // Start recovery immediately, rather than waiting for the first editor read.
@@ -82,13 +108,16 @@ export function createStudioServer(options = {}) {
     }
   }
 
-  function checkNativeHttp(host) {
-    return new Promise((resolve, reject) => {
+  async function checkNativeHttp(host, dashboard) {
+    const lease = await acquireNative(host, dashboard);
+    const upstream = lease.origin;
+    const transport = upstream.protocol === 'https:' ? https : http;
+    try { return await new Promise((resolveHealth, reject) => {
       let timer;
-      const finish = (error, value) => { clearTimeout(timer); error ? reject(error) : resolve(value); };
-      const request = transport.request(upstream, { method: 'GET', path: '/api/studio/health', headers: { host } }, (response) => {
+      const finish = (error, value) => { clearTimeout(timer); error ? reject(error) : resolveHealth(value); };
+      const request = transport.request(upstream, { method: 'GET', path: '/api/studio/health', headers: { host } }, response => {
         let body = '';
-        response.on('data', (chunk) => {
+        response.on('data', chunk => {
           body += chunk.toString('utf8');
           if (Buffer.byteLength(body) > 1024) request.destroy(new Error('Unexpected Homepage health response'));
         });
@@ -97,16 +126,16 @@ export function createStudioServer(options = {}) {
           let health;
           try { health = JSON.parse(body); } catch { /* Invalid bridge response. */ }
           const valid = response.statusCode === 200 && health?.protocolVersion === NATIVE_PROTOCOL && health?.upstreamCommit === UPSTREAM_COMMIT && health?.buildRevision === buildRevision;
-          finish(valid ? undefined : new Error('Homepage Studio native bridge does not match this companion.'), health);
+          finish(valid ? undefined : new Error('The native renderer does not match this application build.'), health);
         });
       });
       request.on('error', finish);
       timer = setTimeout(() => request.destroy(new Error('Homepage health check timed out')), 3000);
       request.end();
-    });
+    }); } finally { lease.release(); }
   }
 
-  async function readiness(req, res, configurationOnly = false) {
+  async function readiness(req, res, dashboard, configurationOnly = false) {
     let persistence;
     try {
       await initialization;
@@ -121,11 +150,11 @@ export function createStudioServer(options = {}) {
       });
     }
     if (configurationOnly) return json(res, 200, { status: 'ready', checks: { configurationAndStorage: 'ok', nativeHttp: 'not_checked' } });
-    try { await checkNativeHttp(String(req.headers.host).toLowerCase()); }
+    try { await checkNativeHttp(String(req.headers.host).toLowerCase(), dashboard); }
     catch {
       return json(res, 503, {
         status: 'not_ready', code: 'HOMEPAGE_UNREACHABLE',
-        error: 'The native renderer is unavailable or does not match this Studio build. Check both image versions, network and allowed hostname.',
+        error: 'The native renderer is unavailable or does not match this Studio build. Check the application logs, storage and allowed hostname.',
         checks: { configurationAndStorage: 'ok', nativeHttp: 'failed' },
       });
     }
@@ -158,35 +187,57 @@ export function createStudioServer(options = {}) {
     res.end(req.method === 'HEAD' ? undefined : text);
   }
 
-  function proxy(req, res) {
-    const headers = headersWithoutHop(req.headers);
-    // Preserve the browser's Host: Homepage validates that same explicit allowlist.
-    const upstreamRequest = transport.request(upstream, { method: req.method, path: req.url, headers, timeout: 60000 }, upstreamResponse => {
-      res.writeHead(upstreamResponse.statusCode || 502, headersWithoutHop(upstreamResponse.headers));
-      upstreamResponse.pipe(res);
-      upstreamResponse.on('error', () => res.destroy());
-    });
+  async function proxy(req, res, dashboard) {
+    if (res.destroyed || req.aborted) return;
+    const basePath = dashboardBasePath(dashboard);
+    const host = String(req.headers.host).toLowerCase();
+    const lease = await acquireNative(host, dashboard);
+    const upstream = lease.origin;
+    const transport = upstream.protocol === 'https:' ? https : http;
+    let released = false;
+    const release = () => { if (!released) { released = true; lease.release(); } };
+    let upstreamRequest, upstreamResponse;
+    const abandon = () => { upstreamRequest?.destroy(); upstreamResponse?.destroy(); release(); };
+    res.once('finish', release); res.once('close', abandon); req.once('aborted', abandon);
+    if (res.destroyed || req.aborted) { abandon(); return; }
+    const headers = Object.fromEntries(Object.entries(headersWithoutHop(req.headers)).filter(([key]) => !key.startsWith('x-studio-')));
+    try {
+      upstreamRequest = transport.request(upstream, { method: req.method, path: req.url, headers, timeout: 60000 }, response => {
+        upstreamResponse = response;
+        if (res.destroyed || req.aborted) { abandon(); return; }
+        const responseHeaders = headersWithoutHop(response.headers);
+        const context = { basePath, upstream, host, requestPath: req.url };
+        if (responseHeaders.location) responseHeaders.location = nativeLocation(responseHeaders.location, context);
+        if (responseHeaders.refresh) responseHeaders.refresh = nativeRefresh(responseHeaders.refresh, context);
+        responseHeaders['cache-control'] = 'no-store';
+        res.writeHead(response.statusCode || 502, responseHeaders);
+        response.on('error', () => res.destroy()); response.on('aborted', () => res.destroy());
+        response.pipe(res);
+      });
+    } catch (error) { abandon(); throw error; }
     upstreamRequest.on('timeout', () => upstreamRequest.destroy(new Error('Upstream timeout')));
     upstreamRequest.on('error', () => {
-      if (!res.headersSent) json(res, 502, { error: 'Homepage is not reachable yet. Check that both containers are running on the same Docker network.' });
-      else res.destroy();
+      if (!res.destroyed) {
+        if (!res.headersSent) json(res, 502, { error: 'This dashboard renderer is temporarily unavailable. Retry after checking the application logs.' });
+        else res.destroy();
+      }
+      release();
     });
-    req.on('aborted', () => upstreamRequest.destroy());
     req.pipe(upstreamRequest);
   }
 
-  const server = http.createServer(async (req, res) => {
+  async function handle(req, res, dashboard) {
     try {
       checkRequest(req);
       const path = req.url.split('?')[0];
       if ((path === '/__studio/health' || path === '/__studio/live') && req.method === 'GET') return json(res, 200, { status: 'ok', check: 'liveness', version: studioVersion });
-      if (path === '/__studio/ready' && req.method === 'GET') return await readiness(req, res);
-      if (path === '/__studio/config-ready' && req.method === 'GET') return await readiness(req, res, true);
+      if (path === '/__studio/ready' && req.method === 'GET') return await readiness(req, res, dashboard);
+      if (path === '/__studio/config-ready' && req.method === 'GET') return await readiness(req, res, dashboard, true);
       if (!path.startsWith('/__studio/')) await prepareNative();
       if (path === '/__studio/catalog.json' && req.method === 'GET') return await asset(req, res, 'catalog.json', 'application/json; charset=utf-8');
       if ((req.method === 'GET' && ['/__studio/api/state', '/__studio/api/board', '/__studio/api/export'].includes(path)) ||
           (req.method === 'POST' && ['/__studio/api/board', '/__studio/api/save', '/__studio/api/restore', '/__studio/api/service', '/__studio/api/info-widget', '/__studio/api/service-widget', '/__studio/api/bookmark', '/__studio/api/settings', '/__studio/api/discovery-visibility'].includes(path))) {
-        await store.refreshDiscovery(String(req.headers.host).toLowerCase());
+        await store.refreshDiscovery(String(req.headers.host).toLowerCase(), dashboard);
       }
       if (path === '/__studio/api/state' && req.method === 'GET') return json(res, 200, await store.load());
       if (path === '/__studio/api/board' && req.method === 'GET') return json(res, 200, await store.loadBoard());
@@ -195,6 +246,7 @@ export function createStudioServer(options = {}) {
       if (path === '/__studio/api/backups' && req.method === 'GET') return json(res, 200, await store.listBackups());
       if (path.startsWith('/__studio/api/backups/') && req.method === 'GET') return json(res, 200, await store.exportBackup(path.slice('/__studio/api/backups/'.length)));
       if (path === '/__studio/api/restore' && req.method === 'POST') return json(res, 200, await store.restoreBackup(await readBody(req)));
+      if (path === '/__studio/api/import' && req.method === 'POST') return json(res, 200, await store.importArchive(await readBody(req, MAX_IMPORT_BYTES)));
       if (path === '/__studio/api/save' && req.method === 'POST') return json(res, 200, await store.save(await readBody(req)));
       if (path === '/__studio/api/service' && req.method === 'POST') return json(res, 200, await store.mutateService(await readBody(req)));
       if (path === '/__studio/api/info-widget' && req.method === 'POST') return json(res, 200, await store.mutateInfoWidget(await readBody(req)));
@@ -203,46 +255,250 @@ export function createStudioServer(options = {}) {
       if (path === '/__studio/api/settings' && req.method === 'POST') return json(res, 200, await store.mutateSettings(await readBody(req)));
       if (path === '/__studio/api/discovery-visibility' && req.method === 'POST') return json(res, 200, await store.mutateDiscoveryVisibility(await readBody(req)));
       if (path.startsWith('/__studio/')) return json(res, 404, { error: 'This editor endpoint does not exist.' });
-      proxy(req, res);
+      await proxy(req, res, dashboard);
     } catch (error) {
       const status = Number(error.status || error.statusCode) || 500;
-      json(res, status, { error: status < 500 || error instanceof ConfigError || error instanceof BoardError || error instanceof DiscoveryError ? error.message : 'The editor could not read or save its configuration. Check the configuration and state volume permissions.', code: error.code || 'EDITOR_ERROR' });
+      json(res, status, { error: status < 500 || error instanceof ConfigError || error instanceof BoardError || error instanceof DiscoveryError || error instanceof RendererError ? error.message : 'The editor could not read or save its configuration. Check the configuration and state volume permissions.', code: error.code || 'EDITOR_ERROR' });
       if (status >= 500) console.error('Editor request failed:', error.code || error.name);
     }
-  });
+  }
 
-  server.on('upgrade', async (req, socket, head) => {
-    try { checkRequest(req); } catch { socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return; }
+  async function upgrade(req, socket, head, dashboard) {
+    checkRequest(req);
     if (req.url.startsWith('/__studio/')) { socket.destroy(); return; }
-    try { await prepareNative(); }
-    catch { socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n'); return; }
+    await prepareNative();
     if (socket.destroyed) return;
-    const request = transport.request(upstream, { method: req.method, path: req.url, headers: req.headers });
-    request.on('upgrade', (response, upstreamSocket, upstreamHead) => {
-      const lines = [`HTTP/1.1 ${response.statusCode} ${response.statusMessage}`];
-      for (const [key, value] of Object.entries(response.headers)) lines.push(`${key}: ${Array.isArray(value) ? value.join(', ') : value}`);
-      socket.write(`${lines.join('\r\n')}\r\n\r\n`);
+    const lease = await acquireNative(String(req.headers.host).toLowerCase(), dashboard);
+    let released = false;
+    const release = () => { if (!released) { released = true; lease.release(); } };
+    let request, upstreamSocket;
+    const abandon = () => { request?.destroy(); upstreamSocket?.destroy(); release(); };
+    socket.once('close', abandon);
+    socket.once('error', abandon);
+    socket.once('end', () => upstreamSocket?.end());
+    if (socket.destroyed) { abandon(); return; }
+    const upstream = lease.origin;
+    const transport = upstream.protocol === 'https:' ? https : http;
+    const headers = Object.fromEntries(Object.entries(req.headers).filter(([key]) => !key.startsWith('x-studio-')));
+    try { request = transport.request(upstream, { method: req.method, path: req.url, headers, timeout: 60000 }); }
+    catch (error) { abandon(); throw error; }
+    request.on('upgrade', (response, peer, upstreamHead) => {
+      upstreamSocket = peer;
+      if (socket.destroyed) { abandon(); return; }
+      const lines = ['HTTP/1.1 ' + response.statusCode + ' ' + response.statusMessage];
+      for (let i = 0; i < response.rawHeaders.length; i += 2) lines.push(response.rawHeaders[i] + ': ' + response.rawHeaders[i + 1]);
+      socket.write(lines.join('\r\n') + '\r\n\r\n');
       if (upstreamHead.length) socket.write(upstreamHead);
-      if (head.length) upstreamSocket.write(head);
-      upstreamSocket.pipe(socket).pipe(upstreamSocket);
-      upstreamSocket.on('error', () => socket.destroy());
-      socket.on('error', () => upstreamSocket.destroy());
+      if (head.length) peer.write(head);
+      peer.pipe(socket).pipe(peer);
+      peer.once('close', () => { socket.destroy(); release(); });
+      peer.once('end', () => socket.end());
+      peer.once('error', () => socket.destroy());
     });
-    request.on('response', response => { response.resume(); socket.destroy(); });
-    request.on('error', () => socket.destroy());
+    request.on('response', response => { response.resume(); socket.destroy(); release(); });
+    request.on('error', () => { socket.destroy(); release(); });
+    request.on('timeout', () => request.destroy(new Error('Native upgrade timed out')));
     request.end();
-  });
+  }
+  return { handle, upgrade, checkRequest, store, initialization };
+}
 
-  return { server, store, initialization };
+export function createStudioServer(options = {}) {
+  const configRoot = resolve(options.configDir || process.env.HOMEPAGE_CONFIG_DIR || join(base, 'config'));
+  const stateRoot = resolve(options.stateDir || process.env.STUDIO_STATE_DIR || join(base, 'state'));
+  const rendererDir = options.rendererDir || process.env.STUDIO_RENDERER_DIR || join(base, 'homepage', '.next', 'standalone');
+  let rendererPool = options.rendererPool;
+  // Explicit test injection only; production uses this image's internal workers.
+  if (!rendererPool && options.upstream) {
+    const origin = new URL(options.upstream);
+    if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('The injected renderer must be an HTTP(S) origin.');
+    rendererPool = { acquire: async () => ({ origin, release() {} }), drain: async () => {}, close: async () => {} };
+  }
+  rendererPool ||= createRendererPool({ configRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision });
+  const handlers = new Map();
+  const unpublished = new Map();
+  let rendererClosed, applicationClosing = false;
+  const closeRenderer = () => (rendererClosed ||= Promise.resolve().then(() => rendererPool.close?.()));
+  function forDashboard(entry) {
+    let handler = handlers.get(entry.id);
+    if (!handler) {
+      handler = createDashboardHandlers({ ...options, rendererPool, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
+      handlers.set(entry.id, handler);
+    }
+    // Only immutable-id storage is retained. Each request carries its own
+    // registry descriptor; a stale request cannot overwrite a newer slug.
+    return handler;
+  }
+  const original = forDashboard({ id: 'default', slug: '', name: 'Main dashboard', archived: false });
+  async function requireRealDirectory(directory) {
+    const stat = await fs.lstat(directory);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || await fs.realpath(directory) !== resolve(directory)) throw new DashboardError('Dashboard storage must use real directories without symbolic links.', 'UNSAFE_DASHBOARD_STORAGE', 503);
+  }
+  async function allocateDashboard(entry) {
+    // Existing registries can become ready before the default store finishes
+    // creating the shared state root. Its parse result does not gate siblings.
+    await original.initialization;
+    const owned = { directories: [], handler: null };
+    unpublished.set(entry.id, owned);
+    for (const [root, directory, mode] of [[configRoot, dashboardConfigDir(configRoot, entry.id), 0o750], [stateRoot, dashboardStateDir(stateRoot, entry.id), 0o700]]) {
+      await requireRealDirectory(root);
+      const parent = dirname(directory);
+      try { await fs.mkdir(parent, { mode }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+      await requireRealDirectory(parent);
+      // Exclusive creation establishes ownership. Never adopt or later remove
+      // a pre-existing directory, even on an unexpected UUID collision.
+      await fs.mkdir(directory, { mode });
+      owned.directories.push(directory);
+    }
+    return owned;
+  }
+  const registry = createDashboardRegistry({ configRoot, prepareDashboard: async (entry, source, { isNew = false } = {}) => {
+    let archive;
+    if (source) {
+      const sourceHandler = forDashboard(source);
+      await sourceHandler.initialization;
+      archive = await sourceHandler.store.exportCurrent();
+    }
+    const owned = isNew ? await allocateDashboard(entry) : null;
+    const target = forDashboard(entry);
+    if (owned) owned.handler = target;
+    if (!(await target.initialization).ok) await target.store.initialize();
+    if (archive) {
+      const current = await target.store.load();
+      await target.store.importArchive({ revision: current.revision, archive });
+    }
+  }, cleanupDashboard: async entry => {
+    if (entry.id === 'default') throw new DashboardError('The original dashboard cannot be removed.', 'DEFAULT_DASHBOARD_REQUIRED');
+    const owned = unpublished.get(entry.id);
+    if (!owned) return;
+    try {
+      await owned.handler?.initialization;
+      if (owned.handler && handlers.get(entry.id) === owned.handler) handlers.delete(entry.id);
+      for (const directory of owned.directories) {
+        try { await requireRealDirectory(directory); }
+        catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+        await fs.rm(directory, { recursive: true, force: true });
+      }
+    } finally { unpublished.delete(entry.id); }
+  } });
+  let registryReady = false;
+  const initialization = registry.initialize().then(
+    () => { registryReady = true; return { ok: true }; },
+    error => ({ ok: false, code: error.code || 'DASHBOARDS_NOT_READY' }),
+  );
+  async function prepareRegistry() {
+    await initialization;
+    if (!registryReady) { await registry.initialize(); registryReady = true; }
+    return registry.read();
+  }
+  const server = http.createServer(async (req, res) => {
+    try {
+      original.checkRequest(req);
+      const path = req.url.split('?')[0];
+      if (['/__studio/live', '/__studio/health'].includes(path)) return await original.handle(req, res);
+      if (path === '/robots.txt') {
+        if (!['GET', 'HEAD'].includes(req.method)) return json(res, 405, { error: 'Use GET or HEAD for the crawl policy.' });
+        let status = 200, content;
+        try {
+          content = await renderRobotsPolicy(await prepareRegistry(), entry => forDashboard(entry).store.readIndexingPolicy());
+        } catch {
+          status = 503; content = 'User-agent: *\nDisallow: /\n';
+        }
+        res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'content-length': Buffer.byteLength(content), 'x-content-type-options': 'nosniff', ...(status === 503 ? { 'retry-after': '60' } : {}) });
+        return res.end(req.method === 'HEAD' ? undefined : content);
+      }
+      const manifest = await prepareRegistry();
+      if (path === '/__studio/application-ready') {
+        if (req.method !== 'GET') return json(res, 405, { error: 'Use GET to check application readiness.' });
+        if (applicationClosing) throw new DashboardError('The application is shutting down.', 'APPLICATION_SHUTTING_DOWN', 503);
+        const checks = await checkApplicationReadiness({ configRoot, stateRoot, rendererDir });
+        return json(res, 200, { status: 'ready', version: studioVersion, checks, buildRevision: options.buildRevision ?? process.env.STUDIO_BUILD_REVISION ?? 'unreleased', nativeProtocol: NATIVE_PROTOCOL, upstreamCommit: UPSTREAM_COMMIT });
+      }
+      if (path === '/__studio/api/dashboards') {
+        if (req.method === 'GET') return json(res, 200, manifest);
+        if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST for dashboard management.' });
+        const result = await registry.mutate(await readBody(req));
+        unpublished.delete(result.dashboard.id);
+        forDashboard(result.dashboard);
+        const previous = manifest.dashboards.find(entry => entry.id === result.dashboard.id);
+        if (previous && (previous.slug !== result.dashboard.slug || previous.archived !== result.dashboard.archived)) {
+          try { await rendererPool.drain?.(result.dashboard.id); }
+          catch (error) { console.error('Dashboard worker cleanup failed:', error.code || error.name); }
+        }
+        return json(res, 200, result);
+      }
+      if (['/__studio/ready', '/__studio/config-ready'].includes(path)) {
+        const primary = manifest.dashboards.find(entry => entry.id === 'default');
+        return await forDashboard(primary).handle(req, res, primary);
+      }
+      const route = resolveDashboardRoute(manifest, req.url);
+      if (route.redirect) { res.writeHead(307, { location: route.redirect, 'cache-control': 'no-store' }); return res.end(); }
+      req.url = route.path;
+      if (route.shared) return await serveSharedAsset(req, res, rendererDir);
+      return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
+    } catch (error) {
+      const diagnostic = req.url.split('?')[0].startsWith('/__studio/api/');
+      const status = error instanceof ConfigError && !diagnostic ? 503 : Number(error.status || error.statusCode) || 500;
+      json(res, status, { error: error instanceof DashboardError || error instanceof ConfigError || status < 500 ? error.message : 'The dashboard could not be opened. Check the application logs and persistent storage.', code: error.code || 'DASHBOARD_ERROR' });
+    }
+  });
+  const connections = new Set();
+  server.on('connection', socket => { connections.add(socket); socket.once('close', () => connections.delete(socket)); });
+  server.on('upgrade', async (req, socket, head) => {
+    try {
+      original.checkRequest(req);
+      const route = resolveDashboardRoute(await prepareRegistry(), req.url);
+      if (route.redirect || route.shared) { socket.destroy(); return; }
+      req.url = route.path;
+      await forDashboard(route.dashboard).upgrade(req, socket, head, route.dashboard);
+    } catch (error) {
+      if (socket.destroyed) return;
+      const requested = Number(error.status || error.statusCode);
+      const status = [400, 403, 404].includes(requested) ? requested : 503;
+      const reason = { 400: 'Bad Request', 403: 'Forbidden', 404: 'Not Found', 503: 'Service Unavailable' }[status];
+      socket.end('HTTP/1.1 ' + status + ' ' + reason + '\r\nConnection: close\r\n\r\n');
+    }
+  });
+  server.on('close', () => {
+    if (!applicationClosing) void closeRenderer().catch(error => console.error('Renderer shutdown failed:', error.code || error.name));
+  });
+  let shutdownResult;
+  function shutdown({ graceMs = 10000 } = {}) {
+    if (shutdownResult) return shutdownResult;
+    if (!Number.isInteger(graceMs) || graceMs < 0 || graceMs > 30000) throw new Error('Shutdown grace must be an integer from 0 to 30000 milliseconds.');
+    applicationClosing = true;
+    shutdownResult = (async () => {
+      // HTTP close completion can precede upgraded-socket close handlers. Wait
+      // for those handlers as well so every proxy lease is released before the
+      // pool finishes and the process reports shutdown complete.
+      const socketsClosed = Promise.all([...connections].map(socket => new Promise(resolveClosed => {
+        if (socket.closed) resolveClosed(); else socket.once('close', resolveClosed);
+      })));
+      const timer = setTimeout(() => { for (const socket of connections) socket.destroy(); server.closeAllConnections(); }, graceMs);
+      timer.unref();
+      try {
+        await new Promise((resolveClose, reject) => server.close(error => {
+          if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') reject(error); else resolveClose();
+        }));
+        await socketsClosed;
+        await closeRenderer();
+      } finally { clearTimeout(timer); }
+    })();
+    return shutdownResult;
+  }
+  return { server, store: original.store, registry, initialization, rendererPool, shutdown, get dashboardHandlerCount() { return handlers.size; } };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const port = Number(process.env.PORT || 3001);
-  const { server, initialization } = createStudioServer();
+  const port = Number(process.env.PORT || 3000);
+  const { server, initialization, shutdown } = createStudioServer();
   const startup = await initialization;
   if (!startup.ok) console.error('Studio configuration startup requires attention:', startup.code);
-  server.listen(port, '0.0.0.0', () => console.log(`Homepage Eggplant Studio listening on port ${port}`));
-  const close = () => server.close(() => process.exit(0));
-  process.on('SIGINT', close);
-  process.on('SIGTERM', close);
+  server.listen(port, '0.0.0.0', () => console.log('Homepage Studio listening on port ' + port));
+  let closing = false;
+  const close = () => {
+    if (closing) return; closing = true;
+    shutdown().then(() => process.exit(0), error => { console.error('Application shutdown failed:', error.code || error.name); process.exit(1); });
+  };
+  process.on('SIGINT', close); process.on('SIGTERM', close);
 }

@@ -83,13 +83,27 @@ test('raw service-widget reorder reserves exact fingerprints before positional f
 });
 
 test('a widget-only parent produces one panel and removing its last widget does not leave a blank service tile', async (t) => {
-  const { store } = await fixture(t);
+  const { store, options } = await fixture(t);
   let current = await store.mutateServiceWidget({ revision: (await store.load()).revision, action: 'add', newService: { name: 'Media usage', group: ['Home', 'Media'] }, type: 'jellyfin', config: { url: 'http://media.example.test', key: '{{HOMEPAGE_VAR_MEDIA_KEY}}' } });
   assert.equal(current.services.length, 1);
   assert.deepEqual(current.board.panels.map((p) => p.kind), ['serviceWidget']);
-  current = await store.mutateServiceWidget({ revision: current.revision, action: 'delete', id: current.serviceWidgets[0].id });
+  current = await createConfigStore(options).mutateServiceWidget({ revision: current.revision, action: 'delete', id: current.serviceWidgets[0].id });
   assert.deepEqual(current.services, []);
   assert.deepEqual(current.board.panels, []);
+});
+
+test('deleting the last widget preserves an explicitly created or legacy id-only service after restart', async (t) => {
+  const { store, options } = await fixture(t);
+  let current = await store.mutateService({ revision: (await store.load()).revision, action: 'add', name: 'Explicit service', group: 'Home', config: {} });
+  const id = current.services[0].id;
+  current = await store.mutateServiceWidget({ revision: current.revision, action: 'add', serviceId: id, type: 'portainer', config: { url: 'http://portainer.example.test', env: 1 } });
+  current = await createConfigStore(options).mutateServiceWidget({ revision: current.revision, action: 'delete', id: current.serviceWidgets[0].id });
+  assert.equal(current.services[0].id, id);
+  assert.equal(current.board.panels[0].id, id);
+  current = await store.save({ revision: current.revision, servicesYaml: '- Home:\n    - Legacy:\n        id: studio-legacy\n        widget:\n          type: portainer\n' });
+  current = await createConfigStore(options).mutateServiceWidget({ revision: current.revision, action: 'delete', id: current.serviceWidgets[0].id });
+  assert.equal(current.services[0].id, 'studio-legacy');
+  assert.equal(current.board.panels[0].kind, 'service');
 });
 
 test('service metadata stays visible when an independent widget has no service link', async (t) => {
@@ -134,6 +148,29 @@ test('bookmark editing preserves comments, extra option mappings and identity wh
   assert.equal(current.bookmarks.length, 2);
   current = await store.mutateBookmark({ revision: current.revision, action: 'delete', id });
   assert.equal(current.bookmarks[0].name, 'Other');
+});
+
+test('structured bookmark edits reject missing destinations and preserve native relative URLs and literal references', async (t) => {
+  const { store } = await fixture(t);
+  let current = await store.load();
+  for (const config of [{}, { href: '' }, { href: '   ' }, { href: '/relative' }]) {
+    await assert.rejects(store.mutateBookmark({ revision: current.revision, action: 'add', name: 'Broken', group: 'Home', config }), { code: 'INVALID_BOOKMARK' });
+    assert.equal((await store.load()).revision, current.revision);
+    assert.equal((await store.listBackups()).length, 0);
+  }
+  for (const [name, config] of [
+    ['Absolute', { href: 'https://bookmark.example.test/path' }],
+    ['Relative', { href: '/relative', description: 'Local page' }],
+    ['Email', { href: 'mailto:user@example.test', description: 'Email' }],
+    ['Reference', { href: '{{HOMEPAGE_VAR_BOOKMARK_URL}}' }],
+  ]) current = await store.mutateBookmark({ revision: current.revision, action: 'add', name, group: 'Home', config });
+  assert.equal(current.bookmarks.length, 4);
+  assert.match(current.bookmarksYaml, /\{\{HOMEPAGE_VAR_BOOKMARK_URL\}\}/);
+  const relative = current.bookmarks.find((entry) => entry.name === 'Relative');
+  const count = (await store.listBackups()).length;
+  await assert.rejects(store.mutateBookmark({ revision: current.revision, action: 'update', id: relative.id, config: { description: null } }), { code: 'INVALID_BOOKMARK' });
+  assert.equal((await store.load()).revision, current.revision);
+  assert.equal((await store.listBackups()).length, count);
 });
 
 test('all nine files participate in one validated save and retain opaque custom scripts and native placeholders', async (t) => {

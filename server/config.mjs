@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { parseDocument, isMap, isSeq, isScalar } from 'yaml';
 import { MAX_PANELS, stableValue, reconcileIdentities, identityRecords, validateIdentityRecords, boardSources, reconcileBoard, validateStoredBoard, validateBoardChange } from './board.mjs';
 import { validateDiscoveryManifest, validateStoredDiscoveredSources, validateHiddenDiscoveredIds, mergeDiscoveredSources } from './discovery.mjs';
+import { readNativeIndexingPolicy } from './indexing-policy.mjs';
 
 const FILES = {
   servicesYaml: 'services.yaml',
@@ -17,12 +18,16 @@ const FILES = {
   customCss: 'custom.css',
   customJs: 'custom.js',
 };
+// Keep this byte-level order identical to the native /api/studio/data bridge.
+// Layout/identity state is deliberately excluded from native-source pairing.
+const NATIVE_REVISION_FILES = ['services.yaml', 'bookmarks.yaml', 'widgets.yaml', 'settings.yaml', 'docker.yaml', 'kubernetes.yaml', 'proxmox.yaml', 'custom.css', 'custom.js'];
 const DEFAULTS = { 'services.yaml': '[]\n', 'widgets.yaml': '[]\n', 'bookmarks.yaml': '[]\n', 'settings.yaml': '{}\n', 'docker.yaml': '{}\n', 'kubernetes.yaml': '{}\n', 'proxmox.yaml': '{}\n', 'custom.css': '', 'custom.js': '' };
 const ALL_FILES = [...Object.values(FILES), 'state.json'];
 const LEGACY_FILES = ['services.yaml', 'widgets.yaml', 'bookmarks.yaml', 'settings.yaml', 'state.json'];
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_STATE_BYTES = 2 * 1024 * 1024;
 const MAX_BACKUP_BYTES = 20 * MAX_FILE_BYTES;
+export const MAX_IMPORT_BYTES = MAX_BACKUP_BYTES;
 export const DEFAULT_BACKUP_RETENTION = 25;
 const MAX_DEPTH = 20;
 const PLACEHOLDER = /\{\{\s*HOMEPAGE_(?:VAR|FILE)_[^{}\r\n]*\}\}/g;
@@ -31,6 +36,19 @@ const object = (value) => value !== null && typeof value === 'object' && !Array.
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const fileHash = (value) => hash(JSON.stringify(value));
 const clone = (value) => JSON.parse(JSON.stringify(value));
+
+function nativeRevisionOf(raw) {
+  // A fallback shown by the editor is not a physical file the renderer read.
+  if (NATIVE_REVISION_FILES.some((name) => typeof raw[name] !== 'string')) return null;
+  const digest = createHash('sha256');
+  for (const name of NATIVE_REVISION_FILES) {
+    digest.update(name);
+    digest.update('\0');
+    digest.update(raw[name]);
+    digest.update('\0');
+  }
+  return digest.digest('hex');
+}
 
 export class ConfigError extends Error {
   constructor(message, code = 'INVALID_CONFIG', status = 422, details) {
@@ -65,7 +83,7 @@ function stable(value) {
   return JSON.stringify(value);
 }
 
-function maskPlaceholders(source) {
+function maskPlaceholders(source, filename) {
   let prefix;
   do { prefix = `HOMEPAGESTUDIOPLACEHOLDER${randomUUID().replaceAll('-', '')}X`; } while (source.includes(prefix));
   const replacements = [];
@@ -76,6 +94,11 @@ function maskPlaceholders(source) {
   });
   const restoreText = (value) => replacements.reduce((result, [token, original]) => result.replaceAll(token, () => original), value);
   const restore = (value) => {
+    // YAML can represent Infinity/NaN, but the editor's JSON protocol would
+    // silently replace them with null after committing the original file.
+    if (typeof value === 'number' && !Number.isFinite(value)) {
+      fail(`${filename} contains a non-finite number. Use a finite number, or quote the value to preserve it as text.`, 'INVALID_YAML');
+    }
     if (typeof value === 'string') return restoreText(value);
     if (Array.isArray(value)) return value.map(restore);
     if (object(value)) return Object.fromEntries(Object.entries(value).map(([key, entry]) => [restoreText(key), restore(entry)]));
@@ -88,7 +111,7 @@ function yamlDocument(source, filename) {
   if (typeof source !== 'string' || Buffer.byteLength(source) > MAX_FILE_BYTES) {
     fail(`${filename} must be text no larger than ${MAX_FILE_BYTES} bytes.`);
   }
-  const masked = maskPlaceholders(source);
+  const masked = maskPlaceholders(source, filename);
   const doc = parseDocument(masked.text, { keepSourceTokens: true, uniqueKeys: true, merge: true, prettyErrors: false });
   if (doc.errors.length) {
     // Do not echo YAML snippets: they may contain inline service credentials.
@@ -99,7 +122,10 @@ function yamlDocument(source, filename) {
   }
   let data;
   try { data = masked.restore(doc.toJS({ maxAliasCount: 100 })); }
-  catch { fail(`${filename} contains unsupported or excessive YAML aliases.`, 'INVALID_YAML'); }
+  catch (error) {
+    if (error instanceof ConfigError) throw error;
+    fail(`${filename} contains unsupported or excessive YAML aliases.`, 'INVALID_YAML');
+  }
   return { doc, data, restore: masked.restore, text: () => masked.restoreText(doc.toString({ lineWidth: 0 })) };
 }
 
@@ -183,6 +209,16 @@ function bookmarkEntries(data) {
     }
   }
   return entries;
+}
+
+function validateBookmarkDestination(config) {
+  if (typeof config.href !== 'string' || !config.href.trim()) fail('Enter a destination for this bookmark.', 'INVALID_BOOKMARK');
+  // Native BookmarkItem derives its description with new URL(href) only when
+  // no explicit description exists. Relative destinations therefore need a
+  // description; native secret/environment references remain unresolved here.
+  if (config.description != null || new RegExp(PLACEHOLDER.source).test(config.href)) return;
+  try { new URL(config.href); }
+  catch { fail('Use an absolute bookmark URL, or add a description for a relative destination.', 'INVALID_BOOKMARK'); }
 }
 
 function serviceWidgetEntries(services) {
@@ -295,6 +331,34 @@ function validateSnapshotBytes(raw) {
       fail(`The generated ${name} exceeds its ${limit}-byte storage limit. Reduce the configuration or layout before saving.`, 'CONFIG_SIZE_LIMIT', 422, { file: name, limit });
     }
   }
+}
+
+function importFiles(archive) {
+  if (!object(archive) || archive.version !== 1 || own(archive, 'files') === own(archive, 'before')) {
+    fail('Choose a complete Homepage Studio dashboard export or pre-save snapshot.', 'INVALID_IMPORT');
+  }
+  const snapshot = own(archive, 'before');
+  const allowed = snapshot ? ['version', 'createdAt', 'revision', 'changedFiles', 'before', 'afterHashes'] : ['version', 'createdAt', 'files'];
+  if (Object.keys(archive).some((key) => !allowed.includes(key))) fail('The imported archive contains unsupported metadata.', 'INVALID_IMPORT');
+  const files = snapshot ? archive.before : archive.files;
+  if (!object(files) || Object.keys(files).length !== ALL_FILES.length || ALL_FILES.some((name) => !own(files, name)) || Object.keys(files).some((name) => !ALL_FILES.includes(name))) {
+    fail('Import requires all nine native files and state.json, without additional file paths.', 'INVALID_IMPORT');
+  }
+  const raw = {};
+  for (const name of ALL_FILES) {
+    const value = files[name];
+    if (typeof value !== 'string' && !(snapshot && value === null)) fail('Imported configuration files must be text.', 'INVALID_IMPORT');
+    raw[name] = value === null && name !== 'state.json' ? DEFAULTS[name] : value;
+  }
+  validateSnapshotBytes(raw);
+  return raw;
+}
+
+function backupTimestamp(name) {
+  const m = /^backup-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{3})Z-/.exec(name);
+  if (!m) return 0; // Legacy manually named recovery snapshots predate new saves.
+  const milliseconds = Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}.${m[7]}Z`);
+  return Number.isFinite(milliseconds) ? milliseconds : 0;
 }
 
 async function verifyDirectory(directory, create = false, mode = 0o750) {
@@ -504,11 +568,25 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     // A journal's backup is recovery data, not an expired history entry. The
     // caller normally already recovered it; recheck before deleting anything.
     if (await safeRead(journalFile) !== null) return;
-    const names = (await fs.readdir(backupsDir)).filter((name) => /^backup-[A-Za-z0-9-]+\.json$/.test(name)).sort().reverse();
+    const names = await orderedBackupNames();
     for (const name of names.slice(backupRetention)) {
       if (await safeRead(journalFile) !== null) return;
       await safeRemove(path.join(backupsDir, name));
     }
+  }
+
+  async function orderedBackupNames() {
+    return (await fs.readdir(backupsDir)).filter((name) => /^backup-[A-Za-z0-9-]+\.json$/.test(name))
+      .sort((a, b) => backupTimestamp(b) - backupTimestamp(a) || (a < b ? 1 : a > b ? -1 : 0));
+  }
+
+  async function nextBackupId() {
+    // The filename is a logical ordering key, not the wall-clock display date.
+    // Read the retained maximum so ties, clock rollback and process restarts
+    // cannot cause the newest pre-save recovery point to be pruned first.
+    const names = await orderedBackupNames();
+    const milliseconds = Math.max(Date.now(), (names.length ? backupTimestamp(names[0]) : 0) + 1);
+    return `backup-${new Date(milliseconds).toISOString().replace(/[-:.]/g, '')}-${randomUUID()}`;
   }
 
   async function maintainBackups() {
@@ -534,11 +612,12 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     await ready();
     const raw = await rawSnapshot();
     const parsed = parseSnapshot(raw, {}, discoveryContext());
-    return { raw, ...parsed, revision: revisionOf(raw) };
+    return { raw, ...parsed, revision: revisionOf(raw), configurationRevision: nativeRevisionOf(raw) };
   }
   function response(current) {
     return {
       revision: current.revision,
+      configurationRevision: current.configurationRevision,
       ...Object.fromEntries(Object.entries(FILES).map(([field, file]) => [field, current.raw[file] ?? DEFAULTS[file]])),
       services: current.services,
       groups: current.groups,
@@ -566,7 +645,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     parseSnapshot(desired);
     const changedFiles = ALL_FILES.filter((name) => desired[name] !== current.raw[name]);
     if (!changedFiles.length) return;
-    const backupId = `backup-${new Date().toISOString().replace(/[-:.]/g, '')}-${randomUUID()}`;
+    const backupId = await nextBackupId();
     const backup = {
       version: 1, createdAt: new Date().toISOString(), revision: current.revision, changedFiles,
       before: current.raw,
@@ -726,7 +805,9 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       const config = change.config ?? {};
       if (!object(config)) fail('Bookmark config must be a mapping.');
       if (change.action === 'add') {
-        ensureGroup(doc, [group]).add(doc.createNode({ [name]: [Object.fromEntries(Object.entries(config).filter(([, value]) => value !== null))] }));
+        const options = Object.fromEntries(Object.entries(config).filter(([, value]) => value !== null));
+        validateBookmarkDestination(options);
+        ensureGroup(doc, [group]).add(doc.createNode({ [name]: [options] }));
         identities.set(JSON.stringify([group, name]), `bookmark-${randomUUID()}`);
       } else {
         const parent = doc.getIn([existing.groupIndex, existing.group], true), entry = parent?.items?.[existing.index];
@@ -735,6 +816,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         if (!isSeq(options)) fail('Bookmark options must be a mutable YAML list.');
         if (!options.items.length) options.add(doc.createNode({}));
         options.items[0] = patchMap(doc, options.items[0], config, parsed);
+        validateBookmarkDestination(nodeValue(parsed, options.items[0]));
         renamePair(entry.items[0], name);
         if (group !== existing.group) { parent.items.splice(existing.index, 1); ensureGroup(doc, [group]).add(entry); }
         identities.delete(JSON.stringify([existing.group, existing.name]));
@@ -759,7 +841,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       const name = named(change.newService.name, 'Service name');
       const groupPath = resolveGroup(change.newService.group, current.groups, ['Services']);
       if (current.services.some((entry) => entry.name === name && stable(entry.groupPath) === stable(groupPath))) fail('A service with that name already exists in this group.', 'DUPLICATE_SERVICE');
-      const id = `studio-${randomUUID()}`;
+      const id = `studio-widget-parent-${randomUUID()}`;
       ensureGroup(doc, groupPath).add(doc.createNode({ [name]: { id } }));
       service = serviceEntries(yamlDocument(parsed.text(), 'services.yaml').data).services.find((entry) => entry.id === id);
       byService.set(id, []);
@@ -783,7 +865,9 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       identities.splice(existing.index, 1);
       // A technical parent created only for an independent widget need not
       // become a new empty service tile when its last widget is removed.
-      if (options.items.length === 1 && options.has('id')) { parent.items.splice(service.index, 1); byService.delete(service.id); }
+      // Only newly generated technical parents carry this provenance. Older
+      // ambiguous id-only services are preserved rather than inferred/deleted.
+      if (service.id.startsWith('studio-widget-parent-') && options.items.length === 1 && options.has('id')) { parent.items.splice(service.index, 1); byService.delete(service.id); }
     } else {
       const type = named(change.type ?? change.config?.type ?? existing?.type, 'Service widget type');
       const patch = change.config ?? {};
@@ -821,13 +905,13 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
   return {
     // The caller refreshes discovery only for explicit dashboard API operations.
     // Startup, recovery, native proxy traffic and readiness must never wait on it.
-    refreshDiscovery: (host) => serialized(async () => {
+    refreshDiscovery: (host, dashboard) => serialized(async () => {
       if (!discoveryReader) return;
       // Recover and validate local files before the renderer can read them.
       // A failed configuration must not trigger native discovery traffic.
       await readCurrent();
       try {
-        const manifest = validateDiscoveryManifest(await discoveryReader(host));
+        const manifest = validateDiscoveryManifest(await discoveryReader(host, dashboard));
         cachedDiscoveredSources = mergeDiscoveredSources({ cached: cachedDiscoveredSources, incoming: manifest.sources });
         incomingDiscoveredSources = manifest.sources;
         const messages = {
@@ -853,8 +937,14 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       return response(current);
     }),
     // Called before native HTTP and WebSocket traffic. It shares the writer's
-    // queue so an interrupted transaction cannot be exposed by the companion.
+    // queue so an interrupted transaction cannot be exposed by a native worker.
     prepareForNative: () => serialized(() => ready()),
+    readIndexingPolicy: (environment) => serialized(async () => {
+      await ready();
+      await verifyDirectory(configDir);
+      const text = await safeRead(location('settings.yaml'));
+      return readNativeIndexingPolicy(text, environment);
+    }),
     checkReadiness: () => serialized(async () => {
       const current = await readCurrent();
       if (Object.values(FILES).some((file) => current.raw[file] === null)) {
@@ -873,10 +963,10 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       return { configuration: 'ok', persistence: 'ok', backupRetention };
     }),
     load: () => serialized(async () => response(await readCurrent())),
-    loadBoard: () => serialized(async () => { const current = await readCurrent(); return { revision: current.revision, board: current.board, discoveredSources: current.discoveredSources, hiddenDiscoveredIds: current.hiddenDiscoveredIds, warnings: discoveryWarnings }; }),
+    loadBoard: () => serialized(async () => { const current = await readCurrent(); return { revision: current.revision, configurationRevision: current.configurationRevision, board: current.board, discoveredSources: current.discoveredSources, hiddenDiscoveredIds: current.hiddenDiscoveredIds, warnings: discoveryWarnings }; }),
     saveBoard: (change) => serialized(async () => {
       const result = await saveCurrent(await readCurrent(), { revision: change.revision, board: change.board });
-      return { revision: result.revision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, warnings: result.warnings };
+      return { revision: result.revision, configurationRevision: result.configurationRevision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, warnings: result.warnings };
     }),
     mutateDiscoveryVisibility: (change) => serialized(async () => {
       const current = await readCurrent();
@@ -895,7 +985,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     mutateSettings: (change) => serialized(() => mutateSettingsInner(change)),
     listBackups: () => serialized(async () => {
       await ready();
-      const names = (await fs.readdir(backupsDir)).filter((name) => /^backup-[A-Za-z0-9-]+\.json$/.test(name)).sort().reverse();
+      const names = await orderedBackupNames();
       const metadata = [];
       // Read one bounded snapshot at a time instead of materializing the whole
       // private backup history concurrently just to return its metadata.
@@ -921,6 +1011,30 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         ...Object.fromEntries(Object.values(FILES).map((file) => [file, current.raw[file] ?? DEFAULTS[file]])),
         'state.json': `${JSON.stringify(state, null, 2)}\n`,
       } };
+    }),
+    importArchive: ({ revision, archive }) => serialized(async () => {
+      const current = await readCurrent();
+      checkRevision(revision, current);
+      const desired = importFiles(archive);
+      const candidate = parseSnapshot(desired);
+      const state = {
+        version: 2, layout: candidate.state.layout,
+        infoWidgets: candidate.infoWidgets.map(({ id, type, fingerprint }) => ({ id, type, fingerprint })),
+        serviceWidgets: identityRecords(candidate.serviceWidgets), bookmarks: identityRecords(candidate.bookmarks),
+        discoveredSources: candidate.discoveredSources.map(({ available, ...source }) => source),
+        hiddenDiscoveredIds: candidate.hiddenDiscoveredIds,
+        board: validateBoardChange(candidate.state.board ?? candidate.board, candidate.sources),
+      };
+      // An initial snapshot has no stored placement; other imported boards
+      // must match their complete native sources without silently dropping panels.
+      desired['state.json'] = `${JSON.stringify(state, null, 2)}\n`;
+      await commit(current, desired);
+      // Replaced configuration must not inherit cached descriptors from the
+      // previous dashboard. Native discovery repopulates on its next refresh.
+      cachedDiscoveredSources = [];
+      incomingDiscoveredSources = null;
+      discoveryWarnings = [];
+      return response(await readCurrent());
     }),
     restoreBackup: ({ revision, backupId }) => serialized(async () => {
       const current = await readCurrent();

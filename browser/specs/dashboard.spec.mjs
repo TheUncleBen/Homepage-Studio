@@ -105,7 +105,8 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await expect(page.locator('[data-panel-id]')).toHaveCount(2);
   await stack(page).scrollIntoViewIfNeeded();
   await expect(stack(page).getByRole('button', { name: 'Play slideshow', exact: true })).toBeVisible();
-  await expect(stack(page).getByRole('button')).toHaveCount(1);
+  await expect(stack(page).getByRole('button')).toHaveCount(2);
+  await expect(stack(page).getByRole('button', { name: /^Choose widget in stack:/ })).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByRole('button', { name: /(?:previous|next) (?:widget|slide)/i })).toHaveCount(0);
   await expect(page.locator('[data-stack-id][aria-hidden="true"]')).toHaveAttribute('inert', '');
 
@@ -162,7 +163,9 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
     await swipeHeader(mobile);
     await expect(activePanel(mobile)).not.toHaveAttribute('data-panel-id', beforeSwipe);
     await expect(stack(mobile).getByRole('button', { name: 'Play slideshow', exact: true })).toBeVisible();
-    await expect(stack(mobile).getByRole('button')).toHaveCount(1);
+    await expect(stack(mobile).getByRole('button', { name: 'Play slideshow', exact: true })).toHaveCount(1);
+    await expect(stack(mobile).getByRole('button')).toHaveCount(2);
+    await expect(stack(mobile).locator('.studio-stack-title')).toHaveAttribute('aria-expanded', 'false');
   } finally { await mobileContext.close(); }
 
   await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();

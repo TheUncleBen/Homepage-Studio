@@ -117,6 +117,42 @@ function applyReviewedCorrections(byType) {
   set('service', 'peanut', 'key', ['string'], { label: 'UPS name', sensitive: false, description: 'The UPS name, not an API credential. The documented default is ups.' });
   set('service', 'komga', 'version', ['number'], { choices: [1, 2], description: 'Native API mode: 1 (omitted default) or numeric 2. Choose for your Komga API version; no server version is detected.', source: `${SOURCE_BASE}src/widgets/komga/proxy.js` });
   note('service', 'komga', 'Username plus password takes precedence over key. Clear both when choosing API-key authentication.');
+  // These documented credentials have deliberately blank examples, which do
+  // not prove a type. Their pinned native proxies confirm string credentials.
+  set('service', 'photoprism', 'key', ['string'], { label: 'App password', sensitive: true, description: 'PhotoPrism app password. Omit username and password when using this authentication method.' });
+  note('service', 'photoprism', 'Username plus password takes precedence over key. Clear both when choosing an app password.');
+  set('service', 'gamedig', 'gameToken', ['string'], { label: 'Game token', sensitive: true, description: 'Optional GameDig token for server types that require one. Leave unset for other games.' });
+
+  // Reviewed native lists whose prose, emphasis or malformed example syntax
+  // cannot safely be treated as a generic documentation schema. Keep the
+  // original documented order and leave native defaults absent.
+  const reviewedFieldLists = {
+    backrest: ['num_success_latest', 'num_failure_latest', 'num_success_30', 'num_plans', 'num_failure_30', 'bytes_added_30'],
+    dockhand: ['running', 'stopped', 'paused', 'total', 'cpu', 'memory', 'images', 'volumes', 'events_today', 'pending_updates', 'stacks'],
+    emby: ['movies', 'series', 'episodes', 'songs'],
+    evcc: ['pv_power', 'grid_power', 'home_power', 'charge_power'],
+    suwayomi: ['download', 'nondownload', 'read', 'unread', 'downloadedread', 'downloadedunread', 'nondownloadedread', 'nondownloadedunread'],
+    unraid: ['cpu', 'memoryPercent', 'memoryAvailable', 'memoryUsed', 'notifications', 'arrayFree', 'arrayUsedSpace', 'arrayUsedPercent', 'status', 'pool1UsedSpace', 'pool1FreeSpace', 'pool1UsedPercent', 'pool2UsedSpace', 'pool2FreeSpace', 'pool2UsedPercent', 'pool3UsedSpace', 'pool3FreeSpace', 'pool3UsedPercent', 'pool4UsedSpace', 'pool4FreeSpace', 'pool4UsedPercent'],
+  };
+  for (const [type, choices] of Object.entries(reviewedFieldLists)) {
+    set('service', type, 'fields', ['array'], {
+      choices,
+      exampleValue: null,
+      description: 'Optional ordered list of visible native fields. Leave unset for the native default.',
+      ...(['backrest', 'dockhand', 'suwayomi', 'unraid'].includes(type) ? { maxItems: 4 } : {}),
+      ...(type === 'evcc' ? { source: `${SOURCE_BASE}src/widgets/evcc/component.jsx` } : {}),
+    });
+  }
+  note('service', 'emby', 'The fields selection controls count blocks, which require enableBlocks: true. Now Playing remains independently configurable.');
+  note('service', 'unraid', 'Each selected pool field also needs its corresponding pool name, such as pool1 for pool1UsedSpace.');
+  set('service', 'portainer', 'fields', ['array'], {
+    exampleValue: null,
+    description: 'Optional ordered list for the selected native environment mode. Docker and Kubernetes use different fields; leave unset for the mode default.',
+    optionGroups: [
+      { context: 'Docker mode (kubernetes omitted or false)', choices: ['running', 'stopped', 'total'] },
+      { context: 'Kubernetes mode (kubernetes: true)', choices: ['applications', 'services', 'namespaces'] },
+    ],
+  });
   note('info', 'resources', 'CPU and memory describe container usage. Disks must be mounted into the Homepage container. Glances provides separate host/remote statistics.');
   note('info', 'openmeteo', 'Provide coordinates or deliberately use browser location. Browser geolocation requires a secure context; NetBird protection alone does not make HTTP a secure context.');
   // These pages introduce each list in preceding prose rather than in its
@@ -227,6 +263,6 @@ export async function writeCatalog(sourceDirectory, destinationDirectory = proce
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const catalog = await writeCatalog(process.argv[2] || '../homepage-upstream', process.argv[3] || process.cwd());
+  const catalog = await writeCatalog(process.argv[2] || 'homepage', process.argv[3] || process.cwd());
   console.log(JSON.stringify({ serviceWidgets: catalog.service.length, informationWidgets: catalog.info.length, examplesSkipped: catalog.generationWarnings.length, registeredWithoutCompleteExamples: [...catalog.service, ...catalog.info].filter(widget => widget.documentationStatus !== 'documented-example').map(widget => widget.type) }, null, 2));
 }

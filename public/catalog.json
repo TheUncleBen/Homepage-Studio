@@ -704,6 +704,27 @@
           "exampleValue": "admin",
           "sensitive": true,
           "source": "https://gethomepage.dev/widgets/services/backrest/"
+        },
+        {
+          "key": "fields",
+          "label": "Visible fields",
+          "type": "array",
+          "valueTypes": [
+            "array"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "source": "https://gethomepage.dev/widgets/services/backrest/",
+          "choices": [
+            "num_success_latest",
+            "num_failure_latest",
+            "num_success_30",
+            "num_plans",
+            "num_failure_30",
+            "bytes_added_30"
+          ],
+          "description": "Optional ordered list of visible native fields. Leave unset for the native default.",
+          "maxItems": 4
         }
       ],
       "defaults": {
@@ -2111,6 +2132,32 @@
           "exampleValue": "dockhandapikey",
           "sensitive": true,
           "source": "https://gethomepage.dev/widgets/services/dockhand/"
+        },
+        {
+          "key": "fields",
+          "label": "Visible fields",
+          "type": "array",
+          "valueTypes": [
+            "array"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "source": "https://gethomepage.dev/widgets/services/dockhand/",
+          "choices": [
+            "running",
+            "stopped",
+            "paused",
+            "total",
+            "cpu",
+            "memory",
+            "images",
+            "volumes",
+            "events_today",
+            "pending_updates",
+            "stacks"
+          ],
+          "description": "Optional ordered list of visible native fields. Leave unset for the native default.",
+          "maxItems": 4
         }
       ],
       "defaults": {
@@ -2288,6 +2335,24 @@
           "exampleValue": false,
           "sensitive": false,
           "source": "https://gethomepage.dev/widgets/services/emby/"
+        },
+        {
+          "key": "fields",
+          "label": "Visible fields",
+          "type": "array",
+          "valueTypes": [
+            "array"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "source": "https://gethomepage.dev/widgets/services/emby/",
+          "choices": [
+            "movies",
+            "series",
+            "episodes",
+            "songs"
+          ],
+          "description": "Optional ordered list of visible native fields. Leave unset for the native default."
         }
       ],
       "defaults": {
@@ -2305,7 +2370,10 @@
           "sha256": "58620c64896bb5e54458bf872d6d377e9b917142a632325c90a9cd38f107bd32"
         }
       ],
-      "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON."
+      "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON.",
+      "setupNotes": [
+        "The fields selection controls count blocks, which require enableBlocks: true. Now Playing remains independently configurable."
+      ]
     },
     {
       "type": "esphome",
@@ -2397,6 +2465,24 @@
           "exampleValue": "http://evcc.host.or.ip:port",
           "sensitive": false,
           "source": "https://gethomepage.dev/widgets/services/evcc/"
+        },
+        {
+          "key": "fields",
+          "label": "Visible fields",
+          "type": "array",
+          "valueTypes": [
+            "array"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "source": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/src/widgets/evcc/component.jsx",
+          "choices": [
+            "pv_power",
+            "grid_power",
+            "home_power",
+            "charge_power"
+          ],
+          "description": "Optional ordered list of visible native fields. Leave unset for the native default."
         }
       ],
       "defaults": {
@@ -3042,6 +3128,18 @@
             "ping"
           ],
           "maxItems": 4
+        },
+        {
+          "key": "gameToken",
+          "label": "Game token",
+          "type": "string",
+          "valueTypes": [
+            "string"
+          ],
+          "exampleValue": null,
+          "sensitive": true,
+          "source": "https://gethomepage.dev/widgets/services/gamedig/",
+          "description": "Optional GameDig token for server types that require one. Leave unset for other games."
         }
       ],
       "defaults": {
@@ -7636,6 +7734,18 @@
             "videos",
             "people"
           ]
+        },
+        {
+          "key": "key",
+          "label": "App password",
+          "type": "string",
+          "valueTypes": [
+            "string"
+          ],
+          "exampleValue": null,
+          "sensitive": true,
+          "source": "https://gethomepage.dev/widgets/services/photoprism/",
+          "description": "PhotoPrism app password. Omit username and password when using this authentication method."
         }
       ],
       "defaults": {
@@ -7653,7 +7763,10 @@
           "sha256": "e231f69523fa33acc1a8b28c2a18f43ae475a317ef983fc496f91d955c9cb87f"
         }
       ],
-      "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON."
+      "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON.",
+      "setupNotes": [
+        "Username plus password takes precedence over key. Clear both when choosing an app password."
+      ]
     },
     {
       "type": "pialert",
@@ -7922,6 +8035,36 @@
           "exampleValue": "ptr_accesskeyaccesskeyaccesskeyaccesskey",
           "sensitive": true,
           "source": "https://gethomepage.dev/widgets/services/portainer/"
+        },
+        {
+          "key": "fields",
+          "label": "Visible fields",
+          "type": "array",
+          "valueTypes": [
+            "array"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "source": "https://gethomepage.dev/widgets/services/portainer/",
+          "description": "Optional ordered list for the selected native environment mode. Docker and Kubernetes use different fields; leave unset for the mode default.",
+          "optionGroups": [
+            {
+              "context": "Docker mode (kubernetes omitted or false)",
+              "choices": [
+                "running",
+                "stopped",
+                "total"
+              ]
+            },
+            {
+              "context": "Kubernetes mode (kubernetes: true)",
+              "choices": [
+                "applications",
+                "services",
+                "namespaces"
+              ]
+            }
+          ]
         }
       ],
       "defaults": {
@@ -9836,6 +9979,29 @@
           "exampleValue": 0,
           "sensitive": false,
           "source": "https://gethomepage.dev/widgets/services/suwayomi/"
+        },
+        {
+          "key": "fields",
+          "label": "Visible fields",
+          "type": "array",
+          "valueTypes": [
+            "array"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "source": "https://gethomepage.dev/widgets/services/suwayomi/",
+          "choices": [
+            "download",
+            "nondownload",
+            "read",
+            "unread",
+            "downloadedread",
+            "downloadedunread",
+            "nondownloadedread",
+            "nondownloadedunread"
+          ],
+          "description": "Optional ordered list of visible native fields. Leave unset for the native default.",
+          "maxItems": 4
         }
       ],
       "defaults": {
@@ -11355,6 +11521,42 @@
           "exampleValue": "pool4name",
           "sensitive": false,
           "source": "https://gethomepage.dev/widgets/services/unraid/"
+        },
+        {
+          "key": "fields",
+          "label": "Visible fields",
+          "type": "array",
+          "valueTypes": [
+            "array"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "source": "https://gethomepage.dev/widgets/services/unraid/",
+          "choices": [
+            "cpu",
+            "memoryPercent",
+            "memoryAvailable",
+            "memoryUsed",
+            "notifications",
+            "arrayFree",
+            "arrayUsedSpace",
+            "arrayUsedPercent",
+            "status",
+            "pool1UsedSpace",
+            "pool1FreeSpace",
+            "pool1UsedPercent",
+            "pool2UsedSpace",
+            "pool2FreeSpace",
+            "pool2UsedPercent",
+            "pool3UsedSpace",
+            "pool3FreeSpace",
+            "pool3UsedPercent",
+            "pool4UsedSpace",
+            "pool4FreeSpace",
+            "pool4UsedPercent"
+          ],
+          "description": "Optional ordered list of visible native fields. Leave unset for the native default.",
+          "maxItems": 4
         }
       ],
       "defaults": {
@@ -11372,7 +11574,10 @@
           "sha256": "340e7f361769e34b55f93665c66305fb631e63505b6932f3ef53abe6945f4801"
         }
       ],
-      "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON."
+      "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON.",
+      "setupNotes": [
+        "Each selected pool field also needs its corresponding pool name, such as pool1 for pool1UsedSpace."
+      ]
     },
     {
       "type": "uptimekuma",
