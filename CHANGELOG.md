@@ -71,7 +71,7 @@ and security fixes land, including the Next.js 16.4.2 security update.
 - **Snapshots & restore** names what made each snapshot and how long ago
   ("Appearance and settings saved · 5 minutes ago"); older snapshots read
   "Saved change". Closing the dialog with a picked, unimported backup asks
-  first.
+  first and names the backup.
 - In the content picker's **All** view, widgets that exist as both an
   information and an integration widget say which one they are.
 - The Custom API information widget shows the same "no mappings yet" hint as
@@ -82,6 +82,8 @@ and security fixes land, including the Next.js 16.4.2 security update.
   readers; a selected stack is outlined like a selected panel; Studio's own
   fields show one eggplant focus ring; an invalid dashboard address explains
   what is wrong next to the field.
+- In edit mode stacks have a **Select** checkbox like panels, so a selected
+  stack can be deselected directly.
 - The widget catalog is compressed and cached, and loaded only when you open
   a content editor.
 - `robots.txt` no longer lists archived dashboards.
