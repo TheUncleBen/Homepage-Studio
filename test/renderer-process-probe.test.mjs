@@ -20,6 +20,20 @@ async function unusedPort() {
   return port;
 }
 
+// Returns the error code when this host cannot bind IPv6 loopback at all, or
+// null when it can. Any other bind failure is rethrown so it stays visible.
+async function ipv6LoopbackUnavailable() {
+  const server = net.createServer();
+  try {
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '::1', resolve); });
+  } catch (error) {
+    if (error.code === 'EAFNOSUPPORT' || error.code === 'EADDRNOTAVAIL') return error.code;
+    throw error;
+  }
+  await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  return null;
+}
+
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'studio-renderer-probe-'));
   const rendererRoot = join(root, 'renderer');
@@ -146,6 +160,11 @@ test('a renderer cannot borrow another process listener and wildcard listeners r
 });
 
 test('an additional owned IPv6 listener cannot escape the IPv4-only acceptance assertion', { skip: !linux, timeout: 15000 }, async t => {
+  const unavailable = await ipv6LoopbackUnavailable();
+  if (unavailable) {
+    t.skip(`This host cannot bind IPv6 loopback ::1 (${unavailable}).`);
+    return;
+  }
   const f = await fixture(t);
   const child = await f.start({ extraIpv6: true });
   const [record] = await f.inspect();
