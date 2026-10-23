@@ -29,8 +29,10 @@ own address on the same host (`/family`, `/admin`, ...).
 
 - **Who uses it.**
   - The **operator** deploys the container and puts it behind a reverse proxy.
-  - **Editors** arrange dashboards in the browser. Anyone who can open the
-    page can edit it: there is no login (see [Security model](#security-model)).
+  - **Editors** sign in and arrange the dashboards shared with them.
+    Administrators manage people, sharing and settings (see
+    [Security model](#security-model) and
+    [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)).
 - **What it runs on:** one Docker container for `linux/amd64` or
   `linux/arm64`, with two named volumes. Only port 3000 is published.
   - **Deploy with** a Portainer Docker Swarm stack (one replica on one node)

@@ -174,4 +174,4 @@ image needs its own scan.
 - The templates drop all capabilities. The Compose template also sets
   `no-new-privileges`, which `docker stack deploy` does not support. A read-only
   root filesystem is not yet qualified.
-- There is no authentication by design; see [architecture](docs/ARCHITECTURE.md#address-and-trust-model).
+- Studio sign-in decides access, enforced in the controller with default deny; see [architecture](docs/ARCHITECTURE.md#address-and-trust-model) and [AUTHENTICATION.md](docs/AUTHENTICATION.md).

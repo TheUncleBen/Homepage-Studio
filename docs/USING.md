@@ -6,9 +6,10 @@ one dashboard. Nothing here is about running the container; that's
 [DEPLOY.md](DEPLOY.md) and friends. Colors and custom CSS have their own page,
 [APPEARANCE.md](APPEARANCE.md).
 
-There is no sign-in. Anyone who can open the page can change it, so the
-person who runs it should keep it behind a proxy that decides who gets in
-([REVERSE-PROXY.md](REVERSE-PROXY.md)).
+You sign in to Studio first. What you can do depends on what an
+administrator shared with you: **view** a dashboard, or also **arrange** it.
+Administrators can change everything described here. Accounts, passkeys and
+sharing are covered in [AUTHENTICATION.md](AUTHENTICATION.md).
 
 ## Contents
 

@@ -9,7 +9,7 @@ build is identified by its source commit and image digest
 
 ## [Unreleased]
 
-### Sign-in and access control (planned for the release after the current candidate)
+### Sign-in and access control
 
 Owner direction, 23 October 2026. Full guide:
 [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
