@@ -315,3 +315,16 @@ test('the command-line recovery link signs in once, for one browser session', as
   await run(['list'], { STUDIO_STATE_DIR: context.stateDir }, { log: line => listed.push(line) });
   assert.match(listed.join('\n'), /member\tadministrator\tlocal\tactive/);
 });
+
+test('a signed-out dashboard inside a frame offers sign-in in a new tab instead of a blocked frame', async t => {
+  const context = await setup(t);
+  await createAdmin(context);
+  const framed = await context.request('/?view=1', { headers: { ...html, 'sec-fetch-dest': 'iframe' } });
+  assert.equal(framed.status, 401);
+  assert.match(framed.text, /target="_blank"/);
+  assert.match(framed.text, /href="http:\/\/localhost:3001\/__studio\/auth\/sign-in\?next=%2F%3Fview%3D1"/);
+  assert.match(framed.text, /href="\/\?view=1"/);
+  assert.doesNotMatch(String(framed.headers['content-security-policy']), /frame-ancestors 'none'/);
+  const top = await context.request('/', { headers: html });
+  assert.equal(top.status, 302, 'a top-level visit still goes to the sign-in page');
+});

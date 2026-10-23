@@ -113,6 +113,10 @@ ask you to **confirm it's you** if you signed in more than a short while ago
 (15 minutes by default). In the dashboard editor, the confirmation opens in a
 new tab so unsaved changes stay put; confirm there, come back and save again.
 
+Dashboards shown inside another site's frame (`STUDIO_FRAME_ANCESTORS`) need
+the viewer signed in. That only carries into the frame when both sites share a
+domain; see [framing with sign-in on](REVERSE-PROXY.md#framing-with-sign-in-on).
+
 ## Session policies
 
 **Administration → Session policies** decides how long people stay signed in.

@@ -58,8 +58,9 @@ their reverse-proxy/network/Portainer storage environment. Engineering should
 finish feasible tests and supply a usable digest-pinned bundle first. Aesthetic
 preference and physical-device feel cannot be substituted with unit tests.
 
-Same-origin dashboard slugs do not create user authorization. The application
-does not add authentication, reverse-proxy configuration, DNS management or TLS
+Dashboard slugs alone do not grant access: Studio sign-in decides who can view
+or arrange each dashboard ([AUTHENTICATION.md](AUTHENTICATION.md)). The
+application does not add reverse-proxy configuration, DNS management or TLS
 termination. Those are explicit external responsibilities, not unfinished product
 features. Native catalog coverage is configuration support; it does not claim
 live validation of every external service.

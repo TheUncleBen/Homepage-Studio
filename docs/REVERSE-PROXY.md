@@ -89,6 +89,31 @@ container at startup with a message naming the variable.
 A site allowed to frame the dashboard can trigger the dashboard's widget
 actions, so allow only sites you trust as much as the dashboard itself.
 
+### Framing with sign-in on
+
+The sign-in pages never load inside a frame, so they can't be used for
+clickjacking. A framed dashboard whose viewer isn't signed in shows a short
+page instead: **Sign in in a new tab**, then **Reload** the frame.
+
+Whether the frame then shows the dashboard depends on the browser sending
+Studio's sign-in cookie inside the frame:
+
+- **Same site: works.** Both addresses use HTTPS and share a registered
+  domain, for example `https://ha.example.test` framing
+  `https://dashboard.example.test`. Ports and subdomains don't matter.
+- **Different sites: doesn't keep you signed in.** Examples are a Home
+  Assistant reached by IP address (`http://192.168.1.10:8123`) or on another
+  domain. Browsers don't send the cookie (`SameSite=Lax`) to a frame from
+  another site, and many block such cookies anyway, so the frame keeps
+  showing the sign-in page.
+- **App built-in browsers.** An app's built-in browser, such as a phone
+  app's dashboard view, may not share sign-in with your normal browser. If
+  it opens the sign-in tab in another browser, the frame stays signed out.
+
+To frame across sites, serve the framing site and Studio under one domain
+behind the same HTTPS proxy. Alternatively, set `STUDIO_AUTH=off` and let the
+proxy decide who can open Studio.
+
 ## Checking it
 
 From outside, through the proxy:
