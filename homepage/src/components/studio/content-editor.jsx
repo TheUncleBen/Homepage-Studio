@@ -393,7 +393,7 @@ export default function ContentEditor({
             docs={selectedEntry?.docs}
             notice={selectedEntry?.coverage}
           />
-          {kind === "serviceWidget" &&
+          {(kind === "serviceWidget" || kind === "informationWidget") &&
             customApiMappingsMissing(source?.type || entry?.type, draft) && (
               <p className="studio-note" role="status">
                 This Custom API widget has no <code>mappings</code> yet, so its

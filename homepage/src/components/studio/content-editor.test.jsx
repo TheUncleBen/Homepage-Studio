@@ -12,11 +12,11 @@ const customApi = {
   fields: [{ key: "url", label: "API URL", type: "string" }],
 };
 
-function renderEditor(entry) {
+function renderEditor(entry, catalog = { service: [entry], info: [] }) {
   return render(
     <ContentEditor
       state={{ revision: "r1", services: [], groups: [], bookmarks: [] }}
-      catalog={{ service: [entry], info: [] }}
+      catalog={catalog}
       entry={entry}
       onSaved={vi.fn()}
       onCancel={vi.fn()}
@@ -65,6 +65,14 @@ describe("Custom API empty mappings hint", () => {
     });
     expect(screen.queryByText(/has no/)).not.toBeInTheDocument();
     expect(save).toBeEnabled();
+  });
+
+  it("shows the same hint for the Custom API information widget", () => {
+    const info = { ...customApi, kind: "informationWidget" };
+    renderEditor(info, { service: [], info: [info] });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "This Custom API widget has no mappings yet, so its panel will be empty.",
+    );
   });
 
   it("does not show the hint for other integration widgets", () => {

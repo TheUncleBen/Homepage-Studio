@@ -95,7 +95,7 @@ export function validatePlaybackField(key, raw) {
   const field = PLAYBACK_FIELDS.find((item) => item.key === key);
   const value = String(raw ?? "").trim();
   const label = field.name[0].toUpperCase() + field.name.slice(1);
-  if (!value) return { error: `Enter a ${field.name}.` };
+  if (!value) return { error: `Enter the ${field.name}.` };
   if (!numberPattern(field.decimals).test(value))
     return {
       error: field.decimals

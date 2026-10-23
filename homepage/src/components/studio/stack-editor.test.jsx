@@ -157,7 +157,7 @@ describe("Stack playback editor", () => {
     fireEvent.change(interval, { target: { value: "" } });
     expect(interval).toHaveValue(null);
     expect(interval).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByRole("alert")).toHaveTextContent("Enter a seconds per widget.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter the seconds per widget.");
     expect(apply).toBeDisabled();
     expect(delay).toHaveValue(30);
     expect(duration).toHaveValue(250);
