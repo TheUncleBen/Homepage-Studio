@@ -19,6 +19,10 @@ test('restoring changed custom JavaScript offers reload and applies the restored
   await expect(page.locator('.studio-status-message')).toContainText('Changes saved. Reload once to apply custom JavaScript.');
   expect((await studioApi(request, '/__studio/api/state')).customJs).toBe(restoredScript);
   expect(await page.evaluate(() => document.documentElement.dataset.studioRestoreFixture)).toBe('current');
+  // Wait for the reloaded document before reading it; evaluating during the
+  // navigation can hit a destroyed execution context or a null root.
+  const loaded = page.waitForEvent('load');
   await page.getByRole('button', { name: 'Reload dashboard', exact: true }).click();
+  await loaded;
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.studioRestoreFixture)).toBe('restored');
 });
