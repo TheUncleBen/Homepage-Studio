@@ -9,8 +9,8 @@ export default function StudioIcon({ name, size = 18, ...props }) {
     play: "m8 5 11 7-11 7Z",
     pause: "M8 5v14M16 5v14",
     stack: "m3 8 9-5 9 5-9 5ZM3 12l9 5 9-5M3 16l9 5 9-5",
-    settings:
-      "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2",
+    // Sliders, not a sun: the previous rayed circle read as a theme toggle.
+    settings: "M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4",
     grip: "M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01",
     resize: "m8 20 12-12M15 20l5-5",
     undo: "M4 10h10a6 6 0 0 1 0 12M4 10l5-5M4 10l5 5",
