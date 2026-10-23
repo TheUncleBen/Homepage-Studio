@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import StackEditor from "./stack-editor";
+import StackEditor, { PositionEditor } from "./stack-editor";
 
 describe("Stack playback editor", () => {
   it("applies and reopens the selected manual delay without shortening a longer normal interval", () => {
@@ -77,5 +77,58 @@ describe("Stack playback editor", () => {
     expect(
       screen.getByText(/Manual switching while playing waits 60 seconds/),
     ).toBeInTheDocument();
+  });
+
+  it("keeps raw position text while typing and validates without rewriting other fields", () => {
+    const onApply = vi.fn();
+    render(
+      <PositionEditor
+        unit={{ id: "clock", rect: { x: 8, y: 2, w: 4, h: 3 }, minimum: { w: 3, h: 2 } }}
+        onApply={onApply}
+        onClose={vi.fn()}
+      />,
+    );
+    const column = screen.getByRole("spinbutton", { name: "Column" });
+    const width = screen.getByRole("spinbutton", { name: "Width" });
+    const apply = screen.getByRole("button", { name: "Apply to arrangement" });
+
+    fireEvent.change(width, { target: { value: "" } });
+    expect(width).toHaveValue(null);
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a width.");
+    expect(width).toHaveAttribute("aria-invalid", "true");
+    expect(apply).toBeDisabled();
+
+    fireEvent.change(width, { target: { value: "1" } });
+    fireEvent.change(width, { target: { value: "12" } });
+    expect(width).toHaveValue(12);
+    expect(column).toHaveValue(8);
+    expect(screen.getByRole("alert")).toHaveTextContent("Column plus width cannot exceed 12");
+    expect(apply).toBeDisabled();
+
+    fireEvent.change(column, { target: { value: "0" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(apply).toBeEnabled();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Height" }), { target: { value: "1" } });
+    fireEvent.blur(screen.getByRole("spinbutton", { name: "Height" }));
+    expect(screen.getByRole("spinbutton", { name: "Height" })).toHaveValue(2);
+    fireEvent.click(apply);
+    expect(onApply).toHaveBeenCalledWith({ x: 0, y: 2, w: 12, h: 2 });
+  });
+
+  it("clamps an out-of-range value only on blur and still applies an unchanged position", () => {
+    const onApply = vi.fn();
+    const rect = { x: 0, y: 0, w: 4, h: 3 };
+    render(<PositionEditor unit={{ id: "clock", rect }} onApply={onApply} onClose={vi.fn()} />);
+    const width = screen.getByRole("spinbutton", { name: "Width" });
+    fireEvent.change(width, { target: { value: "38" } });
+    expect(width).toHaveValue(38);
+    expect(screen.getByRole("alert")).toHaveTextContent("Width must be between 1 and 12.");
+    expect(screen.getByRole("spinbutton", { name: "Column" })).toHaveValue(0);
+    fireEvent.blur(width);
+    expect(width).toHaveValue(12);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.change(width, { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply to arrangement" }));
+    expect(onApply).toHaveBeenCalledWith(rect);
   });
 });

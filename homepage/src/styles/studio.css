@@ -1201,6 +1201,10 @@ body {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
+.studio-position-fields .studio-field-error {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
 .studio-position-fields label {
   display: flex;
   flex-direction: column;
