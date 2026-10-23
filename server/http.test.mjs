@@ -719,3 +719,56 @@ test('the widget catalog is compressed, revalidated by strong ETag and never pro
   assert.equal((await request('/__studio/catalog.json', { method: 'DELETE', headers: { origin: ORIGIN, 'x-studio-request': '1' } })).status, 404);
   assert.equal(upstreamCalls.length, 0);
 });
+
+test('each editor endpoint records its own fixed snapshot action code and never request text', async (t) => {
+  const id = 'discovered-service-0123456789abcdef01234567';
+  const source = { id, kind: 'service', title: 'Discovered service', group: 'Lab', nativeLocator: { discovered: true, discoveryId: id, serviceId: id, groupPath: ['Lab'], name: 'Discovered service', origin: 'docker' } };
+  const { request, post, stateDir, initialization } = await setup(t, { nativeDiscoveredSources: [source] });
+  await initialization;
+  let revision = (await request('/__studio/api/state')).json.revision;
+  const recorded = [];
+  async function expectAction(target, body, action) {
+    const response = await post(target, { revision, ...body });
+    assert.equal(response.status, 200, `${target} ${response.text}`);
+    revision = response.json.revision;
+    const [latest] = (await request('/__studio/api/backups')).json;
+    assert.equal(latest.action, action, target);
+    recorded.push(latest.id);
+    return response.json;
+  }
+  let state = await expectAction('/__studio/api/discovery-visibility', { id, hidden: true }, 'discovered-panel-hidden');
+  state = await expectAction('/__studio/api/discovery-visibility', { id, hidden: false }, 'discovered-panel-shown');
+  state = await expectAction('/__studio/api/service', { action: 'add', name: 'Router admin', group: 'Lab', config: { href: 'https://router.example.test' }, snapshotAction: 'arbitrary text' }, 'service-added');
+  const service = state.services.find((entry) => entry.name === 'Router admin');
+  state = await expectAction('/__studio/api/service', { action: 'update', id: service.id, config: { description: 'Edited' } }, 'service-edited');
+  state = await expectAction('/__studio/api/service-widget', { action: 'add', serviceId: service.id, type: 'customapi', config: { url: 'http://api.example.test' } }, 'service-widget-added');
+  const widget = state.serviceWidgets[0];
+  state = await expectAction('/__studio/api/service-widget', { action: 'update', id: widget.id, type: 'customapi', config: { url: 'http://api2.example.test' } }, 'service-widget-edited');
+  state = await expectAction('/__studio/api/service-widget', { action: 'delete', id: widget.id }, 'service-widget-deleted');
+  state = await expectAction('/__studio/api/info-widget', { action: 'add', type: 'datetime', config: {} }, 'info-widget-added');
+  const info = state.infoWidgets[0];
+  state = await expectAction('/__studio/api/info-widget', { action: 'update', id: info.id, config: { format: { timeStyle: 'short' } } }, 'info-widget-edited');
+  state = await expectAction('/__studio/api/info-widget', { action: 'delete', id: info.id }, 'info-widget-deleted');
+  state = await expectAction('/__studio/api/bookmark', { action: 'add', group: 'Reading', name: 'Docs', config: { href: 'https://docs.example.test' } }, 'bookmark-added');
+  const bookmark = state.bookmarks[0];
+  state = await expectAction('/__studio/api/bookmark', { action: 'update', id: bookmark.id, config: { abbr: 'DO' } }, 'bookmark-edited');
+  state = await expectAction('/__studio/api/bookmark', { action: 'delete', id: bookmark.id }, 'bookmark-deleted');
+  state = await expectAction('/__studio/api/settings', { config: { title: 'Renamed dashboard' } }, 'settings-saved');
+  state = await expectAction('/__studio/api/save', { customCss: '/* edited */', action: 'Free text from the request' }, 'files-saved');
+  const board = structuredClone(state.board);
+  board.panels[0].rect = { ...board.panels[0].rect, x: board.panels[0].rect.x + 1 };
+  state = await expectAction('/__studio/api/board', { board }, 'arrangement-saved');
+  state = await expectAction('/__studio/api/service', { action: 'delete', id: service.id }, 'service-deleted');
+  state = await expectAction('/__studio/api/restore', { backupId: recorded[0] }, 'snapshot-restored');
+  const archive = (await request('/__studio/api/export')).json;
+  await expectAction('/__studio/api/import', { archive }, 'dashboard-imported');
+  // Snapshot files and listings carry only fixed codes, never request strings.
+  const names = await fs.readdir(path.join(stateDir, 'backups'));
+  assert.equal(names.length, recorded.length);
+  for (const name of names) {
+    const stored = JSON.parse(await fs.readFile(path.join(stateDir, 'backups', name), 'utf8'));
+    assert.match(stored.action, /^[a-z][a-z-]+$/);
+  }
+  const listed = JSON.stringify((await request('/__studio/api/backups')).json);
+  assert.ok(!listed.includes('Free text') && !listed.includes('arbitrary text'));
+});

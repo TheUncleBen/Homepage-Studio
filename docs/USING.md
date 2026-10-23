@@ -261,10 +261,25 @@ kept for each dashboard (the person running it can change that number; the
 limit).
 Playing slideshows, opening dialogs and exporting never make snapshots.
 
+| A snapshot named… | was made just before you… |
+|---|---|
+| Arrangement saved | moved, resized or stacked panels, or changed a stack's settings |
+| Appearance and settings saved | saved **Dashboard settings** |
+| Configuration files saved | saved **Configuration files** |
+| Service tile / Integration widget / Information widget / Bookmark added, edited or deleted | added, edited or deleted that item |
+| Discovered panel hidden / shown | hid or brought back a discovered panel |
+| Snapshot restored | restored a snapshot |
+| Dashboard imported | imported a dashboard backup (or created a dashboard as a copy) |
+
 **Dashboard settings → Snapshots & restore**:
 
-- **Saved snapshots** lists them, newest first. **Restore selected snapshot**
-  puts back the files, the panels and their layout as they were.
+- **Saved snapshots** lists them, newest first. Each one names the change that
+  made it and how long ago, for example *Appearance and settings saved · 5
+  minutes ago*, with the exact time and the changed files underneath (the exact
+  time also shows when you hover over the age). The age keeps updating while
+  the dialog is open. Snapshots made before Studio recorded this read *Saved
+  change*. **Restore selected snapshot** puts back the files, the panels and
+  their layout as they were.
 - **Export pre-save snapshot** downloads the selected snapshot as a file.
 - **Choose dashboard backup** stages an exported dashboard or a downloaded
   snapshot (up to 40 MiB). Nothing changes until you press **Import

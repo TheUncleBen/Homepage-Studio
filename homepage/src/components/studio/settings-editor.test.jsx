@@ -4,7 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FILES } from "./api.mjs";
 import { EditorDraftContext } from "./draft-guard";
-import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
+import SettingsEditor, {
+  FilesEditor,
+  SNAPSHOT_ACTION_LABELS,
+  SnapshotEditor,
+  snapshotActionLabel,
+  snapshotAge,
+} from "./settings-editor";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -311,5 +317,106 @@ describe("Snapshot restoration reload handoff", () => {
       revision: "current-revision",
       backupId: "snapshot-fixture",
     });
+  });
+});
+
+describe("Snapshot action and age", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("labels every recorded action code and gives older or unknown snapshots a neutral label", () => {
+    expect(snapshotActionLabel("settings-saved")).toBe("Appearance and settings saved");
+    expect(snapshotActionLabel("arrangement-saved")).toBe("Arrangement saved");
+    expect(snapshotActionLabel("files-saved")).toBe("Configuration files saved");
+    expect(snapshotActionLabel("snapshot-restored")).toBe("Snapshot restored");
+    expect(snapshotActionLabel("dashboard-imported")).toBe("Dashboard imported");
+    expect(snapshotActionLabel("info-widget-deleted")).toBe("Information widget deleted");
+    expect(Object.keys(SNAPSHOT_ACTION_LABELS)).toHaveLength(19);
+    for (const label of Object.values(SNAPSHOT_ACTION_LABELS)) expect(label).toMatch(/^[A-Z][a-z ]+$/);
+    for (const action of [undefined, null, "", "future-operation", "constructor", "toString", 7])
+      expect(snapshotActionLabel(action)).toBe("Saved change");
+  });
+
+  it("formats a relative age without future wording", () => {
+    const now = Date.parse("2026-10-23T12:00:00Z");
+    const at = (seconds) => new Date(now - seconds * 1000).toISOString();
+    expect(snapshotAge(at(20), now, "en")).toBe("just now");
+    expect(snapshotAge(at(-120), now, "en")).toBe("just now");
+    expect(snapshotAge(at(5 * 60), now, "en")).toBe("5 minutes ago");
+    expect(snapshotAge(at(2 * 60 * 60 + 59), now, "en")).toBe("2 hours ago");
+    expect(snapshotAge(at(30 * 60 * 60), now, "en")).toBe("yesterday");
+    expect(snapshotAge(at(10 * 24 * 60 * 60), now, "en")).toBe("last week");
+    expect(snapshotAge("not a time", now, "en")).toBe("");
+  });
+
+  it("shows the action and its age, keeps the exact time and files, and refreshes the age while open", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-23T12:00:00Z"));
+    const createdAt = "2026-10-23T11:55:00.000Z";
+    render(
+      <SnapshotEditor
+        state={{ revision: "r" }}
+        backups={[
+          { id: "backup-new", createdAt, changedFiles: ["settings.yaml", "state.json"], action: "settings-saved" },
+          { id: "backup-old", createdAt, changedFiles: ["services.yaml"] },
+        ]}
+        onSaved={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const exact = new Date(createdAt).toLocaleString();
+    const fresh = screen.getByRole("button", { name: /^Appearance and settings saved, 5 minutes ago/ });
+    expect(fresh).toHaveAccessibleName(
+      `Appearance and settings saved, 5 minutes ago. ${exact}. settings.yaml, state.json`,
+    );
+    expect(fresh).toHaveTextContent("Appearance and settings saved · 5 minutes ago");
+    expect(fresh).toHaveAttribute("aria-pressed", "false");
+    const time = fresh.querySelector("time");
+    expect(time).toHaveAttribute("dateTime", createdAt);
+    expect(time).toHaveAttribute("title", exact);
+    const legacy = screen.getByRole("button", { name: /^Saved change, 5 minutes ago/ });
+    expect(legacy).toHaveTextContent("services.yaml");
+    fireEvent.click(legacy);
+    expect(legacy).toHaveAttribute("aria-pressed", "true");
+    expect(fresh).toHaveAttribute("aria-pressed", "false");
+    act(() => vi.advanceTimersByTime(60 * 1000));
+    expect(fresh).toHaveTextContent("Appearance and settings saved · 6 minutes ago");
+    expect(legacy).toHaveTextContent("Saved change · 6 minutes ago");
+    expect(fresh).toHaveAccessibleName(/^Appearance and settings saved, 6 minutes ago\. /);
+  });
+
+  it.each([
+    ["new", { action: "service-added" }, /^Service tile added/],
+    ["older", {}, /^Saved change/],
+  ])("exports and restores a %s snapshot by its ID", async (_, extra, name) => {
+    const createObjectURL = vi.fn(() => "blob:snapshot");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const archive = { version: 1, before: {}, ...extra };
+    const restored = { revision: "restored" };
+    const fetch = vi.fn(async (target) => ({
+      ok: true,
+      status: 200,
+      json: async () => (target.includes("backups") ? archive : restored),
+    }));
+    vi.stubGlobal("fetch", fetch);
+    const onSaved = vi.fn();
+    render(
+      <SnapshotEditor
+        state={{ revision: "current" }}
+        backups={[{ id: "backup-1", createdAt: new Date().toISOString(), changedFiles: ["services.yaml"], ...extra }]}
+        onSaved={onSaved}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name }));
+    fireEvent.click(screen.getByRole("button", { name: "Export pre-save snapshot" }));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(fetch.mock.calls[0][0]).toBe("/__studio/api/backups/backup-1");
+    expect(JSON.parse(await createObjectURL.mock.calls[0][0].text())).toEqual(archive);
+    fireEvent.click(screen.getByRole("button", { name: "Restore selected snapshot" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(restored, { customJsChanged: false }));
+    expect(fetch.mock.calls[1][0]).toBe("/__studio/api/restore");
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ revision: "current", backupId: "backup-1" });
+    click.mockRestore();
   });
 });

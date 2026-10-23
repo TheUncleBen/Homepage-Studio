@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { FILES, studioRequest } from "./api.mjs";
 import AppearanceEditor from "./appearance-editor";
@@ -9,6 +9,63 @@ import { patchFromDraft } from "./native-adapter.mjs";
 
 const buildRevision = process.env.NEXT_PUBLIC_REVISION;
 const sourceUrl = `https://github.com/TheUncleBen/Homepage-Studio${/^[a-f0-9]{40}$/i.test(buildRevision || "") ? `/tree/${buildRevision}` : ""}`;
+
+// Plain-English names for the fixed action codes the controller records with
+// each snapshot. Snapshots from earlier releases, or codes this build does not
+// know, use the neutral fallback.
+export const SNAPSHOT_ACTION_LABELS = {
+  "arrangement-saved": "Arrangement saved",
+  "settings-saved": "Appearance and settings saved",
+  "files-saved": "Configuration files saved",
+  "snapshot-restored": "Snapshot restored",
+  "dashboard-imported": "Dashboard imported",
+  "discovered-panel-hidden": "Discovered panel hidden",
+  "discovered-panel-shown": "Discovered panel shown",
+  "service-added": "Service tile added",
+  "service-edited": "Service tile edited",
+  "service-deleted": "Service tile deleted",
+  "service-widget-added": "Integration widget added",
+  "service-widget-edited": "Integration widget edited",
+  "service-widget-deleted": "Integration widget deleted",
+  "info-widget-added": "Information widget added",
+  "info-widget-edited": "Information widget edited",
+  "info-widget-deleted": "Information widget deleted",
+  "bookmark-added": "Bookmark added",
+  "bookmark-edited": "Bookmark edited",
+  "bookmark-deleted": "Bookmark deleted",
+};
+export const UNKNOWN_SNAPSHOT_ACTION_LABEL = "Saved change";
+
+export function snapshotActionLabel(action) {
+  return (
+    (typeof action === "string" && Object.hasOwn(SNAPSHOT_ACTION_LABELS, action) && SNAPSHOT_ACTION_LABELS[action]) ||
+    UNKNOWN_SNAPSHOT_ACTION_LABEL
+  );
+}
+
+const AGE_UNITS = [
+  ["year", 365 * 24 * 60 * 60],
+  ["month", 30 * 24 * 60 * 60],
+  ["week", 7 * 24 * 60 * 60],
+  ["day", 24 * 60 * 60],
+  ["hour", 60 * 60],
+  ["minute", 60],
+];
+
+// A relative age such as "5 minutes ago". A timestamp slightly in the future
+// (clock skew between browser and server) reads as "just now", never "in …".
+export function snapshotAge(createdAt, now = Date.now(), locale = undefined) {
+  const time = Date.parse(createdAt);
+  if (!Number.isFinite(time)) return "";
+  const seconds = Math.max(0, (now - time) / 1000);
+  if (seconds < 60) return "just now";
+  const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  const [unit, size] = AGE_UNITS.find(([, length]) => seconds >= length);
+  return format.format(-Math.floor(seconds / size), unit);
+}
+
+// Relative ages refresh while the snapshot list stays open.
+const AGE_REFRESH_MS = 30 * 1000;
 
 export function downloadFile(name, text, type = "application/json") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -258,6 +315,11 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(null);
   const filePicker = useRef(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), AGE_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, []);
   const busy = reading || pending;
   // A picked backup that is not imported yet is a draft: closing asks first.
   useEditorDraft(Boolean(archive), busy);
@@ -369,21 +431,41 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
           also preserves a snapshot of the current configuration.
         </p>
         <div className="studio-snapshots">
-          {backups.map((backup) => (
-            <button
-              className={`studio-snapshot${chosen === backup.id ? " studio-snapshot-selected" : ""}`}
-              key={backup.id}
-              aria-pressed={chosen === backup.id}
-              disabled={busy}
-              onClick={() => {
-                setChosen(backup.id);
-                setArchive(null);
-              }}
-            >
-              <strong>{new Date(backup.createdAt).toLocaleString()}</strong>
-              <small>{backup.changedFiles?.join(", ") || backup.id}</small>
-            </button>
-          ))}
+          {backups.map((backup) => {
+            const created = new Date(backup.createdAt);
+            const exact = Number.isFinite(created.getTime()) ? created.toLocaleString() : "";
+            const age = snapshotAge(backup.createdAt, now);
+            const label = snapshotActionLabel(backup.action);
+            const files = backup.changedFiles?.join(", ") || backup.id;
+            return (
+              <button
+                className={`studio-snapshot${chosen === backup.id ? " studio-snapshot-selected" : ""}`}
+                key={backup.id}
+                aria-pressed={chosen === backup.id}
+                // Separate the stacked lines explicitly so the name never runs them together.
+                aria-label={[age ? `${label}, ${age}` : label, exact, files].filter(Boolean).join(". ")}
+                disabled={busy}
+                onClick={() => {
+                  setChosen(backup.id);
+                  setArchive(null);
+                }}
+              >
+                <strong>
+                  {label}
+                  {age && (
+                    <>
+                      {" · "}
+                      <time dateTime={backup.createdAt} title={exact}>
+                        {age}
+                      </time>
+                    </>
+                  )}
+                </strong>
+                {exact && <small>{exact}</small>}
+                <small>{files}</small>
+              </button>
+            );
+          })}
         </div>
         {!backups.length && <p className="studio-muted">Your first saved change will appear here.</p>}
         {chosen && (
