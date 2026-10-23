@@ -11,9 +11,3 @@ allowBuilds:
   sharp: true
   ssh2: false
   unrs-resolver: true
-
-onlyBuiltDependencies:
-  - '@tailwindcss/oxide'
-  - osx-temperature-sensor
-  - protobufjs
-  - sharp
