@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildCatalog, writeCatalog, inspectExamples, fieldType, documentedFields } from '../scripts/build-catalog.mjs';
 
-const fixture = fileURLToPath(new URL('./fixtures/homepage/', import.meta.url));
-const catalog = await buildCatalog(fixture);
-const shipped = JSON.parse(await readFile(new URL('../public/catalog.json', import.meta.url), 'utf8'));
+// Build from the tracked native fork itself, the same input `npm run catalog`
+// uses, so the shipped catalog cannot silently drift from its source.
+const nativeSource = fileURLToPath(new URL('../homepage/', import.meta.url));
+const catalog = await buildCatalog(nativeSource);
+const shippedText = await readFile(new URL('../public/catalog.json', import.meta.url), 'utf8');
+const shipped = JSON.parse(shippedText);
 const widget = (type, kind = 'service', source = catalog) => source[kind].find(item => item.type === type);
 const field = (type, key, kind = 'service', source = catalog) => widget(type, kind, source).fields.find(item => item.key === key);
 
@@ -161,18 +163,17 @@ test('incomplete documentation examples stay visible as warnings rather than fab
   assert.ok(shipped.generationWarnings.every(item=>item.block>0&&item.reason.includes('not treated as a schema')));
 });
 
-test('source-backed fixtures still match their pinned source manifest', async () => {
-  const manifest=JSON.parse(await readFile(new URL('./fixtures/source-manifest.json',import.meta.url),'utf8'));
-  for(const item of manifest.files){const bytes=await readFile(join(fixture,item.path));assert.equal(createHash('sha256').update(bytes).digest('hex'),item.sha256,item.path);}
+test('the shipped catalog is exactly what the tracked native source generates', () => {
+  assert.equal(`${JSON.stringify(catalog, null, 2)}\n`, shippedText, 'public/catalog.json is stale; regenerate it with `npm run catalog`.');
 });
 
 test('generation is deterministic for the same pinned input', async () => {
-  assert.deepEqual(await buildCatalog(fixture),catalog);
+  assert.deepEqual(await buildCatalog(nativeSource),catalog);
 });
 
 test('catalog generation preserves the project license notice and writes its own scoped notice', async () => {
   const destination=await mkdtemp(join(tmpdir(),'homepage-catalog-output-'));
-  try{await mkdir(join(destination,'third-party'));await writeFile(join(destination,'third-party/NOTICE.txt'),'Keep derived renderer obligations.\n');await writeCatalog(fixture,destination);
+  try{await mkdir(join(destination,'third-party'));await writeFile(join(destination,'third-party/NOTICE.txt'),'Keep derived renderer obligations.\n');await writeCatalog(nativeSource,destination);
     assert.equal(await readFile(join(destination,'third-party/NOTICE.txt'),'utf8'),'Keep derived renderer obligations.\n');
     assert.match(await readFile(join(destination,'third-party/catalog-NOTICE.txt'),'utf8'),/GPL-3\.0/);
     assert.deepEqual(JSON.parse(await readFile(join(destination,'public/catalog.json'),'utf8')),catalog);

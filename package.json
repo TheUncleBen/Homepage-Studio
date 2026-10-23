@@ -6,7 +6,7 @@
   "description": "Direct editing, flexible native panels and widget stacks for Homepage",
   "scripts": {
     "start": "node server/index.mjs",
-    "test": "node --test --test-isolation=none server/*.test.mjs",
+    "test": "node --test server/*.test.mjs",
     "catalog": "node scripts/build-catalog.mjs"
   },
   "engines": {

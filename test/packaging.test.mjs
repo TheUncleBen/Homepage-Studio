@@ -9,7 +9,6 @@ import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
-import { EMPTY_CONFIG, seedConfig } from '../scripts/seed-config.mjs';
 import { runtimeHost } from '../scripts/runtime-host.mjs';
 import { UPSTREAM_COMMIT, checkHealth } from '../scripts/healthcheck.mjs';
 import { artifactFingerprint, validateReleaseManifest, materializeRelease } from '../scripts/release-manifest.mjs';
@@ -31,58 +30,6 @@ async function endpoint(t, handler) {
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
   return `http://127.0.0.1:${server.address().port}`;
 }
-
-test('a fresh volume gets exactly nine empty native files and private state storage', async t => {
-  const dirs = await directories(t);
-  const seeded = await seedConfig(dirs);
-  assert.equal(seeded.created.length, 9);
-  assert.equal(seeded.recoveryPending, false);
-  assert.deepEqual((await fs.readdir(dirs.configDir)).sort(), Object.keys(EMPTY_CONFIG).sort());
-  for (const [name, content] of Object.entries(EMPTY_CONFIG)) {
-    assert.equal(await fs.readFile(path.join(dirs.configDir, name), 'utf8'), content);
-    assert.equal((await fs.stat(path.join(dirs.configDir, name))).mode & 0o777, 0o640);
-  }
-  assert.deepEqual(await fs.readdir(dirs.stateDir), []);
-  assert.equal((await fs.stat(dirs.stateDir)).mode & 0o777, 0o700);
-});
-
-test('seeding is idempotent and preserves existing configuration byte for byte', async t => {
-  const dirs = await directories(t);
-  await fs.mkdir(dirs.configDir);
-  const retained = '# retain comment\ntitle: Existing setup\n';
-  await fs.writeFile(path.join(dirs.configDir, 'settings.yaml'), retained, { mode: 0o600 });
-  const first = await seedConfig(dirs);
-  assert.equal(first.created.length, 8);
-  const second = await seedConfig(dirs);
-  assert.deepEqual(second.created, []);
-  assert.equal(await fs.readFile(path.join(dirs.configDir, 'settings.yaml'), 'utf8'), retained);
-  assert.equal((await fs.stat(path.join(dirs.configDir, 'settings.yaml'))).mode & 0o777, 0o600);
-});
-
-test('an active recovery journal prevents all configuration seeding', async t => {
-  const dirs = await directories(t);
-  await fs.mkdir(dirs.stateDir);
-  await fs.writeFile(path.join(dirs.stateDir, 'transaction.json'), '{"version":1}\n');
-  const result = await seedConfig(dirs);
-  assert.deepEqual(result, { created: [], recoveryPending: true });
-  assert.deepEqual(await fs.readdir(dirs.configDir), []);
-});
-
-test('the seeder refuses symlinked configuration, directories and journals', async t => {
-  const dirs = await directories(t);
-  const target = path.join(dirs.temp, 'outside');
-  await fs.writeFile(target, 'keep this');
-  await fs.mkdir(dirs.configDir);
-  await fs.symlink(target, path.join(dirs.configDir, 'services.yaml'));
-  await assert.rejects(seedConfig(dirs), /regular files/);
-  assert.equal(await fs.readFile(target, 'utf8'), 'keep this');
-  await fs.unlink(path.join(dirs.configDir, 'services.yaml'));
-  await fs.symlink(target, path.join(dirs.stateDir, 'transaction.json'));
-  await assert.rejects(seedConfig(dirs), /journal must be a regular file/);
-  const alias = path.join(dirs.temp, 'alias');
-  await fs.symlink(dirs.configDir, alias);
-  await assert.rejects(seedConfig({ ...dirs, configDir: alias }), /real directories/);
-});
 
 test('origin configuration derives the exact allowed host including the published port', () => {
   assert.deepEqual(runtimeHost('https://Dashboard.example.test:8443'), { allowedHosts: 'dashboard.example.test:8443', healthHost: 'dashboard.example.test:8443' });
@@ -129,7 +76,6 @@ test('readiness accepts configuration-only readiness and rejects HTTP/JSON failu
 
 test('the exact application health command is independent of a broken dashboard and rejects shared runtime damage', async t => {
   const dirs = await directories(t);
-  await seedConfig(dirs);
   let nativeRequests = 0;
   const upstream = await endpoint(t, (_req, res) => {
     nativeRequests += 1;

@@ -51,3 +51,13 @@ generated build trees are not committed.
 Historical `upstream.lock.json` baseline hashes describe the source from which
 this fork began. The current Git commit/tree and committed lockfile are the
 authority for the source that is built and distributed.
+
+## Divergence from upstream
+
+The fork's divergence from the baseline is the Git difference between upstream
+commit `51cc1684f9f34a7877ed462b8f94c9cc687b4dde` and this directory; it is
+not recorded in a separate manifest. The earlier overlay manifests
+(`studio-overlay.json`, `studio-source.json`) described a generated overlay
+applied to a downloaded upstream archive. Nothing read them once the fork
+became tracked source, so they were removed rather than kept as a second,
+unverified record. Review upstream changes against the Git history instead.

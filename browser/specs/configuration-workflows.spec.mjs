@@ -79,7 +79,11 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
   expect([...newSnapshots[0].changedFiles].sort()).toEqual([...NATIVE_FILES.map(([name]) => name), 'state.json'].sort());
   await expect(page.locator('.studio-status-message')).toContainText('Reload once to apply custom JavaScript');
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--studio-browser-file-fixture').trim())).toBe('42');
+  // The button calls location.reload(). Wait for the new document's load
+  // event so evaluation never runs while documentElement is still null.
+  const reloaded = page.waitForEvent('load');
   await page.getByRole('button', { name: 'Reload dashboard', exact: true }).click();
+  await reloaded;
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.studioFileFixture)).toBe('saved');
   await expect(page.locator('[data-panel-kind="informationWidget"]')).toContainText('Imported native greeting');
 
