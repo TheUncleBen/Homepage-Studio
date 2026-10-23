@@ -12,8 +12,6 @@ allowBuilds:
   ssh2: false
   unrs-resolver: true
 
-onlyBuiltDependencies:
-  - '@tailwindcss/oxide'
-  - osx-temperature-sensor
-  - protobufjs
-  - sharp
+overrides:
+  # GHSA-rxp7-6hxx-x8q5: reached through @kubernetes/client-node > socks.
+  ip-address: ^10.7.4

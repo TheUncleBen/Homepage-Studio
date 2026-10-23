@@ -9,21 +9,56 @@ import widgets from "widgets/widgets";
 
 const logger = createLogger("truenasProxyHandler");
 
+// Studio: keep the WebSocket inside the shared HTTP helper's 32 MiB response
+// limit (utils/proxy/http.js) instead of the ws default of 100 MiB.
+const MAX_MESSAGE_BYTES = 32 * 1024 * 1024;
+
+// Only these diagnostics reach the browser. Raw errors can carry the
+// configured URL, credentials or arbitrary upstream text.
+const SAFE_ERRORS = {
+  TRUENAS_TIMEOUT: "TrueNAS websocket wait timed out",
+  TRUENAS_CLOSED: "TrueNAS websocket closed the connection",
+  TRUENAS_AUTH_FAILED: "TrueNAS authentication failed",
+  TRUENAS_RPC_ERROR: "TrueNAS rejected the request",
+  TRUENAS_INVALID_MESSAGE: "Invalid TrueNAS websocket message",
+  WS_ERR_UNSUPPORTED_MESSAGE_LENGTH: "TrueNAS websocket message exceeds the 32 MiB limit",
+  ECONNREFUSED: "Connection refused",
+  ECONNRESET: "Connection reset",
+  ENOTFOUND: "Host not found",
+  EAI_AGAIN: "Temporary DNS lookup failure",
+  EHOSTUNREACH: "Host unreachable",
+  ENETUNREACH: "Network unreachable",
+  ETIMEDOUT: "Request timed out",
+};
+
+function truenasError(code) {
+  return Object.assign(new Error(SAFE_ERRORS[code]), { code });
+}
+
+function safeError(error) {
+  const code = Object.hasOwn(SAFE_ERRORS, error?.code) ? error.code : "UPSTREAM_REQUEST_FAILED";
+  return { code, message: SAFE_ERRORS[code] ?? "TrueNAS websocket call failed" };
+}
+
 function waitForEvent(ws, handler, { event = "message", parseJson = true } = {}) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       cleanup();
-      reject(new Error("TrueNAS websocket wait timed out"));
+      reject(truenasError("TRUENAS_TIMEOUT"));
     }, 10000);
 
     const handleEvent = (payload) => {
       try {
         let parsed = payload;
         if (parseJson) {
-          if (Buffer.isBuffer(payload)) {
-            parsed = JSON.parse(payload.toString());
-          } else if (typeof payload === "string") {
-            parsed = JSON.parse(payload);
+          try {
+            if (Buffer.isBuffer(payload)) {
+              parsed = JSON.parse(payload.toString());
+            } else if (typeof payload === "string") {
+              parsed = JSON.parse(payload);
+            }
+          } catch {
+            throw truenasError("TRUENAS_INVALID_MESSAGE");
           }
         }
         const handlerResult = handler(parsed);
@@ -43,14 +78,14 @@ function waitForEvent(ws, handler, { event = "message", parseJson = true } = {})
 
     const handleError = (err) => {
       cleanup();
-      logger.error("TrueNAS websocket error: %s", err?.message ?? err);
+      logger.error("TrueNAS websocket error: %s", safeError(err).code);
       reject(err);
     };
 
     const handleClose = () => {
       cleanup();
       logger.debug("TrueNAS websocket connection closed unexpectedly");
-      reject(new Error("TrueNAS websocket closed the connection"));
+      reject(truenasError("TRUENAS_CLOSED"));
     };
 
     function cleanup() {
@@ -75,7 +110,8 @@ async function sendMethod(ws, method, params = []) {
   return waitForEvent(ws, (message) => {
     if (message?.id !== id) return undefined;
     if (message?.error) {
-      return new Error(message.error?.message || JSON.stringify(message.error));
+      logger.debug("TrueNAS rejected %s", method);
+      return truenasError("TRUENAS_RPC_ERROR");
     }
     return message?.result ?? message;
   });
@@ -88,7 +124,7 @@ async function authenticate(ws, widget) {
       if (apiKeyResult === true) return;
       logger.warn("TrueNAS API key authentication failed, falling back to username/password when available.");
     } catch (err) {
-      logger.error("TrueNAS API key authentication failed: %s", err?.message ?? err);
+      logger.error("TrueNAS API key authentication failed: %s", safeError(err).code);
     }
   }
 
@@ -98,7 +134,7 @@ async function authenticate(ws, widget) {
     logger.warn("TrueNAS username/password authentication failed.");
   }
 
-  throw new Error("TrueNAS authentication failed");
+  throw truenasError("TRUENAS_AUTH_FAILED");
 }
 
 export default async function truenasProxyHandler(req, res, map) {
@@ -135,16 +171,23 @@ export default async function truenasProxyHandler(req, res, map) {
 
   try {
     let data;
-    const wsUrl = new URL(formatApiCall(widgets[widget.type].wsAPI, { ...widget }));
-    const useSecure = wsUrl.protocol === "https:" || Boolean(widget.key); // API key requires secure connection
-    wsUrl.protocol = useSecure ? "wss:" : "ws:";
-    const ws = new WebSocket(wsUrl, { rejectUnauthorized: false });
-    await waitForEvent(ws, () => true, { event: "open", parseJson: false }); // wait for open
+    let ws;
     try {
+      const wsUrl = new URL(formatApiCall(widgets[widget.type].wsAPI, { ...widget }));
+      const useSecure = wsUrl.protocol === "https:" || Boolean(widget.key); // API key requires secure connection
+      wsUrl.protocol = useSecure ? "wss:" : "ws:";
+      ws = new WebSocket(wsUrl, { rejectUnauthorized: false, maxPayload: MAX_MESSAGE_BYTES });
+      await waitForEvent(ws, () => true, { event: "open", parseJson: false }); // wait for open
       await authenticate(ws, widget);
       data = await sendMethod(ws, wsMethod);
     } finally {
-      ws.close();
+      // Release the socket on every path, including an open-handshake timeout,
+      // and keep late socket errors from becoming unhandled 'error' events.
+      if (ws) {
+        ws.on("error", () => {});
+        if (ws.readyState === WebSocket.OPEN) ws.close();
+        else if (ws.readyState !== WebSocket.CLOSED) ws.terminate();
+      }
     }
 
     if (!validateWidgetData(widget, endpoint, data)) {
@@ -158,7 +201,14 @@ export default async function truenasProxyHandler(req, res, map) {
     if (err?.status) {
       return res.status(err.status).json({ error: err.message });
     }
-    logger.error("Websocket call for TrueNAS failed: %s", err?.message ?? err);
-    return res.status(500).json({ error: err?.message ?? "TrueNAS websocket call failed" });
+    const error = safeError(err);
+    logger.error("Websocket call for TrueNAS failed: %s (%s)", error.message, error.code);
+    let url;
+    try {
+      url = sanitizeErrorURL(widget.url);
+    } catch {
+      // An unparseable configured URL is reported without echoing it.
+    }
+    return res.status(500).json({ error: { message: error.message, ...(url ? { url } : {}), rawError: error } });
   }
 }
