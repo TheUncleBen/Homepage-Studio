@@ -8,6 +8,7 @@ import { dashboardPath } from "./dashboard-path.mjs";
 import StudioDialog, { ErrorMessage } from "./dialog";
 import DiscoveryEditor from "./discovery-editor";
 import { EditorDraftContext } from "./draft-guard";
+import { useBoardFocusOrder } from "./focus-order";
 import {
   COLUMNS,
   GAP,
@@ -84,6 +85,7 @@ export function PanelLayer({
   const stackByPanel = new Map(board.stacks.flatMap((stack) => stack.panelIds.map((id) => [id, stack])));
   // Keep DOM sibling order independent of geometry. Moving an existing iframe
   // with insertBefore can reload its document even when its React key survives.
+  // Keyboard order follows the layout through useBoardFocusOrder instead.
   const panels = board.panels;
   return (
     <div className="studio-panel-layer">
@@ -261,6 +263,16 @@ export default function StudioBoard({
     () => new Map(projection.units.map((unit) => [unit.id, pixelRect(unit.rect, width, projection.columns)])),
     [projection, width],
   );
+  // Tab follows the projected layout (row, then column) without reordering
+  // native hosts in the DOM.
+  const readingOrder = useMemo(
+    () =>
+      [...projection.units]
+        .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)
+        .map((unit) => unit.id),
+    [projection],
+  );
+  useBoardFocusOrder(canvas, readingOrder);
   const groups = [...new Set(board.panels.map((panel) => panel.group).filter(Boolean))];
   const visibleIds = useMemo(
     () =>
@@ -1074,6 +1086,7 @@ export default function StudioBoard({
                 display: visibleIds.has(stack.id) ? undefined : "none",
               }}
               editing={editing || Boolean(modal)}
+              selected={selection.includes(stack.id)}
               busy={controlsDisabled}
               overlayOpen={overlayOpen}
               reducedMotion={reducedMotion}

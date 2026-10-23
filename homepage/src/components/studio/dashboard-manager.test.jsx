@@ -196,3 +196,55 @@ describe("Independent dashboard manager", () => {
     await waitFor(() => expect(onNavigate).toHaveBeenLastCalledWith("/"));
   });
 });
+
+describe("Address slug validation", () => {
+  it("says inline what is wrong with the slug, linked to the field, instead of the browser bubble", async () => {
+    await mount();
+    fireEvent.click(screen.getByRole("button", { name: "Create dashboard", exact: true }));
+    const slug = screen.getByLabelText("Address slug");
+    expect(slug).toHaveAccessibleDescription(/^Lowercase letters, numbers and hyphens\./);
+    expect(slug).not.toHaveAttribute("aria-invalid");
+    fireEvent.change(screen.getByLabelText("Dashboard name"), { target: { value: "Family Board" } });
+    fireEvent.change(slug, { target: { value: "Family Board" } });
+    // Typing alone does not interrupt; a submit attempt reports the problem.
+    expect(screen.queryByText(/capital letters are not allowed/)).not.toBeInTheDocument();
+    const bubble = vi.fn();
+    slug.addEventListener("invalid", (event) => bubble(event.defaultPrevented));
+    fireEvent.click(screen.getByRole("button", { name: "Create dashboard", exact: true }));
+    expect(bubble).toHaveBeenCalledWith(true);
+    expect(deploymentRequest).toHaveBeenCalledTimes(1);
+    expect(slug).toHaveFocus();
+    expect(slug).toHaveAttribute("aria-invalid", "true");
+    expect(slug).toHaveAccessibleDescription(
+      /^Use lowercase letters only; capital letters are not allowed\. Lowercase letters/,
+    );
+    fireEvent.change(slug, { target: { value: "family board" } });
+    expect(slug).toHaveAccessibleDescription(/^Replace spaces with hyphens/);
+    fireEvent.change(slug, { target: { value: "family/board" } });
+    expect(slug).toHaveAccessibleDescription(/^Remove the slashes/);
+    fireEvent.change(slug, { target: { value: "family-" } });
+    expect(slug).toHaveAccessibleDescription(/^Start and end the slug with a letter or number/);
+    fireEvent.change(slug, { target: { value: "" } });
+    expect(slug).toHaveAccessibleDescription(/^Enter an address slug/);
+    fireEvent.change(slug, { target: { value: "family-board" } });
+    expect(slug).not.toHaveAttribute("aria-invalid");
+    expect(slug).toHaveAccessibleDescription(/^Lowercase letters, numbers and hyphens\./);
+    expect(screen.queryByText(/capital letters|Replace spaces|Enter an address slug/)).not.toBeInTheDocument();
+  });
+
+  it("checks the slug when the field is left, allows an empty main address and keeps server errors", async () => {
+    await mount();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Main", exact: true }));
+    const slug = screen.getByLabelText("Address slug");
+    fireEvent.blur(slug);
+    expect(slug).not.toHaveAttribute("aria-invalid");
+    fireEvent.change(slug, { target: { value: "-main" } });
+    expect(slug).toHaveAttribute("aria-invalid", "true");
+    expect(slug).toHaveAccessibleDescription(/^Start and end the slug/);
+    fireEvent.change(slug, { target: { value: "family" } });
+    deploymentRequest.mockRejectedValueOnce(Object.assign(new Error("The address /family is in use."), { status: 400 }));
+    fireEvent.click(screen.getByRole("button", { name: "Save dashboard" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("The address /family is in use.");
+    expect(slug).not.toHaveAttribute("aria-invalid");
+  });
+});

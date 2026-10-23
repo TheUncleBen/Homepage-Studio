@@ -42,11 +42,18 @@ body {
   opacity: 0.42;
   cursor: not-allowed;
 }
+/* Studio's own controls share one focus style. Native Homepage content on the
+   board (.studio-native-content) keeps Homepage's styling, including the
+   Tailwind forms ring that Studio removes from its own fields. */
 .studio-app button:focus-visible,
 .studio-dialog :is(button, a, input, textarea, select):focus-visible,
+:is(.studio-app, .studio-dialog) :is(a, input, textarea, select, summary):not(.studio-native-content *):focus-visible,
 .studio-stack-shell:focus-visible {
   outline: 2px solid var(--studio-focus);
   outline-offset: 4px;
+}
+:is(.studio-app, .studio-dialog) :is(input, textarea, select):not(.studio-native-content *):focus {
+  box-shadow: none;
 }
 .studio-app button,
 .studio-dialog button,
@@ -708,6 +715,18 @@ body {
 .studio-stack-editing {
   outline: 1px solid var(--studio-accent-line);
   outline-offset: 3px;
+}
+/* A selected stack looks like a selected panel; keyboard focus still wins. */
+.studio-stack-shell.studio-selected {
+  outline: 2px solid var(--studio-accent);
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 7px color-mix(in srgb, var(--studio-accent) 10%, transparent),
+    0 7px 22px #0002;
+}
+.studio-stack-shell.studio-selected:focus-visible {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 4px;
 }
 .studio-dashboard-list {
   display: grid;

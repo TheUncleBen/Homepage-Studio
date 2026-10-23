@@ -407,6 +407,18 @@ describe("Native board save and draft safety", () => {
         vi.useRealTimers();
       }
     });
+
+    it("shows a selected stack the way a selected panel is shown", async () => {
+      await mountBoard({ initial: stacked() });
+      const shell = document.querySelector(".studio-stack-shell");
+      expect(shell).not.toHaveClass("studio-selected");
+      fireEvent.contextMenu(screen.getByRole("button", { name: /^Choose widget in stack:/ }));
+      expect(screen.getByRole("button", { name: "Done", exact: true })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Position & size", exact: true })).toBeEnabled();
+      expect(shell).toHaveClass("studio-stack-shell", "studio-stack-editing", "studio-selected");
+      fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
+      await waitFor(() => expect(shell).not.toHaveClass("studio-selected"));
+    });
   });
 
   it("accepts unchanged position settings without creating a draft or leaving the dialog open", async () => {

@@ -1,5 +1,5 @@
 import { dump, load } from "js-yaml";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { isObject } from "./native-adapter.mjs";
 
@@ -136,6 +136,8 @@ function Field({ field, value, onChange, onError }) {
     if (!message) onChange(field.key, parsed);
   };
   const id = `studio-field-${field.key}`;
+  const errorId = `${id}-error`;
+  const describedBy = error ? errorId : undefined;
   const complex = kind === "object" || kind === "array";
   const placeholder =
     field.exampleValue === undefined
@@ -181,6 +183,7 @@ function Field({ field, value, onChange, onError }) {
           spellCheck={false}
           placeholder={placeholder}
           aria-invalid={Boolean(error)}
+          aria-describedby={describedBy}
         />
       ) : (
         <div className="studio-input-line">
@@ -194,6 +197,7 @@ function Field({ field, value, onChange, onError }) {
             spellCheck={false}
             placeholder={placeholder}
             aria-invalid={Boolean(error)}
+            aria-describedby={describedBy}
           />
           {field.sensitive && (
             <button
@@ -256,7 +260,11 @@ function Field({ field, value, onChange, onError }) {
           Native display supports up to {field.maxItems} selected fields.
         </small>
       )}
-      {error && <small className="studio-field-error">{error}</small>}
+      {error && (
+        <small id={errorId} className="studio-field-error">
+          {error}
+        </small>
+      )}
     </div>
   );
 }
@@ -271,6 +279,8 @@ export default function ConfigForm({
   notice,
 }) {
   const [tab, setTab] = useState("fields");
+  // A view disabled by an error in the other view points at that error.
+  const yamlErrorId = useId();
   const [yaml, setYaml] = useState(() =>
     dump(value, { noRefs: true, lineWidth: 100, sortKeys: false }),
   );
@@ -313,6 +323,9 @@ export default function ConfigForm({
       setError(yamlErrorMessage(err));
     }
   };
+  const fieldErrorIds = Object.keys(fieldErrors)
+    .filter((key) => fieldErrors[key])
+    .map((key) => `studio-field-${key}-error`);
   const known = new Set([...fields.map((field) => field.key), ...knownKeys]);
   const additional = Object.keys(value).filter(
     (key) => !known.has(key) && key !== "type",
@@ -323,7 +336,9 @@ export default function ConfigForm({
         <button
           type="button"
           className={tab === "fields" ? "studio-tab-active" : ""}
+          aria-pressed={tab === "fields"}
           disabled={Boolean(error)}
+          aria-describedby={error ? yamlErrorId : undefined}
           onClick={() => setTab("fields")}
         >
           Options
@@ -331,7 +346,9 @@ export default function ConfigForm({
         <button
           type="button"
           className={tab === "yaml" ? "studio-tab-active" : ""}
-          disabled={Object.values(fieldErrors).some(Boolean)}
+          aria-pressed={tab === "yaml"}
+          disabled={fieldErrorIds.length > 0}
+          aria-describedby={fieldErrorIds.join(" ") || undefined}
           onClick={() => {
             if (tab !== "yaml")
               setYaml(
@@ -401,7 +418,7 @@ export default function ConfigForm({
             rows={15}
           />
           {error && (
-            <p className="studio-field-error" role="alert">
+            <p className="studio-field-error" id={yamlErrorId} role="alert">
               {error}
             </p>
           )}

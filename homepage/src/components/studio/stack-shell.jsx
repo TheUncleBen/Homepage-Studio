@@ -10,6 +10,7 @@ export default function StackShell({
   panels,
   rect,
   editing,
+  selected = false,
   busy = false,
   overlayOpen = false,
   reducedMotion,
@@ -115,7 +116,8 @@ export default function StackShell({
   return (
     <section
       ref={root}
-      className={`studio-stack-shell${editing ? " studio-stack-editing" : ""}`}
+      className={`studio-stack-shell${editing ? " studio-stack-editing" : ""}${selected ? " studio-selected" : ""}`}
+      data-stack-shell-id={stack.id}
       style={rect}
       tabIndex={0}
       aria-label={`${activePanel?.title || "Widget stack"}, ${snapshot.activeIndex + 1} of ${snapshot.ids.length}`}
