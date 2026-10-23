@@ -106,6 +106,37 @@ test.describe('touch direct manipulation', () => {
   });
 });
 
+test.describe('selection checkbox target size', () => {
+  for (const [label, use, minimum] of [
+    ['fine pointer', { viewport: { width: 1440, height: 1080 } }, 24],
+    ['coarse pointer', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }, 44],
+  ]) {
+    test.describe(label, () => {
+      test.use(use);
+      test(`the edit-mode selection target is at least ${minimum} px and toggles from its edge`, async ({ page, request }) => {
+        await seedServicePanels(request, [{ name: 'Target tile', rect: { x: 0, y: 0, w: 4, h: 3 } }]);
+        await page.goto('/');
+        await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+        const checkbox = page.getByRole('checkbox', { name: 'Select Target tile', exact: true });
+        const target = page.locator('.studio-select-target').filter({ has: checkbox });
+        const bounds = await target.boundingBox();
+        expect(bounds.width).toBeGreaterThanOrEqual(minimum);
+        expect(bounds.height).toBeGreaterThanOrEqual(minimum);
+        // A press near the target's corner, outside the drawn checkbox, still selects.
+        const box = await checkbox.boundingBox();
+        const x = bounds.x + 2;
+        const y = bounds.y + 2;
+        expect(x < box.x || y < box.y).toBe(true);
+        if (use.hasTouch) await page.touchscreen.tap(x, y);
+        else await page.mouse.click(x, y);
+        await expect(checkbox).toBeChecked();
+        const header = await servicePanel(page, 'Target tile').locator('.studio-panel-header').boundingBox();
+        expect(header.height).toBeLessThanOrEqual(57);
+      });
+    });
+  }
+});
+
 test('native search state survives arrangement and moving out; bookmark and layout survive reload', async ({ page, request }) => {
   await page.goto('/');
   const bookmark = await addBookmark(page);

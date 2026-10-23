@@ -481,9 +481,30 @@ body {
 .studio-panel-header input[type="checkbox"] {
   appearance: auto;
   accent-color: var(--studio-accent);
-  width: 15px;
-  height: 15px;
-  min-width: 15px;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+/* WCAG 2.5.8: at least a 24 px target, 44 px for coarse pointers. Negative
+   margins keep the header's title position close to the visible checkbox. */
+.studio-select-target {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: -4px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+@media (pointer: coarse) {
+  .studio-select-target {
+    width: 44px;
+    height: 44px;
+    margin: -14px -10px -14px -14px;
+  }
 }
 .studio-resize-handle {
   position: absolute;

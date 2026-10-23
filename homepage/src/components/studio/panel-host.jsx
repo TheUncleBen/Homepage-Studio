@@ -172,13 +172,16 @@ export default function PanelHost({
             }}
           >
             {editing && (
-              <input
-                type="checkbox"
-                aria-label={`Select ${panel.title}`}
-                checked={Boolean(selected)}
-                disabled={busy}
-                onChange={() => onSelect(panel.id)}
-              />
+              // The label enlarges the touch target around the native checkbox.
+              <label className="studio-select-target">
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${panel.title}`}
+                  checked={Boolean(selected)}
+                  disabled={busy}
+                  onChange={() => onSelect(panel.id)}
+                />
+              </label>
             )}
             <span className="studio-panel-title">
               <small>{panel.group || (panel.kind === "informationWidget" ? "Information" : "Dashboard")}</small>
