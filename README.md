@@ -99,8 +99,9 @@ HTTPS address.
 ## Features
 
 - **Edit on the page.** **Edit dashboard** (or press and hold empty space)
-  turns on edit mode. Hold a panel to pick it up and drag it with the same
-  finger or mouse, resize it from the corner, or use the keyboard. The board
+  turns on edit mode. Press and hold a panel (its title bar with a mouse,
+  anywhere on it with a finger) to pick it up and drag it without letting go;
+  in edit mode, use its move handle, its resize corner or the keyboard. The board
   snaps to a 12-column grid and never lets panels overlap. **Done** saves the
   arrangement; **Cancel** asks before it throws away unsaved moves.
 - **Four kinds of panel, each placed on its own.** Service tiles, single

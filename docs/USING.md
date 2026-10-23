@@ -76,7 +76,8 @@ Adding a widget further down the list never renames the ones above it.
    second. Edit mode turns on. Holding a panel also selects it (holding a
    stacked widget selects its whole stack).
 2. **Keep the same finger down and drag** to move it. Let go to drop it.
-3. Drag the **corner handle** to resize.
+3. Once you're in edit mode, move a panel by its **move handle** (the grip in
+   its title bar) and resize it from its **corner handle**.
 
 Before the hold completes, the page scrolls as usual: move your finger up or
 down and the hold is cancelled, so scrolling a long dashboard never picks

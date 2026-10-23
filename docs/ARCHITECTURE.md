@@ -119,7 +119,7 @@ use transient navigation direction while native hosts stay mounted.
 
 Pointer, touch and keyboard input share one arrangement model. Outside edit
 mode, a hold on empty board space or a panel title bar (or a context-menu
-press on it) enters edit mode; on touch and pen, a hold on a panel body does
+press on it) enters edit mode; on touch, a hold on a panel body does
 the same and selects that panel, or the whole stack for a stacked member.
 Panel bodies use `touch-action: pan-y`, so vertical page and content scrolling
 stay native and cancel a pending hold, while horizontal movement reaches the
@@ -127,7 +127,8 @@ stack swipe. A touch or pen press that starts on native interactive content
 is left to that content: links, buttons, form controls, labels, editable
 content, iframes, embeds and objects, media, canvas and SVG charts, and
 anything inside a horizontally scrolling element. Mouse body presses are not
-holds. The stack title keeps its own swipe handling; its picker opens only from
+holds. In edit mode, panels and stacks move by their move handle and resize
+by their corner handle. The stack title keeps its own swipe handling; its picker opens only from
 a click-gated short activation or the keyboard, never from a body gesture,
 drag, long press, context menu or multi-touch, and not in edit mode.
 
