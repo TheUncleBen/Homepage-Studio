@@ -323,7 +323,7 @@ test('a signed-out dashboard inside a frame offers sign-in in a new tab instead 
   assert.equal(framed.status, 401);
   assert.match(framed.text, /target="_blank"/);
   assert.match(framed.text, /href="http:\/\/localhost:3001\/__studio\/auth\/sign-in\?next=%2F%3Fview%3D1"/);
-  assert.match(framed.text, /href="\/\?view=1"/);
+  assert.match(framed.text, /href="">Reload/, 'reload reuses the current address rather than reflecting it');
   assert.doesNotMatch(String(framed.headers['content-security-policy']), /frame-ancestors 'none'/);
   const top = await context.request('/', { headers: html });
   assert.equal(top.status, 302, 'a top-level visit still goes to the sign-in page');
