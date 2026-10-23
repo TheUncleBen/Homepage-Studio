@@ -849,6 +849,7 @@ export default function StudioBoard({
         </div>
       </header>
       <ErrorMessage
+        arrangement
         error={error || sourceConflict || loadError}
         heading={!error && !sourceConflict && loadError ? "The dashboard could not refresh" : undefined}
         onReload={

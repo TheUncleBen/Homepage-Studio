@@ -73,7 +73,7 @@ export default function StudioDialog({
   );
 }
 
-export function ErrorMessage({ error, onReload, heading }) {
+export function ErrorMessage({ error, onReload, heading, arrangement = false }) {
   if (!error) return null;
   return (
     <div className="studio-error" role="alert">
@@ -83,7 +83,9 @@ export function ErrorMessage({ error, onReload, heading }) {
       <p>{error.message || String(error)}</p>
       {error.status === 409 && (
         <p>
-          Your draft is still here. Copy any changes you need before reloading the current configuration.
+          {arrangement
+            ? "Your unsaved arrangement is still shown. Reloading the current configuration discards it; afterwards, repeat any moves you still want."
+            : "Your draft is still here. Copy any changes you need before reloading the current configuration."}
           {onReload && (
             <>
               {" "}
