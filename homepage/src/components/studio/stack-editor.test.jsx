@@ -131,4 +131,24 @@ describe("Stack playback editor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply to arrangement" }));
     expect(onApply).toHaveBeenCalledWith(rect);
   });
+
+  it("names every Move out button after its member", () => {
+    const stack = {
+      id: "stack",
+      panelIds: ["clock", "greeting"],
+      rect: { x: 0, y: 0, w: 4, h: 3 },
+      playback: { mode: "manual", intervalMs: 10000, manualHoldMs: 30000, transition: "horizontal", transitionDurationMs: 250, loop: true },
+    };
+    const board = {
+      version: 2,
+      columns: 12,
+      panels: ["clock", "greeting"].map((id) => ({ id, kind: "informationWidget", title: id === "clock" ? "Clock" : "Greeting", group: "", rect: { x: 0, y: 0, w: 4, h: 2 } })),
+      stacks: [stack],
+    };
+    render(<StackEditor stack={stack} board={board} onApply={vi.fn()} onClose={vi.fn()} onPanelEdit={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Move out Clock from stack" })).toHaveTextContent("Move out");
+    fireEvent.click(screen.getByRole("button", { name: "Move out Greeting from stack" }));
+    expect(screen.queryByRole("button", { name: "Move out Greeting from stack" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Move out .* from stack$/ })).toHaveLength(1);
+  });
 });

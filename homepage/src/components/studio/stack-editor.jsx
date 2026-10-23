@@ -276,6 +276,7 @@ export default function StackEditor({
                       });
                       setMovedOut([...movedOut, id]);
                     }}
+                    aria-label={`Move out ${panel?.title} from stack`}
                   >
                     Move out
                   </button>

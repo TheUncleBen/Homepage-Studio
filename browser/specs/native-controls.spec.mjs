@@ -131,7 +131,7 @@ test('native search state survives arrangement and moving out; bookmark and layo
   await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.locator('.studio-stack-member').filter({ hasText: 'Browser bookmark' }).getByRole('button', { name: 'Move out', exact: true }).click();
+  await dialog.locator('.studio-stack-member').filter({ hasText: 'Browser bookmark' }).getByRole('button', { name: 'Move out Browser bookmark from stack', exact: true }).click();
   await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();
   await expect(carousel(page)).toHaveCount(0);
   await expect(input).toHaveValue('Native search state retained');
