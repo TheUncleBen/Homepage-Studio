@@ -27,6 +27,7 @@ Portainer pulls the existing image; it does not compile source.
 | `STUDIO_RENDERER_MAX_WORKERS` | Maximum simultaneously resident native dashboard workers | `8` |
 | `STUDIO_RENDERER_IDLE_SECONDS` | Idle worker lifetime before reclamation | `600` |
 | `STUDIO_RENDERER_STARTUP_SECONDS` | Native worker startup deadline | `30` |
+| `STUDIO_FRAME_ANCESTORS` | Space-separated origins allowed to show the dashboard in a frame; see [framing](#response-headers-and-framing) | Empty (same origin only) |
 
 For example, the shared origin can be `https://homepage.example.test` while
 dashboard addresses are `/admin`, `/family` and `/dashboard-1`. Configure the
@@ -58,6 +59,34 @@ from the configured origin. Do not use a wildcard or put a path/query/fragment i
 the origin. Controller port 3000 is the only product port published. Workers use
 random loopback-only ports inside the container. Native authentication and MCP
 configuration writes are disabled in the controlled runtime.
+
+## Response headers and framing
+
+The controller adds these headers to the pages and responses it serves:
+
+- `Content-Security-Policy: frame-ancestors 'self'` with
+  `X-Frame-Options: SAMEORIGIN`, so only pages on the same origin can show the
+  dashboard in a frame;
+- `X-Content-Type-Options: nosniff`;
+- `Referrer-Policy: same-origin`.
+
+The native runtime no longer sends `X-Powered-By`.
+
+To embed a dashboard elsewhere, for example in a Home Assistant panel, set
+`STUDIO_FRAME_ANCESTORS` to the allowed origins separated by spaces, not
+commas. Each entry is `'self'` (with the quotes) or an exact `http`/`https`
+origin with an optional port and no path, query, wildcard or credentials. The
+list replaces the default, so include `'self'` to keep same-origin framing:
+
+```sh
+STUDIO_FRAME_ANCESTORS='self' https://ha.example.test:8123
+```
+
+When the value is set, `X-Frame-Options` is omitted because it cannot list
+several origins. An unset or empty value keeps the default. An invalid entry
+stops the application at startup with an error naming the variable. A framing
+page can trigger native widget actions in the embedded dashboard, so allow only
+origins you trust as much as the dashboard itself.
 
 ## Integration transport and trust
 
@@ -105,8 +134,9 @@ boundary.
 
 ## Persistence and dashboards
 
-Both controller and workers run as UID/GID 1000. Named volumes created by the
-image use that ownership. Existing bind mounts must be writable by the same UID;
+Both controller and workers run as UID/GID 1000. Application code in the image
+is owned by root and is not writable by that user; only `/app/config` and
+`/app/state` are. Named volumes created by the image use that ownership. Existing bind mounts must be writable by the same UID;
 private state directories use mode 0700. The application does not chown arbitrary
 host directories or run as root to repair permissions.
 
@@ -134,7 +164,14 @@ can manage the deployment. Studio adds no user authentication platform.
 
 Portable export/import includes one dashboard's nine files and Studio state.
 It does not include deployment environment variables, mounted secret files,
-sockets or external credentials stored outside those files. A snapshot belongs
+sockets or external credentials stored outside those files.
+
+Snapshots keep earlier versions of each file, up to the retention count
+(`STUDIO_BACKUP_RETENTION`, 25 by default). A credential written inline into a
+native file therefore stays readable through the snapshot history after you
+rotate it. After rotating an inline secret, delete the older snapshots, or keep
+secrets out of the files with `{{HOMEPAGE_VAR_...}}` or `{{HOMEPAGE_FILE_...}}`
+references so that snapshots only hold the reference. A snapshot belongs
 to one dashboard. Import into another dashboard is an explicit validated action
 using the destination revision and a recovery snapshot.
 
@@ -156,6 +193,28 @@ The actual Docker CLI `stack config` parser is a required gate. Required-value
 messages intentionally contain no hyphens because the tested legacy parser can
 misinterpret default-operator syntax inside those messages. Template guards are
 retained for image, origin and Swarm node.
+
+### Container hardening
+
+The image runs as UID/GID 1000 with root-owned application code. It contains
+no setuid, setgid or file-capability binaries; `ping` uses unprivileged ICMP
+sockets, which Docker allows inside containers through its default
+`net.ipv4.ping_group_range`. Both templates set `cap_drop: [ALL]`.
+
+| Option | Compose template | Swarm template |
+| --- | --- | --- |
+| `cap_drop: [ALL]` | Set and applied | Set; `docker stack deploy` applies it with Docker 20.10 or later |
+| `security_opt: [no-new-privileges:true]` | Set and applied | Not set: `docker stack deploy` ignores `security_opt` |
+| Read-only root filesystem | Not set | Not set |
+
+A read-only root filesystem is not yet qualified. If you add your own limits
+such as `mem_limit` or `deploy.resources`, leave room for the configured number
+of native workers.
+
+Port 3000 is published on every host interface. With Compose, add
+`host_ip: 127.0.0.1` (or another address) to the port entry to listen on one
+address only, for example behind a reverse proxy on the same host. Swarm
+host-mode ports cannot bind a single address; use a host firewall instead.
 
 ## Health and worker behavior
 
@@ -222,8 +281,8 @@ the qualification evidence. Remote image scanning inspects packages without
 executing that architecture. It does not replace container acceptance, prove
 application reachability, or establish that every residual advisory is harmless.
 The reviewed Perl update does not promise zero remaining OS findings; a new image
-needs its own scan. Actual scan results belong in [verification](../VERIFICATION.md),
-not an inferred pass from this build description.
+needs its own scan. Actual scan results belong in the candidate's verification
+report, not an inferred pass from this build description.
 
 The source guard rejects modified tracked source and ignored/untracked inputs
 within every Docker-copied subtree. Docker-excluded generated dependencies/build

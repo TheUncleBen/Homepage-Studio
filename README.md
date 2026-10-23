@@ -22,7 +22,7 @@ Configuration changes use revision checks, a recovery journal, and snapshots. Th
 
 ## Deployment model
 
-One Studio image contains the public Node controller and the complete controlled Homepage runtime. Only controller port 3000 is published. Native workers start on demand, bind to internal loopback addresses, and render one dashboard each with independent configuration and caches. All processes run as UID/GID 1000. The application owns persistent configuration and state volumes.
+One Studio image contains the public Node controller and the complete controlled Homepage runtime. Only controller port 3000 is published. Native workers start on demand, bind to internal loopback addresses, and render one dashboard each with independent configuration and caches. All processes run as UID/GID 1000 with every Linux capability dropped; application code is root-owned and read-only to that user, which owns only the persistent configuration and state volumes. Pages may be framed only by the same origin unless `STUDIO_FRAME_ANCESTORS` allows others.
 
 Configure pages such as `/admin`, `/family` or `/dashboard-1` on the same host. Create an empty dashboard or duplicate an existing one, then edit it independently. Names and slugs can change without moving its immutable identity or history. Archive and restore retain files and snapshots. The original dashboard remains in its existing volume paths. Dashboards share the application lifecycle and deployment resources; they do not share their configuration, layout or state.
 
