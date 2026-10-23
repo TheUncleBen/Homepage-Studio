@@ -22,7 +22,9 @@ const identity = `studio-portainer-${process.pid}`;
 const origin = 'http://localhost:17779';
 const portainer = new PortainerClient('http://127.0.0.1:19000');
 const fixture = createDashboardFixture({ origin, expectedRevision: process.env.STUDIO_EXPECTED_REVISION });
-const env = { ...process.env, STUDIO_PUBLIC_ORIGIN: origin, STUDIO_PORT: '17779', STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30' };
+// Template qualification exercises editing with sign-in off; container
+// acceptance qualifies sign-in on with the same image.
+const env = { ...process.env, STUDIO_AUTH: 'off', STUDIO_PUBLIC_ORIGIN: origin, STUDIO_PORT: '17779', STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30' };
 const infra = [];
 const stacks = [];
 const localTags = [];

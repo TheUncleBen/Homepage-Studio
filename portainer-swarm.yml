@@ -11,6 +11,20 @@ services:
       STUDIO_RENDERER_IDLE_SECONDS: ${STUDIO_RENDERER_IDLE_SECONDS:-600}
       STUDIO_RENDERER_STARTUP_SECONDS: ${STUDIO_RENDERER_STARTUP_SECONDS:-30}
       STUDIO_FRAME_ANCESTORS: ${STUDIO_FRAME_ANCESTORS:-}
+      # Studio sign-in (docs/AUTHENTICATION.md). On by default; it needs an
+      # https:// STUDIO_PUBLIC_ORIGIN. Set off only if another layer controls access.
+      STUDIO_AUTH: ${STUDIO_AUTH:-on}
+      STUDIO_AUTH_KEY: ${STUDIO_AUTH_KEY:-}
+      STUDIO_TRUSTED_PROXIES: ${STUDIO_TRUSTED_PROXIES:-}
+      STUDIO_OIDC_ISSUER: ${STUDIO_OIDC_ISSUER:-}
+      STUDIO_OIDC_CLIENT_ID: ${STUDIO_OIDC_CLIENT_ID:-}
+      STUDIO_OIDC_CLIENT_SECRET: ${STUDIO_OIDC_CLIENT_SECRET:-}
+      STUDIO_OIDC_NAME: ${STUDIO_OIDC_NAME:-}
+      STUDIO_SMTP_HOST: ${STUDIO_SMTP_HOST:-}
+      STUDIO_SMTP_PORT: ${STUDIO_SMTP_PORT:-}
+      STUDIO_SMTP_USER: ${STUDIO_SMTP_USER:-}
+      STUDIO_SMTP_PASSWORD: ${STUDIO_SMTP_PASSWORD:-}
+      STUDIO_SMTP_FROM: ${STUDIO_SMTP_FROM:-}
       LOG_TARGETS: stdout
     # Host-mode publication listens on every interface of the selected node.
     # Swarm cannot bind a single address; restrict access with a host firewall.

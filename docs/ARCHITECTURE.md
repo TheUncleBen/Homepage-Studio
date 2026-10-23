@@ -288,9 +288,17 @@ The source targets linux/amd64 and linux/arm64, standalone Compose, and one appl
 `STUDIO_PUBLIC_ORIGIN` is the shared HTTP(S) origin without a dashboard suffix.
 The entrypoint derives the exact accepted host from it. A slug is a single
 validated path segment, such as `/admin`; it is not another DNS resolver host.
-Studio does not configure DNS, reverse proxies, TLS or login. Trusted editor
-users on this origin can administer the registry and other dashboards. External
-access controls remain outside the application: put them in the reverse proxy
-in front of the whole origin ([reverse proxy](REVERSE-PROXY.md)). Dashboard
+Studio does not configure DNS, reverse proxies or TLS. Access is decided by
+Studio sign-in ([AUTHENTICATION.md](AUTHENTICATION.md)), enforced in the
+controller in front of every worker: an anonymous request reaches only the
+sign-in pages and immutable build assets; a member reaches only dashboards
+shared with them, at view or arrange level; everything else under
+`/__studio/` needs an administrator (default deny), and raw file saves,
+imports, exports, restores and snapshot reads also need a recent sign-in. The
+session cookie is stripped before requests reach a worker, Homepage's own
+authentication stays off, and its MCP endpoint is refused. With
+`STUDIO_AUTH=off`, trusted editor users on this origin can administer the
+registry and other dashboards, and external access control belongs in the
+reverse proxy ([reverse proxy](REVERSE-PROXY.md)). Either way, dashboard
 slugs must not be presented as authorization boundaries. Robots/indexing policy is likewise a
 presentation directive, not an access-control mechanism.

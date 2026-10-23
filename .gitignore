@@ -21,4 +21,5 @@ __pycache__/
 !.env.example
 browser/.results/
 browser/.desktop-results/
+browser/.results-sign-in/
 release-dist/

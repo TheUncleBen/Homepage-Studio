@@ -81,7 +81,15 @@ runs natively:
 - container acceptance on that image: fresh volumes, edits, snapshots, restarts,
   container replacement, standalone Compose, a one-node Swarm, Chromium, Firefox
   and WebKit, and real hidden-document timing;
-- both deployment templates through a pinned Portainer CE.
+- both deployment templates through a pinned Portainer CE;
+- the same image with Studio sign-in on: dashboards locked behind
+  first-administrator setup, the Docker health check still healthy, the
+  sign-in assets and recovery command present, and Chromium with a virtual
+  passkey creating the administrator, signing out and signing back in.
+
+The editing and browser qualification above runs with `STUDIO_AUTH=off`;
+sign-in itself is covered by `server/auth/*.test.mjs` (in `npm test`), the
+editor gating test in the native suite, and the sign-in phase.
 
 [`candidate-approved.yml`](.github/workflows/candidate-approved.yml) runs the same
 qualification, including the required native source checks job, on default-branch

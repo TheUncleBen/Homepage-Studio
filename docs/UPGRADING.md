@@ -9,6 +9,22 @@ new template.
 your environment values, your proxy. **What you take new each time:** the
 bundle's `portainer-swarm.yml` or `portainer-compose.yml`, used unchanged.
 
+## Updating to the version with sign-in
+
+Studio sign-in is **on by default** from this version
+([AUTHENTICATION.md](AUTHENTICATION.md)). Before you update:
+
+- **It needs HTTPS.** If people reach Studio at an `http://` address other
+  than localhost, either move it behind an HTTPS proxy and change
+  `STUDIO_PUBLIC_ORIGIN` to the `https://` address, or add `STUDIO_AUTH=off`
+  to keep the old behavior (access controlled by your proxy). On plain HTTP
+  with sign-in on, Studio starts but shows only a page explaining this.
+- **Open it straight after the update.** Every dashboard is locked until the
+  first visitor creates the administrator account. Do that yourself before
+  anyone else can.
+- Optional: set `STUDIO_AUTH_KEY` (encrypts authenticator secrets) and
+  `STUDIO_TRUSTED_PROXIES` (real client addresses behind your proxy).
+
 ## Before you update
 
 1. Get the new bundle and check it ([VERSIONS.md](VERSIONS.md#checking-a-bundle)).

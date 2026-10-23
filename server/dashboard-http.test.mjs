@@ -55,7 +55,7 @@ async function fixture(t) {
     async drain(id) { drains.push(id); },
     async close() { closes++; },
   };
-  const app = createStudioServer({ configDir, stateDir, rendererDir, rendererPool: pool, allowedHosts: HOST, buildRevision: BUILD });
+  const app = createStudioServer({ configDir, stateDir, rendererDir, rendererPool: pool, allowedHosts: HOST, buildRevision: BUILD, auth: 'off' });
   const port = await listen(app.server);
   t.after(async () => {
     beforeAcquire = undefined;

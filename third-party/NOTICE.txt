@@ -52,3 +52,13 @@ Shared native YAML parser:
 js-yaml 5.4.3 is used by the native configuration reader and controller indexing
 policy. Its installed MIT notice is preserved unchanged in js-yaml-LICENSE.
 The shared parser source and exact dependency version are committed together.
+
+Sign-in dependencies:
+The sign-in and access-control layer (server/auth) uses @simplewebauthn/server
+and @simplewebauthn/browser for passkeys, openid-client for single sign-on,
+nodemailer for email and qrcode-generator for authenticator QR codes, with
+their production dependencies. The installed license
+texts of all of them are preserved unchanged in
+sign-in-dependencies-LICENSES.txt. They are MIT, except asn1js (BSD-3-Clause),
+nodemailer (MIT-0), reflect-metadata (Apache-2.0) and tslib (0BSD).
+qrcode-generator is MIT licensed but ships no license file; that file says so.

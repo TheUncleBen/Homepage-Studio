@@ -78,7 +78,7 @@ async function setup(t, serverOptions = {}) {
   });
   const upstreamPort = await listen(upstream);
   await serverOptions.beforeServer?.({ configDir, stateDir });
-  const { server, store, initialization } = createStudioServer({ configDir, stateDir, upstream: `http://127.0.0.1:${upstreamPort}`, allowedHosts: HOST, ...serverOptions });
+  const { server, store, initialization } = createStudioServer({ configDir, stateDir, upstream: `http://127.0.0.1:${upstreamPort}`, allowedHosts: HOST, auth: 'off', ...serverOptions });
   const port = await listen(server);
   t.after(async () => {
     await close(server);
@@ -592,7 +592,8 @@ test('discovered panels use read-only native metadata and explicit revision-prot
   assert.deepEqual(hidden.json.board.panels, []);
   assert.deepEqual(hidden.json.hiddenDiscoveredIds, [id]);
   assert.equal(hidden.json.discoveredSources.length, 1);
-  assert.equal(hidden.json.servicesYaml, loaded.json.servicesYaml);
+  // Arrange-level actions answer with the board only, never configuration files.
+  assert.equal(hidden.json.servicesYaml, undefined);
   const stale = await post('/__studio/api/discovery-visibility', { revision: loaded.json.revision, id, hidden: false });
   assert.equal(stale.status, 409);
   const invalid = await post('/__studio/api/discovery-visibility', { revision: hidden.json.revision, id, hidden: 'false' });

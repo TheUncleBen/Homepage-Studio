@@ -60,6 +60,11 @@ export function stackPayload({ name, template, environment, swarmId }) {
     assert.ok(environment[key].trim(), `Provide ${key} explicitly`);
     return { name: key, value: environment[key] };
   });
+  // Optional: the sign-in switch, passed only when the qualification sets it.
+  if (environment.STUDIO_AUTH !== undefined) {
+    assert.ok(['on', 'off'].includes(environment.STUDIO_AUTH), 'STUDIO_AUTH must be on or off');
+    Env.push({ name: 'STUDIO_AUTH', value: environment.STUDIO_AUTH });
+  }
   return { Name: name, StackFileContent: template, Env, ...(swarmId === undefined ? {} : { SwarmID: swarmId }) };
 }
 

@@ -19,7 +19,9 @@ const execute = promisify(execFile);
 const identity = `studio-acceptance-${process.pid}`;
 const port = 17778;
 const origin = `http://localhost:${port}`;
-const env = { ...process.env, STUDIO_PUBLIC_ORIGIN: origin, STUDIO_PORT: String(port), STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30' };
+// The long editing and browser qualification runs with Studio sign-in off; a
+// separate phase below qualifies the same image with sign-in on.
+const env = { ...process.env, STUDIO_AUTH: 'off', STUDIO_PUBLIC_ORIGIN: origin, STUDIO_PORT: String(port), STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30' };
 const composeArgs = ['compose', '--project-name', identity, '--file', 'portainer-compose.yml'];
 let composeStarted = false;
 let swarmStarted = false;
@@ -290,6 +292,33 @@ try {
   assert.deepEqual(retainedFiles, retainedHistory.map(item => `${item.id}.json`).sort(), 'On-volume snapshot files must exactly match the API history');
   assert.deepEqual((await request('/__studio/api/backups')).json(), retainedHistory, 'Reading history must not change or resurrect entries');
   console.log('PASS: real Docker volume retains the exact newest25 pre-save revisions after26 committed saves; API history and on-volume snapshot identities agree.');
+  // Sign-in on, the default: the same volumes lock behind first-administrator
+  // setup and the container health check still passes.
+  const signInEnv = { ...env, STUDIO_AUTH: 'on' };
+  await docker([...composeArgs, 'up', '--detach', '--force-recreate', '--no-build', '--pull', 'never'], { env: signInEnv });
+  await composeHealth();
+  const home = await fetch(new URL('/', origin), { headers: { accept: 'text/html' }, redirect: 'manual', signal: AbortSignal.timeout(35000) });
+  assert.equal(home.status, 302);
+  assert.equal(home.headers.get('location'), '/__studio/auth/setup');
+  assert.equal((await request('/__studio/api/state', undefined, 401)).json().code, 'SETUP_REQUIRED');
+  assert.deepEqual((await request('/__studio/application-ready')).json(), { status: 'ready' }, 'anonymous callers see readiness only');
+  const setupPage = await fetch(new URL('/__studio/auth/setup', origin), { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(35000) });
+  assert.equal(setupPage.status, 200);
+  assert.match(setupPage.headers.get('content-security-policy') || '', /script-src 'self'/);
+  for (const asset of ['app.js', 'app.css', 'webauthn.js']) assert.equal((await fetch(new URL('/__studio/auth/assets/' + asset, origin), { signal: AbortSignal.timeout(35000) })).status, 200, asset);
+  assert.match(await docker([...composeArgs, 'exec', '-T', 'studio', 'node', 'server/auth/cli.mjs', 'list'], { env: signInEnv }), /No accounts yet/);
+  // Chromium with a virtual passkey: first-administrator setup, sign-out and
+  // passkey sign-in against the real image.
+  try {
+    const signInResult = await execute(process.execPath, ['browser/node_modules/@playwright/test/cli.js', 'test', '--config', 'browser/sign-in.config.mjs'], {
+      env: { ...signInEnv, STUDIO_BROWSER_ORIGIN: origin }, timeout: 300000, maxBuffer: 8 * 1024 * 1024,
+    });
+    console.log(signInResult.stdout.trim());
+  } catch (error) {
+    console.error((error.stdout || '').slice(-20000));
+    throw new Error(`Real Chromium sign-in qualification failed: ${(error.stderr || error.message).slice(-5000)}`);
+  }
+  console.log('PASS: sign-in on by default locks the real volumes behind first-administrator setup, serves the sign-in assets, keeps the Docker health check passing and runs the recovery command.');
   await docker([...composeArgs, 'down', '--volumes', '--remove-orphans']);
   composeStarted = false;
   console.log('PASS: fresh standalone volumes, native protocol, nonroot controller and loopback workers, independently configured dashboards, child-crash recovery and broken-default isolation, edit/snapshot, restart, replacement, restore, Chromium dashboard/mobile, Firefox/WebKit desktop and real hidden-document qualification.');

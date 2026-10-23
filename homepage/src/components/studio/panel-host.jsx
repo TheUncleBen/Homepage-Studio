@@ -23,6 +23,7 @@ export default function PanelHost({
   onStackDrag,
   onManual,
   onEdit,
+  canEdit = true,
   onSelect,
   onManipulate,
   onUnitKey,
@@ -266,14 +267,16 @@ export default function PanelHost({
                 >
                   <StudioIcon name="grip" />
                 </button>
-                <button
-                  className="studio-icon-button"
-                  disabled={busy}
-                  aria-label={`Edit ${panel.title}`}
-                  onClick={() => onEdit(panel)}
-                >
-                  <StudioIcon name="edit" />
-                </button>
+                {canEdit && (
+                  <button
+                    className="studio-icon-button"
+                    disabled={busy}
+                    aria-label={`Edit ${panel.title}`}
+                    onClick={() => onEdit(panel)}
+                  >
+                    <StudioIcon name="edit" />
+                  </button>
+                )}
               </>
             )}
           </header>

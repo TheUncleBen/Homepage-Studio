@@ -25,6 +25,21 @@ Then find the symptom below. What the health endpoints mean is in
 | The health check stays `unhealthy` (on Swarm the task keeps being replaced) | `/__studio/application-ready` fails: the dashboard registry is damaged or missing after initialization, a volume isn't writable by UID 1000, or the volumes don't match. The endpoint's JSON answer names the problem. Restore the volumes from a backup if the registry is gone ([OPERATIONS.md](OPERATIONS.md#restoring-the-volumes)) |
 | Permission errors on `/app/config` or `/app/state` | You replaced a named volume with a bind mount that UID 1000 can't write. `chown -R 1000:1000` that folder; Studio doesn't run as root to fix it |
 
+## Sign-in
+
+| What you see | Cause and fix |
+| --- | --- |
+| A page saying **Studio needs HTTPS before anyone can sign in** (`503`) | Sign-in is on but `STUDIO_PUBLIC_ORIGIN` is `http://` on an address other than localhost. Put Studio behind an HTTPS proxy and use the `https://` origin, or set `STUDIO_AUTH=off` if your proxy already controls access ([AUTHENTICATION.md](AUTHENTICATION.md)) |
+| Every address goes to **Create the administrator** | No account exists yet. Create it now; until then every dashboard is locked |
+| `503` with `Sign-in storage is unavailable` | `/app/state/auth` can't be read or holds damaged data. Check the state volume's permissions (UID 1000) and the log. Studio stays closed rather than open; restore the volume from a backup if the files are damaged |
+| A member sees **No dashboards have been shared with you yet** | Nothing is shared with them or their groups. **Administration → Dashboard access** |
+| A dashboard says it isn't available for one person but works for another | It isn't shared with that person; unshared dashboards look like missing ones on purpose |
+| **Confirm it's you** keeps appearing | Security changes need a sign-in within the policy's confirmation window (15 minutes by default) |
+| Passkey prompt fails with a security error | The browser's address isn't exactly `STUDIO_PUBLIC_ORIGIN`. Passkeys are bound to that host name |
+| Single sign-on says it can't reach the provider | Studio couldn't load `<issuer>/.well-known/openid-configuration`. Check `STUDIO_OIDC_ISSUER` (Authentik: `https://<authentik>/application/o/<slug>/`) and that the container can reach it |
+| Nobody can sign in at all | Use [command-line recovery](AUTHENTICATION.md#lost-access-command-line-recovery) |
+| Sign-in throttling or the activity log shows only the proxy's address | Set `STUDIO_TRUSTED_PROXIES` to the proxy's address |
+
 ## The page doesn't load
 
 | What you see | Cause and fix |

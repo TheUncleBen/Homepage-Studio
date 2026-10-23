@@ -66,14 +66,18 @@ docker node ls          # the HOSTNAME column; pick one, e.g. node-1
 | `STUDIO_RENDERER_IDLE_SECONDS` | No | Seconds before an idle dashboard's worker stops | `600` |
 | `STUDIO_RENDERER_STARTUP_SECONDS` | No | Seconds a worker may take to start, up to 120 | `30` |
 | `STUDIO_FRAME_ANCESTORS` | No | Other sites allowed to show the dashboard in a frame ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) | empty: same origin only |
+| `STUDIO_AUTH` | No | `on` for Studio sign-in, `off` only if your proxy already controls access ([AUTHENTICATION.md](AUTHENTICATION.md)) | `on` |
+| `STUDIO_AUTH_KEY`, `STUDIO_TRUSTED_PROXIES`, `STUDIO_OIDC_*`, `STUDIO_SMTP_*` | No | Encryption key, proxy addresses, single sign-on and email ([AUTHENTICATION.md](AUTHENTICATION.md#settings-reference)) | unset |
 
 `STUDIO_PUBLIC_ORIGIN` matters more than it looks. Studio answers only
 requests for exactly that host and port, and the browser's address must match
 it. If people reach it as `https://homepage.example.test` through your proxy,
 that's the origin, and opening `http://node-1:3000` directly is refused
 ([TROUBLESHOOTING.md](TROUBLESHOOTING.md#the-page-doesnt-load)). Testing
-without a proxy first? Use `http://node-1:3000` as the origin, then change it
-when the proxy is in place.
+without a proxy first? Sign-in needs HTTPS, so on plain `http://node-1:3000`
+Studio only shows a page saying so. Either test through the proxy, or set
+`STUDIO_AUTH=off` while you test on a network you trust, and turn it back on
+with the `https://` origin once the proxy is in place.
 
 The worker settings are explained in
 [OPERATIONS.md](OPERATIONS.md#workers-and-limits).
@@ -159,8 +163,8 @@ socket at all. Add only the mounts your integrations actually use.
 
 Point your proxy at port `STUDIO_PORT` on the node and serve the whole
 hostname. [REVERSE-PROXY.md](REVERSE-PROXY.md) lists what it must pass
-through and how big a request it must allow. It's also where access control
-goes: Studio has no login.
+through and how big a request it must allow. Set `STUDIO_TRUSTED_PROXIES` to
+the proxy's address so sign-in sees real client addresses.
 
 ## 7. Check it works
 
@@ -172,8 +176,13 @@ curl -s https://homepage.example.test/__studio/ready
 # {"status":"ready", ...}   the main dashboard and its native worker
 ```
 
-Then open `https://homepage.example.test/` in a browser. A fresh deployment
-shows an empty dashboard with **Add your first widget**.
+Then open `https://homepage.example.test/` in a browser **straight away**. A
+fresh deployment asks the first visitor to create the administrator
+([AUTHENTICATION.md](AUTHENTICATION.md#first-start-create-the-administrator)),
+then shows an empty dashboard with **Add your first widget**. With sign-in on,
+`application-ready` answers anonymous callers with `{"status":"ready"}` only;
+the build details appear for administrators and the container's own health
+check.
 
 If something's off, start with the log:
 
@@ -198,11 +207,12 @@ are fixed by the image and you shouldn't need to change them.
 | `STUDIO_RENDERER_IDLE_SECONDS` | `600` | Up to 86400 (24 hours) |
 | `STUDIO_RENDERER_STARTUP_SECONDS` | `30` | Up to 120 |
 | `STUDIO_FRAME_ANCESTORS` | empty | Space-separated `'self'` and exact origins; an invalid entry stops startup with a message naming the variable |
+| `STUDIO_AUTH` and the other sign-in settings | `on` | [AUTHENTICATION.md](AUTHENTICATION.md#settings-reference) |
 | `LOG_TARGETS` | `stdout` | Set by the templates; logs go to the container log |
 | `HOMEPAGE_VAR_*`, `HOMEPAGE_FILE_*` | | Yours, for native integrations ([step 5](#5-native-integrations-secrets-sockets-and-variables)) |
 
 The image also fixes the paths (`/app/config`, `/app/state`), the internal
 port and the native runtime settings, and the entrypoint derives the allowed
-host and the health check's host from `STUDIO_PUBLIC_ORIGIN`. Native
-authentication and Homepage's MCP configuration writes are turned off: Studio
-is the only thing that writes the configuration.
+host and the health check's host from `STUDIO_PUBLIC_ORIGIN`. Homepage's own
+authentication and its MCP configuration writes are turned off: Studio is the
+only thing that writes the configuration, and Studio sign-in decides access.

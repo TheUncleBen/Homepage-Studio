@@ -73,8 +73,31 @@ export default function StudioDialog({
   );
 }
 
+// Sign-in answers that need the person to act in the sign-in pages.
+function signInAction(error) {
+  const code = error?.details?.code;
+  if (typeof window === "undefined" || (code !== "REAUTH_REQUIRED" && code !== "AUTH_REQUIRED")) return null;
+  const next = encodeURIComponent(window.location.pathname + window.location.search);
+  return code === "REAUTH_REQUIRED"
+    ? { heading: "Confirm it’s you", href: `/__studio/auth/sign-in?reauth=1&next=${next}`, label: "Confirm it’s you" }
+    : { heading: "Your session has ended", href: `/__studio/auth/sign-in?next=${next}`, label: "Sign in again" };
+}
+
 export function ErrorMessage({ error, onReload, heading, arrangement = false }) {
   if (!error) return null;
+  const action = signInAction(error);
+  if (action)
+    return (
+      <div className="studio-error" role="alert">
+        <strong>{action.heading}</strong>
+        <p>
+          {error.message}{" "}
+          <a className="studio-text-button" href={action.href}>
+            {action.label}
+          </a>
+        </p>
+      </div>
+    );
   return (
     <div className="studio-error" role="alert">
       <strong>

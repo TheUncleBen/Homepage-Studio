@@ -20,7 +20,7 @@ async function fixture(t, options = {}, nativeHeaders = {}) {
     res.end('<!doctype html><title>Native dashboard</title>');
   });
   const nativePort = await listen(native);
-  const app = createStudioServer({ configDir: path.join(root, 'config'), stateDir: path.join(root, 'state'), rendererDir: path.join(root, 'renderer'), upstream: `http://127.0.0.1:${nativePort}`, allowedHosts: HOST, ...options });
+  const app = createStudioServer({ configDir: path.join(root, 'config'), stateDir: path.join(root, 'state'), rendererDir: path.join(root, 'renderer'), upstream: `http://127.0.0.1:${nativePort}`, allowedHosts: HOST, auth: 'off', ...options });
   const port = await listen(app.server);
   t.after(async () => {
     await app.shutdown({ graceMs: 25 });
@@ -93,7 +93,7 @@ test('an invalid STUDIO_FRAME_ANCESTORS value stops startup', async () => {
   const previous = process.env.STUDIO_FRAME_ANCESTORS;
   process.env.STUDIO_FRAME_ANCESTORS = 'https://ha.example.test/dashboard';
   try {
-    assert.throws(() => createStudioServer({ configDir: os.tmpdir(), stateDir: os.tmpdir(), upstream: 'http://127.0.0.1:9', allowedHosts: HOST }), /STUDIO_FRAME_ANCESTORS entry "https:\/\/ha\.example\.test\/dashboard"/);
+    assert.throws(() => createStudioServer({ configDir: os.tmpdir(), stateDir: os.tmpdir(), upstream: 'http://127.0.0.1:9', allowedHosts: HOST, auth: 'off' }), /STUDIO_FRAME_ANCESTORS entry "https:\/\/ha\.example\.test\/dashboard"/);
   } finally {
     if (previous === undefined) delete process.env.STUDIO_FRAME_ANCESTORS; else process.env.STUDIO_FRAME_ANCESTORS = previous;
   }
