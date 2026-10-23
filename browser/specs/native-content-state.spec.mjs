@@ -34,7 +34,7 @@ async function expectListHeadingsInsidePanel(list) {
   }
 }
 
-test('native calendar, chart and process list fit their minima at desktop and narrow widths without losing local state', async ({ page, request }, testInfo) => {
+test('native calendar, chart and process list fit their minima at desktop and narrow widths without losing local state', { tag: '@cross-engine' }, async ({ page, request }, testInfo) => {
   const fixture = await installDenseResponses(page);
   const seeded = await seedDenseContent(request);
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });

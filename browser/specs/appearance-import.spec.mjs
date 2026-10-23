@@ -7,7 +7,7 @@ async function settingsDialog(page) {
   return page.getByRole('dialog');
 }
 
-test('appearance persists, follows device changes and preserves native state and explicit custom CSS overrides', async ({ page, request }) => {
+test('appearance persists, follows device changes and preserves native state and explicit custom CSS overrides', { tag: '@cross-engine' }, async ({ page, request }) => {
   await seedNative(request, {
     widgetsYaml: '- search:\n    provider: duckduckgo\n    showSearchSuggestions: false\n    focus: false\n',
     settingsYaml: 'title: Appearance fixture\nx-retained: null\n',
@@ -53,7 +53,7 @@ test('appearance persists, follows device changes and preserves native state and
   expect((await studioApi(request, '/__studio/api/state')).settingsConfig.studioTheme).toEqual({ mode: 'system', accent: '#91b09e' });
 });
 
-test('a downloaded dashboard imports only after confirmation and restores exact native files, identities and stacks', async ({ page, request }) => {
+test('a downloaded dashboard imports only after confirmation and restores exact native files, identities and stacks', { tag: '@cross-engine' }, async ({ page, request }) => {
   const original = await seedNative(request, {
     servicesYaml: '# Preserved native comment\n- Links:\n    - Reference:\n        href: https://example.test/reference\n        x-retained: null\n',
     widgetsYaml: '- greeting:\n    text: Imported first greeting\n- greeting:\n    text: Imported second greeting\n',

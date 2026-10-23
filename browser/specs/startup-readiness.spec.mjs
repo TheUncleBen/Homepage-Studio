@@ -1,6 +1,6 @@
 import { expect, saveFiles, seedServicePanels, test } from '../helpers/dashboard.mjs';
 
-test('startup controls wait for the first board response and the first enabled settings click opens its editor', async ({ page, request }) => {
+test('startup controls wait for the first board response and the first enabled settings click opens its editor', { tag: '@cross-engine' }, async ({ page, request }) => {
   await seedServicePanels(request, [{ name: 'Persisted startup fixture', rect: { x: 0, y: 0, w: 4, h: 3 } }]);
   await saveFiles(request, { settingsYaml: 'quicklaunch:\n  mobileButtonPosition: bottom-right\n' });
   await page.setViewportSize({ width: 390, height: 844 });

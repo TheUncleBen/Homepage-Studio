@@ -9,7 +9,7 @@ function nativeFiles(state) {
   }));
 }
 
-test('dashboard management creates independent pages, duplicates complete configuration and preserves archived addresses', async ({ page, request }) => {
+test('dashboard management creates independent pages, duplicates complete configuration and preserves archived addresses', { tag: '@cross-engine' }, async ({ page, request }) => {
   const suffix = fixtureId();
   const guestName = `Guest ${suffix}`;
   const renamedName = `Shared ${suffix}`;

@@ -8,7 +8,7 @@ const carousel = page => page.locator('[aria-roledescription="carousel"]');
 const activePanel = page => page.locator('[data-stack-id]:not([aria-hidden="true"])');
 const servicePanel = (page, title) => page.locator(`[data-panel-kind="service"][aria-label="${title}"]`);
 
-test('pointer placement and resize persist independently; Escape cancels an active drag', async ({ page, request }) => {
+test('pointer placement and resize persist independently; Escape cancels an active drag', { tag: '@cross-engine' }, async ({ page, request }) => {
   await seedServicePanels(request, [
     { name: 'Pointer tile', rect: { x: 0, y: 0, w: 4, h: 3 } },
     { name: 'Unchanged tile', rect: { x: 8, y: 4, w: 4, h: 3 } },
@@ -102,7 +102,7 @@ test.describe('touch direct manipulation', () => {
   });
 });
 
-test('native search state survives arrangement and moving out; bookmark and layout survive reload', async ({ page, request }) => {
+test('native search state survives arrangement and moving out; bookmark and layout survive reload', { tag: '@cross-engine' }, async ({ page, request }) => {
   await page.goto('/');
   const bookmark = await addBookmark(page);
   await expect(bookmark.getByRole('link').first()).toHaveAttribute('href', 'https://example.test/reference');
