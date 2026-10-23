@@ -90,7 +90,8 @@ audio, charts drawn on a canvas or in SVG, and anything that scrolls sideways
 inside the panel. Hold or swipe on the plain part of the panel instead.
 
 On touch screens the text inside panels isn't selectable (form fields still
-are), so a hold doesn't start a text selection or a context menu.
+are), so a hold doesn't start a text selection or a context menu. Links keep
+their own long-press menu, such as the link preview on iPhone and iPad.
 
 ### Mouse and keyboard
 

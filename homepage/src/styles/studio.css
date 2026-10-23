@@ -386,6 +386,10 @@ body {
     user-select: none;
     -webkit-touch-callout: none;
   }
+  /* Links never start a body hold, so they keep the iOS link preview menu. */
+  .studio-native-content a[href] {
+    -webkit-touch-callout: default;
+  }
   .studio-native-content :is(input, textarea, [contenteditable]:not([contenteditable="false"])) {
     -webkit-user-select: text;
     user-select: text;
