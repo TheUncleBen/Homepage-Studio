@@ -29,7 +29,7 @@ own address on the same host (`/family`, `/admin`, ...).
 
 - **Who uses it.**
   - The **operator** deploys the container and puts it behind a reverse proxy.
-  - **Editors** sign in and arrange the dashboards shared with them.
+  - **Editors** sign in and view or arrange the dashboards shared with them.
     Administrators manage people, sharing and settings (see
     [Security model](#security-model) and
     [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)).
