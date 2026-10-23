@@ -552,7 +552,7 @@ export function createStudioServer(options = {}) {
   let registryForAuth;
   const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards }) : null;
   const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards }) : null;
-  const privateCookies = auth ? [authConfig.cookieName, authConfig.flowCookieName] : [];
+  const privateCookies = auth ? [authConfig.cookieName, authConfig.flowCookieName, authConfig.setupCookieName] : [];
   const handlers = new Map();
   const unpublished = new Map();
   let rendererClosed, applicationClosing = false;
@@ -822,6 +822,8 @@ export function createStudioServer(options = {}) {
           if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') reject(error); else resolveClose();
         }));
         await socketsClosed;
+        // Start-up work can still be writing to the state folder.
+        await Promise.all([initialization, authInitialization]);
         await closeRenderer();
         await auth?.close();
       } finally { clearTimeout(timer); }

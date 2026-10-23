@@ -235,4 +235,4 @@ dialog::backdrop { background: rgb(0 0 0 / 0.6); }
 .narrow-input { max-width: 20rem; }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
 .facts dd { margin: 0; }
-strong .badge, h3 .badge { margin-left: 8px; vertical-align: 1px; }
+strong .badge, h3 .badge, strong + .badge { margin-left: 8px; vertical-align: 1px; }

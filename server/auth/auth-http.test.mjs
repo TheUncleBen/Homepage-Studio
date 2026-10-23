@@ -152,10 +152,10 @@ test('the first administrator signs in, sees everything, and setup closes for go
   const signIn = await request('/__studio/auth/sign-in', { headers: html });
   assert.equal(signIn.status, 200, 'sign-in is available once setup is done');
   // The session cookie never reaches the dashboard renderer.
-  await request('/api/native-call', { cookie: admin.cookie + '; other=1' });
+  await request('/api/native-call', { cookie: admin.cookie + '; studio_flow=x; studio_setup=y; other=1' });
   const forwarded = context.upstreamCalls.find(call => call.url === '/api/native-call');
   assert.ok(forwarded);
-  assert.doesNotMatch(String(forwarded.headers.cookie ?? ''), /studio_session/);
+  assert.doesNotMatch(String(forwarded.headers.cookie ?? ''), /studio_(session|flow|setup)/);
   assert.match(String(forwarded.headers.cookie ?? ''), /other=1/);
 });
 
