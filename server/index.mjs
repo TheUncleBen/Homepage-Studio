@@ -66,6 +66,58 @@ function json(res, code, value) {
   res.end(data);
 }
 
+// Browsers navigating to a missing, renamed-away or archived dashboard get a
+// readable page; API and fetch callers keep the JSON error body. No request
+// text is reflected and the page runs no script.
+const UNAVAILABLE_PAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+function wantsHtmlPage(req) {
+  if (!['GET', 'HEAD'].includes(req.method)) return false;
+  const path = String(req.url || '').split('?')[0];
+  // Editor and native API routes, at the root or under a dashboard address.
+  if (/^\/(?:[^/]+\/)?(?:api|__studio)(?:\/|$)/.test(path)) return false;
+  return String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html');
+}
+function renderUnavailablePage(status) {
+  const code = Number(status) === 410 ? 410 : 404;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Dashboard unavailable</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: #111115; color: #eeecf1; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { width: 100%; max-width: 30rem; padding: 28px 24px; background: #1b1a20; border: 1px solid #34303b; border-radius: 12px; }
+.status { margin: 0 0 8px; color: #b4aebc; font-size: 0.875rem; letter-spacing: 0.04em; text-transform: uppercase; }
+h1 { margin: 0 0 12px; font-size: 1.375rem; line-height: 1.3; font-weight: 600; }
+p { margin: 0 0 20px; color: #b4aebc; }
+a { display: inline-block; padding: 10px 16px; border-radius: 8px; background: #685870; color: #ffffff; text-decoration: none; font-weight: 600; }
+a:hover { background: #77697e; }
+a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
+</style>
+</head>
+<body>
+<main>
+<p class="status">Error ${code}</p>
+<h1>This dashboard isn&#39;t available</h1>
+<p>Its address may have changed, or it may have been archived. Open the main dashboard, then choose the dashboard you need from its dashboard list.</p>
+<a href="/">Open the main dashboard</a>
+</main>
+</body>
+</html>
+`;
+}
+function unavailablePage(req, res, status) {
+  if (res.destroyed || res.writableEnded) return;
+  const page = renderUnavailablePage(status);
+  const policy = res.getHeader('content-security-policy');
+  res.writeHead(status === 410 ? 410 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(page), 'content-security-policy': [].concat(policy ?? [], UNAVAILABLE_PAGE_POLICY), vary: 'Accept' });
+  res.end(req.method === 'HEAD' ? undefined : page);
+}
+
 function nativeLocation(location, { basePath, upstream, host, requestPath }) {
   if (!basePath || typeof location !== 'string') return location;
   let target;
@@ -518,6 +570,7 @@ export function createStudioServer(options = {}) {
       if (route.shared) return await serveSharedAsset(req, res, rendererDir);
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
+      if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);
       const diagnostic = req.url.split('?')[0].startsWith('/__studio/api/');
       const status = error instanceof ConfigError && !diagnostic ? 503 : Number(error.status || error.statusCode) || 500;
       json(res, status, { error: error instanceof DashboardError || error instanceof ConfigError || status < 500 ? error.message : 'The dashboard could not be opened. Check the application logs and persistent storage.', code: error.code || 'DASHBOARD_ERROR' });
