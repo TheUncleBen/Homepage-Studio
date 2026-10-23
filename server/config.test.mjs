@@ -174,6 +174,37 @@ test('information widget add/edit/type change/delete preserve identity across re
   assert.equal(result.infoWidgets.find((entry) => entry.type === 'search').id, added.id);
 });
 
+test('information widgets use readable native names, numbered by configuration order without changing identities', async (t) => {
+  const { store } = await fixture(t);
+  let result = await store.load();
+  const panel = (id) => result.board.panels.find((entry) => entry.id === id);
+  const clock = result.infoWidgets.find((entry) => entry.type === 'datetime');
+  const resources = result.infoWidgets.find((entry) => entry.type === 'resources');
+  assert.equal(panel(clock.id).title, 'Date & Time');
+  assert.equal(panel(resources.id).title, 'Resources');
+  result = await store.save({ revision: result.revision, widgetsYaml: '# Header widgets\n- datetime:\n    text_size: xl # readable clock\n- resources:\n    cpu: true\n    memory: true\n- datetime:\n    format: { timeStyle: short }\n- my_custom-thing: {}\n' });
+  const second = result.infoWidgets.find((entry) => entry.type === 'datetime' && entry.id !== clock.id);
+  assert.equal(result.infoWidgets.find((entry) => entry.type === 'datetime' && entry.index === 0).id, clock.id);
+  assert.equal(panel(clock.id).title, 'Date & Time');
+  assert.equal(panel(second.id).title, 'Date & Time 2');
+  assert.equal(panel(result.infoWidgets.find((entry) => entry.type === 'my_custom-thing').id).title, 'My Custom Thing');
+  // Adding another panel elsewhere leaves every existing title and identity alone.
+  const before = result.board.panels.map((entry) => [entry.id, entry.title]);
+  result = await store.mutateInfoWidget({ revision: result.revision, action: 'add', type: 'greeting', config: { text: 'Hello' } });
+  for (const [id, title] of before) assert.equal(panel(id).title, title);
+  assert.equal(result.board.panels.find((entry) => entry.nativeLocator.type === 'greeting').title, 'Greeting');
+  result = await store.mutateInfoWidget({ revision: result.revision, action: 'add', type: 'datetime', config: {} });
+  assert.deepEqual(result.board.panels.filter((entry) => entry.nativeLocator.type === 'datetime').map((entry) => entry.title).sort(), ['Date & Time', 'Date & Time 2', 'Date & Time 3']);
+  assert.equal(panel(clock.id).title, 'Date & Time');
+  assert.equal(panel(second.id).title, 'Date & Time 2');
+});
+
+test('information widget names match the shipped catalog', async () => {
+  const { infoWidgetLabel } = await import('./board.mjs');
+  const catalog = JSON.parse(await fs.readFile(new URL('../public/catalog.json', import.meta.url), 'utf8'));
+  for (const entry of catalog.info) assert.equal(infoWidgetLabel(entry.type), entry.name.replace(/\s*\(source only\)$/, ''), entry.type);
+});
+
 test('raw widget reordering keeps identity by configuration fingerprint', async (t) => {
   const { store } = await fixture(t);
   let result = await store.load();

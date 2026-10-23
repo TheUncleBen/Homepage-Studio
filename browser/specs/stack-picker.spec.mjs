@@ -16,9 +16,9 @@ test('intentional stack title picker preserves native state, keyboard focus and 
   await page.clock.pauseAt(new Date('2026-10-21T13:00:00Z'));
   await title(page).press('Enter');
   await expect(menu(page)).toBeVisible();
-  await expect(menu(page).getByRole('menuitemradio', { name: 'search 1 of 2', exact: true })).toBeFocused();
+  await expect(menu(page).getByRole('menuitemradio', { name: 'Search 1 of 2', exact: true })).toBeFocused();
   await page.keyboard.press('End');
-  await expect(menu(page).getByRole('menuitemradio', { name: 'greeting 2 of 2', exact: true })).toBeFocused();
+  await expect(menu(page).getByRole('menuitemradio', { name: 'Greeting 2 of 2', exact: true })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(menu(page)).toHaveCount(0);
   await expect(title(page)).toBeFocused();
@@ -28,7 +28,7 @@ test('intentional stack title picker preserves native state, keyboard focus and 
   await expect(carousel(page).getByRole('button', { name: 'Play slideshow', exact: true })).toBeVisible();
 
   await title(page).click();
-  await menu(page).getByRole('menuitemradio', { name: 'search 1 of 2', exact: true }).click();
+  await menu(page).getByRole('menuitemradio', { name: 'Search 1 of 2', exact: true }).click();
   await expect(input).toHaveValue('Picker keeps this native input');
   expect(await input.evaluate((node, before) => node === before, original)).toBe(true);
   await carousel(page).getByRole('button', { name: 'Play slideshow', exact: true }).click();
@@ -76,7 +76,7 @@ test.describe('mobile title picker', () => {
     await page.goto('/');
     await title(page).tap();
     await expect(menu(page)).toBeVisible();
-    await menu(page).getByRole('menuitemradio', { name: 'greeting 2 of 2', exact: true }).tap();
+    await menu(page).getByRole('menuitemradio', { name: 'Greeting 2 of 2', exact: true }).tap();
     await expect(menu(page)).toHaveCount(0);
     const before = await activePanel(page).getAttribute('data-panel-id');
     const touch = await touchSession(page);

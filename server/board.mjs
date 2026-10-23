@@ -159,6 +159,45 @@ function placementIndex(occupied) {
 
 export function nextPosition(size, occupied) { return placementIndex(occupied).next(size); }
 
+// Native information widget display names, as listed in the shipped catalog.
+const INFO_WIDGET_NAMES = {
+  customapi: 'Custom API',
+  datetime: 'Date & Time',
+  glances: 'Glances',
+  greeting: 'Greeting',
+  kubernetes: 'Kubernetes',
+  logo: 'Logo',
+  longhorn: 'Longhorn',
+  openmeteo: 'Open-Meteo',
+  openweathermap: 'OpenWeatherMap',
+  resources: 'Resources',
+  search: 'Search',
+  stocks: 'Stocks',
+  unifi_console: 'Unifi Controller',
+  weatherapi: 'WeatherAPI',
+};
+
+export function infoWidgetLabel(type) {
+  if (Object.hasOwn(INFO_WIDGET_NAMES, type)) return INFO_WIDGET_NAMES[type];
+  const words = String(type ?? '').split(/[_\s-]+/).filter(Boolean);
+  return words.length ? words.map((word) => word[0].toUpperCase() + word.slice(1)).join(' ') : 'Information widget';
+}
+
+// Duplicates are numbered by configuration order ("Greeting", "Greeting 2"),
+// so a title changes only when an earlier widget of the same type is added,
+// removed or reordered. Titles are display text; identities are unchanged.
+function infoWidgetTitles(infoWidgets) {
+  const counts = new Map();
+  const titles = new Map();
+  [...infoWidgets].sort((a, b) => a.index - b.index).forEach((widget) => {
+    const label = infoWidgetLabel(widget.type);
+    const count = (counts.get(label) ?? 0) + 1;
+    counts.set(label, count);
+    titles.set(widget, count === 1 ? label : `${label} ${count}`);
+  });
+  return titles;
+}
+
 export function boardSources({ services, serviceWidgets, infoWidgets, bookmarks }) {
   const sources = [];
   for (const s of services) {
@@ -170,7 +209,8 @@ export function boardSources({ services, serviceWidgets, infoWidgets, bookmarks 
     const s = services.find((v) => v.id === w.serviceId);
     sources.push({ id: w.id, kind: 'serviceWidget', title: `${s.name} · ${w.type}`, group: s.group, nativeLocator: { serviceId: s.id, groupPath: s.groupPath, name: s.name, widgetIndex: w.index, sourceKey: w.sourceKey, sourceIndex: w.sourceIndex, proxyIndex: w.sourceKey === 'widget' ? -1 : w.sourceIndex, type: w.type } });
   }
-  for (const w of infoWidgets) sources.push({ id: w.id, kind: 'informationWidget', title: w.type, group: 'Information', nativeLocator: { index: w.index, type: w.type } });
+  const infoTitles = infoWidgetTitles(infoWidgets);
+  for (const w of infoWidgets) sources.push({ id: w.id, kind: 'informationWidget', title: infoTitles.get(w), group: 'Information', nativeLocator: { index: w.index, type: w.type } });
   for (const b of bookmarks) sources.push({ id: b.id, kind: 'bookmark', title: b.name, group: b.group, nativeLocator: { group: b.group, name: b.name, groupIndex: b.groupIndex, bookmarkIndex: b.index } });
   if (sources.length > MAX_PANELS) fail('The dashboard contains too many independently placed panels.', 'CONFIG_SIZE_LIMIT');
   return sources;
