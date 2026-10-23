@@ -253,8 +253,11 @@ test.describe('selection checkbox target size', () => {
         if (use.hasTouch) await page.touchscreen.tap(x, y);
         else await page.mouse.click(x, y);
         await expect(checkbox).toBeChecked();
-        const header = await servicePanel(page, 'Target tile').locator('.studio-panel-header').boundingBox();
-        expect(header.height).toBeLessThanOrEqual(57);
+        // The larger target does not change the header's height.
+        const header = servicePanel(page, 'Target tile').locator('.studio-panel-header');
+        const height = (await header.boundingBox()).height;
+        await page.addStyleTag({ content: '.studio-select-target { display: none !important; }' });
+        expect((await header.boundingBox()).height).toBe(height);
       });
     });
   }
