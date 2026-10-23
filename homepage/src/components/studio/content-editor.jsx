@@ -223,7 +223,11 @@ export default function ContentEditor({
     // view with focus on the safe choice, and return focus to Delete on cancel.
     if (deleting) {
       deleteShown.current = true;
-      deleteConfirm.current?.scrollIntoView?.({ block: "nearest" });
+      // The dialog footer is sticky, so leave room for it below the question.
+      const confirm = deleteConfirm.current;
+      const footer = confirm?.closest("dialog")?.querySelector(".studio-dialog-footer");
+      if (confirm) confirm.style.scrollMarginBottom = `${(footer?.offsetHeight ?? 0) + 12}px`;
+      confirm?.scrollIntoView?.({ block: "nearest" });
       keepButton.current?.focus({ preventScroll: true });
     } else if (deleteShown.current) {
       deleteShown.current = false;

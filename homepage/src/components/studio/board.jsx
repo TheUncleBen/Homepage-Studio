@@ -185,6 +185,7 @@ export default function StudioBoard({
   const editorGuardRef = useRef(editorGuard);
   const discardFocus = useRef(null);
   const keepEditing = useRef(null);
+  const keepArrangement = useRef(null);
   const reducedMotion = useReducedMotion();
   const sourceBoard = draft || envelope?.board || EMPTY;
   const sourceRevision = draft ? draftSource?.configurationRevision : envelope?.configurationRevision;
@@ -306,6 +307,11 @@ export default function StudioBoard({
     editorGuardRef.current = next;
     setEditorGuard((current) => (current.dirty === next.dirty && current.pending === next.pending ? current : next));
   }, []);
+  useEffect(() => {
+    // The dialog's showModal focuses its first control (Close); move focus to
+    // the safe choice once the dialog is open, like the editor-draft prompt.
+    if (modal?.type === "discardArrangement") keepArrangement.current?.focus();
+  }, [modal?.type]);
   useEffect(() => {
     if (discardAction) keepEditing.current?.focus();
     else {
@@ -1147,9 +1153,9 @@ export default function StudioBoard({
                   </p>
                   <div className="studio-inline-actions">
                     <button
+                      ref={keepArrangement}
                       type="button"
                       className="studio-button studio-primary"
-                      autoFocus
                       onClick={dismissEditor}
                     >
                       Keep editing

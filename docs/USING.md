@@ -111,8 +111,9 @@ panel won't shrink below what its widget needs.
 
 ### Saving or cancelling
 
-While you edit, the toolbar says **Unsaved arrangement** and offers **Save
-arrangement**, which saves and keeps you in edit mode. In the header:
+While you edit, the toolbar offers **Save arrangement**, which saves and keeps
+you in edit mode. On wider screens the toolbar also says **Unsaved
+arrangement**. In the header:
 
 - **Done** saves and leaves edit mode.
 - **Cancel** leaves edit mode. If you have moves, sizes or stacks that aren't
@@ -235,8 +236,9 @@ this dashboard directly: `services.yaml`, `widgets.yaml`, `bookmarks.yaml`,
 
 - **Save configuration** saves every file you changed in one go, after
   checking all of them. One snapshot covers the lot.
-- **Export file** downloads the file you're looking at; the import button next
-  to it loads a file (up to 2 MiB) into the editor as a draft until you save.
+- **Export file** downloads the file you're looking at; **Import into this
+  file**, below the editor, loads a file (up to 2 MiB) into the editor as a
+  draft until you save.
 - After you change or restore `custom.js`, Studio offers **Reload dashboard**,
   because a script that already ran can't be un-run in place.
 - Native settings that lay out Homepage's own page (group tabs, column counts,
@@ -249,8 +251,9 @@ asks first.
 ## Snapshots, export and import
 
 Every save keeps a **snapshot** of what was there before. The newest 25 are
-kept for each dashboard (the person running it can change that number;
-**Dashboard settings → Snapshots & restore** shows the current limit).
+kept for each dashboard (the person running it can change that number; the
+**Snapshots & restore** shortcut in **Dashboard settings** shows the current
+limit).
 Playing slideshows, opening dialogs and exporting never make snapshots.
 
 **Dashboard settings → Snapshots & restore**:

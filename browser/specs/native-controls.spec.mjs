@@ -86,6 +86,7 @@ test.describe('touch direct manipulation', () => {
       // A dirty arrangement asks before Cancel discards it.
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       await expect(page.getByRole('dialog')).toContainText('Discard unsaved changes?');
+      await expect(page.getByRole('dialog').getByRole('button', { name: 'Keep editing', exact: true })).toBeFocused();
       await page.getByRole('dialog').getByRole('button', { name: 'Discard changes', exact: true }).click();
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect.poll(() => panelPixels(source)).toEqual(before);
@@ -221,6 +222,16 @@ test.describe('phone delete confirmation', () => {
     await expect(keep).toBeFocused();
     await expect(keep).toBeInViewport();
     await expect(dialog.getByRole('button', { name: 'Delete permanently', exact: true })).toBeInViewport();
+    // In view is not enough: the sticky dialog footer must not cover the question.
+    const uncovered = locator => locator.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return Boolean(hit && element.contains(hit));
+    });
+    await expect.poll(() => uncovered(keep)).toBe(true);
+    expect(await uncovered(dialog.getByRole('button', { name: 'Delete permanently', exact: true }))).toBe(true);
+    const confirm = await dialog.locator('.studio-delete-confirm').boundingBox();
+    expect(confirm.y + confirm.height).toBeLessThanOrEqual((await dialog.locator('.studio-dialog-footer').boundingBox()).y);
     await keep.click();
     await expect(dialog.getByText('Delete Delete fixture?')).toHaveCount(0);
     await expect(remove).toBeFocused();
