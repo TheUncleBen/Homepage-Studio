@@ -24,7 +24,7 @@ export const UPSTREAM_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
 export const NATIVE_BODY_LIMIT = 4 * 1024 * 1024;
 const NATIVE_BODY_TIMEOUT_MS = 30000;
 // Response headers the controller owns. A native response cannot replace them.
-const CONTROLLER_HEADERS = ['x-frame-options'];
+const CONTROLLER_HEADERS = ['x-frame-options', 'x-content-type-options', 'referrer-policy'];
 
 // STUDIO_FRAME_ANCESTORS replaces the default `frame-ancestors 'self'` list.
 // Unset or blank keeps the default. Each whitespace-separated entry must be
@@ -49,6 +49,8 @@ export function securityHeaders(frameAncestors) {
     'content-security-policy': `frame-ancestors ${sources.join(' ')}`,
     // X-Frame-Options cannot name several origins, so only the default sends it.
     ...(frameAncestors ? {} : { 'x-frame-options': 'SAMEORIGIN' }),
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'same-origin',
   };
 }
 

@@ -78,8 +78,9 @@ test('frame ancestor configuration accepts only self and exact http(s) origins',
     'https://ha.example.test,https://b.example.test', "'self';", 'javascript:alert(1)', 'data:']) {
     assert.throws(() => parseFrameAncestors(invalid), /STUDIO_FRAME_ANCESTORS/, invalid);
   }
-  assert.deepEqual(securityHeaders(null), { 'content-security-policy': "frame-ancestors 'self'", 'x-frame-options': 'SAMEORIGIN' });
-  assert.deepEqual(securityHeaders(['https://ha.example.test']), { 'content-security-policy': 'frame-ancestors https://ha.example.test' });
+  const common = { 'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin' };
+  assert.deepEqual(securityHeaders(null), { 'content-security-policy': "frame-ancestors 'self'", 'x-frame-options': 'SAMEORIGIN', ...common });
+  assert.deepEqual(securityHeaders(['https://ha.example.test']), { 'content-security-policy': 'frame-ancestors https://ha.example.test', ...common });
 });
 
 test('an invalid STUDIO_FRAME_ANCESTORS value stops startup', async () => {
@@ -90,4 +91,18 @@ test('an invalid STUDIO_FRAME_ANCESTORS value stops startup', async () => {
   } finally {
     if (previous === undefined) delete process.env.STUDIO_FRAME_ANCESTORS; else process.env.STUDIO_FRAME_ANCESTORS = previous;
   }
+});
+
+test('every response is marked nosniff with a same-origin referrer policy that native responses cannot replace', async t => {
+  const request = await fixture(t, {}, { 'x-content-type-options': 'sniff-anyway', 'referrer-policy': 'unsafe-url', 'x-powered-by': 'Next.js' });
+  for (const target of ['/', '/__studio/health', '/robots.txt', '/__studio/api/missing']) {
+    const response = await request(target);
+    assert.deepEqual(allValues(response.raw, 'x-content-type-options'), ['nosniff'], target);
+    assert.deepEqual(allValues(response.raw, 'referrer-policy'), ['same-origin'], target);
+  }
+});
+
+test('the native build does not advertise its framework', async () => {
+  const config = await fs.readFile(new URL('../homepage/next.config.js', import.meta.url), 'utf8');
+  assert.match(config, /^\s*poweredByHeader: false,$/m);
 });
