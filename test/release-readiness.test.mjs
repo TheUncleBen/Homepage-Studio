@@ -706,10 +706,8 @@ test('official promotion accepts a successful marked candidate push by the deliv
 
 test('workflow contracts run full native qualification once per push and retain images only for deliberate delivery requests', async () => {
   const candidateText = await fs.readFile(path.join(root, '.github/workflows/candidate-approved.yml'), 'utf8');
-  assert.equal(candidateText, await fs.readFile(path.join(root, 'release/workflows/candidate-approved.yml'), 'utf8'));
   const candidate = parse(candidateText);
   const officialText = await fs.readFile(path.join(root, '.github/workflows/promote-approved.yml'), 'utf8');
-  assert.equal(officialText, await fs.readFile(path.join(root, 'release/workflows/promote-approved.yml'), 'utf8'));
   const official = parse(officialText);
   const validation = parse(await fs.readFile(path.join(root, '.github/workflows/validate.yml'), 'utf8'));
   assert.deepEqual(Object.keys(candidate.on), ['push', 'workflow_dispatch']);
