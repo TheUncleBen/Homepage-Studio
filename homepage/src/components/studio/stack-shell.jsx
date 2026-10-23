@@ -192,7 +192,6 @@ export default function StackShell({
             disabled={busy}
             aria-label={snapshot.playing ? "Pause slideshow" : "Play slideshow"}
             title={snapshot.playing ? "Pause slideshow" : "Play slideshow"}
-            aria-pressed={snapshot.playing}
             onClick={() => controller.toggle()}
           >
             <StudioIcon name={snapshot.playing ? "pause" : "play"} size={16} />
