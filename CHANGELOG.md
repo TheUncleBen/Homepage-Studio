@@ -23,7 +23,9 @@ and security fixes land, including the Next.js 16.4.2 security update.
   `STUDIO_FRAME_ANCESTORS` before you update
   ([docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md#framing)).
 - No other new settings. Volumes, dashboards, layouts and snapshots carry
-  over unchanged.
+  over unchanged. A snapshot made by this version and exported records what
+  made it; the earlier candidate refuses such a file, so import it with this
+  version or newer.
 
 ### Added
 - **Touch hold and swipe on the panel body.** On a phone or tablet, holding
@@ -56,8 +58,28 @@ and security fixes land, including the Next.js 16.4.2 security update.
   reloading discards your unsaved arrangement.
 - Each **Move out** button names its widget for screen readers; Play/Pause
   no longer announces its state twice.
-- At 8 columns (tablets, unfolded foldables) tiles that share an edge stay
-  side by side instead of overlapping or stepping down.
+- At 8 columns (tablets, unfolded foldables, zoomed-in desktops) tiles that
+  share an edge stay side by side, and a row that no longer fits wraps from
+  the left in reading order (three tiles become two, then one) instead of
+  stepping into a checkerboard.
+- On a phone, a vertical swipe on a panel body scrolls the page again in
+  current Chrome; only a panel whose content really scrolls keeps the swipe.
+- Links inside panels keep the iPhone and iPad long-press link menu; other
+  panel text stays unselectable on touch so a hold selects the panel.
+- **Snapshots & restore** names what made each snapshot and how long ago
+  ("Appearance and settings saved · 5 minutes ago"); older snapshots read
+  "Saved change". Closing the dialog with a picked, unimported backup asks
+  first.
+- In the content picker's **All** view, widgets that exist as both an
+  information and an integration widget say which one they are.
+- The Custom API information widget shows the same "no mappings yet" hint as
+  the integration widget.
+- Keyboard: Tab moves through panels and stacks in reading order; the
+  **Discard unsaved changes?** prompt for an arrangement focuses **Keep
+  editing**; Options/Advanced YAML and field errors are announced to screen
+  readers; a selected stack is outlined like a selected panel; Studio's own
+  fields show one eggplant focus ring; an invalid dashboard address explains
+  what is wrong next to the field.
 - The widget catalog is compressed and cached, and loaded only when you open
   a content editor.
 - `robots.txt` no longer lists archived dashboards.
