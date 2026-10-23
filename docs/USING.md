@@ -265,7 +265,8 @@ Playing slideshows, opening dialogs and exporting never make snapshots.
 - **Choose dashboard backup** stages an exported dashboard or a downloaded
   snapshot (up to 40 MiB). Nothing changes until you press **Import
   dashboard**, which checks the whole file, keeps a snapshot of the current
-  dashboard first, and then replaces it.
+  dashboard first, and then replaces it. Closing the dialog while a backup is
+  staged asks before discarding it.
 
 **Configuration files → Export saved dashboard** downloads this dashboard as
 it was last saved, as one file: all nine native files, the panels, the layout

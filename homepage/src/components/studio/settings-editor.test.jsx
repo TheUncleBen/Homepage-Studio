@@ -103,7 +103,25 @@ describe("Portable dashboard import", () => {
       revision: "current-target",
       archive: content,
     });
-    expect(report).toHaveBeenCalledWith({ dirty: false, pending: true });
+    expect(report).toHaveBeenCalledWith({ dirty: true, pending: true });
+  });
+
+  it("treats a picked but unimported backup as an unsaved draft until it is cleared", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const report = vi.fn();
+    render(
+      <EditorDraftContext.Provider value={report}>
+        <SnapshotEditor state={{ revision: "target" }} backups={[]} onSaved={vi.fn()} onClose={vi.fn()} />
+      </EditorDraftContext.Provider>,
+    );
+    expect(report).toHaveBeenLastCalledWith({ dirty: false, pending: false });
+    fireEvent.change(screen.getByLabelText("Dashboard backup file"), {
+      target: { files: [backupFile(completeArchive())] },
+    });
+    await screen.findByText("Replace this dashboard with dashboard.json?");
+    expect(report).toHaveBeenLastCalledWith({ dirty: true, pending: false });
+    fireEvent.click(screen.getByRole("button", { name: "Clear selected backup", exact: true }));
+    expect(report).toHaveBeenLastCalledWith({ dirty: false, pending: false });
   });
 
   it.each([

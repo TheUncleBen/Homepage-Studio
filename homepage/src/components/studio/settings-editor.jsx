@@ -259,7 +259,8 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
   const [error, setError] = useState(null);
   const filePicker = useRef(null);
   const busy = reading || pending;
-  useEditorDraft(false, busy);
+  // A picked backup that is not imported yet is a draft: closing asks first.
+  useEditorDraft(Boolean(archive), busy);
   const selectArchive = async (event) => {
     const input = event.currentTarget;
     const file = input.files?.[0];
