@@ -194,6 +194,100 @@ describe("Studio grid geometry", () => {
       projection.units.slice(index + 1).forEach((other) => expect(intersects(unit.rect, other.rect)).toBe(false));
     });
   });
+  const rects = (projection) =>
+    Object.fromEntries(projection.units.map((unit) => [unit.id, [unit.rect.x, unit.rect.y, unit.rect.w, unit.rect.h]]));
+  const tiles = (count, w = 4, h = 3) =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `t${index}`,
+      kind: "service",
+      rect: { x: (index * w) % 12, y: Math.floor((index * w) / 12) * h, w, h },
+    }));
+  const expectReadingOrder = (value, width) => {
+    const projection = projectBoard(value, width);
+    const canonical = unitsForBoard(value)
+      .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id))
+      .map((unit) => unit.id);
+    expect(visualOrder(value, width).map((unit) => unit.id)).toEqual(canonical);
+    projection.units.forEach((unit, index) => {
+      expect(unit.rect.x + unit.rect.w).toBeLessThanOrEqual(projection.columns);
+      projection.units.slice(index + 1).forEach((other) => expect(intersects(unit.rect, other.rect)).toBe(false));
+    });
+    return projection;
+  };
+  it.each([673, 820])("wraps a row of three 4-wide tiles into two then one in reading order at %s px", (width) => {
+    const value = { ...board(), panels: tiles(3) };
+    const projection = expectReadingOrder(value, width);
+    expect(projection.columns).toBe(8);
+    expect(rects(projection)).toEqual({ t0: [0, 0, 3, 3], t1: [3, 0, 3, 3], t2: [0, 3, 3, 3] });
+  });
+  it.each([673, 820])("reflows a 3x3 grid of 4x3 tiles at %s px without holes or reordering", (width) => {
+    const value = { ...board(), panels: tiles(9) };
+    const before = JSON.stringify(value);
+    const projection = expectReadingOrder(value, width);
+    // Two per projected row, packed from the left; only the last row has a remainder.
+    projection.units.forEach((unit) => {
+      const index = Number(unit.id.slice(1));
+      expect(unit.rect, unit.id).toEqual({ x: (index % 2) * 3, y: Math.floor(index / 2) * 3, w: 3, h: 3 });
+    });
+    expect(projection.rows).toBe(15);
+    expect(JSON.stringify(value)).toBe(before);
+  });
+  it("reflows mixed sizes in reading order, wrapping beside a tall tile before starting a new row", () => {
+    const value = {
+      ...board(),
+      panels: [
+        { id: "a", kind: "service", rect: { x: 0, y: 0, w: 6, h: 4 } },
+        { id: "b", kind: "service", rect: { x: 6, y: 0, w: 3, h: 2 } },
+        { id: "c", kind: "service", rect: { x: 9, y: 0, w: 3, h: 2 } },
+        { id: "d", kind: "service", rect: { x: 6, y: 2, w: 6, h: 2 } },
+        { id: "e", kind: "service", rect: { x: 0, y: 4, w: 12, h: 2 } },
+      ],
+    };
+    expect(rects(expectReadingOrder(value, 820))).toEqual({
+      a: [0, 0, 4, 4],
+      b: [4, 0, 3, 2],
+      c: [4, 2, 3, 2],
+      d: [0, 4, 4, 2],
+      e: [0, 6, 8, 2],
+    });
+    expect(rects(expectReadingOrder(value, 673))).toEqual(rects(projectBoard(value, 820)));
+  });
+  it("reflows a stack as one unit with its shared rectangle", () => {
+    const value = {
+      ...board(),
+      panels: [
+        { id: "a", kind: "service", rect: { x: 0, y: 0, w: 4, h: 3 } },
+        { id: "m1", kind: "service", rect: { x: 4, y: 0, w: 4, h: 4 } },
+        { id: "m2", kind: "service", rect: { x: 4, y: 0, w: 4, h: 4 } },
+        { id: "c", kind: "service", rect: { x: 8, y: 0, w: 4, h: 3 } },
+        { id: "d", kind: "service", rect: { x: 0, y: 4, w: 4, h: 3 } },
+      ],
+      stacks: [{ id: "stack", panelIds: ["m1", "m2"], rect: { x: 4, y: 0, w: 4, h: 4 } }],
+    };
+    expect(rects(expectReadingOrder(value, 820))).toEqual({
+      a: [0, 0, 3, 3],
+      stack: [3, 0, 3, 4],
+      c: [0, 3, 3, 3],
+      d: [3, 4, 3, 3],
+    });
+  });
+  it("writes 8-column moves of a wrapped tile back to the shared desktop layout", () => {
+    const original = { ...board(), panels: tiles(6) };
+    const projection = projectBoard(original, 820);
+    expect(visualOrder(original, 820).map((unit) => unit.id)).toEqual(["t0", "t1", "t2", "t3", "t4", "t5"]);
+    // Drag the wrapped t2 up onto t0: it becomes first everywhere.
+    const up = moveProjectedUnit(original, "t2", { x: 0, y: -3 }, projection);
+    expect(visualOrder(up, 820).map((unit) => unit.id)).toEqual(["t2", "t0", "t1", "t3", "t4", "t5"]);
+    expect(visualOrder(up, 1200).map((unit) => unit.id)).toEqual(["t2", "t0", "t1", "t3", "t4", "t5"]);
+    disjoint(up);
+    // Drag t3 sideways onto t2 in the same projected row: they swap.
+    const t2 = projection.units.find((unit) => unit.id === "t2").rect;
+    const t3 = projection.units.find((unit) => unit.id === "t3").rect;
+    const side = moveProjectedUnit(original, "t3", { x: ((t2.x - t3.x) * 12) / 8, y: 0 }, projection);
+    expect(visualOrder(side, 820).map((unit) => unit.id)).toEqual(["t0", "t1", "t3", "t2", "t4", "t5"]);
+    expect(side.panels.map((panel) => [panel.rect.w, panel.rect.h])).toEqual(original.panels.map(() => [4, 3]));
+    disjoint(side);
+  });
   it("pushes collisions deterministically while preserving source identities and untouched values", () => {
     const original = board();
     const moved = moveUnit(original, "a", { x: 4, y: 0, w: 4, h: 3 });
