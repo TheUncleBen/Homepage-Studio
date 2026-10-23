@@ -91,6 +91,67 @@ saves the digest-pinned templates, corresponding source and verification report.
 [`promote-approved.yml`](.github/workflows/promote-approved.yml) promotes an
 owner-approved candidate without rebuilding it. See [releases](docs/RELEASES.md).
 
+### What the acceptance fixtures cover
+
+Container acceptance and Portainer qualification run against the complete
+image on each native architecture, through direct Compose and Swarm and a
+pinned Portainer CE 2.45.2. The runtime fixture covers a fresh nine-file
+configuration, adopting existing root data and snapshots from real volumes,
+keeping an `/admin` address and the root redirect, independent dashboards,
+layouts and stacks, duplication and divergence, rename, archive, restore and
+import, rejecting another dashboard's snapshot, persistence across restart and
+container replacement, the real worker UID and loopback listeners, recovery
+after a worker is killed, isolation of a broken default dashboard, and exact
+snapshot retention. The Portainer tests deploy the unchanged templates through
+its real API and check image identity, replacement, retained data and cleanup.
+Their temporary loopback registry and Docker socket belong to the disposable
+test setup only and never become product mounts.
+
+Chromium runs the full production suite, including scoped dashboards, touch
+holds and swipes on panel bodies, and the intentional stack-title picker.
+Firefox and WebKit run the `@cross-engine` desktop scenarios. A headed browser
+checks real hidden-document timer suspension. The full suite has a 15-minute
+aggregate budget and a 16-minute parent deadline, individual test and action
+bounds are unchanged, and retries are zero. A cleanup failure fails
+qualification. No real external integrations or owner host deployment are
+implied by these fixtures.
+
+## Image build
+
+The root `Dockerfile` copies the controlled `homepage/` tree directly. It uses
+the pinned Node image, verifies the pinned pnpm package integrity, installs
+the frozen lockfile and produces a production standalone build. Eligible
+immutable Next.js build assets are precompressed as Brotli/gzip when smaller;
+the controller streams them with representation-specific validators and does
+not compress configuration or integration responses at request time. The final
+image holds the controller, the native runtime and assets, the shared
+configuration helpers, and the GPL/AGPL, font and dependency notices; it
+excludes controller tests and fixtures.
+
+The source guard rejects modified tracked source and ignored or untracked
+inputs within every Docker-copied subtree. Docker-excluded generated
+dependencies and build outputs are allowed locally and excluded from the
+corresponding source. One deterministic `studio-source.tar.gz` binds the
+complete source and licenses to the exact candidate commit; see
+[native source](docs/NATIVE-SOURCE.md).
+
+### OS packages
+
+The runtime layer refreshes the inherited `perl-base` alongside its other
+packages, because the pinned Node base predates Debian's Bookworm
+`5.36.0-7+deb12u4` security update. The build doesn't change distribution or
+run a blanket upgrade. Confirm the installed version in each qualified image
+rather than treating the Dockerfile line as proof; see
+[Debian's Perl security record](https://security-tracker.debian.org/tracker/source-package/perl).
+
+OS advisory review is separate from the npm/pnpm production audits. Record the
+exact architecture child and config digests, scanner provenance, database
+time, package inventory, fixed and unfixed findings, and vendor applicability
+decisions in the candidate's qualification evidence. A remote image scan
+inspects packages without executing that architecture; it doesn't replace
+container acceptance or prove that a residual advisory is unreachable. A new
+image needs its own scan.
+
 ## Current limitations
 
 - A local process run is not container acceptance, and a YAML parse is not
@@ -101,8 +162,8 @@ owner-approved candidate without rebuilding it. See [releases](docs/RELEASES.md)
   credentials and the intended host, network and storage need human review.
 - The image's Debian base carries upstream OS advisories that have no fixed
   version. An OS advisory scan is separate from the npm/pnpm audits; see
-  [deployment](docs/DEPLOYMENT.md#build-and-qualification).
+  [OS packages](#os-packages).
 - The templates drop all capabilities. The Compose template also sets
   `no-new-privileges`, which `docker stack deploy` does not support. A read-only
   root filesystem is not yet qualified.
-- There is no authentication by design; see [architecture](docs/ARCHITECTURE.md).
+- There is no authentication by design; see [architecture](docs/ARCHITECTURE.md#address-and-trust-model).

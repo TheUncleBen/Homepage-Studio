@@ -1,52 +1,248 @@
 # Homepage Studio
 
-Homepage Studio is a controlled [Homepage](https://gethomepage.dev/) application with direct dashboard editing, independently placed native widgets, configurable widget stacks, and independent dashboard pages in one deployment. The default combines charcoal surfaces, soft white text, and a muted eggplant accent. Each dashboard has its own widgets, layout, theme, colors and native CSS/JavaScript.
+**[Overview](#overview) · [Quick start](#quick-start) · [Documentation](#documentation) · [Features](#features) · [How it works](#how-it-works) · [Security](#security-model) · [Repository](#repository-layout) · [Development](#development) · [License](#license)**
 
-**Deployment readiness is tied to an exact source commit and image digest.** Use the [candidate workflow](https://github.com/TheUncleBen/Homepage-Studio/actions/workflows/candidate-approved.yml), its verification report, and its delivery receipt to establish a candidate's status. Follow [candidate delivery](docs/CANDIDATES.md) to identify and verify that bundle. [VERIFICATION.md](VERIFICATION.md) explains how to verify a build and what CI checks. An official date release requires later owner acceptance of the exact candidate.
+A self-hosted dashboard you arrange by hand. Homepage Studio is built on
+[Homepage](https://gethomepage.dev/) and keeps its native service widgets,
+information widgets, bookmarks and Docker/Kubernetes discovery, but you edit
+the dashboard on the page itself: add a widget, hold it, drag it where you
+want it, resize it, and stack widgets that belong together into a slideshow.
+One container serves as many independent dashboards as you like, each at its
+own address on the same host (`/family`, `/admin`, ...).
 
-## Dashboard experience
+## Contents
 
-- Start with an empty dashboard. Add service links, individual native service widgets, information widgets, and bookmarks from the dashboard itself.
-- Move and resize each panel independently. Combine compatible panels into a stack, reorder its members, or move a member back onto the dashboard.
-- Use one Play/Pause control per stack. Swipe on a phone, drag horizontally with a mouse, scroll horizontally with a trackpad, or focus a stack and use Left/Right. Slide dots are passive indicators; there are no previous/next navigation buttons.
-- Open a quiet title picker with an intentional short click/tap or keyboard action to choose a stack member directly. Swipes, drag gestures, long presses and context menus must not open it.
-- Manual navigation while playing gives that stack a 30-second hold by default, then the next slide appears and the normal cadence resumes. Manual navigation while paused stays paused. Playback does not write configuration or create snapshots.
-- Configure automatic or manual starting mode, dwell time, manual hold, looping, and horizontal, vertical, fade, or no transition. The defaults are manual mode, 10-second dwell, 30-second manual hold, horizontal animation, and 250-millisecond transitions.
-- Edit common native options through forms and use the same panel's YAML editor for advanced options. Native integrations still use Homepage's own components and server-side proxy behavior.
-- Choose dark, light, or device-following appearance and an accent color. Keep native background options and edit custom CSS directly in the configuration dialog. Each dashboard stores its own design in its own files; see [Appearance](docs/APPEARANCE.md).
-- Keep Docker and Kubernetes discovery. Discovered definitions remain owned by their labels or annotations; Studio controls their placement, stacks, and dashboard visibility.
+- [Overview](#overview)
+- [Quick start](#quick-start)
+  - [Running it](#running-it)
+  - [Using it](#using-it)
+- [Documentation](#documentation)
+- [Features](#features)
+  - [Status](#status)
+- [How it works](#how-it-works)
+- [Security model](#security-model)
+- [Repository layout](#repository-layout)
+- [Development](#development)
+- [License](#license)
 
-The native configuration editor covers `services.yaml`, `widgets.yaml`, `bookmarks.yaml`, `settings.yaml`, `docker.yaml`, `kubernetes.yaml`, `proxmox.yaml`, `custom.css`, and `custom.js`. A catalog of configuration examples is a starting point, not a complete validator for every external service. Credentials and service-specific prerequisites still need to be supplied by the deployment owner.
+## Overview
 
-Configuration changes use revision checks, a recovery journal, and snapshots. The default retention is 25 snapshots and is configurable. Export, confirmed dashboard import, and restoration include the native files and Studio's panel identities and layout. A failed save retains the local draft; a committed save followed by a failed widget refresh offers a refresh without submitting the write again.
+- **Who uses it.**
+  - The **operator** deploys the container and puts it behind a reverse proxy.
+  - **Editors** arrange dashboards in the browser. Anyone who can open the
+    page can edit it: there is no login (see [Security model](#security-model)).
+- **What it runs on:** one Docker container for `linux/amd64` or
+  `linux/arm64`, with two named volumes. Only port 3000 is published.
+  - **Deploy with** a Portainer Docker Swarm stack (one replica on one node)
+    or plain Docker Compose on one machine. The same image serves both.
+  - Every build is tested in CI on both architectures, as a Compose service,
+    as a one-node Swarm stack and through a real Portainer, in Chromium,
+    Firefox and WebKit ([VERIFICATION.md](VERIFICATION.md)).
+- **What it looks like:** charcoal and gray surfaces, soft white text and a
+  muted eggplant accent by default. Each dashboard can switch to light or
+  follow the device, pick its own accent and carry its own custom CSS
+  ([docs/APPEARANCE.md](docs/APPEARANCE.md)).
+- **On a phone or tablet:** the board reflows to 8 columns on medium widths
+  and 4 on narrow ones. Press and hold to edit, swipe a stack to change
+  slides, and the page still scrolls normally.
+- **What it talks to:** whatever services you configure, through Homepage's
+  own server-side widget proxies. Nothing leaves the container on its own.
 
-## Deployment model
+## Quick start
 
-One Studio image contains the public Node controller and the complete controlled Homepage runtime. Only controller port 3000 is published. Native workers start on demand, bind to internal loopback addresses, and render one dashboard each with independent configuration and caches. All processes run as UID/GID 1000 with every Linux capability dropped; application code is root-owned and read-only to that user, which owns only the persistent configuration and state volumes. Pages may be framed only by the same origin unless `STUDIO_FRAME_ANCESTORS` allows others.
+### Running it
 
-Configure pages such as `/admin`, `/family` or `/dashboard-1` on the same host. Create an empty dashboard or duplicate an existing one, then edit it independently. Names and slugs can change without moving its immutable identity or history. Archive and restore retain files and snapshots. The original dashboard remains in its existing volume paths. Dashboards share the application lifecycle and deployment resources; they do not share their configuration, layout or state.
+You need a machine with Docker, a Docker Swarm (with or without Portainer) or
+Docker Compose, and ideally a reverse proxy that gives the dashboard an
+HTTPS address.
 
-Deploy a delivered candidate or approved release bundle containing one multiarchitecture image digest and the Compose or Swarm template. Supply the exact host origin and, for Swarm, the node holding the persistent volumes. No build is required in Portainer. Swarm uses one application replica with stop-first updates on that node. [Deployment](docs/DEPLOYMENT.md) covers configuration and [candidate delivery](docs/CANDIDATES.md) covers the complete qualification and artifact gates.
+1. Get a **candidate bundle** or an **official release** and check it
+   ([docs/VERSIONS.md](docs/VERSIONS.md)). It contains the deployment
+   templates with the image already pinned by digest. There is no `latest`
+   tag to pull.
+2. Pick a guide and work through it top to bottom:
+   - **Docker Swarm, with or without Portainer:** [docs/DEPLOY.md](docs/DEPLOY.md).
+   - **One machine with Docker Compose:** [docs/DEPLOY-COMPOSE.md](docs/DEPLOY-COMPOSE.md).
+3. Put it behind your proxy: [docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md).
+   That is also where access control belongs.
+4. Keep [docs/OPERATIONS.md](docs/OPERATIONS.md) handy for backups, health
+   checks and limits, and [docs/UPGRADING.md](docs/UPGRADING.md) for the next
+   version.
 
-Homepage Studio does not manage login, DNS, TLS or reverse-proxy configuration. These remain deployment concerns outside the application. Dashboard paths are organizational addresses, not authorization boundaries. Trusted editor users on the same origin can manage dashboards. The exact configured origin also drives host and write-request checks.
+### Using it
 
-## Source and compatibility
+1. Open your dashboard's address. A new deployment starts with an empty
+   dashboard and an **Add your first widget** button.
+2. [docs/USING.md](docs/USING.md) walks through adding content, arranging it,
+   stacks and slideshows, configuration, snapshots and extra dashboards.
 
-The complete native fork lives in [`homepage/`](homepage/README.md). Its original baseline is Homepage **v2.6.0**, commit `51cc1684f9f34a7877ed462b8f94c9cc687b4dde`. `upstream.lock.json` records that provenance and the pinned build toolchain. The current Studio Git commit and tree identify the source actually built. Docker copies it directly; there is no fetched upstream source, generated overlay, or independently updated Homepage image. Upstream updates are reviewed and merged deliberately under this project's lifecycle. See [native source](docs/NATIVE-SOURCE.md).
+## Documentation
 
-See [Architecture](docs/ARCHITECTURE.md) for the component boundary and [Release policy](docs/RELEASES.md) for approval and artifact handling. Official versions use `YYYY.MM.DD`. Official releases happen when the exact candidate has passed engineering checks and owner acceptance. Ordinary source changes validate without image publication; an explicit candidate request retains tested images under unique build tags without creating an official release.
+| Guide | For | What's in it |
+| --- | --- | --- |
+| [USING.md](docs/USING.md) | Editors | Adding and arranging panels, touch and keyboard, stacks and slideshows, the title picker, configuration files, snapshots, import/export, multiple dashboards |
+| [APPEARANCE.md](docs/APPEARANCE.md) | Editors | Dark, light or device mode, accent colors, custom CSS variables, copying a design to another deployment |
+| [DEPLOY.md](docs/DEPLOY.md) | Operators | A full deploy on Docker Swarm with Portainer (or `docker stack deploy`), plus every environment variable |
+| [DEPLOY-COMPOSE.md](docs/DEPLOY-COMPOSE.md) | Operators | A full deploy on one machine with Docker Compose |
+| [REVERSE-PROXY.md](docs/REVERSE-PROXY.md) | Operators | What the proxy must pass through, request size limits, framing, and where to put access control |
+| [OPERATIONS.md](docs/OPERATIONS.md) | Operators | Logs and health, backups and restore, snapshots and secrets, worker limits, integration secrets |
+| [UPGRADING.md](docs/UPGRADING.md) | Operators | Moving to a new version and going back |
+| [VERSIONS.md](docs/VERSIONS.md) | Operators | Candidates and official `YYYY.MM.DD` releases, what a bundle contains, how to check it |
+| [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Operators | Symptoms and fixes, from a container that won't start to a page that says the dashboard isn't available |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Everyone | How the controller, native workers, storage and health checks fit together, and the trust model |
+| [CHANGELOG.md](CHANGELOG.md) | Everyone | Notable changes for people who run or use Studio |
+| [FEATURE-ACCEPTANCE.md](docs/FEATURE-ACCEPTANCE.md) | Contributors | Every required behavior and the tests that cover it |
+| [VERIFICATION.md](VERIFICATION.md) | Contributors | How to verify a build locally and what CI checks |
+| [CANDIDATES.md](docs/CANDIDATES.md), [RELEASES.md](docs/RELEASES.md) | Maintainers | How the CI produces a candidate and how an approved candidate is promoted |
+| [NATIVE-SOURCE.md](docs/NATIVE-SOURCE.md) | Contributors | The Homepage fork in `homepage/`, its provenance, dependency corrections and corresponding source |
 
-## Development checks
+## Features
+
+- **Edit on the page.** **Edit dashboard** (or press and hold empty space)
+  turns on edit mode. Press and hold a panel (its title bar with a mouse,
+  anywhere on it with a finger) to pick it up and drag it without letting go;
+  in edit mode, use its move handle, its resize corner or the keyboard. The board
+  snaps to a 12-column grid and never lets panels overlap. **Done** saves the
+  arrangement; **Cancel** asks before it throws away unsaved moves.
+- **Four kinds of panel, each placed on its own.** Service tiles, single
+  service widgets (one integration of a service, apart from the rest),
+  information widgets (clock, weather, search, resources, ...) and bookmarks.
+  Information widgets get readable titles ("Date & Time", "Date & Time 2").
+- **Stacks.** Put panels of the same size on top of each other, or select
+  several and **Create stack**. A stack shows one member at a time with:
+  - one **Play/Pause** button and passive dots (no previous/next buttons);
+  - swipe on the header or the widget body, drag horizontally with a mouse,
+    scroll sideways on a trackpad, or focus it and press Left/Right;
+  - a quiet title picker that opens only on a deliberate tap, click or key
+    press, never from a swipe, drag or long press;
+  - automatic or manual start, seconds per widget (10 by default), a manual
+    navigation delay (30 seconds by default), looping, and horizontal,
+    vertical, fade or no animation (250 ms by default).
+- **Native configuration.** Each panel has an **Options** form and an
+  **Advanced YAML** tab. **Configuration files** edits all nine native files
+  (`services.yaml`, `widgets.yaml`, `bookmarks.yaml`, `settings.yaml`,
+  `docker.yaml`, `kubernetes.yaml`, `proxmox.yaml`, `custom.css`,
+  `custom.js`). Unknown options, comments and `{{HOMEPAGE_VAR_...}}` /
+  `{{HOMEPAGE_FILE_...}}` references are kept. A YAML mistake is reported with
+  its line and column.
+- **Safe saves.** Every save checks that nobody else changed the files in the
+  meantime, writes through a recovery journal and keeps a snapshot of what was
+  there before. The newest 25 snapshots per dashboard are kept (configurable).
+  A failed save keeps your draft.
+- **Export and import.** Download one dashboard (all nine files plus layout and
+  stacks) and import it into another dashboard or deployment, after an
+  explicit confirmation.
+- **Multiple dashboards.** Create, duplicate, rename, move to another address,
+  archive and restore dashboards from **Dashboard settings → Manage
+  dashboards**. Each has its own widgets, layout, stacks, appearance, CSS,
+  JavaScript and snapshot history. An archived or unknown address shows a
+  plain "This dashboard isn't available" page with a link to the main
+  dashboard.
+- **Discovery.** Docker labels and Kubernetes annotations still define
+  discovered services; Studio only decides where they go and whether they show.
+- **Appearance.** Dark, light or follow device, any accent color, native
+  background options and custom CSS, per dashboard.
+
+### Status
+
+There is no official release yet. Builds are delivered as candidates
+identified by their source commit and image digest; an official `YYYY.MM.DD`
+release is made only after the owner has tested and approved an exact
+candidate ([docs/VERSIONS.md](docs/VERSIONS.md)).
+
+| Area | State |
+| --- | --- |
+| Editing, stacks, playback, title picker, configuration, snapshots, import/export, multiple dashboards | Built. Covered by controller and native unit tests and a Chromium browser suite against the real image in CI; eight core scenarios also run in Firefox and WebKit |
+| Deployment as Compose, one-node Swarm and through Portainer, on amd64 and arm64 | Built. Every candidate is deployed, restarted, replaced and cleaned up in CI on both architectures |
+| Touch feel on real phones and tablets, readability on your own displays | Covered by emulated touch in Chromium only. Needs a person on a real device |
+| Native integrations against real services | Synthetic test services only. The native widget code is Homepage's own; your services, credentials and network are yours to check |
+
+## How it works
+
+The full picture is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short:
+
+```
+browser ──HTTPS──▶ your reverse proxy ──▶ studio container :3000
+                                            ├─ Node controller: host/origin checks, dashboard registry,
+                                            │    editor API, snapshots and journal, shared static assets
+                                            ├─ native Homepage worker per active dashboard
+                                            │    (started on demand, loopback only, stopped when idle)
+                                            └─ volumes: /app/config (native files, registry)
+                                                        /app/state  (layout, journal, snapshots)
+```
+
+- **One image, one lifecycle.** The controller and the complete Homepage fork
+  in [`homepage/`](homepage/) are built into one image. There is no separate
+  Homepage container to keep in step.
+- **One worker per dashboard.** Each dashboard you open gets its own native
+  process with its own configuration, caches and cookies. Up to 8 run at once
+  by default; idle ones stop after 10 minutes.
+- **One origin.** You set the exact address people type
+  (`STUDIO_PUBLIC_ORIGIN`). Dashboards live at single path segments under it.
+
+## Security model
+
+- **No built-in login.** Studio has no accounts or passwords. Anyone who can
+  reach the page can view and edit every dashboard on it, read the
+  configuration (including any secrets written into the files) and manage the
+  other dashboards. Treat everyone who can reach it as a trusted editor.
+- **Put access control in your reverse proxy** (forward authentication, an
+  identity-aware proxy, a VPN or an IP allowlist), or keep the port off any
+  network you don't trust. [docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md) has
+  what the proxy needs.
+- **Dashboard addresses are not access control.** `/admin` and `/family` are
+  just addresses; knowing or guessing one is enough to open it.
+- **What Studio does check.** Requests must use the exact configured host.
+  Editor and widget API requests from another site are refused (Origin and
+  Fetch Metadata checks), so a page elsewhere can't make your browser change
+  the dashboard. Pages can be framed only by the same origin unless you allow
+  others with `STUDIO_FRAME_ANCESTORS`.
+- **Inside the container** every process runs as UID/GID 1000 with all Linux
+  capabilities dropped; the application files are read-only to that user and
+  only the two volumes are writable. Native widget workers listen on loopback
+  only.
+- **Integrations.** Homepage's shared HTTPS client does not verify server
+  certificates (inherited, for self-signed home services). Details and the
+  other integration limits are in
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#native-integration-transport).
+
+## Repository layout
+
+| Path | What's there |
+| --- | --- |
+| `server/` | The Node controller and its tests |
+| `homepage/` | The complete controlled Homepage fork; Studio's editor lives in `homepage/src/components/studio/` ([homepage/STUDIO-FORK.md](homepage/STUDIO-FORK.md)) |
+| `Dockerfile`, `docker/` | The application image and its entrypoint |
+| `portainer-swarm.yml`, `portainer-compose.yml`, `portainer.env.example` | The deployment templates and example values. A candidate or release carries copies with the image pinned by digest |
+| `browser/` | Playwright browser acceptance specs, run against the real image |
+| `scripts/`, `test/` | Build, acceptance, candidate and release tooling and its tests |
+| `.github/workflows/` | Validation on pull requests, candidate qualification and delivery, and owner-approved promotion |
+| `third-party/` | Dependency and font notices |
+| `docs/` | The guides listed under [Documentation](#documentation) |
+
+## Development
 
 ```sh
 npm ci
-npm test
+npm test                       # controller (server/*.test.mjs), Node 22 or later
+node --test test/*.test.mjs    # packaging, provenance and release tooling
 ```
 
-These commands exercise the controller and safe native discovery bridge. `node --test test/*.test.mjs` and `python3 -m unittest discover -s test -p 'test_*.py'` cover packaging, provenance and release tooling. Native lint, all native tests, the redirect security check and the production dependency audit run from `homepage/` with the locked pnpm toolchain in a required CI job that every image build waits for; the root Docker build installs, compiles and compresses. [Verification](VERIFICATION.md) lists the commands. CI tests that same complete image in Chromium, Firefox, WebKit, direct Compose/Swarm and actual pinned Portainer on both native architectures. [Feature acceptance](docs/FEATURE-ACCEPTANCE.md) distinguishes implemented behavior, executable gates and human-only review.
+Native lint and tests run from `homepage/` with the pinned pnpm; the browser
+and container acceptance suites need a Docker daemon.
+[VERIFICATION.md](VERIFICATION.md) has every command and what CI runs.
 
-The configured dashboard and snapshots contain private data and must never be committed. Public examples and tests use synthetic hosts and values.
+The configured dashboard and its snapshots hold private data and must never be
+committed. Examples and tests use synthetic hosts such as
+`homepage.example.test`. Notable changes are in the [CHANGELOG](CHANGELOG.md).
 
 ## License
 
-Original Studio code is **AGPL-3.0-or-later**; see [LICENSE](LICENSE). Homepage-derived material retains its upstream GPL terms, earlier MIT grants remain valid, and dependency notices are preserved in [third-party/NOTICE.txt](third-party/NOTICE.txt). The corresponding source and build instructions must accompany distributed releases.
+Original Studio code is **AGPL-3.0-or-later** ([LICENSE](LICENSE)).
+Homepage-derived material in `homepage/` keeps its upstream GPL terms
+([homepage/LICENSE](homepage/LICENSE)), earlier MIT grants remain valid, and
+dependency and font notices are in
+[third-party/NOTICE.txt](third-party/NOTICE.txt). Every candidate and release
+carries the complete corresponding source (`studio-source.tar.gz`) for the
+exact image, and the dashboard's settings dialog links to the source and
+license.
