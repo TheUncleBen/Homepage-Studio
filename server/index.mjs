@@ -420,7 +420,10 @@ function createDashboardHandlers(options = {}) {
     } catch (error) {
       const status = Number(error.status || error.statusCode) || 500;
       if (error.closeConnection && !res.headersSent) res.setHeader('connection', 'close');
-      json(res, status, { error: status < 500 || error instanceof ConfigError || error instanceof BoardError || error instanceof DiscoveryError || error instanceof RendererError ? error.message : 'The editor could not read or save its configuration. Check the configuration and state volume permissions.', code: error.code || 'EDITOR_ERROR' });
+      json(res, status, { error: status < 500 || error instanceof ConfigError || error instanceof BoardError || error instanceof DiscoveryError || error instanceof RendererError ? error.message : 'The editor could not read or save its configuration. Check the configuration and state volume permissions.', code: error.code || 'EDITOR_ERROR',
+        // ConfigError details are structured and source-free (file names, YAML error codes and positions, limits),
+        // so editors can point at the failing line without the response ever echoing configuration text.
+        details: error instanceof ConfigError ? error.details : undefined });
       if (status >= 500) console.error('Editor request failed:', error.code || error.name);
     }
   }

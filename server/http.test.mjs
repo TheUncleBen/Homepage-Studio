@@ -333,6 +333,7 @@ test('HTTP state, native service and info-widget mutations, stale revisions, bac
   const stale = await post('/__studio/api/save', { revision: before.revision, settingsYaml: 'title: Stale edit\n' });
   assert.equal(stale.status, 409);
   assert.equal(stale.json.code, 'REVISION_CONFLICT');
+  assert.equal(stale.json.details.currentRevision, result.json.revision);
   result = await post('/__studio/api/service', { revision: result.json.revision, action: 'update', id: tile.id, name: 'Container management', config: { description: 'Native integration' } });
   assert.equal(result.status, 200);
   assert.equal(result.json.services[0].id, tile.id);
@@ -346,6 +347,18 @@ test('HTTP state, native service and info-widget mutations, stale revisions, bac
   const invalid = await post('/__studio/api/save', { revision: result.json.revision, servicesYaml: '- broken: [unterminated' });
   assert.equal(invalid.status, 422);
   assert.equal(invalid.json.code, 'INVALID_YAML');
+  assert.equal(invalid.json.details.file, 'services.yaml');
+  assert.ok(invalid.json.details.errors.length > 0);
+  for (const detail of invalid.json.details.errors) {
+    assert.deepEqual(Object.keys(detail).sort(), ['code', 'column', 'line']);
+    assert.ok(Number.isInteger(detail.line) && Number.isInteger(detail.column));
+  }
+  const secretSource = '- Secret:\n    - App:\n        href: https://app.example.test\n        widget: { type: customapi, key: inline-secret-value, url: [unterminated\n';
+  const secretInvalid = await post('/__studio/api/save', { revision: result.json.revision, servicesYaml: secretSource });
+  assert.equal(secretInvalid.status, 422);
+  assert.equal(secretInvalid.json.code, 'INVALID_YAML');
+  assert.ok(secretInvalid.json.details.errors[0].line >= 1);
+  assert.doesNotMatch(JSON.stringify(secretInvalid.json), /inline-secret-value|unterminated|app\.example\.test/, 'YAML error responses must carry positions only, never source text.');
   assert.equal((await request('/__studio/api/state')).json.revision, result.json.revision);
   const backups = await request('/__studio/api/backups');
   assert.equal(backups.status, 200);
