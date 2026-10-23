@@ -40,6 +40,76 @@ export function validatePosition(text) {
   return { rect, field: null, error: null };
 }
 
+// Slideshow timing fields, shown in display units (seconds or milliseconds)
+// and stored in milliseconds. Seconds keep fractional values so existing
+// timings such as 2.5 seconds still round-trip.
+const PLAYBACK_FIELDS = [
+  {
+    key: "intervalMs",
+    id: "studio-stack-interval",
+    label: "Seconds per widget",
+    name: "seconds per widget",
+    scale: 1000,
+    min: 1,
+    max: 3600,
+    step: "any",
+    decimals: true,
+  },
+  {
+    key: "manualHoldMs",
+    id: "studio-stack-manual-delay",
+    label: "Manual navigation delay (seconds)",
+    name: "manual navigation delay",
+    scale: 1000,
+    min: 1,
+    max: 3600,
+    step: "any",
+    decimals: true,
+  },
+  {
+    key: "transitionDurationMs",
+    id: "studio-stack-duration",
+    label: "Animation duration (ms)",
+    name: "animation duration",
+    scale: 1,
+    min: 0,
+    max: 2000,
+    step: 10,
+    decimals: false,
+  },
+];
+
+const playbackText = (playback) =>
+  Object.fromEntries(
+    PLAYBACK_FIELDS.map(({ key, scale }) => [
+      key,
+      String(playback[key] / scale),
+    ]),
+  );
+
+const numberPattern = (decimals) => (decimals ? /^\d+(\.\d+)?$/ : /^\d+$/);
+
+// Validate one raw slideshow field without touching the others. Returns the
+// stored millisecond value when valid, or a message describing the problem.
+export function validatePlaybackField(key, raw) {
+  const field = PLAYBACK_FIELDS.find((item) => item.key === key);
+  const value = String(raw ?? "").trim();
+  const label = field.name[0].toUpperCase() + field.name.slice(1);
+  if (!value) return { error: `Enter a ${field.name}.` };
+  if (!numberPattern(field.decimals).test(value))
+    return {
+      error: field.decimals
+        ? `${label} must be a number of seconds.`
+        : `${label} must be a whole number of milliseconds.`,
+    };
+  const number = Number(value);
+  if (number < field.min || number > field.max)
+    return {
+      error: `${label} must be between ${field.min} and ${field.max}${field.scale === 1000 ? " seconds" : " milliseconds"}.`,
+    };
+  return { value: Math.round(number * field.scale), error: null };
+}
+
 export function PositionFields({
   rect,
   onChange,
@@ -161,8 +231,20 @@ export default function StackEditor({
   const [movedOut, setMovedOut] = useState([]);
   const [adding, setAdding] = useState(false);
   const [invalid, setInvalid] = useState(null);
+  const [timingText, setTimingText] = useState(() =>
+    playbackText(stack.playback),
+  );
+  const timingErrors = Object.fromEntries(
+    PLAYBACK_FIELDS.map(({ key }) => [
+      key,
+      validatePlaybackField(key, timingText[key]).error,
+    ]),
+  );
+  const timingInvalid = Object.values(timingErrors).some(Boolean);
   useEditorDraft(
-    Boolean(invalid) || JSON.stringify(draft) !== JSON.stringify(stack),
+    Boolean(invalid) ||
+      timingInvalid ||
+      JSON.stringify(draft) !== JSON.stringify(stack),
   );
   const occupied = new Set(
     board.stacks
@@ -177,6 +259,43 @@ export default function StackEditor({
       ...current,
       playback: { ...current.playback, [key]: value },
     }));
+  // Keep the raw text while typing; only a valid value reaches the draft, and
+  // range clamping waits for blur so no keystroke rewrites the field.
+  const updateTiming = (key, raw) => {
+    setTimingText((current) => ({ ...current, [key]: raw }));
+    const result = validatePlaybackField(key, raw);
+    if (!result.error) updatePlayback(key, result.value);
+  };
+  const clampTiming = (key) => {
+    const field = PLAYBACK_FIELDS.find((item) => item.key === key);
+    const raw = String(timingText[key]).trim();
+    if (!numberPattern(field.decimals).test(raw)) return;
+    const value = String(Math.max(field.min, Math.min(field.max, Number(raw))));
+    if (value !== raw) updateTiming(key, value);
+  };
+  const timingField = ({ key, id, label, min, max, step }) => (
+    <div className="studio-field" key={key}>
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        type="number"
+        inputMode="decimal"
+        min={min}
+        max={max}
+        step={step}
+        aria-invalid={timingErrors[key] ? true : undefined}
+        aria-describedby={timingErrors[key] ? `${id}-error` : undefined}
+        value={timingText[key]}
+        onChange={(event) => updateTiming(key, event.target.value)}
+        onBlur={() => clampTiming(key)}
+      />
+      {timingErrors[key] && (
+        <p className="studio-field-error" id={`${id}-error`} role="alert">
+          {timingErrors[key]}
+        </p>
+      )}
+    </div>
+  );
   const reorder = (id, offset) => {
     const ids = [...draft.panelIds];
     const index = ids.indexOf(id);
@@ -350,52 +469,8 @@ export default function StackEditor({
               <option value="automatic">Start automatically</option>
             </select>
           </div>
-          <div className="studio-field">
-            <label htmlFor="studio-stack-interval">Seconds per widget</label>
-            <input
-              id="studio-stack-interval"
-              type="number"
-              min={1}
-              max={3600}
-              value={draft.playback.intervalMs / 1000}
-              onChange={(event) =>
-                updatePlayback(
-                  "intervalMs",
-                  Math.max(
-                    1000,
-                    Math.min(
-                      3600000,
-                      Math.round(Number(event.target.value) * 1000),
-                    ),
-                  ),
-                )
-              }
-            />
-          </div>
-          <div className="studio-field">
-            <label htmlFor="studio-stack-manual-delay">
-              Manual navigation delay (seconds)
-            </label>
-            <input
-              id="studio-stack-manual-delay"
-              type="number"
-              min={1}
-              max={3600}
-              value={draft.playback.manualHoldMs / 1000}
-              onChange={(event) =>
-                updatePlayback(
-                  "manualHoldMs",
-                  Math.max(
-                    1000,
-                    Math.min(
-                      3600000,
-                      Math.round(Number(event.target.value) * 1000),
-                    ),
-                  ),
-                )
-              }
-            />
-          </div>
+          {timingField(PLAYBACK_FIELDS[0])}
+          {timingField(PLAYBACK_FIELDS[1])}
           <div className="studio-field">
             <label htmlFor="studio-stack-transition">Transition</label>
             <select
@@ -417,28 +492,7 @@ export default function StackEditor({
               ))}
             </select>
           </div>
-          <div className="studio-field">
-            <label htmlFor="studio-stack-duration">
-              Animation duration (ms)
-            </label>
-            <input
-              id="studio-stack-duration"
-              type="number"
-              min={0}
-              max={2000}
-              step={10}
-              value={draft.playback.transitionDurationMs}
-              onChange={(event) =>
-                updatePlayback(
-                  "transitionDurationMs",
-                  Math.max(
-                    0,
-                    Math.min(2000, Math.round(Number(event.target.value))),
-                  ),
-                )
-              }
-            />
-          </div>
+          {timingField(PLAYBACK_FIELDS[2])}
           <label className="studio-checkbox-field">
             <input
               type="checkbox"
@@ -473,7 +527,7 @@ export default function StackEditor({
         <button
           className="studio-button studio-primary"
           onClick={apply}
-          disabled={blocked || Boolean(invalid)}
+          disabled={blocked || Boolean(invalid) || timingInvalid}
         >
           Apply to arrangement
         </button>
