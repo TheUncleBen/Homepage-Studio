@@ -204,6 +204,7 @@ sockets, which Docker allows inside containers through its default
 | Option | Compose template | Swarm template |
 | --- | --- | --- |
 | `cap_drop: [ALL]` | Set and applied | Set; `docker stack deploy` applies it with Docker 20.10 or later |
+| `init: true` (docker-init reaps orphaned child processes) | Set | Set; kept by the Swarm stack parser (CI lifecycle runs confirm the service starts with it) |
 | `security_opt: [no-new-privileges:true]` | Set and applied | Not set: `docker stack deploy` ignores `security_opt` |
 | Read-only root filesystem | Not set | Not set |
 

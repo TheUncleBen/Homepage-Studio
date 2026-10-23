@@ -49,6 +49,7 @@ test('the actual Swarm parser preserves required image, origin and node values',
     assert.equal(result.services.studio.ports[0].mode, 'host');
     // Hardening must survive the real parser; security_opt is not supported
     // by docker stack deploy, so the template must not pretend to set it.
+    assert.equal(result.services.studio.init, true);
     assert.deepEqual(result.services.studio.cap_drop, ['ALL']);
     assert.equal(result.services.studio.security_opt, undefined);
     assert.equal(result.services.studio.environment.STUDIO_FRAME_ANCESTORS, '');

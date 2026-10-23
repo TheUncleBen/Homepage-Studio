@@ -19,6 +19,8 @@ services:
       - config:/app/config
       - state:/app/state
     restart: unless-stopped
+    # A minimal init (docker-init) is PID 1 and reaps orphaned processes.
+    init: true
     # The application runs as UID 1000 and needs no Linux capabilities.
     cap_drop:
       - ALL

@@ -23,6 +23,8 @@ services:
       - config:/app/config
       - state:/app/state
     stop_grace_period: 30s
+    # A minimal init (docker-init) is PID 1 and reaps orphaned processes.
+    init: true
     # The application runs as UID 1000 and needs no Linux capabilities.
     # docker stack deploy honors cap_drop (Docker 20.10 or later) but ignores
     # security_opt, so no-new-privileges cannot be set from a Swarm stack; the

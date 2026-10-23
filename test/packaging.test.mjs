@@ -142,6 +142,7 @@ test('deployment templates publish one application and preserve bounded internal
     assert.equal(template.services.studio.environment.STUDIO_BACKUP_RETENTION, '${STUDIO_BACKUP_RETENTION:-25}');
     assert.equal(template.services.studio.depends_on, undefined);
     // Hardening: the UID 1000 application needs no capabilities.
+    assert.equal(template.services.studio.init, true);
     assert.deepEqual(template.services.studio.cap_drop, ['ALL']);
     assert.equal(template.services.studio.cap_add, undefined);
     assert.equal(template.services.studio.privileged, undefined);
