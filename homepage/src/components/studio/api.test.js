@@ -20,6 +20,14 @@ describe("Studio request boundary", () => {
       "/__studio/api/dashboards",
     ]);
   });
+  it("revalidates the native catalog while state and configuration requests bypass the cache", async () => {
+    const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    vi.stubGlobal("fetch", fetch);
+    await studioRequest("/__studio/catalog.json");
+    await studioRequest("/__studio/api/state");
+    await studioRequest("/__studio/api/board", { revision: "r", board: {} });
+    expect(fetch.mock.calls.map(([, options]) => options.cache)).toEqual(["no-cache", "no-store", "no-store"]);
+  });
   it("never converts non-finite configuration numbers to null in a save request", async () => {
     const fetch = vi.fn(async () => ({
       ok: true,
