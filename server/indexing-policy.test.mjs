@@ -55,3 +55,21 @@ test('named dashboard exclusion matches exact path, descendants and queries only
   for (const url of ['/admin', '/admin/', '/admin?x=1', '/admin/api/services']) assert.equal(allowed(content, url), false, url);
   for (const url of ['/', '/admin-tools', '/admin-tools/api/services']) assert.equal(allowed(content, url), true, url);
 });
+
+test('archived dashboards are never enumerated in the public crawl policy', async () => {
+  for (const rootDisabled of [false, true]) {
+    const manifest = { dashboards: [{ id: 'default', slug: '', archived: false }, { id: 'family', slug: 'family', archived: false }, { id: 'retired', slug: 'retired-private-name', archived: true }] };
+    let reads = 0;
+    const content = await renderRobotsPolicy(manifest, async entry => { reads++; return { disableIndexing: entry.id === 'default' ? rootDisabled : false }; });
+    assert.equal(reads, 2, 'Archived dashboards do not touch their configuration.');
+    assert.doesNotMatch(content, /retired-private-name/, `archived slug leaked (root disabled: ${rootDisabled})`);
+    assert.match(content, /^Disallow: \/family\/__studio\/$/m);
+    assert.equal(allowed(content, '/family'), true);
+    if (rootDisabled) for (const url of ['/', '/retired-private-name', '/retired-private-name/']) assert.equal(allowed(content, url), false, url);
+  }
+  // A named primary that opts out still fails closed for its own paths.
+  const named = { dashboards: [{ id: 'default', slug: 'main', archived: false }, { id: 'retired', slug: 'retired-private-name', archived: true }] };
+  const content = await renderRobotsPolicy(named, async () => ({ disableIndexing: true }));
+  assert.doesNotMatch(content, /retired-private-name/);
+  for (const url of ['/main', '/main/', '/main?x=1']) assert.equal(allowed(content, url), false, url);
+});
