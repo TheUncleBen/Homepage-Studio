@@ -9,7 +9,10 @@ import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute } from './dashboards.mjs';
 import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
-import { serveSharedAsset } from './static-assets.mjs';
+import { createHash } from 'node:crypto';
+import { promisify } from 'node:util';
+import zlib from 'node:zlib';
+import { serveSharedAsset, acceptedEncodings, etagMatches } from './static-assets.mjs';
 import { checkApplicationReadiness } from './application-health.mjs';
 import { renderRobotsPolicy } from './indexing-policy.mjs';
 
@@ -180,6 +183,40 @@ async function readBody(req, maxBytes = 2 * 1024 * 1024) {
   return value;
 }
 
+// The widget catalog is part of the image and does not change while the
+// process runs. Read, hash and compress it once; browsers revalidate with the
+// strong per-encoding ETag instead of downloading it again.
+const gzip = promisify(zlib.gzip), brotli = promisify(zlib.brotliCompress);
+let catalogVariants;
+function loadCatalogVariants() {
+  catalogVariants ||= (async () => {
+    const identity = await readFile(join(base, 'public', 'catalog.json'));
+    const hash = createHash('sha256').update(identity).digest('base64url').slice(0, 32);
+    const [gz, br] = await Promise.all([
+      gzip(identity, { level: 9 }),
+      brotli(identity, { params: { [zlib.constants.BROTLI_PARAM_MODE]: zlib.constants.BROTLI_MODE_TEXT, [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: identity.length } }),
+    ]);
+    const variant = (encoding, body) => ({ encoding, body, etag: `"${hash}-${encoding}"` });
+    return new Map([['identity', variant('identity', identity)], ['gzip', variant('gzip', gz)], ['br', variant('br', br)]]);
+  })();
+  // A failed read is retried on the next request rather than cached.
+  catalogVariants.catch(() => { catalogVariants = undefined; });
+  return catalogVariants;
+}
+
+async function serveCatalog(req, res) {
+  const variants = await loadCatalogVariants();
+  const encoding = acceptedEncodings(req.headers['accept-encoding'])[0];
+  if (!encoding) { res.writeHead(406, { 'cache-control': 'no-store', vary: 'Accept-Encoding' }); return res.end(); }
+  const { body, etag } = variants.get(encoding);
+  const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', vary: 'Accept-Encoding', etag };
+  if (encoding !== 'identity') headers['content-encoding'] = encoding;
+  if (etagMatches(req.headers['if-none-match'], etag)) { res.writeHead(304, headers); return res.end(); }
+  headers['content-length'] = body.length;
+  res.writeHead(200, headers);
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
+
 function createDashboardHandlers(options = {}) {
   const configDir = resolve(options.configDir || process.env.HOMEPAGE_CONFIG_DIR || join(base, 'config'));
   const stateDir = resolve(options.stateDir || process.env.STUDIO_STATE_DIR || join(base, 'state'));
@@ -297,12 +334,6 @@ function createDashboardHandlers(options = {}) {
     }
   }
 
-  async function asset(req, res, name, contentType) {
-    const text = await readFile(join(base, 'public', name), 'utf8');
-    res.writeHead(200, { 'content-type': contentType, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(text) });
-    res.end(req.method === 'HEAD' ? undefined : text);
-  }
-
   async function proxy(req, res, dashboard) {
     if (res.destroyed || req.aborted) return;
     const basePath = dashboardBasePath(dashboard);
@@ -360,7 +391,7 @@ function createDashboardHandlers(options = {}) {
       if (path === '/__studio/ready' && req.method === 'GET') return await readiness(req, res, dashboard);
       if (path === '/__studio/config-ready' && req.method === 'GET') return await readiness(req, res, dashboard, true);
       if (!path.startsWith('/__studio/')) await prepareNative();
-      if (path === '/__studio/catalog.json' && req.method === 'GET') return await asset(req, res, 'catalog.json', 'application/json; charset=utf-8');
+      if (path === '/__studio/catalog.json' && ['GET', 'HEAD'].includes(req.method)) return await serveCatalog(req, res);
       const saveChange = path === '/__studio/api/save' && req.method === 'POST' ? await readBody(req) : undefined;
       // Complete board replacements must validate against newly discovered
       // membership. Structured/native-file edits use their revision-checked
@@ -446,6 +477,8 @@ export function createStudioServer(options = {}) {
     rendererPool = { acquire: async () => ({ origin, release() {} }), drain: async () => {}, close: async () => {} };
   }
   const responseHeaders = securityHeaders(parseFrameAncestors(options.frameAncestors ?? process.env.STUDIO_FRAME_ANCESTORS));
+  // Prepare the compressed catalog before the first editor opens; errors surface on request.
+  loadCatalogVariants().catch(() => {});
   rendererPool ||= createRendererPool({ configRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision });
   const handlers = new Map();
   const unpublished = new Map();
