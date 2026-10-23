@@ -2,7 +2,7 @@
 
 Homepage Studio is a controlled [Homepage](https://gethomepage.dev/) application with direct dashboard editing, independently placed native widgets, configurable widget stacks, and independent dashboard pages in one deployment. The default combines charcoal surfaces, soft white text, and a muted eggplant accent. Each dashboard has its own widgets, layout, theme, colors and native CSS/JavaScript.
 
-**Deployment readiness is tied to an exact source commit and image digest.** Use the [candidate workflow](https://github.com/TheUncleBen/Homepage-Studio/actions/workflows/candidate-approved.yml), its verification report, and its delivery receipt to establish a candidate's status. Follow [candidate delivery](docs/CANDIDATES.md) to identify and verify that bundle. [VERIFICATION.md](VERIFICATION.md) and the [implementation plan](docs/IMPLEMENTATION-PLAN.md) preserve dated source checkpoints. The earlier companion-container candidate is historical and does not qualify this architecture. An official date release requires later owner acceptance of the exact candidate.
+**Deployment readiness is tied to an exact source commit and image digest.** Use the [candidate workflow](https://github.com/TheUncleBen/Homepage-Studio/actions/workflows/candidate-approved.yml), its verification report, and its delivery receipt to establish a candidate's status. Follow [candidate delivery](docs/CANDIDATES.md) to identify and verify that bundle. [VERIFICATION.md](VERIFICATION.md) explains how to verify a build and what CI checks. An official date release requires later owner acceptance of the exact candidate.
 
 ## Dashboard experience
 
@@ -22,7 +22,7 @@ Configuration changes use revision checks, a recovery journal, and snapshots. Th
 
 ## Deployment model
 
-One Studio image contains the public Node controller and the complete controlled Homepage runtime. Only controller port 3000 is published. Native workers start on demand, bind to internal loopback addresses, and render one dashboard each with independent configuration and caches. All processes run as UID/GID 1000. The application owns persistent configuration and state volumes.
+One Studio image contains the public Node controller and the complete controlled Homepage runtime. Only controller port 3000 is published. Native workers start on demand, bind to internal loopback addresses, and render one dashboard each with independent configuration and caches. All processes run as UID/GID 1000 with every Linux capability dropped; application code is root-owned and read-only to that user, which owns only the persistent configuration and state volumes. Pages may be framed only by the same origin unless `STUDIO_FRAME_ANCESTORS` allows others.
 
 Configure pages such as `/admin`, `/family` or `/dashboard-1` on the same host. Create an empty dashboard or duplicate an existing one, then edit it independently. Names and slugs can change without moving its immutable identity or history. Archive and restore retain files and snapshots. The original dashboard remains in its existing volume paths. Dashboards share the application lifecycle and deployment resources; they do not share their configuration, layout or state.
 

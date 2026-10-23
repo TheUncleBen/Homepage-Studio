@@ -229,7 +229,7 @@ trust boundary. These retained behaviors are not fixed by the redirect guard.
 
 ## Supported deployment targets and qualification
 
-The source targets linux/amd64 and linux/arm64, standalone Compose, and one application replica on the selected Swarm storage node. These are qualification requirements; actual results are recorded in VERIFICATION.md. The software is not a replicated distributed writer. Move data intentionally when changing the selected Swarm node.
+The source targets linux/amd64 and linux/arm64, standalone Compose, and one application replica on the selected Swarm storage node. These are qualification requirements; [VERIFICATION.md](../VERIFICATION.md) lists the gates, and each candidate's workflow run and verification report record actual results. The software is not a replicated distributed writer. Move data intentionally when changing the selected Swarm node.
 
 ## Address and trust model
 
