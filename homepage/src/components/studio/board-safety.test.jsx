@@ -470,6 +470,40 @@ describe("Native board save and draft safety", () => {
     expect(screen.getByLabelText("Native state clock").closest("section").style.cssText).toBe(position);
   });
 
+  it("fetches the native catalog only for content editors, once per page, and retries after a failure", async () => {
+    const { fetch } = await mountBoard();
+    const original = fetch.getMockImplementation();
+    let failCatalog = true;
+    fetch.mockImplementation(async (path, options) => {
+      if (path === "/__studio/catalog.json" && failCatalog) {
+        failCatalog = false;
+        return { ok: false, status: 503, json: async () => ({ error: "Fixture catalog unavailable" }) };
+      }
+      return original(path, options);
+    });
+    const catalogReads = () => fetch.mock.calls.filter(([path]) => path === "/__studio/catalog.json").length;
+
+    fireEvent.click(screen.getByRole("button", { name: "Dashboard settings" }));
+    await screen.findByRole("dialog");
+    await waitFor(() => expect(screen.queryByText("Loading local configuration…")).not.toBeInTheDocument());
+    expect(catalogReads()).toBe(0);
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add widget" }));
+    expect(await screen.findByText("Fixture catalog unavailable")).toBeInTheDocument();
+    expect(catalogReads()).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByText("Loading local configuration…")).not.toBeInTheDocument());
+    expect(screen.queryByText("Fixture catalog unavailable")).not.toBeInTheDocument();
+    expect(catalogReads()).toBe(2);
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add widget" }));
+    await waitFor(() => expect(screen.queryByText("Loading local configuration…")).not.toBeInTheDocument());
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(catalogReads()).toBe(2);
+  });
+
   it("confirms before edit-mode Cancel discards an arrangement draft and leaves a clean board immediately", async () => {
     const { writer } = await mountBoard();
     const native = screen.getByLabelText("Native state clock");

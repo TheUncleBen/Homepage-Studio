@@ -156,6 +156,10 @@ export default function StudioBoard({
   const [filter, setFilter] = useState("all");
   const [modal, setModal] = useState(null);
   const [editorData, setEditorData] = useState(null);
+  // The native catalog is large and fixed for a deployed build. Fetch it only
+  // for the editors that use it and reuse it for the rest of the page session;
+  // a failed request is forgotten so "Try again" fetches it afresh.
+  const catalogRequest = useRef(null);
   const [editorError, setEditorError] = useState(null);
   const [editorGuard, setEditorGuard] = useState({
     dirty: false,
@@ -431,9 +435,16 @@ export default function StudioBoard({
     setEditorData(null);
     if (type === "dashboards") return;
     try {
+      if ((type === "picker" || type === "content") && !catalogRequest.current) {
+        const request = studioRequest("/__studio/catalog.json");
+        catalogRequest.current = request;
+        request.catch(() => {
+          if (catalogRequest.current === request) catalogRequest.current = null;
+        });
+      }
       const [state, catalog, backups] = await Promise.all([
         studioRequest("/__studio/api/state"),
-        studioRequest("/__studio/catalog.json"),
+        type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
         type === "backups" ? studioRequest("/__studio/api/backups") : Promise.resolve([]),
       ]);
       if (token === generation.current) setEditorData({ state, catalog, backups });
