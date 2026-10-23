@@ -470,6 +470,38 @@ describe("Native board save and draft safety", () => {
     expect(screen.getByLabelText("Native state clock").closest("section").style.cssText).toBe(position);
   });
 
+  it("confirms before edit-mode Cancel discards an arrangement draft and leaves a clean board immediately", async () => {
+    const { writer } = await mountBoard();
+    const native = screen.getByLabelText("Native state clock");
+    const section = () => screen.getByLabelText("Native state clock").closest("section");
+    const original = section().style.top;
+    fireEvent.click(screen.getByRole("button", { name: "Edit dashboard", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit dashboard", exact: true })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit dashboard", exact: true }));
+    fireEvent.keyDown(screen.getByRole("button", { name: /^Move Clock\./ }), { key: "ArrowDown" });
+    const moved = section().style.top;
+    expect(moved).not.toBe(original);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Discard unsaved changes?");
+    expect(screen.getByRole("button", { name: "Keep editing" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Unsaved arrangement")).toBeInTheDocument();
+    expect(section().style.top).toBe(moved);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unsaved arrangement")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit dashboard", exact: true })).toBeInTheDocument();
+    expect(section().style.top).toBe(original);
+    expect(screen.getByLabelText("Native state clock")).toBe(native);
+    expect(writer).not.toHaveBeenCalled();
+  });
+
   // This complete modal workflow has a local jsdom CPU budget; application
   // timing and the suite's default timeout are unchanged. See VERIFICATION.md.
   it("protects a dirty editor on close, Escape, file switching and page departure without discarding invalid YAML", async () => {

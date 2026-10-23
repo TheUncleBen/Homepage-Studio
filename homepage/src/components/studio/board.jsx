@@ -342,6 +342,13 @@ export default function StudioBoard({
     },
     [envelope?.revision, envelope?.configurationRevision, nativeData],
   );
+  const cancelEditing = () => {
+    setDraft(null);
+    setDraftSource(null);
+    setEditing(false);
+    setSelection([]);
+    setError(null);
+  };
   const beginEditing = () => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
     setEditing(true);
@@ -761,6 +768,7 @@ export default function StudioBoard({
     stack: "Edit widget stack",
     position: "Position & size",
     discovery: modal?.panel?.title || "Discovered content",
+    discardArrangement: "Discard arrangement?",
   };
 
   return (
@@ -812,11 +820,10 @@ export default function StudioBoard({
                 className="studio-button studio-quiet"
                 disabled={saving}
                 onClick={() => {
-                  setDraft(null);
-                  setDraftSource(null);
-                  setEditing(false);
-                  setSelection([]);
-                  setError(null);
+                  // An unsaved arrangement uses the same explicit discard
+                  // confirmation as editor drafts.
+                  if (dirty) setModal({ type: "discardArrangement" });
+                  else cancelEditing();
                 }}
               >
                 Cancel
@@ -1120,7 +1127,35 @@ export default function StudioBoard({
               </div>
             )}
             <div hidden={Boolean(discardAction)} inert={Boolean(discardAction)}>
-              {modal.type === "dashboards" ? (
+              {modal.type === "discardArrangement" ? (
+                <div className="studio-dialog-body">
+                  <h3>Discard unsaved changes?</h3>
+                  <p className="studio-note">
+                    This arrangement has moves, sizes or stacks that have not been saved. Keep editing to preserve
+                    them, or discard them to leave edit mode.
+                  </p>
+                  <div className="studio-inline-actions">
+                    <button
+                      type="button"
+                      className="studio-button studio-primary"
+                      autoFocus
+                      onClick={dismissEditor}
+                    >
+                      Keep editing
+                    </button>
+                    <button
+                      type="button"
+                      className="studio-button studio-quiet"
+                      onClick={() => {
+                        dismissEditor();
+                        cancelEditing();
+                      }}
+                    >
+                      Discard changes
+                    </button>
+                  </div>
+                </div>
+              ) : modal.type === "dashboards" ? (
                 <DashboardManager
                   currentDashboard={dashboard}
                   onClose={closeModal}

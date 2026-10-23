@@ -82,7 +82,11 @@ test.describe('touch direct manipulation', () => {
       await touch.end();
       await expect.poll(async () => (await panelPixels(source)).top).toBeGreaterThan(before.top + 50);
       // Cancel the whole arrangement before the independent direct-stack gesture.
+      // A dirty arrangement asks before Cancel discards it.
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(page.getByRole('dialog')).toContainText('Discard unsaved changes?');
+      await page.getByRole('dialog').getByRole('button', { name: 'Discard changes', exact: true }).click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect.poll(() => panelPixels(source)).toEqual(before);
 
       point = await headerPoint();
