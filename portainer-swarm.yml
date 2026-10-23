@@ -10,7 +10,10 @@ services:
       STUDIO_RENDERER_MAX_WORKERS: ${STUDIO_RENDERER_MAX_WORKERS:-8}
       STUDIO_RENDERER_IDLE_SECONDS: ${STUDIO_RENDERER_IDLE_SECONDS:-600}
       STUDIO_RENDERER_STARTUP_SECONDS: ${STUDIO_RENDERER_STARTUP_SECONDS:-30}
+      STUDIO_FRAME_ANCESTORS: ${STUDIO_FRAME_ANCESTORS:-}
       LOG_TARGETS: stdout
+    # Host-mode publication listens on every interface of the selected node.
+    # Swarm cannot bind a single address; restrict access with a host firewall.
     ports:
       - target: 3000
         published: ${STUDIO_PORT:-3000}
@@ -20,6 +23,12 @@ services:
       - config:/app/config
       - state:/app/state
     stop_grace_period: 30s
+    # The application runs as UID 1000 and needs no Linux capabilities.
+    # docker stack deploy honors cap_drop (Docker 20.10 or later) but ignores
+    # security_opt, so no-new-privileges cannot be set from a Swarm stack; the
+    # image carries no setuid or file-capability binaries instead.
+    cap_drop:
+      - ALL
     deploy:
       replicas: 1
       placement:

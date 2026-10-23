@@ -195,6 +195,15 @@ test('deployment templates publish one application and preserve bounded internal
     assert.ok(!JSON.stringify(template).includes('docker.sock'));
     assert.equal(template.services.studio.environment.STUDIO_BACKUP_RETENTION, '${STUDIO_BACKUP_RETENTION:-25}');
     assert.equal(template.services.studio.depends_on, undefined);
+    // Hardening: the UID 1000 application needs no capabilities.
+    assert.deepEqual(template.services.studio.cap_drop, ['ALL']);
+    assert.equal(template.services.studio.cap_add, undefined);
+    assert.equal(template.services.studio.privileged, undefined);
+    assert.equal(template.services.studio.read_only, undefined, 'read-only rootfs is deferred until ping and Next cache behavior are qualified');
+    assert.equal(template.services.studio.environment.STUDIO_FRAME_ANCESTORS, '${STUDIO_FRAME_ANCESTORS:-}');
+    if (file.includes('compose')) assert.deepEqual(template.services.studio.security_opt, ['no-new-privileges:true']);
+    // docker stack deploy ignores security_opt; the image strips setuid bits instead.
+    else assert.equal(template.services.studio.security_opt, undefined);
     if (file.includes('swarm')) {
       for (const service of Object.values(template.services)) {
         assert.equal(service.deploy.replicas, 1);
@@ -300,6 +309,26 @@ test('controller tests and fixtures never enter the runtime image and nothing at
       assert.doesNotMatch(target, /\.test\.|(?:^|\/)fixtures(?:\/|$)/, `${name} imports ${specifier}`);
     }
   }
+});
+
+test('runtime application code is root-owned and only configuration and state are writable by UID 1000', async () => {
+  const runtime = dockerStages(await fs.readFile(path.join(root, 'Dockerfile'), 'utf8')).at(-1).lines;
+  for (const line of runtime.filter(item => item.startsWith('COPY'))) assert.doesNotMatch(line, /--chown/, `application code must stay root-owned: ${line}`);
+  const chowns = runtime.filter(line => /\bchown\b/.test(line));
+  assert.equal(chowns.length, 1);
+  assert.match(chowns[0], /chown 1000:1000 \/app\/config \/app\/state(?:\s|$)/);
+  assert.doesNotMatch(chowns[0], /chown\s+-R/);
+  const user = runtime.indexOf('USER 1000:1000');
+  assert.ok(user > runtime.indexOf(chowns[0]));
+  const guard = runtime.slice(user).find(line => line.startsWith('RUN '));
+  assert.ok(guard, 'the build must verify writability as the runtime user');
+  assert.match(guard, /test -w \/app\/config && test -w \/app\/state/);
+  assert.match(guard, /find \/app \\\( -path \/app\/config -o -path \/app\/state \\\) -prune -o -writable -print -quit/);
+  // Capability-free templates need ping without setuid or file capabilities.
+  const packages = runtime.find(line => line.includes('iputils-ping'));
+  assert.match(packages, /cp "\$ping" "\$ping\.plain" && mv -f "\$ping\.plain" "\$ping" && chmod 0755 "\$ping"/);
+  assert.match(packages, /find \/ -xdev -type f -perm \/6000 -exec chmod ug-s \{\} \+/);
+  assert.match(packages, /test -z "\$\(find \/ -xdev -type f -perm \/6000 -print -quit\)"/);
 });
 
 test('runtime and Dockerfile pins agree with the reviewed source lock', async () => {

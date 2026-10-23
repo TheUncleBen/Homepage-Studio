@@ -46,6 +46,12 @@ test('the actual Swarm parser preserves required image, origin and node values',
       assert.equal(service.deploy.update_config.order, 'stop-first');
     }
     assert.equal(Number(result.services.studio.ports[0].published), 17778);
+    assert.equal(result.services.studio.ports[0].mode, 'host');
+    // Hardening must survive the real parser; security_opt is not supported
+    // by docker stack deploy, so the template must not pretend to set it.
+    assert.deepEqual(result.services.studio.cap_drop, ['ALL']);
+    assert.equal(result.services.studio.security_opt, undefined);
+    assert.equal(result.services.studio.environment.STUDIO_FRAME_ANCESTORS, '');
     assert.equal(Number(result.services.studio.environment.STUDIO_BACKUP_RETENTION), 25);
   });
 });
