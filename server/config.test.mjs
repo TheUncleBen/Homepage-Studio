@@ -60,6 +60,33 @@ test('invalid syntax or shape rejects the entire save without changing any file 
   assert.deepEqual(await fs.readdir(path.join(stateDir, 'backups')), []);
 });
 
+test('invalid YAML reports the original line and column without echoing source text', async (t) => {
+  const { store } = await fixture(t);
+  const before = await store.load();
+  const cases = [
+    // The placeholder is masked with a longer token before parsing; the column
+    // must still point at the stray text in the owner's original text.
+    ['settingsYaml', 'settings.yaml', 'title: Ben\nkey: "{{HOMEPAGE_VAR_SYNTHETIC_SECRET}}" extra\nsecret: synthetic-private-marker\n', 2, 42],
+    ['settingsYaml', 'settings.yaml', 'title: Ben\nsecret: synthetic-private-marker\nlist: [a, b\n', 4, 1],
+    ['servicesYaml', 'services.yaml', '- broken: [unterminated', 1, 24],
+  ];
+  for (const [field, file, text, line, column] of cases) {
+    await assert.rejects(store.save({ revision: before.revision, [field]: text }), (error) => {
+      assert.equal(error.code, 'INVALID_YAML');
+      assert.equal(error.status, 422);
+      assert.equal(error.message, `${file} contains invalid YAML at line ${line}, column ${column}.`);
+      assert.equal(error.details.file, file);
+      assert.deepEqual({ line: error.details.errors[0].line, column: error.details.errors[0].column }, { line, column });
+      assert.equal(typeof error.details.errors[0].code, 'string');
+      const serialized = JSON.stringify({ message: error.message, details: error.details });
+      assert.ok(!serialized.includes('synthetic-private-marker'));
+      assert.ok(!serialized.includes('HOMEPAGE_VAR_SYNTHETIC_SECRET'));
+      assert.ok(!serialized.includes('HOMEPAGESTUDIOPLACEHOLDER'));
+      return true;
+    }, JSON.stringify(text));
+  }
+});
+
 test('optimistic revision rejects stale and simultaneous saves', async (t) => {
   const { store } = await fixture(t);
   const before = await store.load();

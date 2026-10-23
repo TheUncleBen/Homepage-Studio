@@ -201,6 +201,26 @@ describe("Local configuration file imports", () => {
     expect(screen.getByRole("button", { name: "Save configuration" })).toBeEnabled();
   });
 
+  it("shows the controller's YAML line and column for a rejected save", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: false,
+      status: 422,
+      json: async () => ({ error: "services.yaml contains invalid YAML at line 2, column 9.", code: "INVALID_YAML" }),
+    }));
+    vi.stubGlobal("fetch", fetch);
+    render(
+      <EditorDraftContext.Provider value={vi.fn()}>
+        <FilesEditor state={{ revision: "before", servicesYaml: "[]\n" }} onSaved={vi.fn()} onClose={vi.fn()} />
+      </EditorDraftContext.Provider>,
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "services.yaml" }), {
+      target: { value: "- Group:\n  - a: [b\n" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save configuration" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("line 2, column 9");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("blocks draft mutation during an asynchronous file read and preserves the draft on a read failure", async () => {
     let reject;
     const reading = new Promise((_, fail) => {
