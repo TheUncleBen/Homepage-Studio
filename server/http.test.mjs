@@ -444,7 +444,8 @@ test('an unresolved startup recovery blocks HTTP and WebSocket proxy traffic whi
   const native = await request('/api/native-config');
   assert.equal(native.status, 503);
   assert.equal(native.json.code, 'RECOVERY_REQUIRED');
-  assert.equal((await request('/api/socket', { headers: { connection: 'Upgrade', upgrade: 'websocket' } })).status, 503);
+  // WebSocket upgrades are refused outright and never reach the native renderer.
+  assert.equal((await request('/api/socket', { headers: { connection: 'Upgrade', upgrade: 'websocket' } })).status, 404);
   assert.equal((await request('/__studio/live')).status, 200);
   const readiness = await request('/__studio/ready');
   assert.equal(readiness.status, 503);

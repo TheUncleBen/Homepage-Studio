@@ -31,7 +31,6 @@ API (`/__studio/...`), the native widget API (`/api/...` and
 | Pass the full path and query unchanged | Don't strip or rewrite the dashboard segment. Studio picks the dashboard from the path alone, never from cookies, `Referer` or forwarded headers |
 | Route the **entire** hostname to Studio | Including `/_next/static/`, `/__studio/` and the icons and images at the root |
 | Allow request bodies of at least **40 MiB** if you'll import dashboards | See [request limits](#request-limits). Everyday saves need far less |
-| Allow WebSocket upgrades | Studio forwards upgrade requests to the dashboard's native worker |
 | Don't compress what's already compressed | Studio serves pre-compressed Brotli/gzip build files with `Vary: Accept-Encoding`. Respect `Content-Encoding` and `Vary`; don't add a second encoding |
 | A valid certificate | Your choice; Studio doesn't care, but browsers do |
 
@@ -47,9 +46,10 @@ limit rejects a request before Studio sees it, usually with its own `413`.
 | --- | --- | --- |
 | Editor saves and other configuration requests (JSON) | 2 MiB, escaping included | `413` *This request exceeds the 2 MiB configuration limit.* |
 | Importing a complete dashboard (**Import dashboard**) | 40 MiB; each file and the layout inside it still at most 2 MiB | `413` *... 40 MiB dashboard import limit.* |
-| Bodies sent to native widget routes (`/api/...`, `/<dashboard>/api/...`) | 4 MiB, arriving within 30 seconds | `413` if larger, `408` if too slow, and the connection is closed |
+| Bodies sent to native widget routes (`/api/...`, `/<dashboard>/api/...`) | 1 MiB, arriving within 30 seconds; 32 MiB across all such bodies in flight at once | `413` if larger (at once when `Content-Length` says so), `408` if too slow, `503` with `Retry-After` when the shared budget is full; the connection is closed |
 
-The native routes then apply Homepage's own, smaller limit (1 MB by default).
+The controller limit matches Homepage's own native body limit (Next.js's
+`1mb` default, read as 1 MiB).
 
 ## Framing
 
@@ -61,18 +61,21 @@ Every page and response carries:
 - `X-Content-Type-Options: nosniff`;
 - `Referrer-Policy: same-origin`.
 
-The native runtime doesn't send `X-Powered-By`. A native widget response
-can't replace or loosen these headers. Don't strip them at the proxy.
+The native runtime doesn't send `X-Powered-By`, and Studio removes it from
+native responses anyway. A native widget response can't replace or loosen
+these headers. Don't strip them at the proxy.
 
 To show a dashboard inside another site, for example a Home Assistant panel,
 set `STUDIO_FRAME_ANCESTORS` to the allowed origins, **separated by spaces,
-not commas**. Each entry is `'self'` (with the quotes) or an exact `http://`
-or `https://` origin with an optional port, and no path, query, wildcard or
-credentials. The list replaces the default, so include `'self'` to keep
-same-origin framing:
+not commas**. Each entry is `'self'` or an exact `http://` or `https://`
+origin with an optional port, and no path, query, wildcard or credentials.
+The list replaces the default, so include `'self'` to keep same-origin
+framing. In a `.env` file or a shell, put double quotes around the whole
+value so the spaces and the single quotes survive (a bare `self` is also
+accepted):
 
 ```sh
-STUDIO_FRAME_ANCESTORS='self' https://ha.example.test:8123
+STUDIO_FRAME_ANCESTORS="'self' https://ha.example.test:8123"
 ```
 
 With a value set, `X-Frame-Options` is left out, because it can't name more

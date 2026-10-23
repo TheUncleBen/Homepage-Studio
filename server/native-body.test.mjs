@@ -6,7 +6,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
-import { createStudioServer } from './index.mjs';
+import { createStudioServer, NATIVE_BODY_LIMIT, NATIVE_BODY_BUDGET } from './index.mjs';
 import { createRendererPool } from './renderer-pool.mjs';
 
 const HOST = 'slow-body.example.test:3000';
@@ -22,7 +22,7 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ protocolVersion: 1, upstreamCommit: '51cc1684f9f34a7877ed462b8f94c9cc687b4dde', buildRevision: process.env.STUDIO_BUILD_REVISION, dashboardId: process.env.STUDIO_DASHBOARD_ID, dashboardBasePath: process.env.STUDIO_DASHBOARD_BASE_PATH, rendererInstance: process.env.STUDIO_RENDERER_INSTANCE }));
   }
   if (req.url === '/api/studio/sources') return res.end(JSON.stringify({ protocolVersion: 1, upstreamCommit: '51cc1684f9f34a7877ed462b8f94c9cc687b4dde', sources: [], warnings: [] }));
-  res.end(JSON.stringify({ id: process.env.STUDIO_DASHBOARD_ID, url: req.url, body: Buffer.concat(chunks).toString('utf8'), length: req.headers['content-length'] ?? null }));
+  res.end(JSON.stringify({ id: process.env.STUDIO_DASHBOARD_ID, url: req.url, body: Buffer.concat(chunks).toString('utf8'), length: req.headers['content-length'] ?? null, expect: req.headers.expect ?? null }));
 });
 server.listen(Number(process.env.PORT), process.env.HOSTNAME);
 `;
@@ -65,7 +65,17 @@ async function fixture(t, options = {}) {
     socket.write(`POST ${target} HTTP/1.1\r\nHost: ${HOST}\r\nContent-Type: application/json\r\nContent-Length: 64\r\n\r\n{`);
     return { socket, get response() { return response; } };
   };
-  return { app, rendererPool, request, create, slowPost };
+  // Sends only the request head; the caller decides what follows.
+  const rawHead = async head => {
+    const socket = net.connect(port, '127.0.0.1'); sockets.add(socket);
+    socket.on('error', () => {});
+    await once(socket, 'connect');
+    let response = '';
+    socket.on('data', data => { response += data.toString(); });
+    socket.write(head.replaceAll('\n', '\r\n') + '\r\n');
+    return { socket, get response() { return response; } };
+  };
+  return { app, rendererPool, request, create, slowPost, rawHead };
 }
 
 async function until(condition, timeout = 5000) {
@@ -111,8 +121,76 @@ test('a stalled native request body is refused after its deadline and the connec
 
 test('native request bodies above the controller limit are refused without using a worker', async t => {
   const f = await fixture(t);
-  const result = await f.request('/api/action', { method: 'POST', body: 'x'.repeat(4 * 1024 * 1024 + 1), headers: { 'content-type': 'application/json' } }).catch(error => ({ error }));
+  assert.equal(NATIVE_BODY_LIMIT, 1024 * 1024, 'The controller matches the native 1 MiB body parser default.');
+  const result = await f.request('/api/action', { method: 'POST', body: 'x'.repeat(NATIVE_BODY_LIMIT + 1), headers: { 'content-type': 'application/json' } }).catch(error => ({ error }));
   // The controller may close the socket while the client is still writing.
   if (!result.error) { assert.equal(result.status, 413); assert.equal(result.json.code, 'REQUEST_TOO_LARGE'); }
+  // A chunked body without a declared length is cut off at the same limit.
+  const chunked = await f.request('/api/action', { method: 'POST', body: 'x'.repeat(NATIVE_BODY_LIMIT + 1), headers: { 'content-type': 'application/json', 'transfer-encoding': 'chunked' } }).catch(error => ({ error }));
+  if (!chunked.error) { assert.equal(chunked.status, 413); assert.equal(chunked.json.code, 'REQUEST_TOO_LARGE'); }
   assert.equal(f.rendererPool.workerCount, 0);
+  assert.equal(f.app.nativeBodyBytesInFlight, 0);
+  const exact = await f.request('/api/action', { method: 'POST', body: 'y'.repeat(NATIVE_BODY_LIMIT), headers: { 'content-type': 'application/json' } });
+  assert.equal(exact.status, 200); assert.equal(exact.json.length, String(NATIVE_BODY_LIMIT)); assert.equal(exact.json.body.length, NATIVE_BODY_LIMIT);
+  await until(() => f.app.nativeBodyBytesInFlight === 0);
+});
+
+test('a declared oversized length is refused at once, before any body arrives', async t => {
+  const f = await fixture(t);
+  const raw = await f.rawHead(`POST /api/action HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nContent-Length: ${NATIVE_BODY_LIMIT + 1}\n`);
+  await once(raw.socket, 'close');
+  assert.match(raw.response, /^HTTP\/1\.1 413/);
+  assert.match(raw.response, /REQUEST_TOO_LARGE/);
+  assert.match(raw.response, /[Cc]onnection: close/);
+  assert.equal(f.rendererPool.workerCount, 0);
+  assert.equal(f.app.nativeBodyBytesInFlight, 0);
+});
+
+test('Expect: 100-continue is answered only for acceptable native uploads and is not forwarded', async t => {
+  const f = await fixture(t);
+  const oversized = await f.rawHead(`POST /api/action HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nExpect: 100-continue\nContent-Length: ${NATIVE_BODY_LIMIT + 1}\n`);
+  await once(oversized.socket, 'close');
+  assert.match(oversized.response, /^HTTP\/1\.1 413/);
+  assert.doesNotMatch(oversized.response, /100 Continue/);
+  assert.equal(f.rendererPool.workerCount, 0);
+  const valid = await f.rawHead(`POST /api/action HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nExpect: 100-continue\nContent-Length: 7\nConnection: close\n`);
+  await until(() => valid.response.includes('\r\n\r\n'));
+  assert.match(valid.response, /^HTTP\/1\.1 100 Continue\r\n\r\n$/);
+  const closed = once(valid.socket, 'close');
+  valid.socket.write('{"a":1}');
+  await closed;
+  const final = valid.response.slice(valid.response.indexOf('\r\n\r\n') + 4);
+  assert.match(final, /^HTTP\/1\.1 200/);
+  const echoed = JSON.parse(final.slice(final.indexOf('\r\n\r\n') + 4));
+  assert.equal(echoed.body, '{"a":1}'); assert.equal(echoed.expect, null);
+  // Editor routes still receive 100 Continue before their JSON body is read.
+  const editor = await f.rawHead(`POST /__studio/api/dashboards HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nOrigin: ${ORIGIN}\nX-Studio-Request: 1\nExpect: 100-continue\nContent-Length: 2\nConnection: close\n`);
+  await until(() => editor.response.includes('\r\n\r\n'));
+  assert.match(editor.response, /^HTTP\/1\.1 100 Continue/);
+  const editorClosed = once(editor.socket, 'close'); editor.socket.write('{}'); await editorClosed;
+  assert.match(editor.response.slice(editor.response.indexOf('\r\n\r\n') + 4), /^HTTP\/1\.1 (400|409)/);
+});
+
+// Regression (N2): 150 concurrent 4 MiB uploads were all buffered at once.
+test('concurrent native uploads share one byte budget and excess uploads get 503 with Retry-After', async t => {
+  const f = await fixture(t);
+  await f.create('family');
+  assert.equal(NATIVE_BODY_BUDGET, 32 * 1024 * 1024);
+  const slots = NATIVE_BODY_BUDGET / NATIVE_BODY_LIMIT;
+  const stalled = [];
+  for (let i = 0; i < slots; i++) stalled.push(await f.rawHead(`POST ${i % 2 ? '/family' : ''}/api/upload HTTP/1.1\nHost: ${HOST}\nContent-Type: application/octet-stream\nContent-Length: ${NATIVE_BODY_LIMIT}\n`));
+  await until(() => f.app.nativeBodyBytesInFlight === NATIVE_BODY_BUDGET);
+  const over = await f.request('/family/api/upload', { method: 'POST', body: 'z', headers: { 'content-type': 'application/json' } });
+  assert.equal(over.status, 503); assert.equal(over.json.code, 'REQUEST_BODY_BUDGET_EXCEEDED');
+  assert.equal(over.headers['retry-after'], '5');
+  const chunked = await f.request('/api/upload', { method: 'POST', body: 'z', headers: { 'content-type': 'application/json', 'transfer-encoding': 'chunked' } });
+  assert.equal(chunked.status, 503); assert.equal(chunked.headers['retry-after'], '5');
+  // Requests without a body are unaffected.
+  const read = await f.request('/family/api/ping'); assert.equal(read.status, 200);
+  assert.ok(stalled.every(item => item.response === ''));
+  for (const item of stalled) item.socket.destroy();
+  await until(() => f.app.nativeBodyBytesInFlight === 0);
+  const posted = await f.request('/api/action', { method: 'POST', body: '{"after":1}', headers: { 'content-type': 'application/json' } });
+  assert.equal(posted.status, 200); assert.equal(posted.json.body, '{"after":1}');
+  await until(() => f.app.nativeBodyBytesInFlight === 0);
 });

@@ -285,24 +285,40 @@ test('robots uses each resolved native setting without acquiring renderer worker
   const head = await f.request('/robots.txt', { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(head.text, ''); assert.equal(Number(head.headers['content-length']), robots.text.length);
 });
 
-test('native upgrades preserve initial bytes and peer FIN releases the worker lease', async t => {
+// Regression (N1): an upgrade used to lease a renderer slot and wait up to 60 s
+// for the worker, so a few cross-site sockets starved other dashboards.
+test('WebSocket upgrades are refused at once and never wait for or hold a renderer slot', async t => {
   const f = await fixture(t), child = await f.create('family');
-  const socket = net.connect(f.port, '127.0.0.1'); await once(socket, 'connect');
-  let received = ''; const ready = deferred();
-  socket.on('data', data => { received += data.toString(); if (received.includes('CLIENT-HEAD')) ready.resolve(); });
-  socket.write(`GET /family/api/socket HTTP/1.1\r\nHost: ${HOST}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nCLIENT-HEAD`);
-  await ready.promise;
-  assert.match(received, /101 Switching Protocols/); assert.ok(received.includes('X-Native-Id: ' + child.id)); assert.match(received, /NATIVE-HEAD/);
-  const closed = once(socket, 'close'); socket.write('FINISH'); await closed;
-  assert.equal(f.leases, 0); assert.equal(f.releases, 1);
+  const before = f.acquisitions.length;
+  const upgrade = async (target, extra = '') => {
+    const socket = net.connect(f.port, '127.0.0.1'); await once(socket, 'connect');
+    let received = ''; socket.on('data', data => { received += data.toString(); }); socket.on('error', () => {});
+    const started = Date.now(), closed = once(socket, 'close');
+    socket.write(`GET ${target} HTTP/1.1\r\nHost: ${HOST}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n${extra}\r\nCLIENT-HEAD`);
+    await closed;
+    return { received, elapsed: Date.now() - started };
+  };
+  const held = [];
+  for (const target of ['/family/_next/webpack-hmr', '/_next/webpack-hmr', '/family/api/socket', '/api/socket', '/__studio/api/state', '/missing/_next/webpack-hmr']) {
+    for (const extra of ['', 'Origin: https://attacker.example.test\r\nSec-Fetch-Site: cross-site\r\n', `Origin: ${ORIGIN}\r\nSec-Fetch-Site: same-origin\r\n`]) held.push(upgrade(target, extra));
+  }
+  for (const { received, elapsed } of await Promise.all(held)) {
+    assert.match(received, /^HTTP\/1\.1 404 Not Found\r\n/);
+    assert.doesNotMatch(received, /101 Switching Protocols|NATIVE-HEAD|CLIENT-HEAD/);
+    assert.ok(elapsed < 2000, `upgrade refusal took ${elapsed} ms`);
+  }
+  assert.equal(f.acquisitions.length, before, 'No upgrade asked the pool for a worker.');
+  assert.equal(f.leases, 0);
+  const page = await f.request('/family/api/config'); assert.equal(page.status, 200); assert.equal(page.json.id, child.id);
 });
 
-test('bounded shutdown closes upgraded sockets and closes the worker pool exactly once', async t => {
+test('bounded shutdown closes open client connections and closes the worker pool exactly once', async t => {
   const f = await fixture(t); await f.create('family');
   const socket = net.connect(f.port, '127.0.0.1'); await once(socket, 'connect');
-  const received = once(socket, 'data');
-  socket.write(`GET /family/api/socket HTTP/1.1\r\nHost: ${HOST}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
-  await received;
+  socket.on('error', () => {});
+  // An unfinished request keeps the connection open until the grace period ends.
+  socket.write(`GET /family/api/config HTTP/1.1\r\nHost: ${HOST}\r\n`);
+  await new Promise(resolve => setTimeout(resolve, 50));
   const closed = once(socket, 'close');
   const first = f.shutdown({ graceMs: 20 }), second = f.shutdown({ graceMs: 100 });
   assert.equal(first, second); await first; await closed;

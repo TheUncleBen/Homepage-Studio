@@ -62,8 +62,11 @@ and security fixes land, including the Next.js 16.4.2 security update.
   a content editor.
 - `robots.txt` no longer lists archived dashboards.
 - Request bodies for widget actions are received before a dashboard worker is
-  used: at most 4 MiB, arriving within 30 seconds, so one slow client can't
-  tie up workers.
+  used: at most 1 MiB (the native routes' own limit), arriving within 30
+  seconds, and 32 MiB across all uploads at once (`503` with `Retry-After`
+  beyond it), so slow or many clients can't tie up workers or memory.
+- WebSocket upgrade requests are refused with `404`. No dashboard page uses
+  one, and an unanswered upgrade could hold a dashboard worker for a minute.
 
 ### Security
 - Next.js **16.4.2** (from 16.3.8) for GHSA-2464-fhr4-w9xw,

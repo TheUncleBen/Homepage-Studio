@@ -204,9 +204,14 @@ The controller adds `Content-Security-Policy: frame-ancestors 'self'` (or the
 `STUDIO_FRAME_ANCESTORS` list) with `X-Frame-Options: SAMEORIGIN` for the
 default, `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`
 to every response; a native response cannot replace them. Request bodies for
-native routes are received in full by the controller, bounded to 4 MiB and 30
-seconds, before a dashboard worker is leased, so a slow body cannot hold a
-worker. Browser navigations (`GET`/`HEAD` accepting `text/html`) to an
+native routes are received in full by the controller, bounded to 1 MiB (the
+native routes' own limit) and 30 seconds, before a dashboard worker is leased,
+so a slow body cannot hold a worker. All native bodies in flight share a
+32 MiB budget; past it a request gets `503` with `Retry-After`. A declared
+length over 1 MiB is refused at once, and `Expect: 100-continue` is answered
+only for an acceptable upload. WebSocket upgrade requests are refused with
+`404` before routing: no browser-facing route uses one, so an upgrade never
+waits for or holds a worker. Browser navigations (`GET`/`HEAD` accepting `text/html`) to an
 unknown, renamed-away or archived dashboard address receive a small static
 `404` page with no script and no reflected request text; API and fetch callers
 keep the JSON error.

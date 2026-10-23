@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -73,7 +75,11 @@ test('frame ancestor configuration accepts only self and exact http(s) origins',
   for (const blank of [undefined, null, '', '   ', '\n']) assert.equal(parseFrameAncestors(blank), null);
   assert.deepEqual(parseFrameAncestors("https://HA.Example.test:8123/ 'self'"), ['https://ha.example.test:8123', "'self'"]);
   assert.deepEqual(parseFrameAncestors('https://ha.example.test:443'), ['https://ha.example.test']);
-  for (const invalid of ['self', "'none'", '*', 'https://*.example.test', 'ha.example.test', 'https:ha.example.test', 'ftp://ha.example.test',
+  // .env files and shells drop the quotes, so a bare self means 'self'.
+  assert.deepEqual(parseFrameAncestors('self https://ha.example.test:8123'), ["'self'", 'https://ha.example.test:8123']);
+  assert.deepEqual(parseFrameAncestors('https://[::1]:8123 http://192.0.2.7'), ['https://[::1]:8123', 'http://192.0.2.7']);
+  for (const invalid of ['https://a.test;script-src', "https://a.test;script-src'unsafe-inline'", "https://a'b.test", 'https://a_b.test', 'https://a"b.test',
+    'https://a.test%3Bx', 'https://a.test!', 'https://a.test$x', "'SELF'", 'SELF', 'selfx', "'none'", '*', 'https://*.example.test', 'ha.example.test', 'https:ha.example.test', 'ftp://ha.example.test',
     'https://ha.example.test/path', 'https://ha.example.test?x=1', 'https://ha.example.test#x', 'https://user:pass@ha.example.test',
     'https://ha.example.test,https://b.example.test', "'self';", 'javascript:alert(1)', 'data:']) {
     assert.throws(() => parseFrameAncestors(invalid), /STUDIO_FRAME_ANCESTORS/, invalid);
@@ -100,6 +106,16 @@ test('every response is marked nosniff with a same-origin referrer policy that n
     assert.deepEqual(allValues(response.raw, 'x-content-type-options'), ['nosniff'], target);
     assert.deepEqual(allValues(response.raw, 'referrer-policy'), ['same-origin'], target);
   }
+  assert.deepEqual(allValues((await request('/')).raw, 'x-powered-by'), [], 'A proxied native response does not advertise its framework.');
+});
+
+test('the documented frame-ancestors example survives .env and shell parsing', () => {
+  const example = readFileSync(new URL('../portainer.env.example', import.meta.url), 'utf8').match(/^# (STUDIO_FRAME_ANCESTORS=.*)$/m)?.[1];
+  assert.equal(example, `STUDIO_FRAME_ANCESTORS="'self' https://ha.example.test:8123"`);
+  const value = execFileSync('sh', ['-c', `${example}; printf %s "$STUDIO_FRAME_ANCESTORS"`], { encoding: 'utf8' });
+  assert.deepEqual(parseFrameAncestors(value), ["'self'", 'https://ha.example.test:8123']);
+  // Compose's dotenv reader removes the outer double quotes and keeps the rest.
+  assert.deepEqual(parseFrameAncestors(example.split('=').slice(1).join('=').replace(/^"(.*)"$/, '$1')), ["'self'", 'https://ha.example.test:8123']);
 });
 
 test('the native build does not advertise its framework', async () => {

@@ -18,7 +18,7 @@ Then find the symptom below. What the health endpoints mean is in
 | Swarm refuses the stack: `Set the exact Swarm node hostname that owns the persistent volumes` | `STUDIO_NODE` is missing. Add it, exactly as `docker node ls` shows the hostname |
 | Refused with `Set STUDIO_IMAGE to the qualified application image digest` | You're using the repository's template, which has no image. Use the one from a bundle ([VERSIONS.md](VERSIONS.md)) |
 | Log: `STUDIO_PUBLIC_ORIGIN must be the exact HTTP(S) dashboard origin.` and the container exits | The origin has a path, query, credentials or another scheme. Use only `https://host` or `http://host:port` |
-| Log: `STUDIO_FRAME_ANCESTORS entry "..." is not 'self' or an exact http(s) origin ...` | Fix the entry: space-separated, `'self'` with quotes, origins without paths or wildcards ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) |
+| Log: `STUDIO_FRAME_ANCESTORS entry "..." is not 'self' or an exact http(s) origin ...` | Fix the entry: space-separated, `'self'` or exact origins without paths or wildcards, the whole value in double quotes in a `.env` file ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) |
 | Log: `STUDIO_RENDERER_MAX_WORKERS must be an integer between 1 and 64.`, or the same for *Renderer idle duration* or *Renderer startup duration* (shown in milliseconds) | The value is out of range or not a whole number ([OPERATIONS.md](OPERATIONS.md#workers-and-limits)) |
 | Swarm: the task stays `pending` with `no suitable node` | `STUDIO_NODE` doesn't match a node's hostname |
 | `no basic auth credentials`, `denied` or `unauthorized` pulling from `ghcr.io` | The package isn't public yet: the bundle's `delivery-receipt.json` says `package-access-pending` ([VERSIONS.md](VERSIONS.md#checking-a-bundle)) |
@@ -44,7 +44,8 @@ Then find the symptom below. What the health endpoints mean is in
 | `403` *Open the editor from your dashboard.* or *Open this request from your dashboard.* | An editor or widget request came from another site, or with an `Origin` that isn't `STUDIO_PUBLIC_ORIGIN`. Use the dashboard at its exact origin. A proxy that rewrites the scheme (`http` vs `https`) causes this too |
 | `413` *This request exceeds the 2 MiB configuration limit.* | One file or request is over 2 MiB. Split large content, or keep it out of the YAML |
 | `413` on **Import dashboard**, often from the proxy itself | The proxy's body limit is below 40 MiB, or the backup really is larger ([REVERSE-PROXY.md](REVERSE-PROXY.md#request-limits)) |
-| `413` or `408` from a widget action | The body sent to a native route was over 4 MiB, or took over 30 seconds to arrive |
+| `413` or `408` from a widget action | The body sent to a native route was over 1 MiB, or took over 30 seconds to arrive |
+| `503` *Studio is receiving too many dashboard requests at once.* | Many widget actions were uploading at the same moment (over 32 MiB in total). Retry after the `Retry-After` seconds |
 | A save is refused because the dashboard changed | Someone else saved first. Your draft stays on screen; reload to see their change and redo yours |
 | *... contains invalid YAML at line N, column M.* | Fix the YAML at that spot. Also refused, with their own message: infinity-like values (`.inf`, `.nan`) and self-referencing aliases aren't accepted; quote them if they're meant as text |
 | *All dashboard renderers are busy ...* | More dashboards in use at once than `STUDIO_RENDERER_MAX_WORKERS`. Retry, or raise the limit ([OPERATIONS.md](OPERATIONS.md#workers-and-limits)) |
