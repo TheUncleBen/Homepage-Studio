@@ -24,16 +24,20 @@ Native Homepage checks run from `homepage/` with the pinned pnpm version from
 
 ```sh
 node scripts/install-pinned-pnpm.mjs upstream.lock.json
+pnpm --dir homepage install --frozen-lockfile
+STUDIO_NATIVE_SOURCE=homepage node --test test/native-redirect-security.mjs
 cd homepage
-pnpm install --frozen-lockfile
 pnpm audit --prod
 pnpm lint
 pnpm test
 pnpm run build
 ```
 
-The root `Dockerfile` repeats the native audit, lint, tests and production build
-as mandatory build stages, so a successful image build includes them:
+The root `Dockerfile` installs the frozen lockfile with the verified pinned pnpm,
+builds and compresses. It does not repeat the audit, redirect check, lint or unit
+tests, so an image build needs no registry access for an audit and is not
+blocked by a newly published advisory. Those checks are required CI gates
+instead (see below). Build the image with:
 
 ```sh
 docker build --build-arg STUDIO_BUILD_REVISION="$(git rev-parse HEAD)" \
@@ -57,19 +61,31 @@ STUDIO_TEST_CONTAINERS=1 STUDIO_PORTAINER_TESTS=1 \
 ## What CI checks
 
 [`validate.yml`](.github/workflows/validate.yml) runs on pull requests and on
-demand, natively on both linux/amd64 and linux/arm64. It publishes nothing. It
-runs:
+demand. It publishes nothing. A required **native source checks** job runs once
+on linux/amd64:
 
-- the dependency audit, controller, tooling and Python tests, the Swarm parser
-  check and the Docker-input and corresponding-source guard;
-- the complete image build, including the native audit, lint, tests and build;
+- the verified pinned pnpm and frozen native install;
+- the native redirect security regression check against the installed source;
+- the blocking production dependency audit (`pnpm audit --prod`);
+- native lint and the complete native unit test suite;
+- a guard that the Firefox/WebKit selection still lists exactly the eight
+  `@cross-engine` scenarios in each engine.
+
+These checks do not depend on the CPU architecture. Both architecture jobs
+(linux/amd64 and linux/arm64) need that job to pass before they start. Each then
+runs natively:
+
+- the controller dependency audit, controller, tooling and Python tests, the
+  Swarm parser check and the Docker-input and corresponding-source guard;
+- the complete image build (frozen install, production build, compression);
 - container acceptance on that image: fresh volumes, edits, snapshots, restarts,
   container replacement, standalone Compose, a one-node Swarm, Chromium, Firefox
   and WebKit, and real hidden-document timing;
 - both deployment templates through a pinned Portainer CE.
 
 [`candidate-approved.yml`](.github/workflows/candidate-approved.yml) runs the same
-qualification for an explicitly requested candidate. It then keeps the tested
+qualification, including the required native source checks job, on default-branch
+pushes and for an explicitly requested candidate. It then keeps the tested
 images under unique build tags, assembles the multi-architecture image, and
 saves the digest-pinned templates, corresponding source and verification report.
 [`promote-approved.yml`](.github/workflows/promote-approved.yml) promotes an
