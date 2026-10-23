@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 
-import { useLongPress, useStackGestures } from "./gestures";
+import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
 import NativePanel from "./native-panel";
 
@@ -69,6 +69,37 @@ export default function PanelHost({
     onDrag: onStackDrag,
     onManual,
   });
+  // Touch hold on the panel body selects like the header does (IN-01), unless
+  // the touch starts on interactive or horizontally scrolling native content.
+  // Mouse keeps header-only holds; the header handles its own presses.
+  const bodyHeld = useRef(0);
+  const bodyPress = useLongPress({
+    disabled: editing || busy || overlayOpen,
+    accepts: (event) =>
+      event.pointerType === "touch" &&
+      !event.target.closest(".studio-panel-header,.studio-resize-handle") &&
+      !touchesNativeContent(event),
+    onLongPress: (pointer) => {
+      bodyHeld.current = Date.now();
+      onLongPress?.(stack ? stack.id : panel.id, pointer);
+    },
+  });
+  useLayoutEffect(() => {
+    // touch-action is fixed when a touch starts. Body content that overflows
+    // horizontally keeps native panning; otherwise the body allows only
+    // vertical panning so horizontal swipes and holds reach the panel.
+    const element = nativeContent.current;
+    if (!element || typeof ResizeObserver === "undefined") return undefined;
+    const update = () => {
+      if (element.scrollWidth > element.clientWidth + 1) element.dataset.studioScrollX = "";
+      else delete element.dataset.studioScrollX;
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    [...element.children].forEach((child) => observer.observe(child));
+    update();
+    return () => observer.disconnect();
+  }, []);
   const duration =
     reducedMotion || stack?.playback.transition === "none" ? 0 : (stack?.playback.transitionDurationMs ?? 250);
   const style = { ...rect, "--studio-slide-duration": `${duration}ms` };
@@ -147,6 +178,26 @@ export default function PanelHost({
       inert={!active}
       style={style}
       {...gestures}
+      onPointerDown={(event) => {
+        gestures.onPointerDown(event);
+        bodyPress.onPointerDown(event);
+      }}
+      onPointerMove={(event) => {
+        gestures.onPointerMove(event);
+        bodyPress.onPointerMove(event);
+      }}
+      onPointerUp={(event) => {
+        bodyPress.onPointerUp(event);
+        gestures.onPointerUp(event);
+      }}
+      onPointerCancel={(event) => {
+        bodyPress.onPointerCancel(event);
+        gestures.onPointerCancel(event);
+      }}
+      onContextMenu={(event) => {
+        // A recognized touch hold must not also open the native context menu.
+        if (Date.now() - bodyHeld.current < 1500) event.preventDefault();
+      }}
     >
       <div
         ref={slide}

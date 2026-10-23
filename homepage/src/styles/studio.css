@@ -367,6 +367,25 @@ body {
 .studio-native-content > div {
   max-width: 100%;
 }
+/* Touch on a panel body: vertical page and content scrolling stay native,
+   while horizontal movement reaches the stack swipe and body hold. Content
+   that overflows horizontally keeps native panning (data-studio-scroll-x is
+   set by the panel host), and nested scrollers keep their own panning. */
+.studio-native-content:not([data-studio-scroll-x]) {
+  touch-action: pan-y;
+}
+@media (pointer: coarse) {
+  /* A body hold selects the panel rather than starting text selection. */
+  .studio-native-content {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .studio-native-content :is(input, textarea, [contenteditable]:not([contenteditable="false"])) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
 /* The default slate secondary shade needs more contrast over the light panel
    gradient, including card hover. Keep other native palettes and ordinary
    custom CSS in control; semantic status colors are outside these selectors. */

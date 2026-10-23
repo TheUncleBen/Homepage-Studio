@@ -294,6 +294,121 @@ describe("Native board save and draft safety", () => {
     },
   );
 
+  describe("touch on a panel body", () => {
+    const touch = (type, x = 100, y = 100, extra = {}) =>
+      Object.assign(new Event(type, { bubbles: true }), {
+        pointerId: 1,
+        pointerType: "touch",
+        button: 0,
+        isPrimary: true,
+        clientX: x,
+        clientY: y,
+        ...extra,
+      });
+    const stacked = () => {
+      const initial = structuredClone(initialState);
+      initial.board.stacks = [{
+        id: "body-stack",
+        panelIds: ["clock", "search"],
+        rect: { x: 0, y: 0, w: 4, h: 3 },
+        playback: { mode: "manual", intervalMs: 2000, manualHoldMs: 30000, loop: true, transition: "horizontal", transitionDurationMs: 250 },
+      }];
+      return initial;
+    };
+
+    it("holds to select and move an unstacked panel, keeping the child-to-panel capture transfer", async () => {
+      await mountBoard();
+      const native = screen.getByLabelText("Native state clock");
+      const body = screen.getByTestId("native-value-clock");
+      const section = body.closest("section");
+      let captured = false;
+      section.setPointerCapture = vi.fn(() => {
+        captured = true;
+      });
+      section.hasPointerCapture = vi.fn(() => captured);
+      section.releasePointerCapture = vi.fn(() => {
+        captured = false;
+      });
+      vi.useFakeTimers();
+      try {
+        fireEvent(body, touch("pointerdown"));
+        fireEvent(body, touch("pointermove", 102));
+        act(() => vi.advanceTimersByTime(420));
+        expect(screen.getByRole("button", { name: "Done", exact: true })).toBeInTheDocument();
+        expect(screen.getByRole("checkbox", { name: "Select Clock", exact: true })).toBeChecked();
+        expect(section.setPointerCapture).toHaveBeenCalledWith(1);
+        fireEvent(body, touch("lostpointercapture", 102));
+        expect(section.releasePointerCapture).not.toHaveBeenCalled();
+        fireEvent(window, touch("pointermove", 102, 188));
+        expect(section.style.top).toBe("88px");
+        fireEvent(section, touch("pointerup", 102, 188));
+        expect(screen.getByText("Unsaved arrangement", { exact: true })).toBeInTheDocument();
+        expect(screen.getByLabelText("Native state clock")).toBe(native);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it.each([
+      ["a mouse hold", (body) => [body, { pointerType: "mouse" }], null],
+      ["a touch on a native input", () => [screen.getByLabelText("Native state clock"), {}], null],
+      ["vertical movement before the hold", (body) => [body, {}], (body) => fireEvent(body, touch("pointermove", 100, 130))],
+      ["a second finger", (body) => [body, {}], () => fireEvent(window, touch("pointerdown", 200, 100, { pointerId: 2, isPrimary: false }))],
+      ["a release before the hold", (body) => [body, {}], (body) => fireEvent(body, touch("pointerup"))],
+    ])("does not select from %s", async (_, start, interrupt) => {
+      await mountBoard();
+      const body = screen.getByTestId("native-value-clock");
+      const [target, extra] = start(body);
+      vi.useFakeTimers();
+      try {
+        fireEvent(target, touch("pointerdown", 100, 100, extra));
+        interrupt?.(body);
+        act(() => vi.advanceTimersByTime(600));
+        expect(screen.queryByRole("button", { name: "Done", exact: true })).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Edit dashboard", exact: true })).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("swipes a stack from its active member's body and holds that body to select the whole stack", async () => {
+      await mountBoard({ initial: stacked() });
+      const active = () => document.querySelector('[data-stack-id]:not([aria-hidden="true"])');
+      expect(active().dataset.panelId).toBe("clock");
+      const body = screen.getByTestId("native-value-clock");
+      fireEvent(body, touch("pointerdown", 200, 100));
+      fireEvent(body, touch("pointermove", 170, 101));
+      fireEvent(body, touch("pointermove", 120, 102));
+      fireEvent(body, touch("pointerup", 120, 102));
+      expect(active().dataset.panelId).toBe("search");
+      expect(screen.getByRole("button", { name: /^Choose widget in stack:/ })).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByRole("button", { name: "Done", exact: true })).not.toBeInTheDocument();
+
+      // A swipe that starts on interactive native content stays with that content.
+      const input = screen.getByLabelText("Native state search");
+      fireEvent(input, touch("pointerdown", 200, 100));
+      fireEvent(input, touch("pointermove", 120, 101));
+      fireEvent(input, touch("pointerup", 120, 101));
+      expect(active().dataset.panelId).toBe("search");
+
+      const searchBody = screen.getByTestId("native-value-search");
+      const shell = document.querySelector(".studio-stack-shell");
+      vi.useFakeTimers();
+      try {
+        fireEvent(searchBody, touch("pointerdown"));
+        act(() => vi.advanceTimersByTime(420));
+        expect(screen.getByRole("button", { name: "Done", exact: true })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /^Choose widget in stack:/ })).toHaveAttribute("aria-expanded", "false");
+        fireEvent(window, touch("pointermove", 100, 188));
+        expect(shell.style.top).toBe("88px");
+        fireEvent(window, touch("pointerup", 100, 188));
+        expect(screen.getByText("Unsaved arrangement", { exact: true })).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it("accepts unchanged position settings without creating a draft or leaving the dialog open", async () => {
     await mountBoard();
     fireEvent.click(screen.getByRole("button", { name: "Edit dashboard", exact: true }));

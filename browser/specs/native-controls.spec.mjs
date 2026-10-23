@@ -3,6 +3,7 @@ import {
   mouseDrag, origin, panelPixels, seedServicePanels, setPanelSize,
   studioApi, test, touchSession,
 } from '../helpers/dashboard.mjs';
+import { playback, seedNative } from '../helpers/engineering.mjs';
 
 const carousel = page => page.locator('[aria-roledescription="carousel"]');
 const activePanel = page => page.locator('[data-stack-id]:not([aria-hidden="true"])');
@@ -102,6 +103,105 @@ test.describe('touch direct manipulation', () => {
       expect(saved.board.stacks).toHaveLength(1);
       expect(saved.board.stacks[0].panelIds).toHaveLength(2);
       expect(saved.board.panels).toHaveLength(3);
+    } finally { await touch.detach(); }
+  });
+});
+
+test.describe('touch on panel bodies', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test('body swipe navigates a stack and body hold selects, while native controls, links and vertical scroll keep their touch', async ({ page, request }) => {
+    await seedNative(request, {
+      widgetsYaml: JSON.stringify([
+        { greeting: { text: 'Swipe body fixture' } },
+        { search: { provider: 'duckduckgo', showSearchSuggestions: false, focus: false } },
+        { greeting: { text: 'Hold body fixture' } },
+      ]),
+      servicesYaml: JSON.stringify([{ Fixtures: [
+        { 'Link fixture': { href: `${origin}/#studio-link-fixture`, description: 'Native link body' } },
+        { 'Tall page marker': { href: `${origin}/#studio-tall-marker` } },
+      ] }]),
+    }, board => {
+      const byType = type => board.panels.filter(panel => panel.nativeLocator?.type === type);
+      const [swipe, hold] = byType('greeting');
+      const [search] = byType('search');
+      swipe.rect = { x: 0, y: 0, w: 4, h: 3 };
+      search.rect = { x: 0, y: 0, w: 4, h: 3 };
+      hold.rect = { x: 0, y: 4, w: 4, h: 3 };
+      board.panels.find(panel => panel.title === 'Link fixture').rect = { x: 0, y: 8, w: 4, h: 3 };
+      board.panels.find(panel => panel.title === 'Tall page marker').rect = { x: 0, y: 30, w: 4, h: 3 };
+      board.stacks = [{ id: 'body-stack', panelIds: [swipe.id, search.id], rect: { x: 0, y: 0, w: 4, h: 4 }, playback: playback() }];
+    });
+    await page.goto('/');
+    const editDashboard = page.getByRole('button', { name: 'Edit dashboard', exact: true });
+    const done = page.getByRole('button', { name: 'Done', exact: true });
+    const picker = page.getByRole('menu');
+    await expect(activePanel(page)).toContainText('Swipe body fixture');
+    const touch = await touchSession(page);
+    const center = async (locator) => {
+      await locator.scrollIntoViewIfNeeded();
+      const bounds = await locator.boundingBox();
+      return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    };
+    try {
+      // A short tap on the body neither opens the title picker nor edits.
+      let point = await center(activePanel(page).locator('.studio-native-content'));
+      await touch.start(point.x, point.y);
+      await touch.end();
+      await expect(picker).toHaveCount(0);
+      await expect(editDashboard).toBeVisible();
+
+      // Horizontal swipe across the stacked widget's body changes the slide.
+      await touch.start(point.x + 60, point.y);
+      await touch.move({ x: point.x + 60, y: point.y }, { x: point.x - 100, y: point.y + 4 });
+      await touch.end();
+      await expect(activePanel(page).getByRole('combobox')).toBeVisible();
+      await expect(picker).toHaveCount(0);
+      await expect(editDashboard).toBeVisible();
+
+      // A swipe or hold that starts on the native search input stays with it.
+      const input = activePanel(page).getByRole('combobox');
+      point = await center(input);
+      await touch.start(point.x + 40, point.y);
+      await touch.move({ x: point.x + 40, y: point.y }, { x: point.x - 100, y: point.y });
+      await touch.end();
+      await expect(activePanel(page).getByRole('combobox')).toBeVisible();
+      await touch.start(point.x, point.y);
+      await page.waitForTimeout(800);
+      await touch.end();
+      await expect(editDashboard).toBeVisible();
+      await expect(done).toHaveCount(0);
+
+      // A hold that starts on a native link neither selects nor navigates.
+      const link = page.locator('[data-panel-kind="service"][aria-label="Link fixture"] a[href]').first();
+      const url = page.url();
+      point = await center(link);
+      await touch.start(point.x, point.y);
+      await page.waitForTimeout(800);
+      await touch.end();
+      await expect(editDashboard).toBeVisible();
+      await expect(done).toHaveCount(0);
+      expect(page.url()).toBe(url);
+
+      // Vertical page scroll still starts from a body before any hold.
+      const holdBody = page.locator('[data-panel-kind="informationWidget"][aria-label="Greeting 2"] .studio-native-content');
+      point = await center(holdBody);
+      const scrollBefore = await page.evaluate(() => scrollY);
+      await touch.start(point.x, point.y);
+      await touch.move(point, { x: point.x, y: point.y - 120 });
+      await touch.end();
+      await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(scrollBefore + 20);
+      await expect(editDashboard).toBeVisible();
+
+      // Holding the body selects that panel for arrangement (IN-01).
+      point = await center(holdBody);
+      await touch.start(point.x, point.y);
+      await expect(done).toBeVisible();
+      await touch.end();
+      await expect(page.getByRole('checkbox', { name: 'Select Greeting 2', exact: true })).toBeChecked();
+      await expect(picker).toHaveCount(0);
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(editDashboard).toBeVisible();
     } finally { await touch.detach(); }
   });
 });

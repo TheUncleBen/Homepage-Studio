@@ -98,6 +98,28 @@ export function interactiveTarget(target, root) {
   return target instanceof Element && target !== root && Boolean(target.closest(INTERACTIVE));
 }
 
+// Touch on a panel body competes with native content. Leave a touch alone when
+// it starts on anything that handles its own touch input, or inside content
+// that scrolls horizontally (the swipe axis). Vertical-only scrolling stays
+// available through touch-action: pan-y and cancels a pending hold.
+const TOUCH_NATIVE = `${INTERACTIVE},embed,object,video,audio,label,[contenteditable]:not([contenteditable=false])`;
+function scrollsHorizontally(element) {
+  if (element.scrollWidth <= element.clientWidth + 1) return false;
+  return /auto|scroll/.test(getComputedStyle(element).overflowX);
+}
+export function touchesNativeContent(event) {
+  const { target, currentTarget: root } = event;
+  if (event.pointerType !== "touch" && event.pointerType !== "pen") return interactiveTarget(target, root);
+  if (!(target instanceof Element) || target === root) return false;
+  // The stack title keeps its existing swipe and click-gate behavior.
+  if (root?.contains(target) && target.closest("[data-studio-stack-title]")) return false;
+  if (target.closest(TOUCH_NATIVE)) return true;
+  for (let element = target; element && element !== root; element = element.parentElement) {
+    if (scrollsHorizontally(element)) return true;
+  }
+  return false;
+}
+
 export function useStackGestures({ controller, disabled, onManual, onDrag }) {
   const drag = useRef(null);
   const wheel = useRef({ amount: 0, last: 0, cooldown: 0 });
@@ -175,7 +197,7 @@ export function useStackGestures({ controller, disabled, onManual, onDrag }) {
         disabled ||
         event.button !== 0 ||
         event.isPrimary === false ||
-        interactiveTarget(event.target, event.currentTarget)
+        touchesNativeContent(event)
       )
         return;
       drag.current = {
