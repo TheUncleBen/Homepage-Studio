@@ -3,8 +3,8 @@
 This is the public engineering acceptance map for the controlled single-container
 revision. It defines required behavior and gates; an entry here is not a claim
 that the current candidate has passed. Consult [verification](../VERIFICATION.md)
-for observed results and [implementation plan](IMPLEMENTATION-PLAN.md) for work
-remaining. The owner's private requirements record preserves the complete
+for how each gate is run; a candidate's workflow run and verification report
+hold its observed results. The owner's private requirements record preserves the complete
 historical conversation and project decisions.
 
 | Feature area | Required behavior | Engineering evidence required |
