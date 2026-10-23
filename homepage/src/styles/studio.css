@@ -362,6 +362,11 @@ body {
   overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--studio-line-strong) transparent;
+}
+/* Contain overscroll only in a body that really scrolls vertically (set by
+   the panel host). A body that fits must let a vertical swipe scroll the
+   page: browsers apply overscroll-behavior to any scroll container. */
+.studio-native-content[data-studio-scroll-y] {
   overscroll-behavior: contain;
 }
 .studio-native-content > div {

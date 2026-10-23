@@ -88,17 +88,33 @@ export default function PanelHost({
     // touch-action is fixed when a touch starts. Body content that overflows
     // horizontally keeps native panning; otherwise the body allows only
     // vertical panning so horizontal swipes and holds reach the panel.
+    // Only a body that really scrolls vertically contains its overscroll;
+    // otherwise a vertical swipe on the body must scroll the page.
     const element = nativeContent.current;
     if (!element || typeof ResizeObserver === "undefined") return undefined;
     const update = () => {
       if (element.scrollWidth > element.clientWidth + 1) element.dataset.studioScrollX = "";
       else delete element.dataset.studioScrollX;
+      if (element.scrollHeight > element.clientHeight + 1) element.dataset.studioScrollY = "";
+      else delete element.dataset.studioScrollY;
     };
     const observer = new ResizeObserver(update);
     observer.observe(element);
     [...element.children].forEach((child) => observer.observe(child));
+    // Native content can replace its children after mount; observe those too.
+    const children =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(() => {
+            [...element.children].forEach((child) => observer.observe(child));
+            update();
+          });
+    children?.observe(element, { childList: true });
     update();
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      children?.disconnect();
+    };
   }, []);
   const duration =
     reducedMotion || stack?.playback.transition === "none" ? 0 : (stack?.playback.transitionDurationMs ?? 250);
