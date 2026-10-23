@@ -222,7 +222,6 @@ export function createRendererPool({
 
   return {
     acquire,
-    async warm(entry, host) { const lease = await acquire(entry, host); lease.release(); return lease.origin; },
     drain: id => serial(async () => {
       const record = current.get(id);
       if (!record) return;
