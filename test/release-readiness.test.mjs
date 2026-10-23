@@ -714,10 +714,10 @@ test('workflow contracts run full native qualification once per push and retain 
   assert.deepEqual(candidate.on.push.branches, ['implementation/native-dashboard']);
   assert.deepEqual(Object.keys(validation.on), ['pull_request', 'workflow_dispatch'], 'Default pushes must not duplicate the same native qualification workflow.');
   assert.deepEqual(Object.keys(official.on), ['workflow_dispatch']);
-  for (const workflow of [candidate, official]) {
+  for (const workflow of [candidate, official, validation]) {
     assert.deepEqual(workflow.permissions, { contents: 'read' });
-    assert.equal(workflow.concurrency['cancel-in-progress'], false);
-    for (const job of Object.values(workflow.jobs)) for (const step of job.steps || []) {
+    assert.equal(workflow.concurrency['cancel-in-progress'], workflow === validation);
+    for (const job of Object.values(workflow.jobs)) for (const step of [job, ...(job.steps || [])]) {
       assert.notEqual(step['continue-on-error'], true);
       if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/);
     }
@@ -726,7 +726,12 @@ test('workflow contracts run full native qualification once per push and retain 
   assert.equal(candidate.jobs.publish, undefined);
   assert.ok(Object.values(candidate.jobs).every(job => !job.environment));
   assert.ok(!candidateText.includes('STUDIO_PACKAGE_METADATA_TOKEN'));
-  assert.equal(candidate.jobs.native.needs, undefined);
+  // The architecture jobs wait only for the required native source checks (lint,
+  // unit tests, audit, redirect check), which run once and gate every image build.
+  assert.equal(candidate.jobs.native.needs, 'native-checks');
+  assert.equal(candidate.jobs['native-checks'].needs, undefined);
+  assert.equal(candidate.jobs['native-checks'].if, candidate.jobs.native.if);
+  assert.deepEqual(candidate.jobs['native-checks'].permissions, { contents: 'read' });
   assert.deepEqual(candidate.jobs.native.strategy.matrix.include, [{ arch: 'amd64', runner: 'ubuntu-24.04' }, { arch: 'arm64', runner: 'ubuntu-24.04-arm' }]);
   assert.equal(candidate.jobs.native.strategy['fail-fast'], false);
   const steps = candidate.jobs.native.steps;
@@ -743,9 +748,9 @@ test('workflow contracts run full native qualification once per push and retain 
   assert.ok(steps.some(step => step.run?.includes('install --with-deps chromium firefox webkit')));
   assert.ok(steps.some(step => step.run?.includes('node --test test/*.test.mjs')));
   assert.ok(steps.find(step => step.run?.includes('docker buildx build')).run.includes('--load --provenance=false --sbom=false --platform'));
-  assert.equal(candidate.jobs.assemble.needs, 'native');
+  assert.deepEqual(candidate.jobs.assemble.needs, ['native-checks', 'native']);
   assert.equal(official.jobs.promote.environment.name, 'official-release');
-  assert.ok(!official.jobs.promote.steps.some(step => step.run?.includes('docker build')));
+  for (const job of Object.values(official.jobs)) assert.ok(!job.steps.some(step => /docker\s+(?:buildx\s+)?build|pnpm/.test(step.run || '')), 'promotion must not rebuild or retest images');
   const originalBundle = official.jobs.promote.steps.find(step => step.uses?.startsWith('actions/download-artifact@'));
   assert.equal(originalBundle.with['run-id'], '${{ needs.review.outputs.candidate_run_id }}');
   assert.equal(originalBundle.with.name, 'candidate-${{ needs.review.outputs.source_commit }}-${{ needs.review.outputs.candidate_run_id }}');
