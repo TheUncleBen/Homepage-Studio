@@ -19,6 +19,10 @@ if (!studioVersion) throw new Error('VERSION must identify this Studio build.');
 const hopHeaders = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 export const NATIVE_PROTOCOL = 1;
 export const UPSTREAM_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
+// Native API routes use Next.js's default 1 MB body parser; this cap only bounds
+// what the controller buffers before it asks for a worker.
+export const NATIVE_BODY_LIMIT = 4 * 1024 * 1024;
+const NATIVE_BODY_TIMEOUT_MS = 30000;
 
 function headersWithoutHop(headers) {
   const removed = new Set([...hopHeaders, ...String(headers.connection || '').split(',').map(s => s.trim().toLowerCase())]);
@@ -48,6 +52,32 @@ function nativeRefresh(value, context) {
   const url = match[2] ?? match[3] ?? match[4].trim();
   const quote = match[2] !== undefined ? '"' : match[3] !== undefined ? "'" : '';
   return match[1] + quote + nativeLocation(url, context) + quote;
+}
+
+// Receive a proxied native request body before a worker lease is taken, so a
+// slow or stalled upload cannot hold a renderer slot.
+function readNativeBody(req, { limit = NATIVE_BODY_LIMIT, timeoutMs = NATIVE_BODY_TIMEOUT_MS } = {}) {
+  return new Promise((resolveBody, reject) => {
+    const chunks = [];
+    let length = 0, done = false;
+    const finish = (error, value) => {
+      if (done) return; done = true;
+      clearTimeout(timer);
+      req.off('data', data); req.off('end', end); req.off('error', failed); req.off('aborted', aborted); req.off('close', aborted);
+      if (error) { req.pause(); reject(error); } else resolveBody(value);
+    };
+    const fail = (message, status, code) => finish(Object.assign(new Error(message), { status, code, closeConnection: true }));
+    const data = chunk => {
+      length += chunk.length;
+      if (length > limit) fail(`This request exceeds the ${limit / (1024 * 1024)} MiB dashboard request limit.`, 413, 'REQUEST_TOO_LARGE');
+      else chunks.push(chunk);
+    };
+    const end = () => finish(undefined, Buffer.concat(chunks));
+    const failed = error => finish(error);
+    const aborted = () => finish(Object.assign(new Error('The request was cancelled.'), { status: 400, code: 'REQUEST_ABORTED' }));
+    const timer = setTimeout(() => fail('The request body was not received in time. Retry the action.', 408, 'REQUEST_BODY_TIMEOUT'), timeoutMs);
+    req.on('data', data); req.once('end', end); req.once('error', failed); req.once('aborted', aborted); req.once('close', aborted);
+  });
 }
 
 async function readBody(req, maxBytes = 2 * 1024 * 1024) {
@@ -195,6 +225,9 @@ function createDashboardHandlers(options = {}) {
     if (res.destroyed || req.aborted) return;
     const basePath = dashboardBasePath(dashboard);
     const host = String(req.headers.host).toLowerCase();
+    const hasBody = req.headers['transfer-encoding'] !== undefined || Number(req.headers['content-length'] || 0) > 0;
+    const body = hasBody ? await readNativeBody(req, { timeoutMs: options.nativeBodyTimeoutMs }) : undefined;
+    if (res.destroyed || req.aborted) return;
     const lease = await acquireNative(host, dashboard);
     const upstream = lease.origin;
     const transport = upstream.protocol === 'https:' ? https : http;
@@ -205,6 +238,7 @@ function createDashboardHandlers(options = {}) {
     res.once('finish', release); res.once('close', abandon); req.once('aborted', abandon);
     if (res.destroyed || req.aborted) { abandon(); return; }
     const headers = Object.fromEntries(Object.entries(headersWithoutHop(req.headers)).filter(([key]) => !key.startsWith('x-studio-')));
+    if (body) headers['content-length'] = String(body.length);
     try {
       upstreamRequest = transport.request(upstream, { method: req.method, path: req.url, headers, timeout: 60000 }, response => {
         upstreamResponse = response;
@@ -227,7 +261,7 @@ function createDashboardHandlers(options = {}) {
       }
       release();
     });
-    req.pipe(upstreamRequest);
+    upstreamRequest.end(body);
   }
 
   async function handle(req, res, dashboard) {
@@ -266,6 +300,7 @@ function createDashboardHandlers(options = {}) {
       await proxy(req, res, dashboard);
     } catch (error) {
       const status = Number(error.status || error.statusCode) || 500;
+      if (error.closeConnection && !res.headersSent) res.setHeader('connection', 'close');
       json(res, status, { error: status < 500 || error instanceof ConfigError || error instanceof BoardError || error instanceof DiscoveryError || error instanceof RendererError ? error.message : 'The editor could not read or save its configuration. Check the configuration and state volume permissions.', code: error.code || 'EDITOR_ERROR' });
       if (status >= 500) console.error('Editor request failed:', error.code || error.name);
     }
