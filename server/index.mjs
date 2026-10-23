@@ -23,6 +23,34 @@ export const UPSTREAM_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
 // what the controller buffers before it asks for a worker.
 export const NATIVE_BODY_LIMIT = 4 * 1024 * 1024;
 const NATIVE_BODY_TIMEOUT_MS = 30000;
+// Response headers the controller owns. A native response cannot replace them.
+const CONTROLLER_HEADERS = ['x-frame-options'];
+
+// STUDIO_FRAME_ANCESTORS replaces the default `frame-ancestors 'self'` list.
+// Unset or blank keeps the default. Each whitespace-separated entry must be
+// 'self' or an exact http(s) origin; anything else stops startup.
+export function parseFrameAncestors(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  return text.split(/\s+/).map(token => {
+    if (token === "'self'") return token;
+    let url;
+    try { url = /^https?:\/\//i.test(token) && !token.includes('*') ? new URL(token) : undefined; } catch { /* Rejected below. */ }
+    if (!url || url.username || url.password || url.pathname !== '/' || url.search || url.hash || !/^https?:\/\/[^/?#]+\/?$/i.test(token)) {
+      throw new Error(`STUDIO_FRAME_ANCESTORS entry "${token}" is not 'self' or an exact http(s) origin such as https://home.example.test:8123.`);
+    }
+    return url.origin;
+  });
+}
+
+export function securityHeaders(frameAncestors) {
+  const sources = frameAncestors ?? ["'self'"];
+  return {
+    'content-security-policy': `frame-ancestors ${sources.join(' ')}`,
+    // X-Frame-Options cannot name several origins, so only the default sends it.
+    ...(frameAncestors ? {} : { 'x-frame-options': 'SAMEORIGIN' }),
+  };
+}
 
 function headersWithoutHop(headers) {
   const removed = new Set([...hopHeaders, ...String(headers.connection || '').split(',').map(s => s.trim().toLowerCase())]);
@@ -248,6 +276,12 @@ function createDashboardHandlers(options = {}) {
         if (responseHeaders.location) responseHeaders.location = nativeLocation(responseHeaders.location, context);
         if (responseHeaders.refresh) responseHeaders.refresh = nativeRefresh(responseHeaders.refresh, context);
         responseHeaders['cache-control'] = 'no-store';
+        for (const key of CONTROLLER_HEADERS) delete responseHeaders[key];
+        // A native policy stays in force; the controller's frame-ancestors
+        // policy is added as a separate header, and browsers enforce both.
+        if (responseHeaders['content-security-policy'] && res.hasHeader('content-security-policy')) {
+          responseHeaders['content-security-policy'] = [].concat(responseHeaders['content-security-policy'], res.getHeader('content-security-policy'));
+        }
         res.writeHead(response.statusCode || 502, responseHeaders);
         response.on('error', () => res.destroy()); response.on('aborted', () => res.destroy());
         response.pipe(res);
@@ -357,6 +391,7 @@ export function createStudioServer(options = {}) {
     if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('The injected renderer must be an HTTP(S) origin.');
     rendererPool = { acquire: async () => ({ origin, release() {} }), drain: async () => {}, close: async () => {} };
   }
+  const responseHeaders = securityHeaders(parseFrameAncestors(options.frameAncestors ?? process.env.STUDIO_FRAME_ANCESTORS));
   rendererPool ||= createRendererPool({ configRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision });
   const handlers = new Map();
   const unpublished = new Map();
@@ -435,6 +470,7 @@ export function createStudioServer(options = {}) {
     return registry.read();
   }
   const server = http.createServer(async (req, res) => {
+    for (const [name, value] of Object.entries(responseHeaders)) res.setHeader(name, value);
     try {
       original.checkRequest(req);
       const path = req.url.split('?')[0];
