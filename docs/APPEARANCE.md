@@ -2,7 +2,7 @@
 
 Open **Dashboard settings → Appearance** to choose Dark, Light, or Follow device, then choose an accent or enter a hex color. The default is the original muted eggplant accent on charcoal and gray surfaces. Eggplant, Graphite, Ocean, and Sage are convenient starting points; any three- or six-digit hex color is accepted. The preview changes with the draft. **Save settings** applies it to this dashboard and creates the usual recovery snapshot.
 
-Each dashboard stores its appearance in its own `settings.yaml`. A dashboard can look completely different from another without changing the image or building another application. Studio manages separate immutable-ID configuration and state directories inside the same two deployment volumes, as described in [Deployment](DEPLOYMENT.md). Opening settings does not insert defaults into an existing file.
+Each dashboard stores its appearance in its own `settings.yaml`. A dashboard can look completely different from another without changing the image or building another application. Studio manages separate immutable-ID configuration and state directories inside the same two deployment volumes, as described in [Where the data lives](OPERATIONS.md#where-the-data-lives). Opening settings does not insert defaults into an existing file.
 
 ## Native settings and Studio appearance
 

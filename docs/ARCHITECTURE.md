@@ -87,6 +87,12 @@ unchanged. The index is built only when a new placement is needed; it does not
 allocate a dense grid up to every distant stored coordinate. The existing
 4,096-panel ceiling remains a validation bound, not a device performance promise.
 
+Panel titles are display text derived on the server. Information widgets use
+the native display name from the shipped catalog ("Date & Time"), or a
+title-cased type for an unknown one, and duplicates are numbered in
+configuration order ("Date & Time 2"). Appending a widget never renames an
+earlier one, and titles never change panel identities or the stored board.
+
 Native locators are derived on the server. Browser board submissions can change geometry, grouping, and playback preferences, but cannot replace native source identities or supply new credential-bearing locators. When a service has both `widgets` and `widget`, the adapter retains the original source key and native proxy index: array indices are nonnegative and the singular widget uses -1.
 
 A raw YAML type edit in an existing source slot preserves its panel identity after unchanged entries have reserved their identities. Structured rename/move/edit operations preserve identity explicitly. Snapshot restoration restores the source identities and board alongside configuration.
@@ -95,6 +101,9 @@ Structured editor patches contain changed keys only, preserving untouched null v
 
 The renderer keeps native panel hosts in a stable keyed list. Position and visibility change without making a slide a newly mounted widget. Hidden stack members are inert. Playback state, active slide, elapsed time, and finger-following offsets are temporary client state and do not change the persisted revision.
 
+The board is projected onto 12 columns at a board width of 940 px or more, 8
+columns from 560 px and 4 columns below that, rounding both edges of a tile
+with one rule so tiles sharing a canonical edge stay adjacent.
 Responsive editing must map projected rows back to the one canonical board,
 including keyboard movement, while preserving the intended visible order across
 adjacent or multi-row movement and mixed panel sizes. It does not introduce a
@@ -105,6 +114,25 @@ pointer or a modal opening cancels the applicable pending hold/drag. Quick Launc
 freezes playback and cancels pending holds or active arrangement; closing it
 resumes only the remaining playback time. Loop-wrap direction and rapid reversal
 use transient navigation direction while native hosts stay mounted.
+
+## Input handling
+
+Pointer, touch and keyboard input share one arrangement model. Outside edit
+mode, a hold on empty board space or a panel title bar (or a context-menu
+press on it) enters edit mode; on touch and pen, a hold on a panel body does
+the same and selects that panel, or the whole stack for a stacked member.
+Panel bodies use `touch-action: pan-y`, so vertical page and content scrolling
+stay native and cancel a pending hold, while horizontal movement reaches the
+stack swipe. A touch or pen press that starts on native interactive content
+is left to that content: links, buttons, form controls, labels, editable
+content, iframes, embeds and objects, media, canvas and SVG charts, and
+anything inside a horizontally scrolling element. Mouse body presses are not
+holds. The stack title keeps its own swipe handling; its picker opens only from
+a click-gated short activation or the keyboard, never from a body gesture,
+drag, long press, context menu or multi-touch, and not in edit mode.
+
+Leaving edit mode with a changed arrangement asks for confirmation before the
+draft is discarded; a clean board leaves immediately.
 
 ## Native discovery
 
@@ -156,6 +184,11 @@ Managed native files are services.yaml, widgets.yaml, bookmarks.yaml, settings.y
 
 YAML values must remain representable in the editor's JSON transport. Cyclic aliases and non-finite numbers such as `.inf`, `.nan`, or an overflowing numeric literal are rejected before snapshots or writes. Ordinary aliases and merges, finite numbers, nulls, booleans, comments, unknown options, quoted text, and native environment/file references remain supported. Quote an infinity-like value when it is intentionally text. Invalid drafts remain available for correction; existing invalid files are not rewritten automatically.
 
+A YAML parse failure reports the one-based line and column in the owner's
+original text (mapped back through environment-placeholder masking) and an
+error code. Neither the API nor the editor echoes source text, so an inline
+secret on the failing line is not repeated in a message or log.
+
 Every mutation validates the candidate content and generated state before creating a snapshot. A revision hashes the exact managed bytes. A single serialized writer, revision checks before and during writes, atomic replacement per file, and a durable journal protect against concurrent changes and interrupted saves. The files are not a filesystem-wide atomic transaction: recovery restores the previous coherent snapshot before native requests continue. If unrelated external edits make recovery ambiguous, the writer refuses to overwrite them and retains the recovery data.
 
 Snapshots default to 25, with configurable retention. Their ordering uses a logical timestamp greater than the last retained snapshot, so saves in the same millisecond, a backward wall-clock change, and process restart do not prune a newer save as if it were older. The displayed creation time remains the actual clock time. A live journal's snapshot is never pruned. Read/export operations and playback do not create snapshots. Legacy four-file recovery material can be restored without erasing newer optional native files.
@@ -165,6 +198,17 @@ Complete exports and downloaded full snapshots can be imported into another Stud
 Appearance is an optional studioTheme namespace in settings.yaml. Dark, light, or device-following mode stays synchronized with native widget theme context. Accent-derived tokens use bounded hex values and readable foreground/background pairs. Generated CSS uses zero-specificity selectors, allowing ordinary custom.css overrides to keep precedence when Next.js updates the document head. Device preference changes do not mutate files. See [Appearance](APPEARANCE.md).
 
 ## API boundaries
+
+The controller adds `Content-Security-Policy: frame-ancestors 'self'` (or the
+`STUDIO_FRAME_ANCESTORS` list) with `X-Frame-Options: SAMEORIGIN` for the
+default, `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`
+to every response; a native response cannot replace them. Request bodies for
+native routes are received in full by the controller, bounded to 4 MiB and 30
+seconds, before a dashboard worker is leased, so a slow body cannot hold a
+worker. Browser navigations (`GET`/`HEAD` accepting `text/html`) to an
+unknown, renamed-away or archived dashboard address receive a small static
+`404` page with no script and no reflected request text; API and fetch callers
+keep the JSON error.
 
 Exact Host checks apply to requests. Both Studio `/__studio/` and native `/api/`
 routes, after selecting the dashboard, reject browser Fetch Metadata contexts of
@@ -224,8 +268,8 @@ configuration switch enabling verification for the shared helper;
 per-dashboard jar uses normal cookie domain/path rules for direct requests; it
 is not separated by integration or port. Configure canonical service endpoints
 when authentication is required rather than relying on authenticated
-cross-origin redirects. See [deployment](DEPLOYMENT.md) for the operational
-trust boundary. These retained behaviors are not fixed by the redirect guard.
+cross-origin redirects. See [integrations and trust](OPERATIONS.md#integrations-and-trust)
+for the operational trust boundary. These retained behaviors are not fixed by the redirect guard.
 
 ## Supported deployment targets and qualification
 
@@ -238,6 +282,7 @@ The entrypoint derives the exact accepted host from it. A slug is a single
 validated path segment, such as `/admin`; it is not another DNS resolver host.
 Studio does not configure DNS, reverse proxies, TLS or login. Trusted editor
 users on this origin can administer the registry and other dashboards. External
-access controls remain outside the application, and dashboard slugs must not be
-presented as authorization boundaries. Robots/indexing policy is likewise a
+access controls remain outside the application: put them in the reverse proxy
+in front of the whole origin ([reverse proxy](REVERSE-PROXY.md)). Dashboard
+slugs must not be presented as authorization boundaries. Robots/indexing policy is likewise a
 presentation directive, not an access-control mechanism.
