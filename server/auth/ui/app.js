@@ -129,7 +129,7 @@
     FLOW_EXPIRED: 'That sign-in took too long or was started in another browser. Try again.',
     OIDC_FAILED: "Single sign-on didn't complete. Try again.",
     OIDC_UNAVAILABLE: "The identity provider can't be reached right now. Try again shortly, or sign in another way.",
-    NO_ACCOUNT: 'There is no Studio account for you yet. Ask an administrator to invite you.',
+    NO_ACCOUNT: 'There is no Studio account for you yet. Ask an administrator to invite you or add you to an allowed group.',
     GROUP_NOT_ALLOWED: "Your account isn't in a group allowed to use this Studio. Ask an administrator.",
     ACCOUNT_DISABLED: 'This account is disabled. Ask an administrator.',
     REAUTH_MISMATCH: 'Confirm with the same account you are signed in with.',
@@ -1110,7 +1110,7 @@
           } },
             field('Administrator groups', adminGroups, `One per line. People in these ${view.oidc.name} groups become administrators; provider accounts outside them are members.`),
             field('Allowed groups', allowedGroups, 'One per line. Leave empty to allow everyone the provider signs in. Administrator groups are always allowed.'),
-            check(`Create a Studio account the first time someone signs in with ${view.oidc.name}`, autoCreate, 'Otherwise invite them first; they then link their account from their account page.'),
+            check(`Create a Studio account the first time someone signs in with ${view.oidc.name}`, autoCreate, `Only for people in an allowed or administrator group. While both lists are empty, nobody new is created. Others need an invitation, then link their ${view.oidc.name} account from their account page.`),
             h('div', { class: 'row' }, save))));
       } else parts.push(section('Single sign-on', 'Not configured. Set STUDIO_OIDC_ISSUER, STUDIO_OIDC_CLIENT_ID and STUDIO_OIDC_CLIENT_SECRET_FILE to sign in with Authentik or another OpenID Connect provider. See docs/AUTHENTICATION.md.'));
       return [box, ...parts];

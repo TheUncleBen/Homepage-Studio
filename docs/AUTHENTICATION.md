@@ -181,9 +181,13 @@ signs in with it.
 - **Allowed groups**: if set, only people in one of these groups (or an
   administrator group) may sign in. Removing someone from the group in the
   provider ends their Studio session at the next check.
-- **Create a Studio account the first time someone signs in**: on by default.
-  Turn it off to require an invitation first; the invited person links their
-  provider account from **My account**.
+- **Create a Studio account the first time someone signs in**: on by default,
+  but only for people in an allowed group or an administrator group. While
+  both lists are empty, nobody new is created, so fill in at least one of them
+  before anyone else signs in for the first time. Accounts that already exist
+  and linked accounts still sign in. Anyone else is told to ask an
+  administrator. Turn the setting off to require an invitation for everyone;
+  the invited person links their provider account from **My account**.
 
 Accounts are matched by the provider's issuer and subject identifier only,
 never by email or username, so a matching email at the provider can't take

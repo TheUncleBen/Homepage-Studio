@@ -27,7 +27,8 @@ Owner direction, 23 October 2026. Full guide:
   administrators and allowed people mapped from provider groups, local
   accounts that can be turned off, and back-channel logout. Studio requests
   `offline_access` so it can re-check groups while people are signed in;
-  Authentik needs that scope mapping on the provider.
+  Authentik needs that scope mapping on the provider. New accounts are created
+  at first sign-in only for people in an allowed or administrator group.
 - Dashboards shared per person or group to **view** or **arrange**; widget
   settings, files, custom code, imports and sharing stay administrator-only.
   The editor hides what each person can't use.

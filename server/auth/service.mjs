@@ -346,6 +346,10 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   // provider groups. The grant is kept apart from the stored role, so it
   // goes away as soon as the provider stops mapping the person to it
   // (see effectiveRole).
+  function canAutoCreate(settings, groups) {
+    const set = new Set(groups);
+    return settings.autoCreate && [...settings.allowedGroups, ...settings.adminGroups].some(name => set.has(name));
+  }
   function applyProviderGroups(data, user, groups) {
     const settings = data.settings.oidc;
     const set = new Set(groups);
@@ -1199,9 +1203,12 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       return '/__studio/account?linked=1';
     }
     let user = findLinked(data);
-    if (!user && !data.settings.oidc.autoCreate) {
-      await audit('sign-in-failed', { step: 'oidc', reason: 'no-account' }, req);
-      fail('There is no Studio account for you yet. Ask an administrator to invite you.', 'NO_ACCOUNT', 403);
+    // Owner decision (23 Oct 2026): a new account is created only for someone
+    // in an allowed or administrator group. With neither list set, nobody is
+    // created; existing and linked accounts still sign in.
+    if (!user && !canAutoCreate(data.settings.oidc, result.groups)) {
+      await audit('sign-in-failed', { step: 'oidc', reason: data.settings.oidc.autoCreate ? 'no-group' : 'no-account' }, req);
+      fail('There is no Studio account for you yet. Ask an administrator to invite you or add you to an allowed group.', 'NO_ACCOUNT', 403);
     }
     const draftUser = user ?? { role: 'member', source: 'oidc' };
     const outcome = applyProviderGroups(data, draftUser, result.groups);

@@ -21,7 +21,7 @@ const close = async server => { server.closeAllConnections?.(); await new Promis
 async function mockProvider() {
   const { privateKey, publicKey } = await generateKeyPair('RS256');
   const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256', use: 'sig' };
-  const state = { user: { sub: 'sub-1', preferred_username: 'alice', name: 'Alice', email: 'alice@example.test', groups: [] }, codes: new Map(), refresh: new Map(), rotate: false, down: false, lastScope: null, refreshCalls: 0 };
+  const state = { user: { sub: 'sub-1', preferred_username: 'alice', name: 'Alice', email: 'alice@example.test', groups: ['studio-users'] }, codes: new Map(), refresh: new Map(), rotate: false, down: false, lastScope: null, refreshCalls: 0 };
   let issuer;
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, issuer);
@@ -171,7 +171,7 @@ test('without a refresh token, a provider session ends at its first re-check and
   t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   const ctx = await setup(t, { oidcScopes: 'openid profile email' });
   const admin = await createAdmin(ctx);
-  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: [] } }, { cookie: admin.cookie });
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
   const sso = await oidcSignIn(ctx);
   assert.ok(sso.cookie, sso.response.text);
   assert.equal((await ctx.request('/__studio/auth/admin/overview', { cookie: admin.cookie })).json.oidc.lastSignIn.refreshToken, false);
@@ -185,7 +185,7 @@ test('a provider outage keeps the session for one more interval, then ends it', 
   t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   const ctx = await setup(t);
   const admin = await createAdmin(ctx);
-  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: [] } }, { cookie: admin.cookie });
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
   const sso = await oidcSignIn(ctx);
   ctx.provider.state.down = true;
   t.mock.timers.tick(16 * 60000);
@@ -207,7 +207,7 @@ test('a revoked refresh token ends the session at once', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   const ctx = await setup(t);
   const admin = await createAdmin(ctx);
-  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: [] } }, { cookie: admin.cookie });
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
   const sso = await oidcSignIn(ctx);
   ctx.provider.state.refresh.clear();
   t.mock.timers.tick(16 * 60000);
@@ -283,7 +283,7 @@ test('linking needs a recent sign-in, sends an alert, and unlinking or an admin 
 test('the old GET link and confirm intents are refused', async t => {
   const ctx = await setup(t);
   const admin = await createAdmin(ctx);
-  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: [] } }, { cookie: admin.cookie });
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
   const sso = await oidcSignIn(ctx);
   const start = await ctx.request('/__studio/auth/oidc/start?intent=link', { cookie: admin.cookie });
   assert.equal(start.status, 302);
@@ -309,7 +309,7 @@ test('parallel requests at the re-check share one refresh, so rotating tokens ke
   t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   const ctx = await setup(t);
   const admin = await createAdmin(ctx);
-  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: [] } }, { cookie: admin.cookie });
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
   ctx.provider.state.rotate = true;
   const sso = await oidcSignIn(ctx);
   t.mock.timers.tick(16 * 60000);
@@ -364,7 +364,7 @@ test('the browser that started setup can resume it after a reload; others are to
 test('a manual administrator role on a provider account holds while no administrator groups are set', async t => {
   const ctx = await setup(t);
   const admin = await createAdmin(ctx);
-  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: [] } }, { cookie: admin.cookie });
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
   const sso = await oidcSignIn(ctx);
   const id = (await ctx.request('/__studio/auth/account', { cookie: sso.cookie })).json.user.id;
   assert.equal((await ctx.post('/__studio/auth/admin/update', { id, role: 'admin' }, { cookie: admin.cookie })).status, 200);
@@ -388,7 +388,7 @@ test('signed-out admin API reads answer 401 so the page can ask for sign-in', as
 test('back-channel logout ends the provider session', async t => {
   const ctx = await setup(t);
   const admin = await createAdmin(ctx);
-  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: [] } }, { cookie: admin.cookie });
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
   const sso = await oidcSignIn(ctx);
   const token = await new SignJWT({ sid: 'sid-sub-1', events: { 'http://schemas.openid.net/event/backchannel-logout': {} }, jti: randomUUID() }).setProtectedHeader({ alg: 'RS256', kid: 'k1', typ: 'logout+jwt' }).setIssuer(ctx.provider.issuer).setAudience('studio').setSubject('sub-1').setIssuedAt().sign(ctx.provider.privateKey);
   const res = await ctx.request('/__studio/auth/oidc/backchannel-logout', { method: 'POST', body: 'logout_token=' + token, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
@@ -399,7 +399,7 @@ test('back-channel logout ends the provider session', async t => {
 test('the recovery command refuses to promote a provider account while administrator groups decide roles', async t => {
   const ctx = await setup(t);
   const admin = await createAdmin(ctx);
-  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: ['studio-admins'], allowedGroups: [] } }, { cookie: admin.cookie });
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: ['studio-admins'], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
   await oidcSignIn(ctx);
   const { run } = await import('./cli.mjs');
   const env = { STUDIO_STATE_DIR: ctx.stateDir, STUDIO_PUBLIC_ORIGIN: ORIGIN };
@@ -407,4 +407,34 @@ test('the recovery command refuses to promote a provider account while administr
   const lines = [];
   await run(['list'], env, { log: line => lines.push(line) });
   assert.ok(lines.some(line => line.startsWith('alice\tmember\tsingle sign-on')), lines.join('\n'));
+});
+
+test('provider sign-in creates accounts only for people in an allowed or administrator group', async t => {
+  const ctx = await setup(t);
+  const admin = await createAdmin(ctx);
+  const refused = '/__studio/auth/sign-in?error=NO_ACCOUNT';
+  // Nothing listed: nobody new is created, even with auto-create on.
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: [], autoCreate: true } }, { cookie: admin.cookie });
+  assert.equal((await oidcSignIn(ctx)).response.headers.location, refused);
+  // Listed groups the person isn't in: still nobody.
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: ['studio-admins'], allowedGroups: ['family'], autoCreate: true } }, { cookie: admin.cookie });
+  assert.equal((await oidcSignIn(ctx)).response.headers.location, refused);
+  const overview = await ctx.request('/__studio/auth/admin/overview', { cookie: admin.cookie });
+  assert.equal(overview.json.users.length, 1);
+  // An administrator group counts.
+  ctx.provider.state.user.groups = ['studio-admins'];
+  const created = await oidcSignIn(ctx);
+  assert.ok(created.cookie, created.response.headers.location);
+  assert.equal(await role(ctx, created.cookie), 'admin');
+  // An existing account keeps signing in when the lists are cleared.
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: [], autoCreate: true } }, { cookie: admin.cookie });
+  ctx.provider.state.user.groups = [];
+  assert.ok((await oidcSignIn(ctx)).cookie);
+  // A different person, in an allowed group, with auto-create off: refused.
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['family'], autoCreate: false } }, { cookie: admin.cookie });
+  ctx.provider.state.user = { sub: 'sub-2', preferred_username: 'bob', name: 'Bob', email: 'bob@example.test', groups: ['family'] };
+  assert.equal((await oidcSignIn(ctx)).response.headers.location, refused);
+  // Turned back on, the allowed group creates the account.
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['family'], autoCreate: true } }, { cookie: admin.cookie });
+  assert.ok((await oidcSignIn(ctx)).cookie);
 });
