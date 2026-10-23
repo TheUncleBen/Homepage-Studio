@@ -49,16 +49,20 @@ describe("Studio grid geometry", () => {
     expect(repaired).not.toBe(overlapping);
     disjoint(repaired);
   });
-  it.each([354, 700])("moves a lower projected row upward through existing canonical slots at width %s", (width) => {
+  it.each([
+    { width: 354, lower: "b" },
+    { width: 700, lower: "c" },
+  ])("moves a lower projected row upward through existing canonical slots at width $width", ({ width, lower }) => {
     const original = board();
     const projection = projectBoard(original, width);
     const a = projection.units.find((unit) => unit.id === "a");
-    const b = projection.units.find((unit) => unit.id === "b");
+    const b = projection.units.find((unit) => unit.id === lower);
     expect(b.rect.y).toBeGreaterThan(a.rect.y);
-    const moved = moveProjectedUnit(original, "b", { x: 0, y: a.rect.y - b.rect.y }, projection);
+    const dx = ((a.rect.x + a.rect.w / 2 - b.rect.x - b.rect.w / 2) * 12) / projection.columns;
+    const moved = moveProjectedUnit(original, lower, { x: dx, y: a.rect.y - b.rect.y }, projection);
     const next = projectBoard(moved, width);
-    expect(next.units.find((unit) => unit.id === "b").rect.y).toBe(0);
-    expect([...next.units].sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)[0].id).toBe("b");
+    expect(next.units.find((unit) => unit.id === lower).rect.y).toBe(0);
+    expect([...next.units].sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)[0].id).toBe(lower);
     if (width < 560) expect(moved.panels[2]).toBe(original.panels[2]);
     expect(moved.panels.map((panel) => [panel.rect.w, panel.rect.h])).toEqual(
       original.panels.map((panel) => [panel.rect.w, panel.rect.h]),
@@ -115,7 +119,7 @@ describe("Studio grid geometry", () => {
     expect(moved.panels.map((panel) => [panel.rect.w, panel.rect.h])).toEqual(widths.map((w) => [w, 2]));
     disjoint(moved);
   });
-  it.each([354, 700])("preserves the requested visual insertion order across varied widths and heights at %s", (width) => {
+  it.each([354, 673, 700, 820])("preserves the requested visual insertion order across varied widths and heights at %s", (width) => {
     const arrangements = [
       [3, 4, 3], [3, 3, 4], [4, 4, 4], [6, 3, 3], [3, 6, 3],
       [4, 5, 3], [5, 3, 4], [3, 4, 5], [6, 6, 3, 3, 4], [3, 5, 4, 4, 3, 5],
@@ -157,6 +161,131 @@ describe("Studio grid geometry", () => {
         disjoint(moved);
       }));
     });
+  });
+  it.each([673, 820])("snaps 8-column panels to halves so rows fill the board at %s px", (width) => {
+    const row = (widths, y = 0) => {
+      let x = 0;
+      return widths.map((w, index) => {
+        const panel = { id: `${y}-${index}`, kind: "service", rect: { x, y, w, h: 2 } };
+        x += w;
+        return panel;
+      });
+    };
+    const value = {
+      ...board(),
+      panels: [...row([6, 6]), ...row([3, 3, 3, 3], 2), ...row([2, 4], 4), ...row([12], 6), ...row([9, 3], 8)],
+    };
+    const projection = projectBoard(value, width);
+    expect(projection.columns).toBe(8);
+    const at = (id) => projection.units.find((unit) => unit.id === id).rect;
+    // Every panel is half (4 of 8) or, wider than half the desktop, full width.
+    projection.units.forEach((unit, index) => {
+      expect([4, 8], unit.id).toContain(unit.rect.w);
+      expect([0, 4], unit.id).toContain(unit.rect.x);
+      expect(unit.rect.x + unit.rect.w).toBeLessThanOrEqual(8);
+      projection.units.slice(index + 1).forEach((other) => expect(intersects(unit.rect, other.rect)).toBe(false));
+    });
+    // Two halves share a row and meet in the middle; quarters pair up two-up.
+    expect(at("0-0")).toMatchObject({ x: 0, y: 0, w: 4 });
+    expect(at("0-1")).toMatchObject({ x: 4, y: 0, w: 4 });
+    expect([at("2-0"), at("2-1"), at("2-2"), at("2-3")].map(({ x, y }) => [x, y])).toEqual([[0, 2], [4, 2], [0, 4], [4, 4]]);
+    expect(at("6-0")).toMatchObject({ x: 0, w: 8 });
+    expect(at("8-0")).toMatchObject({ x: 0, w: 8 });
+    expect(at("8-1")).toMatchObject({ x: 0, w: 4 });
+  });
+  const rects = (projection) =>
+    Object.fromEntries(projection.units.map((unit) => [unit.id, [unit.rect.x, unit.rect.y, unit.rect.w, unit.rect.h]]));
+  const tiles = (count, w = 4, h = 3) =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `t${index}`,
+      kind: "service",
+      rect: { x: (index * w) % 12, y: Math.floor((index * w) / 12) * h, w, h },
+    }));
+  const expectReadingOrder = (value, width) => {
+    const projection = projectBoard(value, width);
+    const canonical = unitsForBoard(value)
+      .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id))
+      .map((unit) => unit.id);
+    expect(visualOrder(value, width).map((unit) => unit.id)).toEqual(canonical);
+    projection.units.forEach((unit, index) => {
+      expect(unit.rect.x + unit.rect.w).toBeLessThanOrEqual(projection.columns);
+      projection.units.slice(index + 1).forEach((other) => expect(intersects(unit.rect, other.rect)).toBe(false));
+    });
+    return projection;
+  };
+  it.each([673, 820])("wraps a row of three 4-wide tiles into two then one in reading order at %s px", (width) => {
+    const value = { ...board(), panels: tiles(3) };
+    const projection = expectReadingOrder(value, width);
+    expect(projection.columns).toBe(8);
+    expect(rects(projection)).toEqual({ t0: [0, 0, 4, 3], t1: [4, 0, 4, 3], t2: [0, 3, 4, 3] });
+  });
+  it.each([673, 820])("reflows a 3x3 grid of 4x3 tiles at %s px without holes or reordering", (width) => {
+    const value = { ...board(), panels: tiles(9) };
+    const before = JSON.stringify(value);
+    const projection = expectReadingOrder(value, width);
+    // Two halves per projected row, filling it; only the last row has a remainder.
+    projection.units.forEach((unit) => {
+      const index = Number(unit.id.slice(1));
+      expect(unit.rect, unit.id).toEqual({ x: (index % 2) * 4, y: Math.floor(index / 2) * 3, w: 4, h: 3 });
+    });
+    expect(projection.rows).toBe(15);
+    expect(JSON.stringify(value)).toBe(before);
+  });
+  it("reflows mixed sizes in reading order, wrapping beside a tall tile before starting a new row", () => {
+    const value = {
+      ...board(),
+      panels: [
+        { id: "a", kind: "service", rect: { x: 0, y: 0, w: 6, h: 4 } },
+        { id: "b", kind: "service", rect: { x: 6, y: 0, w: 3, h: 2 } },
+        { id: "c", kind: "service", rect: { x: 9, y: 0, w: 3, h: 2 } },
+        { id: "d", kind: "service", rect: { x: 6, y: 2, w: 6, h: 2 } },
+        { id: "e", kind: "service", rect: { x: 0, y: 4, w: 12, h: 2 } },
+      ],
+    };
+    expect(rects(expectReadingOrder(value, 820))).toEqual({
+      a: [0, 0, 4, 4],
+      b: [4, 0, 4, 2],
+      c: [4, 2, 4, 2],
+      d: [0, 4, 4, 2],
+      e: [0, 6, 8, 2],
+    });
+    expect(rects(expectReadingOrder(value, 673))).toEqual(rects(projectBoard(value, 820)));
+  });
+  it("reflows a stack as one unit with its shared rectangle", () => {
+    const value = {
+      ...board(),
+      panels: [
+        { id: "a", kind: "service", rect: { x: 0, y: 0, w: 4, h: 3 } },
+        { id: "m1", kind: "service", rect: { x: 4, y: 0, w: 4, h: 4 } },
+        { id: "m2", kind: "service", rect: { x: 4, y: 0, w: 4, h: 4 } },
+        { id: "c", kind: "service", rect: { x: 8, y: 0, w: 4, h: 3 } },
+        { id: "d", kind: "service", rect: { x: 0, y: 4, w: 4, h: 3 } },
+      ],
+      stacks: [{ id: "stack", panelIds: ["m1", "m2"], rect: { x: 4, y: 0, w: 4, h: 4 } }],
+    };
+    expect(rects(expectReadingOrder(value, 820))).toEqual({
+      a: [0, 0, 4, 3],
+      stack: [4, 0, 4, 4],
+      c: [0, 3, 4, 3],
+      d: [4, 4, 4, 3],
+    });
+  });
+  it("writes 8-column moves of a wrapped tile back to the shared desktop layout", () => {
+    const original = { ...board(), panels: tiles(6) };
+    const projection = projectBoard(original, 820);
+    expect(visualOrder(original, 820).map((unit) => unit.id)).toEqual(["t0", "t1", "t2", "t3", "t4", "t5"]);
+    // Drag the wrapped t2 up onto t0: it becomes first everywhere.
+    const up = moveProjectedUnit(original, "t2", { x: 0, y: -3 }, projection);
+    expect(visualOrder(up, 820).map((unit) => unit.id)).toEqual(["t2", "t0", "t1", "t3", "t4", "t5"]);
+    expect(visualOrder(up, 1200).map((unit) => unit.id)).toEqual(["t2", "t0", "t1", "t3", "t4", "t5"]);
+    disjoint(up);
+    // Drag t3 sideways onto t2 in the same projected row: they swap.
+    const t2 = projection.units.find((unit) => unit.id === "t2").rect;
+    const t3 = projection.units.find((unit) => unit.id === "t3").rect;
+    const side = moveProjectedUnit(original, "t3", { x: ((t2.x - t3.x) * 12) / 8, y: 0 }, projection);
+    expect(visualOrder(side, 820).map((unit) => unit.id)).toEqual(["t0", "t1", "t3", "t2", "t4", "t5"]);
+    expect(side.panels.map((panel) => [panel.rect.w, panel.rect.h])).toEqual(original.panels.map(() => [4, 3]));
+    disjoint(side);
   });
   it("pushes collisions deterministically while preserving source identities and untouched values", () => {
     const original = board();

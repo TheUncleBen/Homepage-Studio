@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { studioRequest } from "./api.mjs";
 import ConfigForm, { LINK_FIELDS, SERVICE_FIELDS } from "./config-form";
@@ -10,6 +10,18 @@ import {
 } from "./draft-guard";
 import StudioIcon from "./icons";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
+
+// A Custom API widget renders only its mappings, so without any it shows an
+// empty native panel. This is valid YAML, so the editor hints instead of
+// blocking the save.
+export function customApiMappingsMissing(type, config) {
+  if (type !== "customapi") return false;
+  const mappings = config?.mappings;
+  if (mappings === undefined || mappings === null || mappings === "")
+    return true;
+  if (Array.isArray(mappings)) return mappings.length === 0;
+  return typeof mappings === "object" && Object.keys(mappings).length === 0;
+}
 
 const ENDPOINT = {
   service: "service",
@@ -54,7 +66,21 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
       kind: "serviceWidget",
       icon: "layout",
     })),
-  ].filter(
+  ];
+  // In All, an information widget and an integration widget can share a name
+  // (Custom API, Glances, …); name the kind so the two can be told apart.
+  const nameCounts = new Map();
+  for (const entry of entries) {
+    const key = (entry.name || entry.type).toLowerCase();
+    nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+  }
+  const displayName = (entry) => {
+    const name = entry.name || entry.type;
+    return category === "all" && nameCounts.get(name.toLowerCase()) > 1
+      ? `${name} (${LABEL[entry.kind].toLowerCase()})`
+      : name;
+  };
+  const visible = entries.filter(
     (entry) =>
       (category === "all" || entry.kind === category) &&
       `${entry.name} ${entry.type} ${entry.description || ""}`
@@ -139,7 +165,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
             </details>
           )}
           <div className="studio-catalog">
-            {entries.map((entry) => (
+            {visible.map((entry) => (
               <button
                 key={`${entry.kind}:${entry.type}`}
                 className="studio-catalog-item"
@@ -149,14 +175,14 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
                   <StudioIcon name={entry.icon} size={20} />
                 </span>
                 <span>
-                  <strong>{entry.name || entry.type}</strong>
+                  <strong>{displayName(entry)}</strong>
                   <small>{entry.description || LABEL[entry.kind]}</small>
                 </span>
                 <StudioIcon name="chevron" size={15} />
               </button>
             ))}
           </div>
-          {!entries.length && (
+          {!visible.length && (
             <p className="studio-muted">No native widgets match that search.</p>
           )}
         </fieldset>
@@ -202,6 +228,26 @@ export default function ContentEditor({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const deleteConfirm = useRef(null);
+  const keepButton = useRef(null);
+  const deleteButton = useRef(null);
+  const deleteShown = useRef(false);
+  useEffect(() => {
+    // On narrow screens the confirmation renders below the fold. Bring it into
+    // view with focus on the safe choice, and return focus to Delete on cancel.
+    if (deleting) {
+      deleteShown.current = true;
+      // The dialog footer is sticky, so leave room for it below the question.
+      const confirm = deleteConfirm.current;
+      const footer = confirm?.closest("dialog")?.querySelector(".studio-dialog-footer");
+      if (confirm) confirm.style.scrollMarginBottom = `${(footer?.offsetHeight ?? 0) + 12}px`;
+      confirm?.scrollIntoView?.({ block: "nearest" });
+      keepButton.current?.focus({ preventScroll: true });
+    } else if (deleteShown.current) {
+      deleteShown.current = false;
+      deleteButton.current?.focus();
+    }
+  }, [deleting]);
   useEditorDraft(
     !valid ||
       name !== initialName ||
@@ -365,13 +411,26 @@ export default function ContentEditor({
             docs={selectedEntry?.docs}
             notice={selectedEntry?.coverage}
           />
+          {(kind === "serviceWidget" || kind === "informationWidget") &&
+            customApiMappingsMissing(source?.type || entry?.type, draft) && (
+              <p className="studio-note" role="status">
+                This Custom API widget has no <code>mappings</code> yet, so its
+                panel will be empty. Add at least one mapping (the response
+                field and the label to show) in the options above or in Advanced
+                YAML. You can still save it now.
+              </p>
+            )}
           {selectedEntry?.setupNotes?.map((note, index) => (
             <p key={index} className="studio-note">
               {note}
             </p>
           ))}
           {deleting && (
-            <div className="studio-delete-confirm" role="alert">
+            <div
+              ref={deleteConfirm}
+              className="studio-delete-confirm"
+              role="alert"
+            >
               <strong>Delete {panel?.title || "this item"}?</strong>
               <p>
                 {kind === "service"
@@ -388,6 +447,7 @@ export default function ContentEditor({
                   Delete permanently
                 </button>
                 <button
+                  ref={keepButton}
                   type="button"
                   className="studio-button studio-quiet"
                   onClick={() => setDeleting(false)}
@@ -403,6 +463,7 @@ export default function ContentEditor({
         {source && (
           <>
             <button
+              ref={deleteButton}
               type="button"
               className="studio-text-button studio-danger-text"
               disabled={pending}

@@ -12,7 +12,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Architecture-independent native source gates run once, natively on
+  # amd64, and every architecture image build needs them. The Dockerfile
+  # itself only installs, builds and compresses.
+  native-checks:
+    name: Native source checks (audit, lint, unit tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      LOG_TARGETS: stdout
+    steps:
+      - name: Check out this exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+      - name: Install the verified pinned pnpm and the frozen native lockfile
+        run: |
+          node scripts/install-pinned-pnpm.mjs upstream.lock.json
+          pnpm --dir homepage install --frozen-lockfile
+      - name: Check the native redirect security fix
+        run: STUDIO_NATIVE_SOURCE=homepage node --test test/native-redirect-security.mjs
+      - name: Audit locked production native dependencies
+        working-directory: homepage
+        run: pnpm audit --prod
+      - name: Lint the complete native source
+        working-directory: homepage
+        run: pnpm lint
+      - name: Run the complete native unit test suite
+        working-directory: homepage
+        run: pnpm test
+      - name: Verify the Firefox and WebKit acceptance selection
+        env:
+          STUDIO_REQUIRE_PLAYWRIGHT_LIST: "1"
+        run: |
+          npm ci --prefix browser --ignore-scripts
+          node --test test/cross-engine-selection.test.mjs
+
   qualify:
+    needs: native-checks
     name: Native build and deployment (${{ matrix.arch }})
     strategy:
       fail-fast: false
@@ -76,3 +119,21 @@ jobs:
         if: success()
         run: |
           printf '%s\n' '### Container qualification passed' 'Source: `'$GITHUB_SHA'`' 'Architecture: `${{ matrix.arch }}`' 'Tests built and ran the single local application image, fresh volumes, edits, snapshots, restarts, container replacement, standalone Compose, a one-node Swarm, three browser engines, real hidden-document timing, and both templates through pinned Portainer CE.' 'The disposable Portainer fixture transferred this same image through a temporary loopback registry only. No public registry login, public image push, release, date tag, or image artifact upload was performed.' >> "$GITHUB_STEP_SUMMARY"
+
+  # A failed native-checks job makes qualify "skipped", and GitHub counts a
+  # skipped required check as passing. Require this one job instead: it always
+  # runs and passes only when every job it needs succeeded.
+  result:
+    name: Validation result
+    if: always()
+    needs: [native-checks, qualify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require every validation job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s\n' "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          printf '%s\n' "$NEEDS" | jq -e 'length > 0 and all(.[]; .result == "success")' > /dev/null

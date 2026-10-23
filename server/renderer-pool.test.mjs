@@ -269,3 +269,80 @@ test('shutdown reaps a child that ignores SIGTERM within the container grace per
   assert.equal(alive(pid), false);
   lease.release();
 });
+
+const elapsed = async promise => { const started = Date.now(); const value = await promise; return { value, ms: Date.now() - started }; };
+const pidOf = async (f, entry) => Number(await fs.readFile(path.join(dashboardConfigDir(f.configRoot, entry.id), 'pid'), 'utf8'));
+
+test('a slow worker stop after a drain does not delay another dashboard', async t => {
+  const f = await fixture(t);
+  const stubborn = await f.entry('stubborn', { ignoreTerm: true });
+  const other = await f.entry('other');
+  const lease = await f.pool.acquire(stubborn, host);
+  const { pid } = await request(lease.origin);
+  lease.release();
+  const drained = elapsed(f.pool.drain(stubborn.id));
+  await new Promise(resolve => setImmediate(resolve));
+  const { value: next, ms } = await elapsed(f.pool.acquire(other, host));
+  assert.ok(ms < 2000, `another dashboard waited ${ms} ms for an unrelated worker stop`);
+  assert.equal((await request(next.origin)).id, other.id);
+  assert.equal(alive(pid), true, 'The stubborn worker is still inside its stop grace period.');
+  assert.equal(f.pool.workerCount, 2, 'A stopping worker still counts against capacity until it exits.');
+  const drain = await drained;
+  assert.ok(drain.ms >= 3500, `drain resolved after ${drain.ms} ms, before the worker exited`);
+  assert.equal(alive(pid), false);
+  assert.equal(f.pool.workerCount, 1);
+  next.release();
+});
+
+test('idle and capacity eviction of a slow worker do not block other dashboards and keep the worker bound', async t => {
+  const f = await fixture(t, { maxWorkers: 2, idleMs: 40 });
+  const stubborn = await f.entry('stubborn', { ignoreTerm: true });
+  const active = await f.entry('active');
+  const third = await f.entry('third');
+  const held = await f.pool.acquire(active, host);
+  const first = await f.pool.acquire(stubborn, host);
+  const { pid } = await request(first.origin);
+  let maximum = 0;
+  const sampler = setInterval(() => { maximum = Math.max(maximum, f.pool.workerCount); }, 5);
+  t.after(() => clearInterval(sampler));
+  first.release();
+  // The idle timer starts the slow stop; the queue must stay free meanwhile.
+  await new Promise(resolve => setTimeout(resolve, 120));
+  assert.equal(alive(pid), true);
+  const { value: again, ms } = await elapsed(f.pool.acquire(active, host));
+  assert.ok(ms < 500, `an active dashboard waited ${ms} ms behind an idle stop`);
+  assert.equal((await request(again.origin)).id, active.id);
+  again.release();
+  // At capacity, a new dashboard waits only for the stopping worker's slot.
+  const { value: replacement, ms: waited } = await elapsed(f.pool.acquire(third, host));
+  assert.ok(waited >= 2500, `the new worker started after ${waited} ms, before the stopping worker released its slot`);
+  assert.equal(alive(pid), false);
+  assert.equal((await request(replacement.origin)).id, third.id);
+  assert.equal((await request(held.origin)).id, active.id);
+  clearInterval(sampler);
+  assert.ok(maximum <= 2, `worker count reached ${maximum} with a limit of 2`);
+  replacement.release(); held.release();
+});
+
+test('capacity eviction of a slow worker does not stall a concurrent request for a running dashboard', async t => {
+  const f = await fixture(t, { maxWorkers: 2 });
+  const stubborn = await f.entry('stubborn', { ignoreTerm: true });
+  const active = await f.entry('active');
+  const third = await f.entry('third');
+  const held = await f.pool.acquire(active, host);
+  const first = await f.pool.acquire(stubborn, host);
+  const pid = await pidOf(f, stubborn);
+  first.release();
+  const pending = elapsed(f.pool.acquire(third, host));
+  await until(() => f.pool.workerCount === 2 && alive(pid));
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const { value: again, ms } = await elapsed(f.pool.acquire(active, host));
+  assert.ok(ms < 500, `a running dashboard waited ${ms} ms behind a capacity eviction`);
+  again.release();
+  const { value: replacement, ms: waited } = await pending;
+  assert.ok(waited >= 3500, `the replacement started after ${waited} ms while the old worker was still exiting`);
+  assert.equal(alive(pid), false);
+  assert.equal(f.pool.workerCount, 2);
+  assert.equal((await request(replacement.origin)).id, third.id);
+  replacement.release(); held.release();
+});

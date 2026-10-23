@@ -9,7 +9,6 @@ import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
-import { EMPTY_CONFIG, seedConfig } from '../scripts/seed-config.mjs';
 import { runtimeHost } from '../scripts/runtime-host.mjs';
 import { UPSTREAM_COMMIT, checkHealth } from '../scripts/healthcheck.mjs';
 import { artifactFingerprint, validateReleaseManifest, materializeRelease } from '../scripts/release-manifest.mjs';
@@ -31,58 +30,6 @@ async function endpoint(t, handler) {
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
   return `http://127.0.0.1:${server.address().port}`;
 }
-
-test('a fresh volume gets exactly nine empty native files and private state storage', async t => {
-  const dirs = await directories(t);
-  const seeded = await seedConfig(dirs);
-  assert.equal(seeded.created.length, 9);
-  assert.equal(seeded.recoveryPending, false);
-  assert.deepEqual((await fs.readdir(dirs.configDir)).sort(), Object.keys(EMPTY_CONFIG).sort());
-  for (const [name, content] of Object.entries(EMPTY_CONFIG)) {
-    assert.equal(await fs.readFile(path.join(dirs.configDir, name), 'utf8'), content);
-    assert.equal((await fs.stat(path.join(dirs.configDir, name))).mode & 0o777, 0o640);
-  }
-  assert.deepEqual(await fs.readdir(dirs.stateDir), []);
-  assert.equal((await fs.stat(dirs.stateDir)).mode & 0o777, 0o700);
-});
-
-test('seeding is idempotent and preserves existing configuration byte for byte', async t => {
-  const dirs = await directories(t);
-  await fs.mkdir(dirs.configDir);
-  const retained = '# retain comment\ntitle: Existing setup\n';
-  await fs.writeFile(path.join(dirs.configDir, 'settings.yaml'), retained, { mode: 0o600 });
-  const first = await seedConfig(dirs);
-  assert.equal(first.created.length, 8);
-  const second = await seedConfig(dirs);
-  assert.deepEqual(second.created, []);
-  assert.equal(await fs.readFile(path.join(dirs.configDir, 'settings.yaml'), 'utf8'), retained);
-  assert.equal((await fs.stat(path.join(dirs.configDir, 'settings.yaml'))).mode & 0o777, 0o600);
-});
-
-test('an active recovery journal prevents all configuration seeding', async t => {
-  const dirs = await directories(t);
-  await fs.mkdir(dirs.stateDir);
-  await fs.writeFile(path.join(dirs.stateDir, 'transaction.json'), '{"version":1}\n');
-  const result = await seedConfig(dirs);
-  assert.deepEqual(result, { created: [], recoveryPending: true });
-  assert.deepEqual(await fs.readdir(dirs.configDir), []);
-});
-
-test('the seeder refuses symlinked configuration, directories and journals', async t => {
-  const dirs = await directories(t);
-  const target = path.join(dirs.temp, 'outside');
-  await fs.writeFile(target, 'keep this');
-  await fs.mkdir(dirs.configDir);
-  await fs.symlink(target, path.join(dirs.configDir, 'services.yaml'));
-  await assert.rejects(seedConfig(dirs), /regular files/);
-  assert.equal(await fs.readFile(target, 'utf8'), 'keep this');
-  await fs.unlink(path.join(dirs.configDir, 'services.yaml'));
-  await fs.symlink(target, path.join(dirs.stateDir, 'transaction.json'));
-  await assert.rejects(seedConfig(dirs), /journal must be a regular file/);
-  const alias = path.join(dirs.temp, 'alias');
-  await fs.symlink(dirs.configDir, alias);
-  await assert.rejects(seedConfig({ ...dirs, configDir: alias }), /real directories/);
-});
 
 test('origin configuration derives the exact allowed host including the published port', () => {
   assert.deepEqual(runtimeHost('https://Dashboard.example.test:8443'), { allowedHosts: 'dashboard.example.test:8443', healthHost: 'dashboard.example.test:8443' });
@@ -129,7 +76,6 @@ test('readiness accepts configuration-only readiness and rejects HTTP/JSON failu
 
 test('the exact application health command is independent of a broken dashboard and rejects shared runtime damage', async t => {
   const dirs = await directories(t);
-  await seedConfig(dirs);
   let nativeRequests = 0;
   const upstream = await endpoint(t, (_req, res) => {
     nativeRequests += 1;
@@ -195,6 +141,16 @@ test('deployment templates publish one application and preserve bounded internal
     assert.ok(!JSON.stringify(template).includes('docker.sock'));
     assert.equal(template.services.studio.environment.STUDIO_BACKUP_RETENTION, '${STUDIO_BACKUP_RETENTION:-25}');
     assert.equal(template.services.studio.depends_on, undefined);
+    // Hardening: the UID 1000 application needs no capabilities.
+    assert.equal(template.services.studio.init, true);
+    assert.deepEqual(template.services.studio.cap_drop, ['ALL']);
+    assert.equal(template.services.studio.cap_add, undefined);
+    assert.equal(template.services.studio.privileged, undefined);
+    assert.equal(template.services.studio.read_only, undefined, 'read-only rootfs is deferred until ping and Next cache behavior are qualified');
+    assert.equal(template.services.studio.environment.STUDIO_FRAME_ANCESTORS, '${STUDIO_FRAME_ANCESTORS:-}');
+    if (file.includes('compose')) assert.deepEqual(template.services.studio.security_opt, ['no-new-privileges:true']);
+    // docker stack deploy ignores security_opt; the image strips setuid bits instead.
+    else assert.equal(template.services.studio.security_opt, undefined);
     if (file.includes('swarm')) {
       for (const service of Object.values(template.services)) {
         assert.equal(service.deploy.replicas, 1);
@@ -212,6 +168,24 @@ test('automatic validation has no publication permission, registry login or imag
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   assert.deepEqual(workflow.jobs.qualify.strategy.matrix.include.map(item => item.arch).sort(), ['amd64', 'arm64']);
   assert.doesNotMatch(text, /docker\s+(?:push|login)\b|--push\b|push:\s*true|upload-artifact@|packages:\s*write|contents:\s*write|pull_request_target:/);
+});
+
+test('validation ends in one always-run result job that fails unless every other job succeeded', async () => {
+  const workflow = parse(await fs.readFile(path.join(root, '.github/workflows/validate.yml'), 'utf8'));
+  const result = workflow.jobs.result;
+  assert.ok(result, 'validate.yml needs an aggregate result job for branch protection');
+  assert.equal(result.name, 'Validation result');
+  assert.equal(result.if, 'always()');
+  assert.equal(result['continue-on-error'], undefined);
+  assert.deepEqual(result.permissions, {});
+  // A skipped dependent job counts as passing for a required check, so the
+  // result job must depend on every other job directly.
+  assert.deepEqual([...result.needs].sort(), Object.keys(workflow.jobs).filter(name => name !== 'result').sort());
+  assert.equal(result.steps.length, 1);
+  const [step] = result.steps;
+  assert.equal(step.env.NEEDS, '${{ toJSON(needs) }}');
+  assert.equal(step.uses, undefined);
+  assert.match(step.run, /jq -e 'length > 0 and all\(\.\[\]; \.result == "success"\)'/);
 });
 
 function acceptedFixture() {
@@ -264,6 +238,64 @@ test('release materialization pins both templates by digest and refuses overwrit
   assert.throws(() => validateReleaseManifest(example), /owner-approved/);
 });
 
+function dockerStages(text) {
+  const stages = [];
+  for (const line of text.replace(/\\\s*\n/g, ' ').split('\n')) {
+    const from = line.match(/^FROM\s+\S+(?:\s+AS\s+(\S+))?\s*$/i);
+    if (from) stages.push({ name: from[1] ?? null, lines: [] });
+    else if (stages.length && line.trim() && !line.trim().startsWith('#')) stages.at(-1).lines.push(line.trim());
+  }
+  return stages;
+}
+
+test('controller tests and fixtures never enter the runtime image and nothing at runtime imports them', async () => {
+  const stages = dockerStages(await fs.readFile(path.join(root, 'Dockerfile'), 'utf8'));
+  const runtime = stages.at(-1);
+  assert.equal(runtime.name, null, 'The final stage is the unnamed runtime image');
+  const serverCopies = runtime.lines.filter(line => /^COPY\b.*\s\.\/server\/?$/.test(line));
+  assert.equal(serverCopies.length, 1);
+  const source = serverCopies[0].match(/--from=(\S+)/)?.[1];
+  assert.ok(source, 'The runtime must not copy server/ straight from the build context');
+  const stage = stages.find(item => item.name === source);
+  assert.ok(stage.lines.includes('COPY server ./server'));
+  const prune = stage.lines.find(line => line.startsWith('RUN '));
+  assert.match(prune, /rm -rf server\/fixtures/);
+  assert.match(prune, /find server -type f -name '\*\.test\.mjs' -delete/);
+  for (const line of runtime.lines.filter(item => item.startsWith('COPY') && !item.includes('--from='))) {
+    assert.doesNotMatch(line, /\s(?:server|test)\/?(?:\s|$)/, `runtime copies tests from the build context: ${line}`);
+  }
+  // Every module that ships must resolve without the removed files.
+  const shipped = (await fs.readdir(path.join(root, 'server'))).filter(name => name.endsWith('.mjs') && !name.endsWith('.test.mjs'));
+  assert.ok(shipped.includes('index.mjs'));
+  for (const name of shipped) {
+    const text = await fs.readFile(path.join(root, 'server', name), 'utf8');
+    for (const [, specifier] of text.matchAll(/(?:from|import\()\s*['"](\.{1,2}\/[^'"]+)['"]/g)) {
+      const target = path.relative(root, path.resolve(root, 'server', specifier));
+      assert.doesNotMatch(target, /\.test\.|(?:^|\/)fixtures(?:\/|$)/, `${name} imports ${specifier}`);
+    }
+  }
+});
+
+test('runtime application code is root-owned and only configuration and state are writable by UID 1000', async () => {
+  const runtime = dockerStages(await fs.readFile(path.join(root, 'Dockerfile'), 'utf8')).at(-1).lines;
+  for (const line of runtime.filter(item => item.startsWith('COPY'))) assert.doesNotMatch(line, /--chown/, `application code must stay root-owned: ${line}`);
+  const chowns = runtime.filter(line => /\bchown\b/.test(line));
+  assert.equal(chowns.length, 1);
+  assert.match(chowns[0], /chown 1000:1000 \/app\/config \/app\/state(?:\s|$)/);
+  assert.doesNotMatch(chowns[0], /chown\s+-R/);
+  const user = runtime.indexOf('USER 1000:1000');
+  assert.ok(user > runtime.indexOf(chowns[0]));
+  const guard = runtime.slice(user).find(line => line.startsWith('RUN '));
+  assert.ok(guard, 'the build must verify writability as the runtime user');
+  assert.match(guard, /test -w \/app\/config && test -w \/app\/state/);
+  assert.match(guard, /find \/app \\\( -path \/app\/config -o -path \/app\/state \\\) -prune -o -writable -print -quit/);
+  // Capability-free templates need ping without setuid or file capabilities.
+  const packages = runtime.find(line => line.includes('iputils-ping'));
+  assert.match(packages, /cp "\$ping" "\$ping\.plain" && mv -f "\$ping\.plain" "\$ping" && chmod 0755 "\$ping"/);
+  assert.match(packages, /find \/ -xdev -type f -perm \/6000 -exec chmod ug-s \{\} \+/);
+  assert.match(packages, /test -z "\$\(find \/ -xdev -type f -perm \/6000 -print -quit\)"/);
+});
+
 test('runtime and Dockerfile pins agree with the reviewed source lock', async () => {
   const lock = JSON.parse(await fs.readFile(path.join(root, 'upstream.lock.json'), 'utf8'));
   assert.equal(lock.homepage.commit, UPSTREAM_COMMIT);
@@ -281,13 +313,76 @@ test('runtime and Dockerfile pins agree with the reviewed source lock', async ()
     assert.ok(toolchainFiles.includes(file), `native builder must receive ${file}`);
   }
   assert.ok(native.includes('node /tmp/studio-toolchain/install-pinned-pnpm.mjs /tmp/studio-toolchain/upstream.lock.json && pnpm install --frozen-lockfile'));
-  assert.ok(native.includes('RUN pnpm lint'));
-  assert.ok(native.includes('RUN pnpm test'));
   assert.ok(native.includes('RUN node /tmp/studio-toolchain/compress-static-assets.mjs /build/homepage/.next/static'));
   assert.ok(native.includes('COPY homepage/ ./'));
   assert.ok(native.includes('homepage/src/utils/config/environment.mjs ./homepage/src/utils/config/environment.mjs'));
   assert.ok(native.includes('homepage/src/utils/config/yaml-parser.mjs ./homepage/src/utils/config/yaml-parser.mjs'));
   assert.ok(!native.includes('prepare-homepage'));
   assert.ok(!native.includes('apply-homepage-overlay'));
-  assert.ok(native.includes('STUDIO_NATIVE_SOURCE=/build/homepage node --test'));
+});
+
+test('the native image build only installs, builds and compresses; its source gates run in CI', async () => {
+  const stages = dockerStages(await fs.readFile(path.join(root, 'Dockerfile'), 'utf8'));
+  const builder = stages.find(stage => stage.name === 'native-builder');
+  const runs = builder.lines.filter(line => line.startsWith('RUN '));
+  assert.equal(runs.length, 3);
+  assert.match(runs[0], /^RUN node \/tmp\/studio-toolchain\/install-pinned-pnpm\.mjs \/tmp\/studio-toolchain\/upstream\.lock\.json && pnpm install --frozen-lockfile(?:\s|$)/);
+  assert.match(runs[1], /\bpnpm run build$/);
+  assert.equal(runs[2], 'RUN node /tmp/studio-toolchain/compress-static-assets.mjs /build/homepage/.next/static');
+  // A newly published advisory must not need the registry inside, or fail, every
+  // architecture's image build; the required native-checks job owns it.
+  for (const stage of stages) for (const line of stage.lines) {
+    assert.doesNotMatch(line, /\bpnpm\s+(?:audit|lint|test)\b|\bvitest\b|node --test|native-redirect-security/, `image builds no longer run source gates: ${line}`);
+  }
+});
+
+const NATIVE_GATES = [
+  ['install', 'node scripts/install-pinned-pnpm.mjs upstream.lock.json\npnpm --dir homepage install --frozen-lockfile'],
+  ['redirect', 'STUDIO_NATIVE_SOURCE=homepage node --test test/native-redirect-security.mjs'],
+  ['audit', 'pnpm audit --prod'],
+  ['lint', 'pnpm lint'],
+  ['unit', 'pnpm test'],
+  ['cross-engine', 'npm ci --prefix browser --ignore-scripts\nnode --test test/cross-engine-selection.test.mjs'],
+];
+const CONTROLLER_GATES = ['npm ci --ignore-scripts', 'npm audit --omit=dev', 'npm test', 'node --test test/*.test.mjs', "python3 -m unittest discover -s test -p 'test_*.py'", 'node --test test/swarm-parser.mjs', 'python3 scripts/pack-candidate-source.py --source . --commit "$GITHUB_SHA" --check'];
+const buildsImage = job => (job.steps || []).some(step => /\bdocker\s+(?:buildx\s+)?build\b/.test(step.run || ''));
+
+test('every image-building workflow gates each architecture build on the required native source checks', async () => {
+  const directory = path.join(root, '.github/workflows');
+  const workflows = {};
+  for (const name of (await fs.readdir(directory)).filter(file => file.endsWith('.yml'))) workflows[name] = parse(await fs.readFile(path.join(directory, name), 'utf8'));
+  const building = Object.entries(workflows).filter(([, workflow]) => Object.values(workflow.jobs).some(buildsImage)).map(([name]) => name).sort();
+  assert.deepEqual(building, ['candidate-approved.yml', 'validate.yml'], 'promotion must never rebuild images');
+  for (const name of building) {
+    const workflow = workflows[name];
+    const checks = workflow.jobs['native-checks'];
+    assert.ok(checks, `${name} needs a native-checks job`);
+    assert.equal(checks['runs-on'], 'ubuntu-24.04');
+    assert.equal(checks['continue-on-error'], undefined);
+    assert.equal(checks.needs, undefined);
+    const steps = checks.steps;
+    let previous = -1;
+    for (const [gate, command] of NATIVE_GATES) {
+      const index = steps.findIndex(step => step.run?.trim() === command);
+      assert.ok(index > previous, `${name}: native-checks must run the ${gate} gate in order`);
+      previous = index;
+      assert.equal(steps[index]['continue-on-error'], undefined);
+      if (['audit', 'lint', 'unit'].includes(gate)) assert.equal(steps[index]['working-directory'], 'homepage');
+      if (gate === 'cross-engine') assert.equal(steps[index].env.STUDIO_REQUIRE_PLAYWRIGHT_LIST, '1');
+    }
+    for (const step of steps) {
+      if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/);
+      assert.doesNotMatch(step.run || '', /\|\|\s*(?:true|:)|set \+e/);
+    }
+    const builders = Object.entries(workflow.jobs).filter(([, job]) => buildsImage(job));
+    assert.equal(builders.length, 1);
+    for (const [jobName, job] of builders) {
+      assert.deepEqual([job.needs].flat(), ['native-checks'], `${name}: ${jobName} must need native-checks`);
+      assert.equal(job.if, checks.if, `${name}: native-checks must run whenever ${jobName} can`);
+      assert.deepEqual(job.strategy.matrix.include.map(item => item.arch).sort(), ['amd64', 'arm64']);
+      // The controller and release-tool gates still run natively on both architectures.
+      const runs = job.steps.map(step => step.run || '').join('\n').split('\n').map(line => line.trim());
+      for (const command of CONTROLLER_GATES) assert.ok(runs.includes(command), `${name}: ${jobName} must still run ${command}`);
+    }
+  }
 });

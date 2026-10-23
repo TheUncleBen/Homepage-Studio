@@ -68,6 +68,9 @@ export function intersects(a, b) {
   );
 }
 
+// True when a starts before b in reading order: top to bottom, then left to right.
+const readsBefore = (a, b) => a.y < b.y || (a.y === b.y && a.x < b.x);
+
 export function unitsForBoard(board) {
   const stacked = new Set(board.stacks.flatMap((stack) => stack.panelIds));
   return [
@@ -135,7 +138,7 @@ export function moveProjectedUnit(board, id, delta, projection) {
   const moved = units.find((unit) => unit.id === id);
   if (!moved) return board;
   const destination = { ...moved.rect, x: moved.rect.x + delta.x, y: moved.rect.y + delta.y };
-  if (projection.columns === COLUMNS || !delta.y) return moveUnit(board, id, destination);
+  if (projection.columns === COLUMNS) return moveUnit(board, id, destination);
   const ordered = [...projection.units].sort(
     (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
   );
@@ -146,7 +149,15 @@ export function moveProjectedUnit(board, id, delta, projection) {
   const distance = (unit) => Math.hypot(target.x - unit.rect.x - unit.rect.w / 2, target.y - unit.rect.y);
   const nearest = ordered.reduce((a, b) => (distance(a) <= distance(b) ? a : b));
   const to = ordered.indexOf(nearest);
-  if (from === to || Math.abs(target.y - nearest.rect.y) > nearest.rect.h / 2) return moveUnit(board, id, destination);
+  // A sideways drag reorders only within its projected row: at 8 columns a
+  // wrapped row no longer sits at its canonical x, so moving onto a neighbour
+  // swaps reading order instead of shifting the canonical rect.
+  if (
+    from === to ||
+    (!delta.y && nearest.rect.y !== start.y) ||
+    Math.abs(target.y - nearest.rect.y) > nearest.rect.h / 2
+  )
+    return moveUnit(board, id, destination);
 
   // A narrow layout can project several desktop columns into successive rows.
   // Reuse the crossed units' canonical slots so moving upward still changes the
@@ -174,65 +185,90 @@ export function moveProjectedUnit(board, id, delta, projection) {
   if (visible.every((unit, index) => unit.id === reordered[index].id)) return candidate;
 
   // Different widths can push an earlier slot below an untouched later slot.
-  // Repair only that case. Canonical priority matters between overlapping
-  // projected columns; disjoint columns may keep their original desktop order.
-  const projected = [];
+  // A narrow projection shows units in canonical reading order (see
+  // projectColumns), so repair by keeping each unit's canonical top-left after
+  // the previous unit's; settling only moves a unit further down.
   placed.length = 0;
-  const settle = (rect, others) => {
-    let next = rect;
-    let collisions = others.filter((other) => intersects(next, other.rect));
-    while (collisions.length) {
-      next = { ...next, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
-      collisions = others.filter((other) => intersects(next, other.rect));
-    }
-    return next;
-  };
   reordered.forEach((unit, index) => {
     const original = canonical.get(unit.id);
     const slot = slots[index];
     let rect = fitMinimum({ ...original.rect, x: slot.x, y: slot.y }, unitMinimum(board, unit.id));
-    let shape = projectRect(rect, projection.columns);
-    projected.forEach((other, previous) => {
-      if (shape.x < other.rect.x + other.rect.w && shape.x + shape.w > other.rect.x) {
-        const prior = placed[previous].rect;
-        rect.y = Math.max(rect.y, prior.y + (rect.x <= prior.x ? 1 : 0));
-      }
-    });
-    rect = settle(rect, placed);
-    shape = settle(projectRect(rect, projection.columns), projected);
-    const prior = projected.at(-1)?.rect;
-    if (prior && (shape.y < prior.y || (shape.y === prior.y && shape.x < prior.x))) {
-      rect = settle({ ...rect, y: Math.max(rect.y, prior.y + (shape.x <= prior.x ? 1 : 0)) }, placed);
-      shape = settle(projectRect(rect, projection.columns), projected);
+    const prior = placed.at(-1)?.rect;
+    if (prior && !readsBefore(prior, rect)) rect = { ...rect, y: prior.y + (rect.x <= prior.x ? 1 : 0) };
+    let collisions = placed.filter((other) => intersects(rect, other.rect));
+    while (collisions.length) {
+      rect = { ...rect, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
+      collisions = placed.filter((other) => intersects(rect, other.rect));
     }
     placed.push({ ...original, rect });
-    projected.push({ id: unit.id, rect: shape });
   });
   return applyRectangles(board, new Map(placed.map((unit) => [unit.id, unit.rect])));
 }
 
-function projectRect(rect, columns) {
-  return columns === COLUMNS
-    ? rect
-    : clampRect(
-        {
-          ...rect,
-          x: Math.floor((rect.x * columns) / COLUMNS),
-          w: Math.max(columns === 4 ? 4 : 3, Math.round((rect.w * columns) / COLUMNS)),
-        },
-        columns,
-      );
+// Project both canonical edges with the same rounding rule so units that share
+// a canonical edge share a projected edge. Rounding x and w independently
+// staggered 8-column rows and pushed adjacent tiles down.
+function projectEdge(edge, columns) {
+  return Math.round((edge * columns) / COLUMNS);
 }
 
+// At 8 columns (tablets) panels snap to halves: a panel up to half the
+// desktop width (6 of 12) is half the tablet width, a wider one is full width.
+// Rows therefore fill the board two-up instead of leaving a narrow strip, and a
+// desktop row of three becomes two, then one (see projectColumns).
+const HALF = 4;
+function projectHalves(rect) {
+  if (rect.w > COLUMNS / 2) return { ...rect, x: 0, w: 2 * HALF };
+  const left = Math.min(HALF, Math.round(projectEdge(rect.x, 8) / HALF) * HALF);
+  return { ...rect, x: left, w: HALF };
+}
+
+function projectRect(rect, columns) {
+  if (columns === COLUMNS) return rect;
+  if (columns === 8) return projectHalves(rect);
+  const left = projectEdge(rect.x, columns);
+  const right = projectEdge(rect.x + rect.w, columns);
+  return clampRect(
+    {
+      ...rect,
+      x: left,
+      w: Math.max(columns === 4 ? 4 : 3, right - left),
+    },
+    columns,
+  );
+}
+
+// Narrow projections reflow in reading order (left to right, then top to
+// bottom). Units are taken in canonical reading order. Each keeps its projected
+// column and canonical row when that spot is free and still reads after the
+// unit placed before it, so tiles that fit side by side stay side by side on
+// shared edges. Otherwise it wraps: it takes the first free spot, scanning
+// rows from the previous unit's row and each row from the left, that reads
+// after the previous unit. At 8 columns a row of three 4-wide tiles becomes two
+// then one; at 4 columns every unit is full width, so each one simply follows
+// the last, as before. The 12-column desktop board is shown as stored.
 function projectColumns(board, columns) {
   const units = unitsForBoard(board).sort(
     (a, b) =>
       a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
   );
   const placed = [];
+  const free = (rect) => !placed.some((other) => intersects(rect, other.rect));
   units.forEach((unit) => {
     const raw = fitMinimum(clampRect(unit.rect), unitMinimum(board, unit.id));
     let rect = projectRect(raw, columns);
+    const previous = placed.at(-1)?.rect;
+    if (columns < COLUMNS && previous && (!free(rect) || readsBefore(rect, previous))) {
+      wrap: for (let y = previous.y; ; y += 1) {
+        for (let x = y === previous.y ? previous.x + 1 : 0; x + rect.w <= columns; x += 1) {
+          if (free({ ...rect, x, y })) {
+            rect = { ...rect, x, y };
+            break wrap;
+          }
+        }
+      }
+    }
+    // The canonical 12-column board is disjoint; push any stray overlap down.
     {
       let collisions = placed.filter((other) => intersects(rect, other.rect));
       while (collisions.length) {

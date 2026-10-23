@@ -24,6 +24,17 @@ sanitized native data with configuration-revision checks, and preserved native
 widget hosts. Independent-dashboard routes/storage, worker context and Studio
 management are maintained directly in this source.
 
+Dependency and security corrections made since then:
+
+- `next` `^16.4.2` (locked 16.4.2, from 16.3.8) for GHSA-2464-fhr4-w9xw,
+  GHSA-673q-mjm6-r5xr and GHSA-p3m5-59mp-jv5r.
+- An `ip-address` `^10.7.4` override in `pnpm-workspace.yaml` (locked 10.7.4)
+  for GHSA-rxp7-6hxx-x8q5, reached through `@kubernetes/client-node` > `socks`.
+- `allowBuilds` in `pnpm-workspace.yaml` is the only build-script policy and
+  keeps the `protobufjs` install script disabled.
+- The TrueNAS and APC UPS proxies sanitize connection and RPC errors to a fixed
+  set of codes and messages; the TrueNAS WebSocket limits messages to 32 MiB.
+
 Upstream CI and standalone Docker/development-cluster deployment definitions
 are excluded from the active fork to avoid competing application lifecycles.
 The root project owns build, verification, packaging and deployment. Native
@@ -51,3 +62,13 @@ generated build trees are not committed.
 Historical `upstream.lock.json` baseline hashes describe the source from which
 this fork began. The current Git commit/tree and committed lockfile are the
 authority for the source that is built and distributed.
+
+## Divergence from upstream
+
+The fork's divergence from the baseline is the Git difference between upstream
+commit `51cc1684f9f34a7877ed462b8f94c9cc687b4dde` and this directory; it is
+not recorded in a separate manifest. The earlier overlay manifests
+(`studio-overlay.json`, `studio-source.json`) described a generated overlay
+applied to a downloaded upstream archive. Nothing read them once the fork
+became tracked source, so they were removed rather than kept as a second,
+unverified record. Review upstream changes against the Git history instead.

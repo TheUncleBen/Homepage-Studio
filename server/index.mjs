@@ -9,7 +9,10 @@ import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute } from './dashboards.mjs';
 import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
-import { serveSharedAsset } from './static-assets.mjs';
+import { createHash } from 'node:crypto';
+import { promisify } from 'node:util';
+import zlib from 'node:zlib';
+import { serveSharedAsset, acceptedEncodings, etagMatches } from './static-assets.mjs';
 import { checkApplicationReadiness } from './application-health.mjs';
 import { renderRobotsPolicy } from './indexing-policy.mjs';
 
@@ -19,6 +22,51 @@ if (!studioVersion) throw new Error('VERSION must identify this Studio build.');
 const hopHeaders = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 export const NATIVE_PROTOCOL = 1;
 export const UPSTREAM_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
+// Native API routes use Next.js's default body parser limit ('1mb', which
+// Next.js reads as 1 MiB); no Homepage route raises it. The controller buffers a
+// native body before it asks for a worker, so it applies the same limit.
+export const NATIVE_BODY_LIMIT = 1024 * 1024;
+// All native bodies being received or forwarded at once share this budget, so
+// many concurrent uploads cannot grow controller memory without bound.
+export const NATIVE_BODY_BUDGET = 32 * 1024 * 1024;
+const NATIVE_BODY_TIMEOUT_MS = 30000;
+const NATIVE_BODY_RETRY_AFTER_SECONDS = 5;
+// Response headers the controller owns. A native response cannot replace them.
+// X-Powered-By is dropped as well, so a native response never advertises its framework.
+const CONTROLLER_HEADERS = ['x-frame-options', 'x-content-type-options', 'referrer-policy', 'x-powered-by'];
+
+// STUDIO_FRAME_ANCESTORS replaces the default `frame-ancestors 'self'` list.
+// Unset or blank keeps the default. Each whitespace-separated entry must be
+// 'self' (quoted, or bare because .env files and shells drop the quotes) or an
+// exact http(s) origin; anything else stops startup.
+export function parseFrameAncestors(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  return text.split(/\s+/).map(token => {
+    if (token === "'self'" || token === 'self') return "'self'";
+    let url;
+    try { url = /^https?:\/\//i.test(token) && !token.includes('*') ? new URL(token) : undefined; } catch { /* Rejected below. */ }
+    // WHATWG URL keeps characters such as ; ' and _ in a host. Only DNS names,
+    // IPv4 and bracketed IPv6 literals may reach the policy header.
+    const hostname = url?.hostname ?? '';
+    const plainHost = /^[a-z0-9.-]+$/.test(hostname) || /^\[[0-9a-f:.]+\]$/.test(hostname);
+    if (!url || !plainHost || url.username || url.password || url.pathname !== '/' || url.search || url.hash || !/^https?:\/\/[^/?#]+\/?$/i.test(token)) {
+      throw new Error(`STUDIO_FRAME_ANCESTORS entry "${token}" is not 'self' or an exact http(s) origin such as https://home.example.test:8123.`);
+    }
+    return url.origin;
+  });
+}
+
+export function securityHeaders(frameAncestors) {
+  const sources = frameAncestors ?? ["'self'"];
+  return {
+    'content-security-policy': `frame-ancestors ${sources.join(' ')}`,
+    // X-Frame-Options cannot name several origins, so only the default sends it.
+    ...(frameAncestors ? {} : { 'x-frame-options': 'SAMEORIGIN' }),
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'same-origin',
+  };
+}
 
 function headersWithoutHop(headers) {
   const removed = new Set([...hopHeaders, ...String(headers.connection || '').split(',').map(s => s.trim().toLowerCase())]);
@@ -30,6 +78,58 @@ function json(res, code, value) {
   const data = JSON.stringify(value);
   res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(data) });
   res.end(data);
+}
+
+// Browsers navigating to a missing, renamed-away or archived dashboard get a
+// readable page; API and fetch callers keep the JSON error body. No request
+// text is reflected and the page runs no script.
+const UNAVAILABLE_PAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+function wantsHtmlPage(req) {
+  if (!['GET', 'HEAD'].includes(req.method)) return false;
+  const path = String(req.url || '').split('?')[0];
+  // Editor and native API routes, at the root or under a dashboard address.
+  if (/^\/(?:[^/]+\/)?(?:api|__studio)(?:\/|$)/.test(path)) return false;
+  return String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html');
+}
+function renderUnavailablePage(status) {
+  const code = Number(status) === 410 ? 410 : 404;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Dashboard unavailable</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: #111115; color: #eeecf1; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { width: 100%; max-width: 30rem; padding: 28px 24px; background: #1b1a20; border: 1px solid #34303b; border-radius: 12px; }
+.status { margin: 0 0 8px; color: #b4aebc; font-size: 0.875rem; letter-spacing: 0.04em; text-transform: uppercase; }
+h1 { margin: 0 0 12px; font-size: 1.375rem; line-height: 1.3; font-weight: 600; }
+p { margin: 0 0 20px; color: #b4aebc; }
+a { display: inline-block; padding: 10px 16px; border-radius: 8px; background: #685870; color: #ffffff; text-decoration: none; font-weight: 600; }
+a:hover { background: #77697e; }
+a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
+</style>
+</head>
+<body>
+<main>
+<p class="status">Error ${code}</p>
+<h1>This dashboard isn&#39;t available</h1>
+<p>Its address may have changed, or it may have been archived. Open the main dashboard, then choose the dashboard you need from its dashboard list.</p>
+<a href="/">Open the main dashboard</a>
+</main>
+</body>
+</html>
+`;
+}
+function unavailablePage(req, res, status) {
+  if (res.destroyed || res.writableEnded) return;
+  const page = renderUnavailablePage(status);
+  const policy = res.getHeader('content-security-policy');
+  res.writeHead(status === 410 ? 410 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(page), 'content-security-policy': [].concat(policy ?? [], UNAVAILABLE_PAGE_POLICY), vary: 'Accept' });
+  res.end(req.method === 'HEAD' ? undefined : page);
 }
 
 function nativeLocation(location, { basePath, upstream, host, requestPath }) {
@@ -50,10 +150,83 @@ function nativeRefresh(value, context) {
   return match[1] + quote + nativeLocation(url, context) + quote;
 }
 
+function createByteBudget(limit) {
+  let used = 0;
+  return {
+    get used() { return used; },
+    // Reserves bytes and returns a release function, or null when they do not fit.
+    reserve(bytes) {
+      if (used + bytes > limit) return null;
+      used += bytes;
+      let released = false;
+      return () => { if (!released) { released = true; used -= bytes; } };
+    },
+  };
+}
+
+function bodyBudgetExceeded() {
+  return Object.assign(new Error('Studio is receiving too many dashboard requests at once. Retry shortly.'), { status: 503, code: 'REQUEST_BODY_BUDGET_EXCEEDED', closeConnection: true, retryAfter: NATIVE_BODY_RETRY_AFTER_SECONDS });
+}
+function bodyTooLarge(limit) {
+  return Object.assign(new Error(`This request exceeds the ${limit / (1024 * 1024)} MiB dashboard request limit.`), { status: 413, code: 'REQUEST_TOO_LARGE', closeConnection: true });
+}
+function declaredLength(req) {
+  if (req.headers['transfer-encoding'] !== undefined) return undefined;
+  const length = Number(req.headers['content-length'] || 0);
+  return Number.isSafeInteger(length) && length >= 0 ? length : undefined;
+}
+
+// Answers `Expect: 100-continue` only once the request is known to be
+// acceptable, just before its body is read.
+const CONTINUE = Symbol('continue');
+function continueBody(req) { req[CONTINUE]?.(); }
+
+// Receive a proxied native request body before a worker lease is taken, so a
+// slow or stalled upload cannot hold a renderer slot. Bytes are reserved from
+// the shared budget (the declared length at once, chunked bodies as they
+// arrive) and stay reserved until the caller releases them.
+function readNativeBody(req, budget, { limit = NATIVE_BODY_LIMIT, timeoutMs = NATIVE_BODY_TIMEOUT_MS } = {}) {
+  const declared = declaredLength(req);
+  if (declared > limit) return Promise.reject(bodyTooLarge(limit));
+  const releases = [];
+  const releaseAll = () => { for (const release of releases.splice(0)) release(); };
+  let reserved = 0;
+  const reserve = bytes => {
+    const release = budget.reserve(bytes);
+    if (!release) return false;
+    releases.push(release); reserved += bytes;
+    return true;
+  };
+  if (declared && !reserve(declared)) return Promise.reject(bodyBudgetExceeded());
+  continueBody(req);
+  return new Promise((resolveBody, reject) => {
+    const chunks = [];
+    let length = 0, done = false;
+    const finish = (error, value) => {
+      if (done) return; done = true;
+      clearTimeout(timer);
+      req.off('data', data); req.off('end', end); req.off('error', failed); req.off('aborted', aborted); req.off('close', aborted);
+      if (error) { releaseAll(); req.pause(); reject(error); } else resolveBody({ body: value, release: releaseAll });
+    };
+    const data = chunk => {
+      length += chunk.length;
+      if (length > limit) return finish(bodyTooLarge(limit));
+      if (length > reserved && !reserve(length - reserved)) return finish(bodyBudgetExceeded());
+      chunks.push(chunk);
+    };
+    const end = () => finish(undefined, Buffer.concat(chunks));
+    const failed = error => finish(error);
+    const aborted = () => finish(Object.assign(new Error('The request was cancelled.'), { status: 400, code: 'REQUEST_ABORTED' }));
+    const timer = setTimeout(() => finish(Object.assign(new Error('The request body was not received in time. Retry the action.'), { status: 408, code: 'REQUEST_BODY_TIMEOUT', closeConnection: true })), timeoutMs);
+    req.on('data', data); req.once('end', end); req.once('error', failed); req.once('aborted', aborted); req.once('close', aborted);
+  });
+}
+
 async function readBody(req, maxBytes = 2 * 1024 * 1024) {
   if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) {
     throw Object.assign(new Error('Send JSON when saving changes.'), { status: 415 });
   }
+  continueBody(req);
   let length = 0;
   const chunks = [];
   for await (const chunk of req) {
@@ -66,6 +239,40 @@ async function readBody(req, maxBytes = 2 * 1024 * 1024) {
   catch { throw Object.assign(new Error('The request body is not valid JSON.'), { status: 400 }); }
   if (!value || Array.isArray(value) || typeof value !== 'object') throw Object.assign(new Error('Expected a configuration object.'), { status: 400 });
   return value;
+}
+
+// The widget catalog is part of the image and does not change while the
+// process runs. Read, hash and compress it once; browsers revalidate with the
+// strong per-encoding ETag instead of downloading it again.
+const gzip = promisify(zlib.gzip), brotli = promisify(zlib.brotliCompress);
+let catalogVariants;
+function loadCatalogVariants() {
+  catalogVariants ||= (async () => {
+    const identity = await readFile(join(base, 'public', 'catalog.json'));
+    const hash = createHash('sha256').update(identity).digest('base64url').slice(0, 32);
+    const [gz, br] = await Promise.all([
+      gzip(identity, { level: 9 }),
+      brotli(identity, { params: { [zlib.constants.BROTLI_PARAM_MODE]: zlib.constants.BROTLI_MODE_TEXT, [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: identity.length } }),
+    ]);
+    const variant = (encoding, body) => ({ encoding, body, etag: `"${hash}-${encoding}"` });
+    return new Map([['identity', variant('identity', identity)], ['gzip', variant('gzip', gz)], ['br', variant('br', br)]]);
+  })();
+  // A failed read is retried on the next request rather than cached.
+  catalogVariants.catch(() => { catalogVariants = undefined; });
+  return catalogVariants;
+}
+
+async function serveCatalog(req, res) {
+  const variants = await loadCatalogVariants();
+  const encoding = acceptedEncodings(req.headers['accept-encoding'])[0];
+  if (!encoding) { res.writeHead(406, { 'cache-control': 'no-store', vary: 'Accept-Encoding' }); return res.end(); }
+  const { body, etag } = variants.get(encoding);
+  const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', vary: 'Accept-Encoding', etag };
+  if (encoding !== 'identity') headers['content-encoding'] = encoding;
+  if (etagMatches(req.headers['if-none-match'], etag)) { res.writeHead(304, headers); return res.end(); }
+  headers['content-length'] = body.length;
+  res.writeHead(200, headers);
+  res.end(req.method === 'HEAD' ? undefined : body);
 }
 
 function createDashboardHandlers(options = {}) {
@@ -185,16 +392,16 @@ function createDashboardHandlers(options = {}) {
     }
   }
 
-  async function asset(req, res, name, contentType) {
-    const text = await readFile(join(base, 'public', name), 'utf8');
-    res.writeHead(200, { 'content-type': contentType, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(text) });
-    res.end(req.method === 'HEAD' ? undefined : text);
-  }
-
   async function proxy(req, res, dashboard) {
     if (res.destroyed || req.aborted) return;
     const basePath = dashboardBasePath(dashboard);
     const host = String(req.headers.host).toLowerCase();
+    const hasBody = req.headers['transfer-encoding'] !== undefined || Number(req.headers['content-length'] || 0) > 0;
+    const received = hasBody ? await readNativeBody(req, options.nativeBodyBudget, { timeoutMs: options.nativeBodyTimeoutMs }) : undefined;
+    const body = received?.body;
+    // The buffered body counts against the shared budget until the response ends.
+    if (received) { if (res.closed) received.release(); else res.once('close', received.release); }
+    if (res.destroyed || req.aborted) return;
     const lease = await acquireNative(host, dashboard);
     const upstream = lease.origin;
     const transport = upstream.protocol === 'https:' ? https : http;
@@ -204,7 +411,10 @@ function createDashboardHandlers(options = {}) {
     const abandon = () => { upstreamRequest?.destroy(); upstreamResponse?.destroy(); release(); };
     res.once('finish', release); res.once('close', abandon); req.once('aborted', abandon);
     if (res.destroyed || req.aborted) { abandon(); return; }
-    const headers = Object.fromEntries(Object.entries(headersWithoutHop(req.headers)).filter(([key]) => !key.startsWith('x-studio-')));
+    // The controller already received the body, so the worker must not be
+    // asked to send 100 Continue.
+    const headers = Object.fromEntries(Object.entries(headersWithoutHop(req.headers)).filter(([key]) => !key.startsWith('x-studio-') && key.toLowerCase() !== 'expect'));
+    if (body) headers['content-length'] = String(body.length);
     try {
       upstreamRequest = transport.request(upstream, { method: req.method, path: req.url, headers, timeout: 60000 }, response => {
         upstreamResponse = response;
@@ -214,6 +424,12 @@ function createDashboardHandlers(options = {}) {
         if (responseHeaders.location) responseHeaders.location = nativeLocation(responseHeaders.location, context);
         if (responseHeaders.refresh) responseHeaders.refresh = nativeRefresh(responseHeaders.refresh, context);
         responseHeaders['cache-control'] = 'no-store';
+        for (const key of CONTROLLER_HEADERS) delete responseHeaders[key];
+        // A native policy stays in force; the controller's frame-ancestors
+        // policy is added as a separate header, and browsers enforce both.
+        if (responseHeaders['content-security-policy'] && res.hasHeader('content-security-policy')) {
+          responseHeaders['content-security-policy'] = [].concat(responseHeaders['content-security-policy'], res.getHeader('content-security-policy'));
+        }
         res.writeHead(response.statusCode || 502, responseHeaders);
         response.on('error', () => res.destroy()); response.on('aborted', () => res.destroy());
         response.pipe(res);
@@ -227,7 +443,7 @@ function createDashboardHandlers(options = {}) {
       }
       release();
     });
-    req.pipe(upstreamRequest);
+    upstreamRequest.end(body);
   }
 
   async function handle(req, res, dashboard) {
@@ -238,7 +454,7 @@ function createDashboardHandlers(options = {}) {
       if (path === '/__studio/ready' && req.method === 'GET') return await readiness(req, res, dashboard);
       if (path === '/__studio/config-ready' && req.method === 'GET') return await readiness(req, res, dashboard, true);
       if (!path.startsWith('/__studio/')) await prepareNative();
-      if (path === '/__studio/catalog.json' && req.method === 'GET') return await asset(req, res, 'catalog.json', 'application/json; charset=utf-8');
+      if (path === '/__studio/catalog.json' && ['GET', 'HEAD'].includes(req.method)) return await serveCatalog(req, res);
       const saveChange = path === '/__studio/api/save' && req.method === 'POST' ? await readBody(req) : undefined;
       // Complete board replacements must validate against newly discovered
       // membership. Structured/native-file edits use their revision-checked
@@ -266,49 +482,18 @@ function createDashboardHandlers(options = {}) {
       await proxy(req, res, dashboard);
     } catch (error) {
       const status = Number(error.status || error.statusCode) || 500;
-      json(res, status, { error: status < 500 || error instanceof ConfigError || error instanceof BoardError || error instanceof DiscoveryError || error instanceof RendererError ? error.message : 'The editor could not read or save its configuration. Check the configuration and state volume permissions.', code: error.code || 'EDITOR_ERROR' });
-      if (status >= 500) console.error('Editor request failed:', error.code || error.name);
+      if (error.closeConnection && !res.headersSent) res.setHeader('connection', 'close');
+      if (error.retryAfter && !res.headersSent) res.setHeader('retry-after', String(error.retryAfter));
+      json(res, status, { error: status < 500 || error instanceof ConfigError || error instanceof BoardError || error instanceof DiscoveryError || error instanceof RendererError ? error.message : 'The editor could not read or save its configuration. Check the configuration and state volume permissions.', code: error.code || 'EDITOR_ERROR',
+        // ConfigError details are structured and source-free (file names, YAML error codes and positions, limits),
+        // so editors can point at the failing line without the response ever echoing configuration text.
+        details: error instanceof ConfigError ? error.details : undefined });
+      // Load shedding (503 with Retry-After) is expected under a burst; do not log each refusal.
+      if (status >= 500 && !error.retryAfter) console.error('Editor request failed:', error.code || error.name);
     }
   }
 
-  async function upgrade(req, socket, head, dashboard) {
-    checkRequest(req);
-    if (req.url.startsWith('/__studio/')) { socket.destroy(); return; }
-    await prepareNative();
-    if (socket.destroyed) return;
-    const lease = await acquireNative(String(req.headers.host).toLowerCase(), dashboard);
-    let released = false;
-    const release = () => { if (!released) { released = true; lease.release(); } };
-    let request, upstreamSocket;
-    const abandon = () => { request?.destroy(); upstreamSocket?.destroy(); release(); };
-    socket.once('close', abandon);
-    socket.once('error', abandon);
-    socket.once('end', () => upstreamSocket?.end());
-    if (socket.destroyed) { abandon(); return; }
-    const upstream = lease.origin;
-    const transport = upstream.protocol === 'https:' ? https : http;
-    const headers = Object.fromEntries(Object.entries(req.headers).filter(([key]) => !key.startsWith('x-studio-')));
-    try { request = transport.request(upstream, { method: req.method, path: req.url, headers, timeout: 60000 }); }
-    catch (error) { abandon(); throw error; }
-    request.on('upgrade', (response, peer, upstreamHead) => {
-      upstreamSocket = peer;
-      if (socket.destroyed) { abandon(); return; }
-      const lines = ['HTTP/1.1 ' + response.statusCode + ' ' + response.statusMessage];
-      for (let i = 0; i < response.rawHeaders.length; i += 2) lines.push(response.rawHeaders[i] + ': ' + response.rawHeaders[i + 1]);
-      socket.write(lines.join('\r\n') + '\r\n\r\n');
-      if (upstreamHead.length) socket.write(upstreamHead);
-      if (head.length) peer.write(head);
-      peer.pipe(socket).pipe(peer);
-      peer.once('close', () => { socket.destroy(); release(); });
-      peer.once('end', () => socket.end());
-      peer.once('error', () => socket.destroy());
-    });
-    request.on('response', response => { response.resume(); socket.destroy(); release(); });
-    request.on('error', () => { socket.destroy(); release(); });
-    request.on('timeout', () => request.destroy(new Error('Native upgrade timed out')));
-    request.end();
-  }
-  return { handle, upgrade, checkRequest, store, initialization };
+  return { handle, checkRequest, store, initialization };
 }
 
 export function createStudioServer(options = {}) {
@@ -322,6 +507,10 @@ export function createStudioServer(options = {}) {
     if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('The injected renderer must be an HTTP(S) origin.');
     rendererPool = { acquire: async () => ({ origin, release() {} }), drain: async () => {}, close: async () => {} };
   }
+  const responseHeaders = securityHeaders(parseFrameAncestors(options.frameAncestors ?? process.env.STUDIO_FRAME_ANCESTORS));
+  // Prepare the compressed catalog before the first editor opens; errors surface on request.
+  loadCatalogVariants().catch(() => {});
+  const nativeBodyBudget = createByteBudget(NATIVE_BODY_BUDGET);
   rendererPool ||= createRendererPool({ configRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision });
   const handlers = new Map();
   const unpublished = new Map();
@@ -330,7 +519,7 @@ export function createStudioServer(options = {}) {
   function forDashboard(entry) {
     let handler = handlers.get(entry.id);
     if (!handler) {
-      handler = createDashboardHandlers({ ...options, rendererPool, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
+      handler = createDashboardHandlers({ ...options, rendererPool, nativeBodyBudget, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
       handlers.set(entry.id, handler);
     }
     // Only immutable-id storage is retained. Each request carries its own
@@ -399,7 +588,8 @@ export function createStudioServer(options = {}) {
     if (!registryReady) { await registry.initialize(); registryReady = true; }
     return registry.read();
   }
-  const server = http.createServer(async (req, res) => {
+  async function handleRequest(req, res) {
+    for (const [name, value] of Object.entries(responseHeaders)) res.setHeader(name, value);
     try {
       original.checkRequest(req);
       const path = req.url.split('?')[0];
@@ -445,27 +635,32 @@ export function createStudioServer(options = {}) {
       if (route.shared) return await serveSharedAsset(req, res, rendererDir);
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
+      if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);
       const diagnostic = req.url.split('?')[0].startsWith('/__studio/api/');
       const status = error instanceof ConfigError && !diagnostic ? 503 : Number(error.status || error.statusCode) || 500;
       json(res, status, { error: error instanceof DashboardError || error instanceof ConfigError || status < 500 ? error.message : 'The dashboard could not be opened. Check the application logs and persistent storage.', code: error.code || 'DASHBOARD_ERROR' });
     }
+  }
+  const server = http.createServer(handleRequest);
+  // With this listener Node no longer sends 100 Continue by itself. A request
+  // gets it only when a handler is about to read its body, so an oversized or
+  // over-budget upload is refused before the client sends it.
+  server.on('checkContinue', (req, res) => {
+    let continued = false;
+    req[CONTINUE] = () => { if (!continued && !res.headersSent && !res.destroyed) { continued = true; res.writeContinue(); } };
+    return handleRequest(req, res);
   });
   const connections = new Set();
   server.on('connection', socket => { connections.add(socket); socket.once('close', () => connections.delete(socket)); });
-  server.on('upgrade', async (req, socket, head) => {
-    try {
-      original.checkRequest(req);
-      const route = resolveDashboardRoute(await prepareRegistry(), req.url);
-      if (route.redirect || route.shared) { socket.destroy(); return; }
-      req.url = route.path;
-      await forDashboard(route.dashboard).upgrade(req, socket, head, route.dashboard);
-    } catch (error) {
-      if (socket.destroyed) return;
-      const requested = Number(error.status || error.statusCode);
-      const status = [400, 403, 404].includes(requested) ? requested : 503;
-      const reason = { 400: 'Bad Request', 403: 'Forbidden', 404: 'Not Found', 503: 'Service Unavailable' }[status];
-      socket.end('HTTP/1.1 ' + status + ' ' + reason + '\r\nConnection: close\r\n\r\n');
-    }
+  // No browser-facing route upgrades: Homepage's production build serves no
+  // WebSocket (webpack-hmr exists only in `next dev`), and the TrueNAS widget's
+  // WebSocket is an outbound connection from the worker. Refuse every upgrade
+  // on the raw socket before routing, so it can never wait for or hold a
+  // renderer slot. Without this listener Node would hand the request to the
+  // ordinary handler instead.
+  server.on('upgrade', (req, socket) => {
+    socket.on('error', () => {});
+    socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nCache-Control: no-store\r\nContent-Length: 0\r\n\r\n', () => socket.destroy());
   });
   server.on('close', () => {
     if (!applicationClosing) void closeRenderer().catch(error => console.error('Renderer shutdown failed:', error.code || error.name));
@@ -494,7 +689,7 @@ export function createStudioServer(options = {}) {
     })();
     return shutdownResult;
   }
-  return { server, store: original.store, registry, initialization, rendererPool, shutdown, get dashboardHandlerCount() { return handlers.size; } };
+  return { server, store: original.store, registry, initialization, rendererPool, shutdown, get dashboardHandlerCount() { return handlers.size; }, get nativeBodyBytesInFlight() { return nativeBodyBudget.used; } };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

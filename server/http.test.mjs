@@ -4,7 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, gunzipSync, brotliDecompressSync } from 'node:zlib';
 import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from './index.mjs';
 import { createConfigStore, MAX_IMPORT_BYTES } from './config.mjs';
 
@@ -333,6 +333,7 @@ test('HTTP state, native service and info-widget mutations, stale revisions, bac
   const stale = await post('/__studio/api/save', { revision: before.revision, settingsYaml: 'title: Stale edit\n' });
   assert.equal(stale.status, 409);
   assert.equal(stale.json.code, 'REVISION_CONFLICT');
+  assert.equal(stale.json.details.currentRevision, result.json.revision);
   result = await post('/__studio/api/service', { revision: result.json.revision, action: 'update', id: tile.id, name: 'Container management', config: { description: 'Native integration' } });
   assert.equal(result.status, 200);
   assert.equal(result.json.services[0].id, tile.id);
@@ -346,6 +347,18 @@ test('HTTP state, native service and info-widget mutations, stale revisions, bac
   const invalid = await post('/__studio/api/save', { revision: result.json.revision, servicesYaml: '- broken: [unterminated' });
   assert.equal(invalid.status, 422);
   assert.equal(invalid.json.code, 'INVALID_YAML');
+  assert.equal(invalid.json.details.file, 'services.yaml');
+  assert.ok(invalid.json.details.errors.length > 0);
+  for (const detail of invalid.json.details.errors) {
+    assert.deepEqual(Object.keys(detail).sort(), ['code', 'column', 'line']);
+    assert.ok(Number.isInteger(detail.line) && Number.isInteger(detail.column));
+  }
+  const secretSource = '- Secret:\n    - App:\n        href: https://app.example.test\n        widget: { type: customapi, key: inline-secret-value, url: [unterminated\n';
+  const secretInvalid = await post('/__studio/api/save', { revision: result.json.revision, servicesYaml: secretSource });
+  assert.equal(secretInvalid.status, 422);
+  assert.equal(secretInvalid.json.code, 'INVALID_YAML');
+  assert.ok(secretInvalid.json.details.errors[0].line >= 1);
+  assert.doesNotMatch(JSON.stringify(secretInvalid.json), /inline-secret-value|unterminated|app\.example\.test/, 'YAML error responses must carry positions only, never source text.');
   assert.equal((await request('/__studio/api/state')).json.revision, result.json.revision);
   const backups = await request('/__studio/api/backups');
   assert.equal(backups.status, 200);
@@ -431,7 +444,8 @@ test('an unresolved startup recovery blocks HTTP and WebSocket proxy traffic whi
   const native = await request('/api/native-config');
   assert.equal(native.status, 503);
   assert.equal(native.json.code, 'RECOVERY_REQUIRED');
-  assert.equal((await request('/api/socket', { headers: { connection: 'Upgrade', upgrade: 'websocket' } })).status, 503);
+  // WebSocket upgrades are refused outright and never reach the native renderer.
+  assert.equal((await request('/api/socket', { headers: { connection: 'Upgrade', upgrade: 'websocket' } })).status, 404);
   assert.equal((await request('/__studio/live')).status, 200);
   const readiness = await request('/__studio/ready');
   assert.equal(readiness.status, 503);
@@ -652,4 +666,109 @@ test('both complete-board save routes await fresh membership and reject an omitt
     assert.equal((await store.load()).revision, before.revision);
     assert.equal((await store.listBackups()).length, 0);
   }
+});
+
+test('the widget catalog is compressed, revalidated by strong ETag and never proxied', async (t) => {
+  const { request, upstreamCalls } = await setup(t);
+  const original = await fs.readFile(new URL('../public/catalog.json', import.meta.url));
+  const plain = await request('/__studio/catalog.json');
+  assert.equal(plain.status, 200);
+  assert.deepEqual(plain.buffer, original);
+  assert.equal(plain.headers['content-encoding'], undefined);
+  assert.equal(plain.headers['content-type'], 'application/json; charset=utf-8');
+  assert.equal(plain.headers['cache-control'], 'no-cache');
+  assert.equal(plain.headers.vary, 'Accept-Encoding');
+  assert.equal(plain.headers['x-content-type-options'], 'nosniff');
+  assert.equal(plain.headers['content-security-policy'], "frame-ancestors 'self'");
+  assert.equal(Number(plain.headers['content-length']), original.length);
+  assert.match(plain.headers.etag, /^"[A-Za-z0-9_-]{32}-identity"$/);
+
+  const br = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'gzip, deflate, br' } });
+  assert.equal(br.headers['content-encoding'], 'br');
+  assert.deepEqual(brotliDecompressSync(br.buffer), original);
+  assert.ok(br.buffer.length < original.length / 5, `brotli catalog is ${br.buffer.length} bytes`);
+  assert.equal(Number(br.headers['content-length']), br.buffer.length);
+  const gz = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'gzip, br;q=0.5' } });
+  assert.equal(gz.headers['content-encoding'], 'gzip');
+  assert.deepEqual(gunzipSync(gz.buffer), original);
+  const etags = new Set([plain.headers.etag, br.headers.etag, gz.headers.etag]);
+  assert.equal(etags.size, 3, 'Each encoding is a distinct representation.');
+  assert.equal(new Set([...etags].map(tag => tag.replace(/-(?:identity|gzip|br)"$/, ''))).size, 1, 'All encodings share one content hash.');
+  assert.equal((await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'br' } })).headers.etag, br.headers.etag, 'The ETag is stable across requests.');
+
+  const head = await request('/__studio/catalog.json', { method: 'HEAD', headers: { 'accept-encoding': 'br' } });
+  assert.equal(head.status, 200);
+  assert.equal(head.buffer.length, 0);
+  assert.equal(head.headers.etag, br.headers.etag);
+  assert.equal(Number(head.headers['content-length']), br.buffer.length);
+
+  const revalidated = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'br', 'if-none-match': `"other", ${br.headers.etag}` } });
+  assert.equal(revalidated.status, 304);
+  assert.equal(revalidated.buffer.length, 0);
+  assert.equal(revalidated.headers.etag, br.headers.etag);
+  assert.equal(revalidated.headers['cache-control'], 'no-cache');
+  assert.equal(revalidated.headers['content-encoding'], 'br');
+  const headRevalidated = await request('/__studio/catalog.json', { method: 'HEAD', headers: { 'if-none-match': plain.headers.etag } });
+  assert.equal(headRevalidated.status, 304);
+  const otherEncoding = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'gzip', 'if-none-match': br.headers.etag } });
+  assert.equal(otherEncoding.status, 200, 'A Brotli validator does not validate the gzip representation.');
+  assert.deepEqual(gunzipSync(otherEncoding.buffer), original);
+
+  const refused = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'identity;q=0' } });
+  assert.equal(refused.status, 406);
+  assert.equal((await request('/__studio/catalog.json', { method: 'DELETE', headers: { origin: ORIGIN, 'x-studio-request': '1' } })).status, 404);
+  assert.equal(upstreamCalls.length, 0);
+});
+
+test('each editor endpoint records its own fixed snapshot action code and never request text', async (t) => {
+  const id = 'discovered-service-0123456789abcdef01234567';
+  const source = { id, kind: 'service', title: 'Discovered service', group: 'Lab', nativeLocator: { discovered: true, discoveryId: id, serviceId: id, groupPath: ['Lab'], name: 'Discovered service', origin: 'docker' } };
+  const { request, post, stateDir, initialization } = await setup(t, { nativeDiscoveredSources: [source] });
+  await initialization;
+  let revision = (await request('/__studio/api/state')).json.revision;
+  const recorded = [];
+  async function expectAction(target, body, action) {
+    const response = await post(target, { revision, ...body });
+    assert.equal(response.status, 200, `${target} ${response.text}`);
+    revision = response.json.revision;
+    const [latest] = (await request('/__studio/api/backups')).json;
+    assert.equal(latest.action, action, target);
+    recorded.push(latest.id);
+    return response.json;
+  }
+  let state = await expectAction('/__studio/api/discovery-visibility', { id, hidden: true }, 'discovered-panel-hidden');
+  state = await expectAction('/__studio/api/discovery-visibility', { id, hidden: false }, 'discovered-panel-shown');
+  state = await expectAction('/__studio/api/service', { action: 'add', name: 'Router admin', group: 'Lab', config: { href: 'https://router.example.test' }, snapshotAction: 'arbitrary text' }, 'service-added');
+  const service = state.services.find((entry) => entry.name === 'Router admin');
+  state = await expectAction('/__studio/api/service', { action: 'update', id: service.id, config: { description: 'Edited' } }, 'service-edited');
+  state = await expectAction('/__studio/api/service-widget', { action: 'add', serviceId: service.id, type: 'customapi', config: { url: 'http://api.example.test' } }, 'service-widget-added');
+  const widget = state.serviceWidgets[0];
+  state = await expectAction('/__studio/api/service-widget', { action: 'update', id: widget.id, type: 'customapi', config: { url: 'http://api2.example.test' } }, 'service-widget-edited');
+  state = await expectAction('/__studio/api/service-widget', { action: 'delete', id: widget.id }, 'service-widget-deleted');
+  state = await expectAction('/__studio/api/info-widget', { action: 'add', type: 'datetime', config: {} }, 'info-widget-added');
+  const info = state.infoWidgets[0];
+  state = await expectAction('/__studio/api/info-widget', { action: 'update', id: info.id, config: { format: { timeStyle: 'short' } } }, 'info-widget-edited');
+  state = await expectAction('/__studio/api/info-widget', { action: 'delete', id: info.id }, 'info-widget-deleted');
+  state = await expectAction('/__studio/api/bookmark', { action: 'add', group: 'Reading', name: 'Docs', config: { href: 'https://docs.example.test' } }, 'bookmark-added');
+  const bookmark = state.bookmarks[0];
+  state = await expectAction('/__studio/api/bookmark', { action: 'update', id: bookmark.id, config: { abbr: 'DO' } }, 'bookmark-edited');
+  state = await expectAction('/__studio/api/bookmark', { action: 'delete', id: bookmark.id }, 'bookmark-deleted');
+  state = await expectAction('/__studio/api/settings', { config: { title: 'Renamed dashboard' } }, 'settings-saved');
+  state = await expectAction('/__studio/api/save', { customCss: '/* edited */', action: 'Free text from the request' }, 'files-saved');
+  const board = structuredClone(state.board);
+  board.panels[0].rect = { ...board.panels[0].rect, x: board.panels[0].rect.x + 1 };
+  state = await expectAction('/__studio/api/board', { board }, 'arrangement-saved');
+  state = await expectAction('/__studio/api/service', { action: 'delete', id: service.id }, 'service-deleted');
+  state = await expectAction('/__studio/api/restore', { backupId: recorded[0] }, 'snapshot-restored');
+  const archive = (await request('/__studio/api/export')).json;
+  await expectAction('/__studio/api/import', { archive }, 'dashboard-imported');
+  // Snapshot files and listings carry only fixed codes, never request strings.
+  const names = await fs.readdir(path.join(stateDir, 'backups'));
+  assert.equal(names.length, recorded.length);
+  for (const name of names) {
+    const stored = JSON.parse(await fs.readFile(path.join(stateDir, 'backups', name), 'utf8'));
+    assert.match(stored.action, /^[a-z][a-z-]+$/);
+  }
+  const listed = JSON.stringify((await request('/__studio/api/backups')).json);
+  assert.ok(!listed.includes('Free text') && !listed.includes('arbitrary text'));
 });

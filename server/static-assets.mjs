@@ -8,7 +8,7 @@ const types = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; char
 const absent = res => { res.writeHead(404, { 'cache-control': 'no-store' }); res.end(); };
 const compressedTypes = new Set(['.js', '.css', '.json', '.svg', '.txt', '.map']);
 
-function acceptedEncodings(header) {
+export function acceptedEncodings(header) {
   if (!header) return ['identity'];
   const qualities = new Map();
   for (const entry of String(header).toLowerCase().split(',')) {
@@ -25,6 +25,12 @@ function acceptedEncodings(header) {
   // Prefer Brotli, then gzip when the client assigns equal quality. An explicit
   // identity preference and q=0 exclusions still take precedence.
   return ['br', 'gzip', 'identity'].filter(encoding => quality(encoding) > 0).sort((a, b) => quality(b) - quality(a));
+}
+
+// If-None-Match uses the weak comparison (RFC 9110 13.1.2).
+export function etagMatches(header, etag) {
+  const value = String(header || '').trim();
+  return value === '*' || value.split(',').map(entry => entry.trim().replace(/^W\//, '')).includes(etag);
 }
 
 export async function serveSharedAsset(req, res, rendererDir) {
@@ -66,7 +72,7 @@ export async function serveSharedAsset(req, res, rendererDir) {
     const headers = { 'content-type': types[extname(target).toLowerCase()] || 'application/octet-stream', 'content-length': stat.size, 'x-content-type-options': 'nosniff', 'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=60', etag, 'last-modified': stat.mtime.toUTCString() };
     if (negotiable) headers.vary = 'Accept-Encoding';
     if (encoding !== 'identity') headers['content-encoding'] = encoding;
-    if (String(req.headers['if-none-match'] || '').split(',').map(value => value.trim().replace(/^W\//, '')).includes(etag) || req.headers['if-none-match'] === '*') {
+    if (etagMatches(req.headers['if-none-match'], etag)) {
       delete headers['content-length']; res.writeHead(304, headers); return res.end();
     }
     res.writeHead(200, headers);

@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { boardFocusOrder } from "./focus-order";
 import StackShell from "./stack-shell";
 
 const stack = {
@@ -171,8 +172,11 @@ describe("Native board stack controls", () => {
     );
     expect(screen.queryByRole("button", { name: /previous|next/i })).not.toBeInTheDocument();
     const carousel = screen.getByRole("region", { name: /Clock/ });
+    // The label alone carries state; aria-pressed would announce it twice.
+    expect(screen.getByRole("button", { name: "Play slideshow" })).not.toHaveAttribute("aria-pressed");
     fireEvent.click(screen.getByRole("button", { name: "Play slideshow" }));
     expect(controller.getSnapshot().playing).toBe(true);
+    expect(screen.getByRole("button", { name: "Pause slideshow" })).not.toHaveAttribute("aria-pressed");
     act(() => {
       vi.advanceTimersByTime(2000);
     });
@@ -264,5 +268,66 @@ describe("Native board stack controls", () => {
     expect(hold).toHaveBeenCalledWith("s");
     screen.getByRole("button", { name: "Play slideshow" }).focus();
     expect(controller.getSnapshot().blockedReasons).not.toContain("content-focus");
+  });
+});
+
+describe("Stack selection checkbox", () => {
+  const editProps = (overrides = {}) => ({
+    stack,
+    panels,
+    rect: {},
+    editing: true,
+    reducedMotion: false,
+    onActive: vi.fn(),
+    registerController: vi.fn(),
+    onEdit: vi.fn(),
+    onManipulate: vi.fn(),
+    onUnitKey: vi.fn(),
+    onLongPress: vi.fn(),
+    onSelect: vi.fn(),
+    ...overrides,
+  });
+
+  it("toggles the stack id from a Select checkbox named after the active widget, only in edit mode", () => {
+    const props = editProps();
+    const { rerender } = render(<StackShell {...props} />);
+    const checkbox = screen.getByRole("checkbox", { name: "Select stack Clock" });
+    expect(checkbox.closest("label")).toHaveClass("studio-select-target");
+    expect(checkbox.closest("header")).toHaveClass("studio-stack-header");
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+    expect(props.onSelect).toHaveBeenCalledExactlyOnceWith("s");
+    rerender(<StackShell {...props} selected />);
+    expect(checkbox).toBeChecked();
+    fireEvent.click(checkbox);
+    expect(props.onSelect).toHaveBeenCalledTimes(2);
+    expect(props.onSelect).toHaveBeenLastCalledWith("s");
+    rerender(<StackShell {...props} selected busy />);
+    expect(checkbox).toBeDisabled();
+    rerender(<StackShell {...props} editing={false} />);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("is the stack's first header control in Tab order, before Move stack", () => {
+    render(
+      <div data-testid="canvas">
+        <StackShell {...editProps()} />
+      </div>,
+    );
+    const order = boardFocusOrder(screen.getByTestId("canvas"), ["s"]).map(
+      (element) => element.getAttribute("aria-label") || element.textContent,
+    );
+    expect(order.slice(1, 3)).toEqual(["Select stack Clock", "Move stack. Arrow keys move; Shift and arrows resize."]);
+  });
+
+  it("does not treat a right-click on the selection target as the selecting header hold", () => {
+    const props = editProps();
+    render(<StackShell {...props} />);
+    const target = screen.getByRole("checkbox", { name: "Select stack Clock" }).closest("label");
+    const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    target.dispatchEvent(menu);
+    expect(menu.defaultPrevented).toBe(false);
+    expect(props.onLongPress).not.toHaveBeenCalled();
+    expect(props.onSelect).not.toHaveBeenCalled();
   });
 });

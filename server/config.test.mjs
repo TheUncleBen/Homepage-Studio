@@ -60,6 +60,33 @@ test('invalid syntax or shape rejects the entire save without changing any file 
   assert.deepEqual(await fs.readdir(path.join(stateDir, 'backups')), []);
 });
 
+test('invalid YAML reports the original line and column without echoing source text', async (t) => {
+  const { store } = await fixture(t);
+  const before = await store.load();
+  const cases = [
+    // The placeholder is masked with a longer token before parsing; the column
+    // must still point at the stray text in the owner's original text.
+    ['settingsYaml', 'settings.yaml', 'title: Ben\nkey: "{{HOMEPAGE_VAR_SYNTHETIC_SECRET}}" extra\nsecret: synthetic-private-marker\n', 2, 42],
+    ['settingsYaml', 'settings.yaml', 'title: Ben\nsecret: synthetic-private-marker\nlist: [a, b\n', 4, 1],
+    ['servicesYaml', 'services.yaml', '- broken: [unterminated', 1, 24],
+  ];
+  for (const [field, file, text, line, column] of cases) {
+    await assert.rejects(store.save({ revision: before.revision, [field]: text }), (error) => {
+      assert.equal(error.code, 'INVALID_YAML');
+      assert.equal(error.status, 422);
+      assert.equal(error.message, `${file} contains invalid YAML at line ${line}, column ${column}.`);
+      assert.equal(error.details.file, file);
+      assert.deepEqual({ line: error.details.errors[0].line, column: error.details.errors[0].column }, { line, column });
+      assert.equal(typeof error.details.errors[0].code, 'string');
+      const serialized = JSON.stringify({ message: error.message, details: error.details });
+      assert.ok(!serialized.includes('synthetic-private-marker'));
+      assert.ok(!serialized.includes('HOMEPAGE_VAR_SYNTHETIC_SECRET'));
+      assert.ok(!serialized.includes('HOMEPAGESTUDIOPLACEHOLDER'));
+      return true;
+    }, JSON.stringify(text));
+  }
+});
+
 test('optimistic revision rejects stale and simultaneous saves', async (t) => {
   const { store } = await fixture(t);
   const before = await store.load();
@@ -145,6 +172,37 @@ test('information widget add/edit/type change/delete preserve identity across re
   result = await restarted.mutateInfoWidget({ revision: result.revision, action: 'delete', id: clock.id });
   assert.ok(!result.infoWidgets.some((entry) => entry.id === clock.id));
   assert.equal(result.infoWidgets.find((entry) => entry.type === 'search').id, added.id);
+});
+
+test('information widgets use readable native names, numbered by configuration order without changing identities', async (t) => {
+  const { store } = await fixture(t);
+  let result = await store.load();
+  const panel = (id) => result.board.panels.find((entry) => entry.id === id);
+  const clock = result.infoWidgets.find((entry) => entry.type === 'datetime');
+  const resources = result.infoWidgets.find((entry) => entry.type === 'resources');
+  assert.equal(panel(clock.id).title, 'Date & Time');
+  assert.equal(panel(resources.id).title, 'Resources');
+  result = await store.save({ revision: result.revision, widgetsYaml: '# Header widgets\n- datetime:\n    text_size: xl # readable clock\n- resources:\n    cpu: true\n    memory: true\n- datetime:\n    format: { timeStyle: short }\n- my_custom-thing: {}\n' });
+  const second = result.infoWidgets.find((entry) => entry.type === 'datetime' && entry.id !== clock.id);
+  assert.equal(result.infoWidgets.find((entry) => entry.type === 'datetime' && entry.index === 0).id, clock.id);
+  assert.equal(panel(clock.id).title, 'Date & Time');
+  assert.equal(panel(second.id).title, 'Date & Time 2');
+  assert.equal(panel(result.infoWidgets.find((entry) => entry.type === 'my_custom-thing').id).title, 'My Custom Thing');
+  // Adding another panel elsewhere leaves every existing title and identity alone.
+  const before = result.board.panels.map((entry) => [entry.id, entry.title]);
+  result = await store.mutateInfoWidget({ revision: result.revision, action: 'add', type: 'greeting', config: { text: 'Hello' } });
+  for (const [id, title] of before) assert.equal(panel(id).title, title);
+  assert.equal(result.board.panels.find((entry) => entry.nativeLocator.type === 'greeting').title, 'Greeting');
+  result = await store.mutateInfoWidget({ revision: result.revision, action: 'add', type: 'datetime', config: {} });
+  assert.deepEqual(result.board.panels.filter((entry) => entry.nativeLocator.type === 'datetime').map((entry) => entry.title).sort(), ['Date & Time', 'Date & Time 2', 'Date & Time 3']);
+  assert.equal(panel(clock.id).title, 'Date & Time');
+  assert.equal(panel(second.id).title, 'Date & Time 2');
+});
+
+test('information widget names match the shipped catalog', async () => {
+  const { infoWidgetLabel } = await import('./board.mjs');
+  const catalog = JSON.parse(await fs.readFile(new URL('../public/catalog.json', import.meta.url), 'utf8'));
+  for (const entry of catalog.info) assert.equal(infoWidgetLabel(entry.type), entry.name.replace(/\s*\(source only\)$/, ''), entry.type);
 });
 
 test('raw widget reordering keeps identity by configuration fingerprint', async (t) => {

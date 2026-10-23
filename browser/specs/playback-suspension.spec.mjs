@@ -6,7 +6,7 @@ test('native content focus, offscreen position and an editor suspend the remaini
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
   await page.goto('/');
   const stack = carousel(page);
-  const input = page.locator('[data-panel-kind="informationWidget"][aria-label="search"]').getByRole('combobox');
+  const input = page.locator('[data-panel-kind="informationWidget"][aria-label="Search"]').getByRole('combobox');
   await expect(input).toBeVisible();
   await stack.scrollIntoViewIfNeeded();
   const before = await studioApi(request, '/__studio/api/backups');

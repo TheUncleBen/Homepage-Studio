@@ -104,8 +104,17 @@ async function assertLegacyBytes(container, expected) {
 }
 
 async function workers(container) {
-  // The entrypoint execs the controller as PID 1 in both supplied templates.
-  return JSON.parse(await docker(['exec', container, 'node', '-e', rendererProcessProbe()]));
+  // Both templates run docker-init as PID 1; the entrypoint execs the
+  // controller as its child, so locate the controller by its command line.
+  const controller = Number(await docker(['exec', container, 'node', '-e', `
+    const fs = require('node:fs');
+    const found = fs.readdirSync('/proc').filter(name => /^\\d+$/.test(name)).filter(pid => {
+      try { return fs.readFileSync('/proc/' + pid + '/cmdline', 'utf8') === 'node\\0server/index.mjs\\0'; } catch { return false; }
+    });
+    if (found.length !== 1) throw new Error('Expected exactly one controller process, found ' + found.length);
+    console.log(found[0]);
+  `]));
+  return JSON.parse(await docker(['exec', container, 'node', '-e', rendererProcessProbe({ parentPid: controller })]));
 }
 
 async function assertWorkers(container, dashboards) {

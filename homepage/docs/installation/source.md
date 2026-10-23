@@ -13,6 +13,6 @@ The controller owns first-run initialization, dashboard routing and native
 worker lifecycles. Fresh installations start empty; do not seed the upstream
 sample skeleton or start the native renderer as an independent production
 service. Qualification and corresponding-source requirements are recorded in
-the [implementation plan](../../../docs/IMPLEMENTATION-PLAN.md).
+[VERIFICATION.md](../../../VERIFICATION.md) and [docs/RELEASES.md](../../../docs/RELEASES.md).
 
 Historical upstream reference: [pinned Homepage source.md](https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/installation/source.md).

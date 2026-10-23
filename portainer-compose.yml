@@ -7,7 +7,10 @@ services:
       STUDIO_RENDERER_MAX_WORKERS: ${STUDIO_RENDERER_MAX_WORKERS:-8}
       STUDIO_RENDERER_IDLE_SECONDS: ${STUDIO_RENDERER_IDLE_SECONDS:-600}
       STUDIO_RENDERER_STARTUP_SECONDS: ${STUDIO_RENDERER_STARTUP_SECONDS:-30}
+      STUDIO_FRAME_ANCESTORS: ${STUDIO_FRAME_ANCESTORS:-}
       LOG_TARGETS: stdout
+    # Published on every host interface. To limit it to one address (for
+    # example a reverse proxy on the same host), add host_ip: 127.0.0.1 here.
     ports:
       - target: 3000
         published: "${STUDIO_PORT:-3000}"
@@ -16,6 +19,13 @@ services:
       - config:/app/config
       - state:/app/state
     restart: unless-stopped
+    # A minimal init (docker-init) is PID 1 and reaps orphaned processes.
+    init: true
+    # The application runs as UID 1000 and needs no Linux capabilities.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     stop_grace_period: 30s
 volumes:
   config:

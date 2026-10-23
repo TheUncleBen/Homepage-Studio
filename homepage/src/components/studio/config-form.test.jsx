@@ -142,6 +142,16 @@ describe("Coherent native option drafts", () => {
       "keep: [",
     );
   });
+  it("reports an advanced YAML error by line and column without echoing the source", () => {
+    render(<Fixture initial={{ keep: true }} fields={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+    fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
+      target: { value: "keep: true\nsecret: synthetic-private-marker\nlist: [a, b\n" },
+    });
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/^Invalid YAML at line 4, column 1: /);
+    expect(alert).not.toHaveTextContent("synthetic-private-marker");
+  });
   it("retains cyclic YAML as a local invalid draft without exposing it to adjacent controls", () => {
     const changed = vi.fn();
     render(<Fixture initial={{ keep: true }} fields={[]} onChange={changed} />);
@@ -243,5 +253,46 @@ describe("Coherent native option drafts", () => {
       screen.queryByText(/This item contains a non-finite number/),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Advanced YAML" })).toBeEnabled();
+  });
+});
+
+describe("Accessible configuration views and field errors", () => {
+  it("exposes the selected view and explains a view disabled by the other view's error", () => {
+    render(<Fixture initial={{ title: "Before" }} fields={[]} />);
+    const options = screen.getByRole("button", { name: "Options" });
+    const yaml = screen.getByRole("button", { name: "Advanced YAML" });
+    expect(options).toHaveAttribute("aria-pressed", "true");
+    expect(yaml).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(yaml);
+    expect(options).toHaveAttribute("aria-pressed", "false");
+    expect(yaml).toHaveAttribute("aria-pressed", "true");
+    expect(options).not.toHaveAttribute("aria-describedby");
+    fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
+      target: { value: "title: [" },
+    });
+    expect(options).toBeDisabled();
+    expect(options).toHaveAccessibleDescription(/Invalid YAML at line/);
+  });
+  it("links an option field's error message to its input", () => {
+    render(
+      <Fixture
+        initial={{}}
+        fields={[
+          { key: "url", label: "Service URL", type: "string" },
+          { key: "extra", label: "Extra", type: "object" },
+        ]}
+      />,
+    );
+    const extra = screen.getByLabelText(/Extra/);
+    expect(extra).not.toHaveAttribute("aria-describedby");
+    fireEvent.change(extra, { target: { value: "[1]" } });
+    expect(extra).toHaveAttribute("aria-invalid", "true");
+    expect(extra).toHaveAccessibleDescription("Use a JSON object.");
+    const yaml = screen.getByRole("button", { name: "Advanced YAML" });
+    expect(yaml).toBeDisabled();
+    expect(yaml).toHaveAccessibleDescription("Use a JSON object.");
+    fireEvent.change(extra, { target: { value: '{"a":1}' } });
+    expect(extra).not.toHaveAttribute("aria-describedby");
+    expect(yaml).not.toHaveAttribute("aria-describedby");
   });
 });

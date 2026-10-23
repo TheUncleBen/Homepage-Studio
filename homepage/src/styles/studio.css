@@ -42,11 +42,18 @@ body {
   opacity: 0.42;
   cursor: not-allowed;
 }
+/* Studio's own controls share one focus style. Native Homepage content on the
+   board (.studio-native-content) keeps Homepage's styling, including the
+   Tailwind forms ring that Studio removes from its own fields. */
 .studio-app button:focus-visible,
 .studio-dialog :is(button, a, input, textarea, select):focus-visible,
+:is(.studio-app, .studio-dialog) :is(a, input, textarea, select, summary):not(.studio-native-content *):focus-visible,
 .studio-stack-shell:focus-visible {
   outline: 2px solid var(--studio-focus);
   outline-offset: 4px;
+}
+:is(.studio-app, .studio-dialog) :is(input, textarea, select):not(.studio-native-content *):focus {
+  box-shadow: none;
 }
 .studio-app button,
 .studio-dialog button,
@@ -362,10 +369,38 @@ body {
   overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--studio-line-strong) transparent;
+}
+/* Contain overscroll only in a body that really scrolls vertically (set by
+   the panel host). A body that fits must let a vertical swipe scroll the
+   page: browsers apply overscroll-behavior to any scroll container. */
+.studio-native-content[data-studio-scroll-y] {
   overscroll-behavior: contain;
 }
 .studio-native-content > div {
   max-width: 100%;
+}
+/* Touch on a panel body: vertical page and content scrolling stay native,
+   while horizontal movement reaches the stack swipe and body hold. Content
+   that overflows horizontally keeps native panning (data-studio-scroll-x is
+   set by the panel host), and nested scrollers keep their own panning. */
+.studio-native-content:not([data-studio-scroll-x]) {
+  touch-action: pan-y;
+}
+@media (pointer: coarse) {
+  /* A body hold selects the panel rather than starting text selection. */
+  .studio-native-content {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  /* Links never start a body hold, so they keep the iOS link preview menu. */
+  .studio-native-content a[href] {
+    -webkit-touch-callout: default;
+  }
+  .studio-native-content :is(input, textarea, [contenteditable]:not([contenteditable="false"])) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }
 /* The default slate secondary shade needs more contrast over the light panel
    gradient, including card hover. Keep other native palettes and ordinary
@@ -478,12 +513,34 @@ body {
 .studio-move-handle:active {
   cursor: grabbing !important;
 }
-.studio-panel-header input[type="checkbox"] {
+.studio-panel-header input[type="checkbox"],
+.studio-stack-header input[type="checkbox"] {
   appearance: auto;
   accent-color: var(--studio-accent);
-  width: 15px;
-  height: 15px;
-  min-width: 15px;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+/* WCAG 2.5.8: at least a 24 px target, 44 px for coarse pointers. Negative
+   margins keep the header's title position close to the visible checkbox. */
+.studio-select-target {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: -4px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+@media (pointer: coarse) {
+  .studio-select-target {
+    width: 44px;
+    height: 44px;
+    margin: -14px -10px -14px -14px;
+  }
 }
 .studio-resize-handle {
   position: absolute;
@@ -659,6 +716,18 @@ body {
 .studio-stack-editing {
   outline: 1px solid var(--studio-accent-line);
   outline-offset: 3px;
+}
+/* A selected stack looks like a selected panel; keyboard focus still wins. */
+.studio-stack-shell.studio-selected {
+  outline: 2px solid var(--studio-accent);
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 7px color-mix(in srgb, var(--studio-accent) 10%, transparent),
+    0 7px 22px #0002;
+}
+.studio-stack-shell.studio-selected:focus-visible {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 4px;
 }
 .studio-dashboard-list {
   display: grid;
@@ -878,6 +947,10 @@ body {
   margin: 27px 0 13px;
   font-size: 14px;
   font-weight: 650;
+}
+/* A staged backup's file name can be long and unbroken. */
+.studio-discard-prompt :is(h3, p) {
+  overflow-wrap: anywhere;
 }
 .studio-loading {
   padding: 60px 27px;
@@ -1200,6 +1273,10 @@ body {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+.studio-position-fields .studio-field-error {
+  grid-column: 1 / -1;
+  margin-top: 0;
 }
 .studio-position-fields label {
   display: flex;

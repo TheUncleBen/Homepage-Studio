@@ -43,7 +43,10 @@ export async function renderRobotsPolicy(manifest, readPolicy) {
   const rootDisabled = !!root?.disabled;
   const lines = ['User-agent: *', rootDisabled ? 'Disallow: /' : 'Allow: /', 'Disallow: /__studio/'];
   for (const { dashboard, disabled } of entries) {
-    if (!dashboard.slug) continue;
+    // Archived dashboards answer 404 at their slug, so listing them would only
+    // disclose retired (possibly private) names to anyone reading robots.txt.
+    // They remain disabled above, so a root-level opt-out still covers them.
+    if (!dashboard.slug || dashboard.archived) continue;
     if (disabled) lines.push(...boundaryRules('Disallow', dashboard.slug));
     else if (rootDisabled) lines.push(...boundaryRules('Allow', dashboard.slug));
     lines.push(`Disallow: /${dashboard.slug}/__studio/`);

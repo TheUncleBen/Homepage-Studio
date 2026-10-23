@@ -29,6 +29,16 @@ const MAX_STATE_BYTES = 2 * 1024 * 1024;
 const MAX_BACKUP_BYTES = 20 * MAX_FILE_BYTES;
 export const MAX_IMPORT_BYTES = MAX_BACKUP_BYTES;
 export const DEFAULT_BACKUP_RETENTION = 25;
+// Fixed codes naming the API operation that created a pre-change snapshot.
+// They are chosen by the server per endpoint and never contain request text.
+// Snapshots written before this field existed have no action.
+const CONTENT_ACTIONS = { add: 'added', update: 'edited', delete: 'deleted' };
+export const SNAPSHOT_ACTIONS = Object.freeze([
+  'arrangement-saved', 'settings-saved', 'files-saved', 'snapshot-restored', 'dashboard-imported',
+  'discovered-panel-hidden', 'discovered-panel-shown',
+  ...['service', 'service-widget', 'info-widget', 'bookmark'].flatMap((kind) => Object.values(CONTENT_ACTIONS).map((verb) => `${kind}-${verb}`)),
+]);
+const snapshotAction = (value) => (SNAPSHOT_ACTIONS.includes(value) ? value : null);
 const MAX_DEPTH = 20;
 const PLACEHOLDER = /\{\{\s*HOMEPAGE_(?:VAR|FILE)_[^{}\r\n]*\}\}/g;
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -87,11 +97,27 @@ function maskPlaceholders(source, filename) {
   let prefix;
   do { prefix = `HOMEPAGESTUDIOPLACEHOLDER${randomUUID().replaceAll('-', '')}X`; } while (source.includes(prefix));
   const replacements = [];
-  const text = source.replace(PLACEHOLDER, (original) => {
+  // Masked-text offsets of each token, so parser positions map back to the
+  // owner's original source.
+  const shifts = [];
+  let growth = 0;
+  const text = source.replace(PLACEHOLDER, (original, offset) => {
     const token = `${prefix}${replacements.length}END`;
     replacements.push([token, original]);
+    shifts.push({ masked: offset + growth, token: token.length, original: original.length });
+    growth += token.length - original.length;
     return token;
   });
+  const sourceOffset = (masked) => {
+    let delta = 0;
+    for (const shift of shifts) {
+      if (masked < shift.masked) break;
+      // A position inside a token points at the start of its placeholder.
+      if (masked < shift.masked + shift.token) return shift.masked - delta;
+      delta += shift.token - shift.original;
+    }
+    return masked - delta;
+  };
   const restoreText = (value) => replacements.reduce((result, [token, original]) => result.replaceAll(token, () => original), value);
   const restore = (value) => {
     // YAML can represent Infinity/NaN, but the editor's JSON protocol would
@@ -104,7 +130,21 @@ function maskPlaceholders(source, filename) {
     if (object(value)) return Object.fromEntries(Object.entries(value).map(([key, entry]) => [restoreText(key), restore(entry)]));
     return value;
   };
-  return { text, restoreText, restore };
+  return { text, restoreText, restore, sourceOffset };
+}
+
+// One-based line and column of a UTF-16 offset, matching the yaml package's
+// LineCounter convention. Computed here because prettyErrors: false leaves
+// error.linePos unset.
+function linePosition(source, offset) {
+  const bounded = Math.max(0, Math.min(source.length, Number.isInteger(offset) ? offset : 0));
+  let line = 1;
+  let start = 0;
+  for (let index = source.indexOf('\n'); index !== -1 && index < bounded; index = source.indexOf('\n', index + 1)) {
+    line += 1;
+    start = index + 1;
+  }
+  return { line, column: bounded - start + 1 };
 }
 
 function yamlDocument(source, filename) {
@@ -115,9 +155,15 @@ function yamlDocument(source, filename) {
   const doc = parseDocument(masked.text, { keepSourceTokens: true, uniqueKeys: true, merge: true, prettyErrors: false });
   if (doc.errors.length) {
     // Do not echo YAML snippets: they may contain inline service credentials.
-    fail(`${filename} contains invalid YAML.`, 'INVALID_YAML', 422, {
+    // Positions and error codes are safe and let the owner find the problem.
+    const errors = doc.errors.map((error) => ({
+      code: error.code,
+      ...linePosition(source, masked.sourceOffset(error.pos?.[0])),
+    }));
+    const [first] = errors;
+    fail(`${filename} contains invalid YAML at line ${first.line}, column ${first.column}.`, 'INVALID_YAML', 422, {
       file: filename,
-      errors: doc.errors.map((error) => ({ code: error.code, line: error.linePos?.[0]?.line, column: error.linePos?.[0]?.col })),
+      errors,
     });
   }
   let data;
@@ -338,8 +384,10 @@ function importFiles(archive) {
     fail('Choose a complete Homepage Studio dashboard export or pre-save snapshot.', 'INVALID_IMPORT');
   }
   const snapshot = own(archive, 'before');
-  const allowed = snapshot ? ['version', 'createdAt', 'revision', 'changedFiles', 'before', 'afterHashes'] : ['version', 'createdAt', 'files'];
+  const allowed = snapshot ? ['version', 'createdAt', 'revision', 'changedFiles', 'action', 'before', 'afterHashes'] : ['version', 'createdAt', 'files'];
   if (Object.keys(archive).some((key) => !allowed.includes(key))) fail('The imported archive contains unsupported metadata.', 'INVALID_IMPORT');
+  // The action is informational and is not imported; it only has to be a short code.
+  if (own(archive, 'action') && !(typeof archive.action === 'string' && /^[a-z][a-z-]{0,47}$/.test(archive.action))) fail('The imported archive contains unsupported metadata.', 'INVALID_IMPORT');
   const files = snapshot ? archive.before : archive.files;
   if (!object(files) || Object.keys(files).length !== ALL_FILES.length || ALL_FILES.some((name) => !own(files, name)) || Object.keys(files).some((name) => !ALL_FILES.includes(name))) {
     fail('Import requires all nine native files and state.json, without additional file paths.', 'INVALID_IMPORT');
@@ -656,7 +704,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       fail('The dashboard changed since it was loaded. Reload before saving to avoid overwriting newer changes.', 'REVISION_CONFLICT', 409, { currentRevision: current.revision });
     }
   }
-  async function commit(current, desired) {
+  async function commit(current, desired, action) {
     // Validate the exact bytes that will be persisted, including generated
     // identity/layout state, before creating a backup or transaction journal.
     validateSnapshotBytes(desired);
@@ -666,6 +714,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const backupId = await nextBackupId();
     const backup = {
       version: 1, createdAt: new Date().toISOString(), revision: current.revision, changedFiles,
+      ...(snapshotAction(action) ? { action } : {}),
       before: current.raw,
       afterHashes: Object.fromEntries(ALL_FILES.map((name) => [name, fileHash(desired[name])])),
     };
@@ -694,7 +743,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     }
     await maintainBackups();
   }
-  async function saveCurrent(current, change, forced = {}, restoredState) {
+  async function saveCurrent(current, change, action, forced = {}, restoredState) {
     checkRevision(change.revision, current);
     const desired = { ...current.raw };
     for (const [field, file] of Object.entries(FILES)) if (own(change, field)) {
@@ -723,7 +772,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       board: own(change, 'board') ? validateBoardChange(change.board, candidate.sources) : candidate.board,
     };
     desired['state.json'] = `${JSON.stringify(state, null, 2)}\n`;
-    await commit(current, desired);
+    await commit(current, desired, action);
     return response(await readCurrent());
   }
 
@@ -767,7 +816,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         }
       }
     }
-    return saveCurrent(current, { revision: change.revision, servicesYaml: parsed.text(), layout });
+    return saveCurrent(current, { revision: change.revision, servicesYaml: parsed.text(), layout }, `service-${CONTENT_ACTIONS[change.action]}`);
   }
 
   async function mutateInfoInner(change) {
@@ -800,7 +849,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         renamePair(entry.items[0], type);
       }
     }
-    return saveCurrent(current, { revision: change.revision, widgetsYaml: parsed.text(), layout }, { infoWidgets: identities });
+    return saveCurrent(current, { revision: change.revision, widgetsYaml: parsed.text(), layout }, `info-widget-${CONTENT_ACTIONS[change.action]}`, { infoWidgets: identities });
   }
 
   async function mutateBookmarkInner(change) {
@@ -843,7 +892,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     }
     const text = parsed.text();
     const forced = bookmarkEntries(yamlDocument(text, 'bookmarks.yaml').data).map((entry) => ({ id: identities.get(JSON.stringify([entry.group, entry.name])) }));
-    return saveCurrent(current, { revision: change.revision, bookmarksYaml: text }, { bookmarks: forced });
+    return saveCurrent(current, { revision: change.revision, bookmarksYaml: text }, `bookmark-${CONTENT_ACTIONS[change.action]}`, { bookmarks: forced });
   }
 
   async function mutateServiceWidgetInner(change) {
@@ -908,7 +957,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const text = parsed.text();
     const newServices = serviceEntries(yamlDocument(text, 'services.yaml').data).services;
     const forcedIdentities = newServices.flatMap((entry) => byService.get(entry.id) ?? []);
-    return saveCurrent(current, { revision: change.revision, servicesYaml: text }, { serviceWidgets: forcedIdentities });
+    return saveCurrent(current, { revision: change.revision, servicesYaml: text }, `service-widget-${CONTENT_ACTIONS[change.action]}`, { serviceWidgets: forcedIdentities });
   }
 
   async function mutateSettingsInner(change) {
@@ -917,7 +966,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     if (!object(change.config)) fail('Settings must be supplied as a mapping.');
     const parsed = current.parsed.settingsYaml;
     parsed.doc.contents = patchMap(parsed.doc, parsed.doc.contents, change.config, parsed);
-    return saveCurrent(current, { revision: change.revision, settingsYaml: parsed.text() });
+    return saveCurrent(current, { revision: change.revision, settingsYaml: parsed.text() }, 'settings-saved');
   }
 
   return {
@@ -999,7 +1048,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     load: () => serialized(async () => response(await readCurrent())),
     loadBoard: () => serialized(async () => { const current = await readCurrent(); return { revision: current.revision, configurationRevision: current.configurationRevision, board: current.board, discoveredSources: current.discoveredSources, hiddenDiscoveredIds: current.hiddenDiscoveredIds, warnings: discoveryWarnings }; }),
     saveBoard: (change) => serialized(async () => {
-      const result = await saveCurrent(await readCurrent(), { revision: change.revision, board: change.board });
+      const result = await saveCurrent(await readCurrent(), { revision: change.revision, board: change.board }, 'arrangement-saved');
       return { revision: result.revision, configurationRevision: result.configurationRevision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, warnings: result.warnings };
     }),
     mutateDiscoveryVisibility: (change) => serialized(async () => {
@@ -1009,9 +1058,9 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       if (!current.discoveredSources.some((source) => source.id === change.id)) fail('That discovered panel no longer exists.', 'TILE_NOT_FOUND', 404);
       const hidden = new Set(current.hiddenDiscoveredIds);
       if (change.hidden) hidden.add(change.id); else hidden.delete(change.id);
-      return saveCurrent(current, { revision: change.revision, hiddenDiscoveredIds: [...hidden] });
+      return saveCurrent(current, { revision: change.revision, hiddenDiscoveredIds: [...hidden] }, change.hidden ? 'discovered-panel-hidden' : 'discovered-panel-shown');
     }),
-    save: (change) => serialized(async () => saveCurrent(await readCurrent(), change)),
+    save: (change) => serialized(async () => saveCurrent(await readCurrent(), change, 'files-saved')),
     mutateService: (change) => serialized(() => mutateServiceInner(change)),
     mutateInfoWidget: (change) => serialized(() => mutateInfoInner(change)),
     mutateBookmark: (change) => serialized(() => mutateBookmarkInner(change)),
@@ -1026,14 +1075,15 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       for (const name of names) {
         const id = name.slice(0, -5);
         const backup = await readBackup(id);
-        metadata.push({ id, createdAt: backup.createdAt, revision: backup.revision, changedFiles: backup.changedFiles });
+        metadata.push({ id, createdAt: backup.createdAt, revision: backup.revision, changedFiles: backup.changedFiles, action: snapshotAction(backup.action) });
       }
       return metadata;
     }),
     exportBackup: (id) => serialized(async () => {
       await ready();
-      const { managedFiles, ...backup } = await readBackup(id);
-      return backup;
+      const { managedFiles, action, ...backup } = await readBackup(id);
+      // Older snapshots have no action; an unrecognized value is not exported.
+      return snapshotAction(action) ? { ...backup, action } : backup;
     }),
     exportCurrent: () => serialized(async () => {
       const current = await readCurrent();
@@ -1062,7 +1112,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       // An initial snapshot has no stored placement; other imported boards
       // must match their complete native sources without silently dropping panels.
       desired['state.json'] = `${JSON.stringify(state, null, 2)}\n`;
-      await commit(current, desired);
+      await commit(current, desired, 'dashboard-imported');
       // Replaced configuration must not inherit cached descriptors from the
       // previous dashboard. Native discovery repopulates on its next refresh.
       cachedDiscoveredSources = [];
@@ -1080,7 +1130,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         revision,
         ...Object.fromEntries(Object.entries(FILES).filter(([, file]) => backup.managedFiles.includes(file)).map(([field, file]) => [field, backup.before[file] ?? DEFAULTS[file]])),
         layout: restored.state.layout,
-      }, {}, restored.state);
+      }, 'snapshot-restored', {}, restored.state);
     }),
   };
 }

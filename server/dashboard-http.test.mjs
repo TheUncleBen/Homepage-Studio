@@ -285,26 +285,79 @@ test('robots uses each resolved native setting without acquiring renderer worker
   const head = await f.request('/robots.txt', { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(head.text, ''); assert.equal(Number(head.headers['content-length']), robots.text.length);
 });
 
-test('native upgrades preserve initial bytes and peer FIN releases the worker lease', async t => {
+// Regression (N1): an upgrade used to lease a renderer slot and wait up to 60 s
+// for the worker, so a few cross-site sockets starved other dashboards.
+test('WebSocket upgrades are refused at once and never wait for or hold a renderer slot', async t => {
   const f = await fixture(t), child = await f.create('family');
-  const socket = net.connect(f.port, '127.0.0.1'); await once(socket, 'connect');
-  let received = ''; const ready = deferred();
-  socket.on('data', data => { received += data.toString(); if (received.includes('CLIENT-HEAD')) ready.resolve(); });
-  socket.write(`GET /family/api/socket HTTP/1.1\r\nHost: ${HOST}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nCLIENT-HEAD`);
-  await ready.promise;
-  assert.match(received, /101 Switching Protocols/); assert.ok(received.includes('X-Native-Id: ' + child.id)); assert.match(received, /NATIVE-HEAD/);
-  const closed = once(socket, 'close'); socket.write('FINISH'); await closed;
-  assert.equal(f.leases, 0); assert.equal(f.releases, 1);
+  const before = f.acquisitions.length;
+  const upgrade = async (target, extra = '') => {
+    const socket = net.connect(f.port, '127.0.0.1'); await once(socket, 'connect');
+    let received = ''; socket.on('data', data => { received += data.toString(); }); socket.on('error', () => {});
+    const started = Date.now(), closed = once(socket, 'close');
+    socket.write(`GET ${target} HTTP/1.1\r\nHost: ${HOST}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n${extra}\r\nCLIENT-HEAD`);
+    await closed;
+    return { received, elapsed: Date.now() - started };
+  };
+  const held = [];
+  for (const target of ['/family/_next/webpack-hmr', '/_next/webpack-hmr', '/family/api/socket', '/api/socket', '/__studio/api/state', '/missing/_next/webpack-hmr']) {
+    for (const extra of ['', 'Origin: https://attacker.example.test\r\nSec-Fetch-Site: cross-site\r\n', `Origin: ${ORIGIN}\r\nSec-Fetch-Site: same-origin\r\n`]) held.push(upgrade(target, extra));
+  }
+  for (const { received, elapsed } of await Promise.all(held)) {
+    assert.match(received, /^HTTP\/1\.1 404 Not Found\r\n/);
+    assert.doesNotMatch(received, /101 Switching Protocols|NATIVE-HEAD|CLIENT-HEAD/);
+    assert.ok(elapsed < 2000, `upgrade refusal took ${elapsed} ms`);
+  }
+  assert.equal(f.acquisitions.length, before, 'No upgrade asked the pool for a worker.');
+  assert.equal(f.leases, 0);
+  const page = await f.request('/family/api/config'); assert.equal(page.status, 200); assert.equal(page.json.id, child.id);
 });
 
-test('bounded shutdown closes upgraded sockets and closes the worker pool exactly once', async t => {
+test('bounded shutdown closes open client connections and closes the worker pool exactly once', async t => {
   const f = await fixture(t); await f.create('family');
   const socket = net.connect(f.port, '127.0.0.1'); await once(socket, 'connect');
-  const received = once(socket, 'data');
-  socket.write(`GET /family/api/socket HTTP/1.1\r\nHost: ${HOST}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
-  await received;
+  socket.on('error', () => {});
+  // An unfinished request keeps the connection open until the grace period ends.
+  socket.write(`GET /family/api/config HTTP/1.1\r\nHost: ${HOST}\r\n`);
+  await new Promise(resolve => setTimeout(resolve, 50));
   const closed = once(socket, 'close');
   const first = f.shutdown({ graceMs: 20 }), second = f.shutdown({ graceMs: 100 });
   assert.equal(first, second); await first; await closed;
   assert.equal(f.closes, 1); assert.equal(f.leases, 0);
+});
+
+test('browser navigation to an unavailable dashboard gets an accessible page; API callers keep JSON', async t => {
+  const f = await fixture(t), child = await f.create('family');
+  const html = { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' };
+  assert.equal((await f.mutate({ action: 'update', id: child.id, name: 'House', slug: 'house' })).status, 200);
+  const garage = await f.create('garage');
+  assert.equal((await f.mutate({ action: 'archive', id: garage.id, confirmed: true })).status, 200);
+  for (const target of ['/family', '/family/settings?x=<script>', '/garage', '/no-such-dashboard', '/%3Cscript%3Ealert(1)']) {
+    const page = await f.request(target, { headers: html });
+    assert.equal(page.status, 404, target);
+    assert.equal(page.headers['content-type'], 'text/html; charset=utf-8', target);
+    assert.equal(page.headers['cache-control'], 'no-store');
+    assert.equal(page.headers['x-content-type-options'], 'nosniff');
+    assert.equal(page.headers['x-frame-options'], 'SAMEORIGIN');
+    assert.equal(page.headers['referrer-policy'], 'same-origin');
+    assert.match(page.headers['content-security-policy'], /frame-ancestors 'self'/);
+    assert.match(page.headers['content-security-policy'], /default-src 'none'/);
+    assert.equal(Number(page.headers['content-length']), Buffer.byteLength(page.text));
+    assert.match(page.text, /^<!doctype html>/);
+    assert.match(page.text, /<html lang="en">/);
+    assert.match(page.text, /<h1>This dashboard isn&#39;t available<\/h1>/);
+    assert.match(page.text, /Error 404/);
+    assert.match(page.text, /<a href="\/">Open the main dashboard<\/a>/);
+    assert.doesNotMatch(page.text, /<script|family|garage|no-such|alert/i, target);
+  }
+  const head = await f.request('/garage', { method: 'HEAD', headers: html });
+  assert.equal(head.status, 404); assert.equal(head.headers['content-type'], 'text/html; charset=utf-8'); assert.equal(head.text, '');
+  for (const [target, headers] of [['/family', {}], ['/family', { accept: 'application/json' }], ['/garage', { accept: '*/*' }], ['/family/api/config', html], ['/garage/__studio/api/state', html]]) {
+    const result = await f.request(target, { headers });
+    assert.equal(result.status, 404, target);
+    assert.match(result.headers['content-type'], /^application\/json/, target);
+    assert.equal(result.json.code, 'DASHBOARD_NOT_FOUND', target);
+  }
+  const posted = await f.request('/family', { method: 'POST', headers: { ...html, 'content-type': 'application/json' }, body: '{}' });
+  assert.equal(posted.status, 404); assert.match(posted.headers['content-type'], /^application\/json/);
+  assert.equal((await f.request('/house/api/config', { headers: html })).json.id, child.id);
 });

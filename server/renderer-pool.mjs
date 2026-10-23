@@ -76,6 +76,10 @@ export function createRendererPool({
   const current = new Map();
   const records = new Set();
   let closed = false; let closeResult; let queue = Promise.resolve();
+  // The queue orders record bookkeeping only. Nothing awaits a worker stop
+  // while holding it, so one slow-exiting worker never delays other
+  // dashboards. A stopping worker stays in `records`, and so counts against
+  // maxWorkers, until its process has exited.
   const serial = operation => {
     const result = queue.then(operation, operation);
     queue = result.catch(() => {});
@@ -118,8 +122,8 @@ export function createRendererPool({
     clearTimeout(record.idleTimer);
     if (record.refs || record.exited || record.draining || closed) return;
     record.idleTimer = setTimeout(() => {
-      void serial(async () => {
-        if (!record.refs && records.has(record)) await stop(record);
+      void serial(() => {
+        if (!record.refs && records.has(record)) void stop(record);
       }).catch(() => {});
     }, idleMs);
     record.idleTimer.unref();
@@ -182,30 +186,40 @@ export function createRendererPool({
     const configDir = dashboardConfigDir(configRoot, entry.id);
     await realDirectory(configRoot);
     await realDirectory(configDir);
-    const record = await serial(async () => {
-      if (closed) throw new RendererError('The application is shutting down.', 'RENDERER_SHUTTING_DOWN');
-      let found = current.get(entry.id);
-      if (found && (found.basePath !== dashboardBasePath(entry) || found.draining || found.exited)) {
-        current.delete(entry.id); found.draining = true;
-        if (!found.refs) await stop(found);
-        found = null;
-      }
-      if (!found) {
-        if (records.size >= maxWorkers) {
-          const idle = [...records].filter(item => !item.refs).sort((a, b) => a.lastUsed - b.lastUsed)[0];
-          if (idle) await stop(idle);
+    let record;
+    while (!record) {
+      const slot = await serial(() => {
+        if (closed) throw new RendererError('The application is shutting down.', 'RENDERER_SHUTTING_DOWN');
+        let found = current.get(entry.id);
+        if (found && (found.basePath !== dashboardBasePath(entry) || found.draining || found.exited)) {
+          current.delete(entry.id); found.draining = true;
+          if (!found.refs) void stop(found);
+          found = null;
         }
-        if (records.size >= maxWorkers) throw new RendererError('All dashboard renderers are busy. Retry shortly, or increase STUDIO_RENDERER_MAX_WORKERS for this deployment.', 'RENDERER_CAPACITY');
-        found = { id: entry.id, basePath: dashboardBasePath(entry), instance: randomUUID(), configDir, refs: 0, lastUsed: Date.now(), draining: false, exited: false };
-        records.add(found); current.set(found.id, found);
-        found.ready = launch(found, host);
-        // A synchronous caller cancellation must not leave a rejected startup
-        // promise unobserved; acquire below still receives the actual error.
-        found.ready.catch(() => {});
-      }
-      clearTimeout(found.idleTimer); found.refs += 1;
-      return found;
-    });
+        if (!found) {
+          if (records.size >= maxWorkers) {
+            const idle = [...records].filter(item => !item.refs && !item.stopping).sort((a, b) => a.lastUsed - b.lastUsed)[0];
+            if (idle) void stop(idle);
+          }
+          if (records.size >= maxWorkers) {
+            // Wait for a slot outside the queue; other dashboards keep going.
+            const stopping = [...records].filter(item => item.stopping).map(item => item.stopping);
+            if (stopping.length) return { wait: Promise.race(stopping) };
+            throw new RendererError('All dashboard renderers are busy. Retry shortly, or increase STUDIO_RENDERER_MAX_WORKERS for this deployment.', 'RENDERER_CAPACITY');
+          }
+          found = { id: entry.id, basePath: dashboardBasePath(entry), instance: randomUUID(), configDir, refs: 0, lastUsed: Date.now(), draining: false, exited: false };
+          records.add(found); current.set(found.id, found);
+          found.ready = launch(found, host);
+          // A synchronous caller cancellation must not leave a rejected startup
+          // promise unobserved; acquire below still receives the actual error.
+          found.ready.catch(() => {});
+        }
+        clearTimeout(found.idleTimer); found.refs += 1;
+        return { record: found };
+      });
+      if (slot.wait) await slot.wait;
+      else record = slot.record;
+    }
     let released = false;
     const release = () => {
       if (released) return; released = true;
@@ -222,17 +236,22 @@ export function createRendererPool({
 
   return {
     acquire,
-    async warm(entry, host) { const lease = await acquire(entry, host); lease.release(); return lease.origin; },
-    drain: id => serial(async () => {
-      const record = current.get(id);
-      if (!record) return;
-      current.delete(id); record.draining = true;
-      if (!record.refs) await stop(record);
-    }),
+    // Resolves once an unleased worker has exited; a leased one stops on its
+    // last release. The wait happens outside the queue.
+    async drain(id) {
+      // Wrapped so the queue does not adopt (and wait for) the stop promise.
+      const result = await serial(() => {
+        const record = current.get(id);
+        if (!record) return {};
+        current.delete(id); record.draining = true;
+        return { stopping: record.refs ? undefined : stop(record) };
+      });
+      await result.stopping;
+    },
     close() {
       if (closeResult) return closeResult;
       closed = true;
-      closeResult = serial(async () => { await Promise.all([...records].map(record => stop(record))); });
+      closeResult = serial(() => ({ all: Promise.all([...records].map(record => stop(record))) })).then(({ all }) => all).then(() => {});
       return closeResult;
     },
     get workerCount() { return records.size; },

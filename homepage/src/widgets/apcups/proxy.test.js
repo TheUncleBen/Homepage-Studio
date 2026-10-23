@@ -9,9 +9,10 @@ function encodeLine(line) {
   return buf;
 }
 
-const { getServiceWidget, logger } = vi.hoisted(() => ({
+const { getServiceWidget, logger, behavior } = vi.hoisted(() => ({
   getServiceWidget: vi.fn(),
   logger: { debug: vi.fn(), error: vi.fn() },
+  behavior: { mode: "ok" },
 }));
 
 vi.mock("utils/config/service-helpers", () => ({
@@ -28,6 +29,15 @@ vi.mock("node:net", () => {
     }
     setTimeout() {}
     connect() {
+      if (behavior.mode === "error") {
+        const error = Object.assign(new Error("connect ECONNREFUSED 192.168.50.7:3551"), { code: "ECONNREFUSED" });
+        queueMicrotask(() => this._emit("error", error));
+        return;
+      }
+      if (behavior.mode === "timeout") {
+        queueMicrotask(() => this._emit("timeout"));
+        return;
+      }
       queueMicrotask(() => this._emit("connect"));
     }
     on(event, cb) {
@@ -67,6 +77,22 @@ import apcupsProxyHandler from "./proxy";
 describe("widgets/apcups/proxy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    behavior.mode = "ok";
+  });
+
+  it.each([
+    ["error", "ECONNREFUSED", "Connection refused"],
+    ["timeout", "APCUPS_TIMEOUT", "APC UPS status request timed out"],
+  ])("returns a sanitized diagnostic for a socket %s", async (mode, code, message) => {
+    behavior.mode = mode;
+    getServiceWidget.mockResolvedValue({ url: "http://192.168.50.7:3551" });
+
+    const res = createMockRes();
+    await apcupsProxyHandler({ query: { group: "g", service: "svc", index: "0" } }, res);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: { message, rawError: { code, message } } });
+    expect(JSON.stringify(res.body)).not.toContain("192.168.50.7");
   });
 
   it("parses the APCUPSD status response into JSON", async () => {

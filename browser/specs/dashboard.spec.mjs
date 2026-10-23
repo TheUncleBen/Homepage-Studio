@@ -63,7 +63,7 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await dialog.getByRole('button', { name: 'Advanced YAML', exact: true }).click();
   await dialog.getByRole('textbox', { name: 'Item configuration YAML' }).fill('text: Browser fixture greeting\ntext_size: xl\n');
   await dialog.getByRole('button', { name: 'Add to dashboard', exact: true }).click();
-  const greeting = page.locator('[data-panel-kind="informationWidget"][aria-label="greeting"]');
+  const greeting = page.locator('[data-panel-kind="informationWidget"][aria-label="Greeting"]');
   await expect(greeting).toContainText('Browser fixture greeting');
   await expect(page.locator('[data-panel-id]')).toHaveCount(2);
 
@@ -75,7 +75,7 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await page.getByRole('button', { name: /^Move Browser fixture tile\. Use arrow keys/ }).press('ArrowDown');
   // Make both dimensions explicit before creating a shared-size stack. The
   // independent-resize assertion above remains separate from shared sizing.
-  for (const title of ['Browser fixture tile', 'greeting']) {
+  for (const title of ['Browser fixture tile', 'Greeting']) {
     const selected = page.getByRole('checkbox', { name: `Select ${title}`, exact: true });
     await selected.check();
     await page.getByRole('button', { name: 'Position & size', exact: true }).click();
@@ -88,7 +88,7 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await expect.poll(async () => Math.abs((await tile.boundingBox()).width - (await greeting.boundingBox()).width)).toBeLessThan(1);
   await expect.poll(async () => Math.abs((await tile.boundingBox()).height - (await greeting.boundingBox()).height)).toBeLessThan(1);
   await page.getByRole('checkbox', { name: 'Select Browser fixture tile', exact: true }).check();
-  await page.getByRole('checkbox', { name: 'Select greeting', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'Select Greeting', exact: true }).check();
   await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
   dialog = page.getByRole('dialog');

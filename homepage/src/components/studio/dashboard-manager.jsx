@@ -8,6 +8,20 @@ const endpoint = "/__studio/api/dashboards";
 const address = (entry) => (entry.slug ? `/${entry.slug}` : "/");
 const navigate = (path) => window.location.assign(path);
 
+const SLUG_PATTERN = "[a-z0-9]+(?:-+[a-z0-9]+)*";
+
+// Say what is wrong with an address slug, matching the server's rule. An empty
+// slug is valid only for the main dashboard, which then uses the root address.
+export function slugProblem(slug, required) {
+  if (!slug) return required ? "Enter an address slug, such as family-board." : "";
+  if (new RegExp(`^${SLUG_PATTERN}$`).test(slug)) return "";
+  if (/[A-Z]/.test(slug)) return "Use lowercase letters only; capital letters are not allowed.";
+  if (/\s/.test(slug)) return "Replace spaces with hyphens, such as family-board.";
+  if (slug.includes("/")) return "Remove the slashes; the address is a single path segment.";
+  if (/^-|-$/.test(slug)) return "Start and end the slug with a letter or number, not a hyphen.";
+  return "Use only lowercase letters, numbers and hyphens.";
+}
+
 function newCopySlug(entry, dashboards) {
   const base = `${(entry.slug || "main").slice(0, 54)}-copy`;
   let slug = base;
@@ -26,6 +40,9 @@ export default function DashboardManager({ currentDashboard = { id: "default" },
   const [notice, setNotice] = useState("");
   const [conflict, setConflict] = useState(false);
   const [discard, setDiscard] = useState(false);
+  // The inline slug message appears once the field was left or a submit was
+  // attempted, then follows each edit.
+  const [slugChecked, setSlugChecked] = useState(false);
   const inFlight = useRef(false);
   const keepEditing = useRef(null);
   const nameField = useRef(null);
@@ -89,6 +106,7 @@ export default function DashboardManager({ currentDashboard = { id: "default" },
         : { name: "", slug: "", sourceId: "" };
     setForm({ action, id: entry?.id, initial, duplicate: action === "create" && Boolean(entry) });
     setDraft(structuredClone(initial));
+    setSlugChecked(false);
     setError(null);
     setConflict(false);
     setNotice("");
@@ -149,6 +167,8 @@ export default function DashboardManager({ currentDashboard = { id: "default" },
       });
   };
   const entry = registry?.dashboards.find((item) => item.id === form?.id);
+  const slugError =
+    slugChecked && form && form.action !== "archive" ? slugProblem(draft.slug, form.id !== "default") : "";
   const active = registry?.dashboards.filter((item) => !item.archived) || [];
   const archived = registry?.dashboards.filter((item) => item.archived) || [];
 
@@ -248,16 +268,35 @@ export default function DashboardManager({ currentDashboard = { id: "default" },
                       <span id="studio-dashboard-slug-label">Address slug</span>
                       <input
                         aria-labelledby="studio-dashboard-slug-label"
-                        aria-describedby="studio-dashboard-slug-help"
+                        aria-describedby={
+                          slugError
+                            ? "studio-dashboard-slug-error studio-dashboard-slug-help"
+                            : "studio-dashboard-slug-help"
+                        }
+                        aria-invalid={slugError ? true : undefined}
                         required={form.id !== "default"}
                         maxLength={64}
-                        pattern="[a-z0-9]+(?:-+[a-z0-9]+)*"
+                        pattern={SLUG_PATTERN}
                         value={draft.slug}
                         autoCapitalize="none"
                         autoCorrect="off"
                         spellCheck={false}
                         onChange={(event) => setDraft({ ...draft, slug: event.target.value })}
+                        onBlur={() => setSlugChecked(true)}
+                        onInvalid={(event) => {
+                          // Replace the browser's transient bubble with the
+                          // inline message, and move focus to it unless an
+                          // earlier field already reports its own problem.
+                          event.preventDefault();
+                          setSlugChecked(true);
+                          if (nameField.current?.validity?.valid !== false) event.currentTarget.focus();
+                        }}
                       />
+                      {slugError && (
+                        <small id="studio-dashboard-slug-error" className="studio-field-error">
+                          {slugError}
+                        </small>
+                      )}
                       <small id="studio-dashboard-slug-help">
                         Lowercase letters, numbers and hyphens.{" "}
                         {form.id === "default"

@@ -10,6 +10,8 @@ export default function StackShell({
   panels,
   rect,
   editing,
+  selected = false,
+  onSelect,
   busy = false,
   overlayOpen = false,
   reducedMotion,
@@ -53,7 +55,8 @@ export default function StackShell({
     disabled: editing || busy || pickerOpen || overlayOpen,
     onLongPress: (pointer) => onLongPress?.(stack.id, pointer),
     accepts: (event) =>
-      !event.target.closest("button,input") || Boolean(event.target.closest("[data-studio-stack-title]")),
+      !event.target.closest("button,input,.studio-select-target") ||
+      Boolean(event.target.closest("[data-studio-stack-title]")),
   });
 
   useEffect(() => {
@@ -115,7 +118,8 @@ export default function StackShell({
   return (
     <section
       ref={root}
-      className={`studio-stack-shell${editing ? " studio-stack-editing" : ""}`}
+      className={`studio-stack-shell${editing ? " studio-stack-editing" : ""}${selected ? " studio-selected" : ""}`}
+      data-stack-shell-id={stack.id}
       style={rect}
       tabIndex={0}
       aria-label={`${activePanel?.title || "Widget stack"}, ${snapshot.activeIndex + 1} of ${snapshot.ids.length}`}
@@ -140,13 +144,29 @@ export default function StackShell({
       }}
       onContextMenu={(event) => {
         press.cancel();
-        if (busy || (event.target.closest("button,input") && !event.target.closest("[data-studio-stack-title]")))
+        if (
+          busy ||
+          (event.target.closest("button,input,.studio-select-target") &&
+            !event.target.closest("[data-studio-stack-title]"))
+        )
           return;
         event.preventDefault();
         onLongPress?.(stack.id);
       }}
     >
       <header className="studio-stack-header">
+        {editing && onSelect && (
+          // The same enlarged selection target as a panel header's checkbox.
+          <label className="studio-select-target">
+            <input
+              type="checkbox"
+              aria-label={`Select stack ${activePanel?.title || "Widgets"}`}
+              checked={Boolean(selected)}
+              disabled={busy}
+              onChange={() => onSelect(stack.id)}
+            />
+          </label>
+        )}
         <span className="studio-stack-symbol">
           <StudioIcon name="stack" size={16} />
         </span>
@@ -192,7 +212,6 @@ export default function StackShell({
             disabled={busy}
             aria-label={snapshot.playing ? "Pause slideshow" : "Play slideshow"}
             title={snapshot.playing ? "Pause slideshow" : "Play slideshow"}
-            aria-pressed={snapshot.playing}
             onClick={() => controller.toggle()}
           >
             <StudioIcon name={snapshot.playing ? "pause" : "play"} size={16} />
@@ -223,7 +242,7 @@ export default function StackShell({
         </button>
       )}
       <span id={`studio-stack-help-${stack.id}`} className="studio-sr-only">
-        Swipe across the stack header, drag horizontally, use a horizontal trackpad gesture, or focus this stack and
+        Swipe across the stack header or widget, drag horizontally, use a horizontal trackpad gesture, or focus this stack and
         press the left and right arrow keys. Manual switching while playing holds this widget for{" "}
         {Math.max(snapshot.intervalMs, snapshot.manualHoldMs) / 1000} seconds. The Play button starts or pauses
         rotation. Activate the widget title to choose a widget directly.

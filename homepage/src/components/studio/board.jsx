@@ -8,6 +8,7 @@ import { dashboardPath } from "./dashboard-path.mjs";
 import StudioDialog, { ErrorMessage } from "./dialog";
 import DiscoveryEditor from "./discovery-editor";
 import { EditorDraftContext } from "./draft-guard";
+import { useBoardFocusOrder } from "./focus-order";
 import {
   COLUMNS,
   GAP,
@@ -84,6 +85,7 @@ export function PanelLayer({
   const stackByPanel = new Map(board.stacks.flatMap((stack) => stack.panelIds.map((id) => [id, stack])));
   // Keep DOM sibling order independent of geometry. Moving an existing iframe
   // with insertBefore can reload its document even when its React key survives.
+  // Keyboard order follows the layout through useBoardFocusOrder instead.
   const panels = board.panels;
   return (
     <div className="studio-panel-layer">
@@ -156,6 +158,10 @@ export default function StudioBoard({
   const [filter, setFilter] = useState("all");
   const [modal, setModal] = useState(null);
   const [editorData, setEditorData] = useState(null);
+  // The native catalog is large and fixed for a deployed build. Fetch it only
+  // for the editors that use it and reuse it for the rest of the page session;
+  // a failed request is forgotten so "Try again" fetches it afresh.
+  const catalogRequest = useRef(null);
   const [editorError, setEditorError] = useState(null);
   const [editorGuard, setEditorGuard] = useState({
     dirty: false,
@@ -181,6 +187,7 @@ export default function StudioBoard({
   const editorGuardRef = useRef(editorGuard);
   const discardFocus = useRef(null);
   const keepEditing = useRef(null);
+  const keepArrangement = useRef(null);
   const reducedMotion = useReducedMotion();
   const sourceBoard = draft || envelope?.board || EMPTY;
   const sourceRevision = draft ? draftSource?.configurationRevision : envelope?.configurationRevision;
@@ -256,6 +263,16 @@ export default function StudioBoard({
     () => new Map(projection.units.map((unit) => [unit.id, pixelRect(unit.rect, width, projection.columns)])),
     [projection, width],
   );
+  // Tab follows the projected layout (row, then column) without reordering
+  // native hosts in the DOM.
+  const readingOrder = useMemo(
+    () =>
+      [...projection.units]
+        .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)
+        .map((unit) => unit.id),
+    [projection],
+  );
+  useBoardFocusOrder(canvas, readingOrder);
   const groups = [...new Set(board.panels.map((panel) => panel.group).filter(Boolean))];
   const visibleIds = useMemo(
     () =>
@@ -300,8 +317,20 @@ export default function StudioBoard({
   }, [dirty, editorGuard.dirty, editorGuard.pending, saving]);
   const reportEditorDraft = useCallback((next) => {
     editorGuardRef.current = next;
-    setEditorGuard((current) => (current.dirty === next.dirty && current.pending === next.pending ? current : next));
+    setEditorGuard((current) =>
+      current.dirty === next.dirty &&
+      current.pending === next.pending &&
+      current.discard?.heading === next.discard?.heading &&
+      current.discard?.description === next.discard?.description
+        ? current
+        : next,
+    );
   }, []);
+  useEffect(() => {
+    // The dialog's showModal focuses its first control (Close); move focus to
+    // the safe choice once the dialog is open, like the editor-draft prompt.
+    if (modal?.type === "discardArrangement") keepArrangement.current?.focus();
+  }, [modal?.type]);
   useEffect(() => {
     if (discardAction) keepEditing.current?.focus();
     else {
@@ -342,6 +371,13 @@ export default function StudioBoard({
     },
     [envelope?.revision, envelope?.configurationRevision, nativeData],
   );
+  const cancelEditing = () => {
+    setDraft(null);
+    setDraftSource(null);
+    setEditing(false);
+    setSelection([]);
+    setError(null);
+  };
   const beginEditing = () => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
     setEditing(true);
@@ -424,9 +460,16 @@ export default function StudioBoard({
     setEditorData(null);
     if (type === "dashboards") return;
     try {
+      if ((type === "picker" || type === "content") && !catalogRequest.current) {
+        const request = studioRequest("/__studio/catalog.json");
+        catalogRequest.current = request;
+        request.catch(() => {
+          if (catalogRequest.current === request) catalogRequest.current = null;
+        });
+      }
       const [state, catalog, backups] = await Promise.all([
         studioRequest("/__studio/api/state"),
-        studioRequest("/__studio/catalog.json"),
+        type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
         type === "backups" ? studioRequest("/__studio/api/backups") : Promise.resolve([]),
       ]);
       if (token === generation.current) setEditorData({ state, catalog, backups });
@@ -739,6 +782,31 @@ export default function StudioBoard({
         return;
       }
     }
+    if (key === "x" && projection.columns < COLUMNS) {
+      // A narrow layout shows units in reading order, so Left and Right move
+      // one reading position, like a sideways drag, instead of shifting the
+      // desktop column (which can wrap the unit somewhere unexpected).
+      const ordered = [...projection.units].sort(
+        (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
+      );
+      const index = ordered.findIndex((item) => item.id === id);
+      const projected = ordered[index];
+      const neighbor = ordered[index + amount];
+      if (projected && neighbor) {
+        changeBoard(
+          moveProjectedUnit(
+            board,
+            id,
+            {
+              x: ((neighbor.rect.x - projected.rect.x) * COLUMNS) / projection.columns,
+              y: neighbor.rect.y - projected.rect.y,
+            },
+            projection,
+          ),
+        );
+      }
+      if (projected) return;
+    }
     changeBoard(moveUnit(board, id, { ...unit.rect, [key]: unit.rect[key] + amount }));
   };
   const longPress = (id, pointer) => {
@@ -761,6 +829,7 @@ export default function StudioBoard({
     stack: "Edit widget stack",
     position: "Position & size",
     discovery: modal?.panel?.title || "Discovered content",
+    discardArrangement: "Discard arrangement?",
   };
 
   return (
@@ -812,11 +881,10 @@ export default function StudioBoard({
                 className="studio-button studio-quiet"
                 disabled={saving}
                 onClick={() => {
-                  setDraft(null);
-                  setDraftSource(null);
-                  setEditing(false);
-                  setSelection([]);
-                  setError(null);
+                  // An unsaved arrangement uses the same explicit discard
+                  // confirmation as editor drafts.
+                  if (dirty) setModal({ type: "discardArrangement" });
+                  else cancelEditing();
                 }}
               >
                 Cancel
@@ -849,6 +917,7 @@ export default function StudioBoard({
         </div>
       </header>
       <ErrorMessage
+        arrangement
         error={error || sourceConflict || loadError}
         heading={!error && !sourceConflict && loadError ? "The dashboard could not refresh" : undefined}
         onReload={
@@ -1049,6 +1118,8 @@ export default function StudioBoard({
                 display: visibleIds.has(stack.id) ? undefined : "none",
               }}
               editing={editing || Boolean(modal)}
+              selected={selection.includes(stack.id)}
+              onSelect={select}
               busy={controlsDisabled}
               overlayOpen={overlayOpen}
               reducedMotion={reducedMotion}
@@ -1087,11 +1158,11 @@ export default function StudioBoard({
         >
           <EditorDraftContext.Provider value={reportEditorDraft}>
             {discardAction && (
-              <div className="studio-dialog-body">
-                <h3>Discard unsaved changes?</h3>
+              <div className="studio-dialog-body studio-discard-prompt">
+                <h3>{editorGuard.discard?.heading || "Discard unsaved changes?"}</h3>
                 <p className="studio-note">
-                  This editor has changes that have not been applied. Keep editing to preserve them, or discard them to
-                  continue.
+                  {editorGuard.discard?.description ||
+                    "This editor has changes that have not been applied. Keep editing to preserve them, or discard them to continue."}
                 </p>
                 <div className="studio-inline-actions">
                   <button
@@ -1119,7 +1190,35 @@ export default function StudioBoard({
               </div>
             )}
             <div hidden={Boolean(discardAction)} inert={Boolean(discardAction)}>
-              {modal.type === "dashboards" ? (
+              {modal.type === "discardArrangement" ? (
+                <div className="studio-dialog-body">
+                  <h3>Discard unsaved changes?</h3>
+                  <p className="studio-note">
+                    This arrangement has moves, sizes or stacks that have not been saved. Keep editing to preserve
+                    them, or discard them to leave edit mode.
+                  </p>
+                  <div className="studio-inline-actions">
+                    <button
+                      ref={keepArrangement}
+                      type="button"
+                      className="studio-button studio-primary"
+                      onClick={dismissEditor}
+                    >
+                      Keep editing
+                    </button>
+                    <button
+                      type="button"
+                      className="studio-button studio-quiet"
+                      onClick={() => {
+                        dismissEditor();
+                        cancelEditing();
+                      }}
+                    >
+                      Discard changes
+                    </button>
+                  </div>
+                </div>
+              ) : modal.type === "dashboards" ? (
                 <DashboardManager
                   currentDashboard={dashboard}
                   onClose={closeModal}

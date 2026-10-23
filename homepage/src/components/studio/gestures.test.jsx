@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { useLongPress, useStackGestures } from "./gestures";
+import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import { createStackPlayback } from "./playback.mjs";
 
 function pointer(root, x, y = 0, target = root) {
@@ -177,6 +177,73 @@ describe("Stack pointer/trackpad gestures", () => {
     expect(controller.getSnapshot().activeId).toBe("a");
     expect(controller.getSnapshot().blockedReasons).toEqual([]);
     controller.destroy();
+  });
+  it("leaves touches that start on native controls, embeds, charts or horizontal scrollers to that content", () => {
+    const root = document.createElement("section");
+    root.innerHTML = `
+      <div class="body"><p class="text">Plain</p>
+        <a href="https://example.test/"><span class="link">Link</span></a>
+        <input class="input" /><textarea class="area"></textarea><select class="select"></select>
+        <label class="label">Label</label><div contenteditable="true"><b class="editable">Edit</b></div>
+        <iframe class="frame"></iframe><embed class="embed" /><canvas class="canvas"></canvas>
+        <svg><g><rect class="chart"></rect></g></svg>
+        <div class="wide"><span class="wide-child">Wide</span></div>
+        <div class="tall"><span class="tall-child">Tall</span></div>
+        <button data-studio-stack-title><strong class="title">Title</strong></button>
+      </div>`;
+    document.body.append(root);
+    const wide = root.querySelector(".wide");
+    wide.style.overflowX = "auto";
+    Object.defineProperty(wide, "scrollWidth", { value: 600 });
+    Object.defineProperty(wide, "clientWidth", { value: 300 });
+    const tall = root.querySelector(".tall");
+    tall.style.overflowY = "auto";
+    Object.defineProperty(tall, "scrollHeight", { value: 600 });
+    Object.defineProperty(tall, "clientHeight", { value: 300 });
+    const at = (selector, pointerType = "touch") => touchesNativeContent({ pointerType, target: root.querySelector(selector), currentTarget: root });
+    try {
+      for (const selector of [".link", ".input", ".area", ".select", ".label", ".editable", ".frame", ".embed", ".canvas", ".chart", ".wide-child"])
+        expect(at(selector), selector).toBe(true);
+      for (const selector of [".text", ".body", ".tall-child", ".title"]) expect(at(selector), selector).toBe(false);
+      // Mouse behavior is unchanged: only the original interactive list applies.
+      expect(at(".label", "mouse")).toBe(false);
+      expect(at(".wide-child", "mouse")).toBe(false);
+      expect(at(".input", "mouse")).toBe(true);
+    } finally {
+      root.remove();
+    }
+  });
+  it("navigates from a touch swipe on plain body content but not from inside a horizontal scroller", () => {
+    const root = document.createElement("section");
+    root.innerHTML = '<div class="plain"></div><div class="wide"><span></span></div>';
+    document.body.append(root);
+    const wide = root.querySelector(".wide");
+    wide.style.overflowX = "scroll";
+    Object.defineProperty(wide, "scrollWidth", { value: 600 });
+    Object.defineProperty(wide, "clientWidth", { value: 300 });
+    root.setPointerCapture = vi.fn();
+    const controller = createStackPlayback({ ids: ["a", "b", "c"] });
+    const { result, unmount } = renderHook(() => useStackGestures({ controller }));
+    const touch = (x, target) => ({ ...pointer(root, x, 0, target), pointerType: "touch" });
+    try {
+      act(() => {
+        result.current.onPointerDown(touch(200, wide.firstChild));
+        result.current.onPointerMove(touch(120, wide.firstChild));
+        result.current.onPointerUp(touch(120, wide.firstChild));
+      });
+      expect(controller.getSnapshot().activeId).toBe("a");
+      expect(root.setPointerCapture).not.toHaveBeenCalled();
+      act(() => {
+        result.current.onPointerDown(touch(200, root.querySelector(".plain")));
+        result.current.onPointerMove(touch(120, root.querySelector(".plain")));
+        result.current.onPointerUp(touch(120, root.querySelector(".plain")));
+      });
+      expect(controller.getSnapshot().activeId).toBe("b");
+    } finally {
+      unmount();
+      root.remove();
+      controller.destroy();
+    }
   });
   it("uses horizontal trackpad input with a cooldown without treating vertical wheels as slide navigation", () => {
     const root = document.createElement("div");
