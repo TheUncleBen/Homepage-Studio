@@ -31,8 +31,9 @@ add an independently updated public Homepage container.
 ## Build and runtime
 
 The root Docker build verifies the pinned pnpm package integrity, installs the
-frozen native lockfile, checks redirect security, audits production dependencies,
-runs full native lint and tests, and produces the standalone native runtime.
+frozen native lockfile and produces the standalone native runtime. CI's required
+`native-checks` job checks redirect security, audits production dependencies and
+runs full native lint and tests.
 The final image contains that runtime, static/public assets, the controller,
 shared native environment/YAML helpers, all relevant licenses and notices.
 Workers use the same build revision as the controller and identify the baseline

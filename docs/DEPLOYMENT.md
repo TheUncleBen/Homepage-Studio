@@ -258,8 +258,9 @@ startup deadline is separate. See the exact endpoint policy in
 
 The root Dockerfile directly copies the controlled `homepage/` tree. It uses the
 pinned Node image, verifies the pinned pnpm package integrity, installs frozen
-dependencies, runs production dependency audits, redirect security regression
-checks, full native lint/tests and a production standalone build. It packages the
+dependencies and produces a production standalone build. Production dependency
+audits, redirect security checks and full native lint/tests run once per workflow
+in the required `native-checks` CI job; see [VERIFICATION.md](../VERIFICATION.md). It packages the
 controller, native runtime, assets, shared configuration helpers, GPL/AGPL and
 font/dependency notices in the final image. Eligible immutable Next build assets
 are precompressed as Brotli/gzip representations when smaller. The controller
