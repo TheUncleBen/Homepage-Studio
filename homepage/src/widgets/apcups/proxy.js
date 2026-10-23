@@ -6,6 +6,19 @@ import createLogger from "utils/logger";
 
 const logger = createLogger("apcupsProxyHandler");
 
+const SAFE_ERRORS = {
+  APCUPS_TIMEOUT: "APC UPS status request timed out",
+  APCUPS_INVALID_RESPONSE: "Invalid APC UPS status response",
+  ECONNREFUSED: "Connection refused",
+  ECONNRESET: "Connection reset",
+  ENOTFOUND: "Host not found",
+  EAI_AGAIN: "Temporary DNS lookup failure",
+  EHOSTUNREACH: "Host unreachable",
+  ENETUNREACH: "Network unreachable",
+  ETIMEDOUT: "Request timed out",
+  UPSTREAM_REQUEST_FAILED: "APC UPS status request failed",
+};
+
 function parseResponse(buffer) {
   let ptr = 0;
   const output = [];
@@ -54,8 +67,8 @@ async function getStatus(host = "127.0.0.1", port = 3551) {
           const buffer = Buffer.concat(response);
           const output = parseResponse(buffer);
           resolve(output);
-        } catch (e) {
-          reject(e);
+        } catch {
+          reject(Object.assign(new Error(SAFE_ERRORS.APCUPS_INVALID_RESPONSE), { code: "APCUPS_INVALID_RESPONSE" }));
         }
         socket.end();
       }
@@ -67,7 +80,7 @@ async function getStatus(host = "127.0.0.1", port = 3551) {
     });
     socket.on("timeout", () => {
       socket.destroy();
-      reject(new Error("socket timeout"));
+      reject(Object.assign(new Error(SAFE_ERRORS.APCUPS_TIMEOUT), { code: "APCUPS_TIMEOUT" }));
     });
     socket.on("end", () => {
       logger.debug("socket end");
@@ -104,8 +117,12 @@ export default async function apcupsProxyHandler(req, res) {
     data.bcharge = jsonData.BCHARGE;
     data.timeleft = jsonData.TIMELEFT;
   } catch (e) {
-    logger.error(e);
-    return res.status(500).json({ error: e.message });
+    // Studio: report a fixed diagnostic; raw socket errors name hosts and ports.
+    const code = Object.hasOwn(SAFE_ERRORS, e?.code) ? e.code : "UPSTREAM_REQUEST_FAILED";
+    logger.error("APC UPS status request failed: %s", code);
+    return res
+      .status(500)
+      .json({ error: { message: SAFE_ERRORS[code], rawError: { code, message: SAFE_ERRORS[code] } } });
   }
 
   return res.status(200).send(data);
