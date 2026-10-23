@@ -264,6 +264,44 @@ test('release materialization pins both templates by digest and refuses overwrit
   assert.throws(() => validateReleaseManifest(example), /owner-approved/);
 });
 
+function dockerStages(text) {
+  const stages = [];
+  for (const line of text.replace(/\\\s*\n/g, ' ').split('\n')) {
+    const from = line.match(/^FROM\s+\S+(?:\s+AS\s+(\S+))?\s*$/i);
+    if (from) stages.push({ name: from[1] ?? null, lines: [] });
+    else if (stages.length && line.trim() && !line.trim().startsWith('#')) stages.at(-1).lines.push(line.trim());
+  }
+  return stages;
+}
+
+test('controller tests and fixtures never enter the runtime image and nothing at runtime imports them', async () => {
+  const stages = dockerStages(await fs.readFile(path.join(root, 'Dockerfile'), 'utf8'));
+  const runtime = stages.at(-1);
+  assert.equal(runtime.name, null, 'The final stage is the unnamed runtime image');
+  const serverCopies = runtime.lines.filter(line => /^COPY\b.*\s\.\/server\/?$/.test(line));
+  assert.equal(serverCopies.length, 1);
+  const source = serverCopies[0].match(/--from=(\S+)/)?.[1];
+  assert.ok(source, 'The runtime must not copy server/ straight from the build context');
+  const stage = stages.find(item => item.name === source);
+  assert.ok(stage.lines.includes('COPY server ./server'));
+  const prune = stage.lines.find(line => line.startsWith('RUN '));
+  assert.match(prune, /rm -rf server\/fixtures/);
+  assert.match(prune, /find server -type f -name '\*\.test\.mjs' -delete/);
+  for (const line of runtime.lines.filter(item => item.startsWith('COPY') && !item.includes('--from='))) {
+    assert.doesNotMatch(line, /\s(?:server|test)\/?(?:\s|$)/, `runtime copies tests from the build context: ${line}`);
+  }
+  // Every module that ships must resolve without the removed files.
+  const shipped = (await fs.readdir(path.join(root, 'server'))).filter(name => name.endsWith('.mjs') && !name.endsWith('.test.mjs'));
+  assert.ok(shipped.includes('index.mjs'));
+  for (const name of shipped) {
+    const text = await fs.readFile(path.join(root, 'server', name), 'utf8');
+    for (const [, specifier] of text.matchAll(/(?:from|import\()\s*['"](\.{1,2}\/[^'"]+)['"]/g)) {
+      const target = path.relative(root, path.resolve(root, 'server', specifier));
+      assert.doesNotMatch(target, /\.test\.|(?:^|\/)fixtures(?:\/|$)/, `${name} imports ${specifier}`);
+    }
+  }
+});
+
 test('runtime and Dockerfile pins agree with the reviewed source lock', async () => {
   const lock = JSON.parse(await fs.readFile(path.join(root, 'upstream.lock.json'), 'utf8'));
   assert.equal(lock.homepage.commit, UPSTREAM_COMMIT);

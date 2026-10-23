@@ -21,6 +21,14 @@ RUN pnpm test
 RUN NEXT_PUBLIC_VERSION="studio-${STUDIO_BUILD_REVISION}" NEXT_PUBLIC_REVISION="${STUDIO_BUILD_REVISION}" pnpm run build
 RUN node /tmp/studio-toolchain/compress-static-assets.mjs /build/homepage/.next/static
 
+FROM ${NODE_IMAGE} AS controller-source
+WORKDIR /src
+# Controller tests and their fixtures stay in the build context for CI, but
+# nothing at runtime imports them, so they never enter the application image.
+COPY server ./server
+RUN rm -rf server/fixtures && find server -type f -name '*.test.mjs' -delete \
+    && test -z "$(find server \( -name fixtures -o -name '*.test.*' \) -print -quit)"
+
 FROM ${NODE_IMAGE}
 ARG STUDIO_BUILD_REVISION=unreleased
 LABEL org.opencontainers.image.title="Homepage Studio" \
@@ -40,7 +48,7 @@ COPY --chown=1000:1000 package.json LICENSE VERSION upstream.lock.json ./
 COPY --chown=1000:1000 homepage/LICENSE ./homepage/LICENSE
 COPY --chown=1000:1000 homepage/src/utils/config/environment.mjs ./homepage/src/utils/config/environment.mjs
 COPY --chown=1000:1000 homepage/src/utils/config/yaml-parser.mjs ./homepage/src/utils/config/yaml-parser.mjs
-COPY --chown=1000:1000 server ./server
+COPY --from=controller-source --chown=1000:1000 /src/server ./server
 COPY --chown=1000:1000 public ./public
 COPY --chown=1000:1000 third-party ./third-party
 COPY --chown=1000:1000 scripts/runtime-host.mjs scripts/healthcheck.mjs ./scripts/
