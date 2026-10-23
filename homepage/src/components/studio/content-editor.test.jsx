@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import ContentEditor, { customApiMappingsMissing } from "./content-editor";
+import ContentEditor, { ContentPicker, customApiMappingsMissing } from "./content-editor";
 
 const customApi = {
   kind: "serviceWidget",
@@ -78,5 +78,27 @@ describe("Custom API empty mappings hint", () => {
   it("does not show the hint for other integration widgets", () => {
     renderEditor({ ...customApi, type: "glances", name: "Glances" });
     expect(screen.queryByText(/has no/)).not.toBeInTheDocument();
+  });
+});
+
+describe("Content picker names", () => {
+  it("names the kind in All when an information and an integration widget share a name", () => {
+    render(
+      <ContentPicker
+        catalog={{
+          info: [{ type: "customapi", name: "Custom API" }, { type: "datetime", name: "Date & Time" }],
+          service: [{ type: "customapi", name: "Custom API" }],
+        }}
+        state={{ hiddenDiscoveredIds: [] }}
+        onChoose={vi.fn()}
+        onRestore={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Custom API (information widget)")).toBeInTheDocument();
+    expect(screen.getByText("Custom API (integration widget)")).toBeInTheDocument();
+    expect(screen.getByText("Date & Time")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Information", exact: true }));
+    expect(screen.getByText("Custom API")).toBeInTheDocument();
+    expect(screen.queryByText(/\(information widget\)/)).not.toBeInTheDocument();
   });
 });

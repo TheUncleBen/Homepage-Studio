@@ -66,7 +66,21 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
       kind: "serviceWidget",
       icon: "layout",
     })),
-  ].filter(
+  ];
+  // In All, an information widget and an integration widget can share a name
+  // (Custom API, Glances, …); name the kind so the two can be told apart.
+  const nameCounts = new Map();
+  for (const entry of entries) {
+    const key = (entry.name || entry.type).toLowerCase();
+    nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+  }
+  const displayName = (entry) => {
+    const name = entry.name || entry.type;
+    return category === "all" && nameCounts.get(name.toLowerCase()) > 1
+      ? `${name} (${LABEL[entry.kind].toLowerCase()})`
+      : name;
+  };
+  const visible = entries.filter(
     (entry) =>
       (category === "all" || entry.kind === category) &&
       `${entry.name} ${entry.type} ${entry.description || ""}`
@@ -151,7 +165,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
             </details>
           )}
           <div className="studio-catalog">
-            {entries.map((entry) => (
+            {visible.map((entry) => (
               <button
                 key={`${entry.kind}:${entry.type}`}
                 className="studio-catalog-item"
@@ -161,14 +175,14 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
                   <StudioIcon name={entry.icon} size={20} />
                 </span>
                 <span>
-                  <strong>{entry.name || entry.type}</strong>
+                  <strong>{displayName(entry)}</strong>
                   <small>{entry.description || LABEL[entry.kind]}</small>
                 </span>
                 <StudioIcon name="chevron" size={15} />
               </button>
             ))}
           </div>
-          {!entries.length && (
+          {!visible.length && (
             <p className="studio-muted">No native widgets match that search.</p>
           )}
         </fieldset>
