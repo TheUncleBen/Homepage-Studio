@@ -211,17 +211,25 @@ export function moveProjectedUnit(board, id, delta, projection) {
   return applyRectangles(board, new Map(placed.map((unit) => [unit.id, unit.rect])));
 }
 
+// Project both canonical edges with the same rounding rule so units that share
+// a canonical edge share a projected edge. Rounding x and w independently
+// staggered 8-column rows and pushed adjacent tiles down.
+function projectEdge(edge, columns) {
+  return Math.round((edge * columns) / COLUMNS);
+}
+
 function projectRect(rect, columns) {
-  return columns === COLUMNS
-    ? rect
-    : clampRect(
-        {
-          ...rect,
-          x: Math.floor((rect.x * columns) / COLUMNS),
-          w: Math.max(columns === 4 ? 4 : 3, Math.round((rect.w * columns) / COLUMNS)),
-        },
-        columns,
-      );
+  if (columns === COLUMNS) return rect;
+  const left = projectEdge(rect.x, columns);
+  const right = projectEdge(rect.x + rect.w, columns);
+  return clampRect(
+    {
+      ...rect,
+      x: left,
+      w: Math.max(columns === 4 ? 4 : 3, right - left),
+    },
+    columns,
+  );
 }
 
 function projectColumns(board, columns) {

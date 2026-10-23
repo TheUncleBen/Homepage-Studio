@@ -49,16 +49,20 @@ describe("Studio grid geometry", () => {
     expect(repaired).not.toBe(overlapping);
     disjoint(repaired);
   });
-  it.each([354, 700])("moves a lower projected row upward through existing canonical slots at width %s", (width) => {
+  it.each([
+    { width: 354, lower: "b" },
+    { width: 700, lower: "c" },
+  ])("moves a lower projected row upward through existing canonical slots at width $width", ({ width, lower }) => {
     const original = board();
     const projection = projectBoard(original, width);
     const a = projection.units.find((unit) => unit.id === "a");
-    const b = projection.units.find((unit) => unit.id === "b");
+    const b = projection.units.find((unit) => unit.id === lower);
     expect(b.rect.y).toBeGreaterThan(a.rect.y);
-    const moved = moveProjectedUnit(original, "b", { x: 0, y: a.rect.y - b.rect.y }, projection);
+    const dx = ((a.rect.x + a.rect.w / 2 - b.rect.x - b.rect.w / 2) * 12) / projection.columns;
+    const moved = moveProjectedUnit(original, lower, { x: dx, y: a.rect.y - b.rect.y }, projection);
     const next = projectBoard(moved, width);
-    expect(next.units.find((unit) => unit.id === "b").rect.y).toBe(0);
-    expect([...next.units].sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)[0].id).toBe("b");
+    expect(next.units.find((unit) => unit.id === lower).rect.y).toBe(0);
+    expect([...next.units].sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)[0].id).toBe(lower);
     if (width < 560) expect(moved.panels[2]).toBe(original.panels[2]);
     expect(moved.panels.map((panel) => [panel.rect.w, panel.rect.h])).toEqual(
       original.panels.map((panel) => [panel.rect.w, panel.rect.h]),
@@ -115,7 +119,7 @@ describe("Studio grid geometry", () => {
     expect(moved.panels.map((panel) => [panel.rect.w, panel.rect.h])).toEqual(widths.map((w) => [w, 2]));
     disjoint(moved);
   });
-  it.each([354, 700])("preserves the requested visual insertion order across varied widths and heights at %s", (width) => {
+  it.each([354, 673, 700, 820])("preserves the requested visual insertion order across varied widths and heights at %s", (width) => {
     const arrangements = [
       [3, 4, 3], [3, 3, 4], [4, 4, 4], [6, 3, 3], [3, 6, 3],
       [4, 5, 3], [5, 3, 4], [3, 4, 5], [6, 6, 3, 3, 4], [3, 5, 4, 4, 3, 5],
@@ -156,6 +160,38 @@ describe("Studio grid geometry", () => {
         );
         disjoint(moved);
       }));
+    });
+  });
+  it.each([673, 820])("projects shared canonical edges to shared 8-column edges at %s px", (width) => {
+    const row = (widths, y = 0) => {
+      let x = 0;
+      return widths.map((w, index) => {
+        const panel = { id: `${y}-${index}`, kind: "service", rect: { x, y, w, h: 2 } };
+        x += w;
+        return panel;
+      });
+    };
+    const value = {
+      ...board(),
+      panels: [...row([4, 8]), ...row([8, 4], 2), ...row([6, 6], 4), ...row([5, 7], 6), ...row([10, 2], 8), { id: "under", kind: "service", rect: { x: 5, y: 10, w: 5, h: 2 } }],
+    };
+    const projection = projectBoard(value, width);
+    expect(projection.columns).toBe(8);
+    const at = (id) => projection.units.find((unit) => unit.id === id).rect;
+    // Adjacent canonical tiles stay on their canonical row and meet exactly.
+    [[0, 2], [2, 2], [4, 2], [6, 2]].forEach(([y]) => {
+      const left = at(`${y}-0`);
+      const right = at(`${y}-1`);
+      expect(right.y, `row ${y}`).toBe(left.y);
+      expect(right.x, `row ${y}`).toBe(left.x + left.w);
+      expect(right.x + right.w, `row ${y}`).toBe(8);
+    });
+    // A tile ending on the same canonical edge (x + w = 10) ends on the same projected edge.
+    expect(at("under").x + at("under").w).toBe(at("8-0").x + at("8-0").w);
+    projection.units.forEach((unit, index) => {
+      expect(unit.rect.x + unit.rect.w).toBeLessThanOrEqual(8);
+      expect(unit.rect.w).toBeGreaterThanOrEqual(3);
+      projection.units.slice(index + 1).forEach((other) => expect(intersects(unit.rect, other.rect)).toBe(false));
     });
   });
   it("pushes collisions deterministically while preserving source identities and untouched values", () => {
