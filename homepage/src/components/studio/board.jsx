@@ -317,7 +317,14 @@ export default function StudioBoard({
   }, [dirty, editorGuard.dirty, editorGuard.pending, saving]);
   const reportEditorDraft = useCallback((next) => {
     editorGuardRef.current = next;
-    setEditorGuard((current) => (current.dirty === next.dirty && current.pending === next.pending ? current : next));
+    setEditorGuard((current) =>
+      current.dirty === next.dirty &&
+      current.pending === next.pending &&
+      current.discard?.heading === next.discard?.heading &&
+      current.discard?.description === next.discard?.description
+        ? current
+        : next,
+    );
   }, []);
   useEffect(() => {
     // The dialog's showModal focuses its first control (Close); move focus to
@@ -1112,6 +1119,7 @@ export default function StudioBoard({
               }}
               editing={editing || Boolean(modal)}
               selected={selection.includes(stack.id)}
+              onSelect={select}
               busy={controlsDisabled}
               overlayOpen={overlayOpen}
               reducedMotion={reducedMotion}
@@ -1150,11 +1158,11 @@ export default function StudioBoard({
         >
           <EditorDraftContext.Provider value={reportEditorDraft}>
             {discardAction && (
-              <div className="studio-dialog-body">
-                <h3>Discard unsaved changes?</h3>
+              <div className="studio-dialog-body studio-discard-prompt">
+                <h3>{editorGuard.discard?.heading || "Discard unsaved changes?"}</h3>
                 <p className="studio-note">
-                  This editor has changes that have not been applied. Keep editing to preserve them, or discard them to
-                  continue.
+                  {editorGuard.discard?.description ||
+                    "This editor has changes that have not been applied. Keep editing to preserve them, or discard them to continue."}
                 </p>
                 <div className="studio-inline-actions">
                   <button

@@ -513,7 +513,8 @@ body {
 .studio-move-handle:active {
   cursor: grabbing !important;
 }
-.studio-panel-header input[type="checkbox"] {
+.studio-panel-header input[type="checkbox"],
+.studio-stack-header input[type="checkbox"] {
   appearance: auto;
   accent-color: var(--studio-accent);
   width: 16px;
@@ -946,6 +947,10 @@ body {
   margin: 27px 0 13px;
   font-size: 14px;
   font-weight: 650;
+}
+/* A staged backup's file name can be long and unbroken. */
+.studio-discard-prompt :is(h3, p) {
+  overflow-wrap: anywhere;
 }
 .studio-loading {
   padding: 60px 27px;

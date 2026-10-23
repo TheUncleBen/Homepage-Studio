@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SWRConfig, useSWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { FILES } from "./api.mjs";
 import StudioBoard from "./board";
 
 vi.mock("./native-panel", async () => {
@@ -687,6 +688,80 @@ describe("Native board save and draft safety", () => {
     expect(section().style.top).toBe(original);
     expect(screen.getByLabelText("Native state clock")).toBe(native);
     expect(writer).not.toHaveBeenCalled();
+  });
+
+  it("names a staged but unimported backup in the discard prompt and keeps its text inert", async () => {
+    const { writer } = await mountBoard();
+    const settings = await openSettings();
+    fireEvent.click(within(settings).getByRole("button", { name: /Snapshots & restore/ }));
+    const name = `<img src=x onerror="window.injected=1">${"very-long-backup-name-".repeat(8)}.json`;
+    const archive = {
+      version: 1,
+      files: Object.fromEntries([
+        ...FILES.map(([file]) => [file, ""]),
+        ["state.json", '{"version":2,"board":{"panels":[],"stacks":[]}}'],
+      ]),
+    };
+    fireEvent.change(await screen.findByLabelText("Dashboard backup file"), {
+      target: { files: [{ name, size: 1024, text: async () => JSON.stringify(archive) }] },
+    });
+    await screen.findByText(`Replace this dashboard with ${name}?`);
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }));
+    const heading = within(dialog).getByRole("heading", { name: `Discard the staged backup ${name}?` });
+    expect(heading).toHaveTextContent(`Discard the staged backup ${name}?`);
+    expect(heading.closest(".studio-discard-prompt")).not.toBeNull();
+    expect(dialog.querySelector("img")).toBeNull();
+    expect(window.injected).toBeUndefined();
+    expect(within(dialog).queryByText("Discard unsaved changes?")).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "You picked this backup but have not imported it, so this dashboard is unchanged. Closing drops the staged backup. Keep editing to import it, or discard it to continue.",
+      ),
+    ).toBeInTheDocument();
+    const keep = within(dialog).getByRole("button", { name: "Keep editing" });
+    expect(keep).toHaveFocus();
+    fireEvent.click(keep);
+    expect(within(dialog).queryByRole("heading", { name: /Discard the staged backup/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByText(`Replace this dashboard with ${name}?`)).toBeVisible();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard changes" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(writer).not.toHaveBeenCalled();
+
+    // Another editor's draft keeps the generic prompt.
+    const again = within(await openSettings());
+    fireEvent.change(again.getByRole("textbox", { name: "Dashboard title" }), { target: { value: "Drafting" } });
+    fireEvent.click(again.getByRole("button", { name: "Close dialog" }));
+    expect(again.getByRole("heading", { name: "Discard unsaved changes?" })).toBeInTheDocument();
+    expect(again.queryByText(/staged backup/)).not.toBeInTheDocument();
+  });
+
+  it("toggles a stack in and out of the selection with its Select checkbox like a panel's", async () => {
+    await mountBoard();
+    fireEvent.click(screen.getByRole("button", { name: "Edit dashboard", exact: true }));
+    expect(screen.queryByRole("checkbox", { name: /^Select stack/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Clock" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Search" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Create stack/ }));
+    const shell = document.querySelector("[data-stack-shell-id]");
+    const checkbox = within(shell).getByRole("checkbox", { name: /^Select stack (Clock|Search)$/ });
+    const position = screen.getByRole("button", { name: "Position & size" });
+    expect(checkbox).not.toBeChecked();
+    expect(position).toBeDisabled();
+    fireEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+    expect(shell).toHaveClass("studio-selected");
+    expect(position).toBeEnabled();
+    fireEvent.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+    expect(shell).not.toHaveClass("studio-selected");
+    expect(position).toBeDisabled();
+    // Leaving edit mode removes it with the other edit controls.
+    fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(screen.queryByRole("checkbox", { name: /^Select stack/ })).not.toBeInTheDocument();
   });
 
   // This complete modal workflow has a local jsdom CPU budget; application

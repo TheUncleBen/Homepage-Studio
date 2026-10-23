@@ -14,11 +14,19 @@ export function editorDraftChanged(original, draft) {
   }
 }
 
-export function useEditorDraft(dirty, pending = false) {
+// An editor may name its draft for the discard prompt: `discard.heading` and
+// `discard.description` replace the generic wording. Both are plain text.
+export function useEditorDraft(dirty, pending = false, discard = null) {
   const report = useContext(EditorDraftContext);
+  const heading = (dirty && discard?.heading) || "";
+  const description = (dirty && discard?.description) || "";
   useLayoutEffect(() => {
-    report?.({ dirty: Boolean(dirty), pending: Boolean(pending) });
-  }, [report, dirty, pending]);
+    report?.({
+      dirty: Boolean(dirty),
+      pending: Boolean(pending),
+      ...(heading ? { discard: { heading, description } } : {}),
+    });
+  }, [report, dirty, pending, heading, description]);
   useLayoutEffect(
     () => () => report?.({ dirty: false, pending: false }),
     [report],

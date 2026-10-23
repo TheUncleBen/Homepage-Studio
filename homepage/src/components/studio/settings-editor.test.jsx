@@ -64,6 +64,11 @@ const completeArchive = () => ({
     ["state.json", '{"version":2,"board":{"panels":[],"stacks":[]}}'],
   ]),
 });
+const stagedDiscard = (name) => ({
+  heading: `Discard the staged backup ${name}?`,
+  description:
+    "You picked this backup but have not imported it, so this dashboard is unchanged. Closing drops the staged backup. Keep editing to import it, or discard it to continue.",
+});
 const backupFile = (content, overrides = {}) => ({
   name: "dashboard.json",
   size: 1024,
@@ -109,7 +114,7 @@ describe("Portable dashboard import", () => {
       revision: "current-target",
       archive: content,
     });
-    expect(report).toHaveBeenCalledWith({ dirty: true, pending: true });
+    expect(report).toHaveBeenCalledWith({ dirty: true, pending: true, discard: stagedDiscard("dashboard.json") });
   });
 
   it("treats a picked but unimported backup as an unsaved draft until it is cleared", async () => {
@@ -125,9 +130,30 @@ describe("Portable dashboard import", () => {
       target: { files: [backupFile(completeArchive())] },
     });
     await screen.findByText("Replace this dashboard with dashboard.json?");
-    expect(report).toHaveBeenLastCalledWith({ dirty: true, pending: false });
+    expect(report).toHaveBeenLastCalledWith({ dirty: true, pending: false, discard: stagedDiscard("dashboard.json") });
     fireEvent.click(screen.getByRole("button", { name: "Clear selected backup", exact: true }));
     expect(report).toHaveBeenLastCalledWith({ dirty: false, pending: false });
+  });
+
+  it("names the staged file for the discard prompt and follows a newly picked backup", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const report = vi.fn();
+    render(
+      <EditorDraftContext.Provider value={report}>
+        <SnapshotEditor state={{ revision: "target" }} backups={[]} onSaved={vi.fn()} onClose={vi.fn()} />
+      </EditorDraftContext.Provider>,
+    );
+    const chooser = screen.getByLabelText("Dashboard backup file");
+    fireEvent.change(chooser, {
+      target: { files: [backupFile(completeArchive(), { name: "first.json" })] },
+    });
+    await screen.findByText("Replace this dashboard with first.json?");
+    expect(report).toHaveBeenLastCalledWith({ dirty: true, pending: false, discard: stagedDiscard("first.json") });
+    fireEvent.change(chooser, {
+      target: { files: [backupFile(completeArchive(), { name: "second.json" })] },
+    });
+    await screen.findByText("Replace this dashboard with second.json?");
+    expect(report).toHaveBeenLastCalledWith({ dirty: true, pending: false, discard: stagedDiscard("second.json") });
   });
 
   it.each([

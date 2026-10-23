@@ -105,6 +105,8 @@ their own long-press menu, such as the link preview on iPhone and iPad.
   whole board.
 - In edit mode each panel has a checkbox to select it, a **move handle**, an
   **edit** button and a **resize corner**. Drag the move handle or the corner.
+  Each stack has the same checkbox (**Select stack**), so a selected stack can
+  be deselected on its own.
 - With the move handle focused, the **arrow keys** move the panel one cell and
   **Shift + arrows** resize it. With the resize corner focused, the arrows
   resize. **Escape** cancels a drag in progress.
@@ -286,7 +288,8 @@ Playing slideshows, opening dialogs and exporting never make snapshots.
   snapshot (up to 40 MiB). Nothing changes until you press **Import
   dashboard**, which checks the whole file, keeps a snapshot of the current
   dashboard first, and then replaces it. Closing the dialog while a backup is
-  staged asks before discarding it.
+  staged asks first and names the file, for example **Discard the staged
+  backup dashboard.json?**, with **Keep editing** selected.
 
 **Configuration files → Export saved dashboard** downloads this dashboard as
 it was last saved, as one file: all nine native files, the panels, the layout

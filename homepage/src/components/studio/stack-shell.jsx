@@ -11,6 +11,7 @@ export default function StackShell({
   rect,
   editing,
   selected = false,
+  onSelect,
   busy = false,
   overlayOpen = false,
   reducedMotion,
@@ -54,7 +55,8 @@ export default function StackShell({
     disabled: editing || busy || pickerOpen || overlayOpen,
     onLongPress: (pointer) => onLongPress?.(stack.id, pointer),
     accepts: (event) =>
-      !event.target.closest("button,input") || Boolean(event.target.closest("[data-studio-stack-title]")),
+      !event.target.closest("button,input,.studio-select-target") ||
+      Boolean(event.target.closest("[data-studio-stack-title]")),
   });
 
   useEffect(() => {
@@ -142,13 +144,29 @@ export default function StackShell({
       }}
       onContextMenu={(event) => {
         press.cancel();
-        if (busy || (event.target.closest("button,input") && !event.target.closest("[data-studio-stack-title]")))
+        if (
+          busy ||
+          (event.target.closest("button,input,.studio-select-target") &&
+            !event.target.closest("[data-studio-stack-title]"))
+        )
           return;
         event.preventDefault();
         onLongPress?.(stack.id);
       }}
     >
       <header className="studio-stack-header">
+        {editing && onSelect && (
+          // The same enlarged selection target as a panel header's checkbox.
+          <label className="studio-select-target">
+            <input
+              type="checkbox"
+              aria-label={`Select stack ${activePanel?.title || "Widgets"}`}
+              checked={Boolean(selected)}
+              disabled={busy}
+              onChange={() => onSelect(stack.id)}
+            />
+          </label>
+        )}
         <span className="studio-stack-symbol">
           <StudioIcon name="stack" size={16} />
         </span>

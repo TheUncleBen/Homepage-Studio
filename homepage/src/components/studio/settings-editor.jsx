@@ -324,7 +324,15 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
   }, []);
   const busy = reading || pending;
   // A picked backup that is not imported yet is a draft: closing asks first.
-  useEditorDraft(Boolean(archive), busy);
+  useEditorDraft(
+    Boolean(archive),
+    busy,
+    archive && {
+      heading: `Discard the staged backup ${archive.name}?`,
+      description:
+        "You picked this backup but have not imported it, so this dashboard is unchanged. Closing drops the staged backup. Keep editing to import it, or discard it to continue.",
+    },
+  );
   const selectArchive = async (event) => {
     const input = event.currentTarget;
     const file = input.files?.[0];

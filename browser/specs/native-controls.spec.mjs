@@ -3,7 +3,7 @@ import {
   mouseDrag, origin, panelPixels, seedServicePanels, setPanelSize,
   studioApi, test, touchSession,
 } from '../helpers/dashboard.mjs';
-import { playback, seedNative } from '../helpers/engineering.mjs';
+import { playback, seedNative, seedPlayback } from '../helpers/engineering.mjs';
 
 const carousel = page => page.locator('[aria-roledescription="carousel"]');
 const activePanel = page => page.locator('[data-stack-id]:not([aria-hidden="true"])');
@@ -266,6 +266,39 @@ test.describe('selection checkbox target size', () => {
         await expect(checkbox).toBeChecked();
         // The larger target does not change the header's height.
         const header = servicePanel(page, 'Target tile').locator('.studio-panel-header');
+        const height = (await header.boundingBox()).height;
+        await page.addStyleTag({ content: '.studio-select-target { display: none !important; }' });
+        expect((await header.boundingBox()).height).toBe(height);
+      });
+      test(`a stack's Select checkbox target is at least ${minimum} px and toggles the stack's selection`, async ({ page, request }) => {
+        await seedPlayback(request);
+        await page.goto('/');
+        await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+        const shell = page.locator('[data-stack-shell-id="playback-fixture"]');
+        const checkbox = shell.getByRole('checkbox', { name: /^Select stack \S/ });
+        await expect(checkbox).not.toBeChecked();
+        const target = shell.locator('.studio-select-target');
+        await expect(target.getByRole('checkbox')).toHaveCount(1);
+        const bounds = await target.boundingBox();
+        expect(bounds.width).toBeGreaterThanOrEqual(minimum);
+        expect(bounds.height).toBeGreaterThanOrEqual(minimum);
+        const box = await checkbox.boundingBox();
+        const x = bounds.x + 2;
+        const y = bounds.y + 2;
+        expect(x < box.x || y < box.y).toBe(true);
+        if (use.hasTouch) await page.touchscreen.tap(x, y);
+        else await page.mouse.click(x, y);
+        await expect(checkbox).toBeChecked();
+        await expect(shell).toHaveClass(/\bstudio-selected\b/);
+        // Toggling again removes the stack from the selection, as for a panel.
+        if (use.hasTouch) await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+        else await checkbox.click();
+        await expect(checkbox).not.toBeChecked();
+        await expect(shell).not.toHaveClass(/\bstudio-selected\b/);
+        // Selection never rearranged anything.
+        await expect(page.getByText('Unsaved arrangement', { exact: true })).toHaveCount(0);
+        // The target does not change the stack header's height.
+        const header = shell.locator('.studio-stack-header');
         const height = (await header.boundingBox()).height;
         await page.addStyleTag({ content: '.studio-select-target { display: none !important; }' });
         expect((await header.boundingBox()).height).toBe(height);

@@ -79,6 +79,36 @@ test('Tab follows the visual reading order of panels and stacks without moving n
   await expect(search).toHaveValue('kept native state');
 });
 
+test('in edit mode Tab reaches a stack\'s Select checkbox first among its controls, as for a panel', async ({ page, request }) => {
+  await seedFocusBoard(request);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  const shell = page.locator('[data-stack-shell-id="focus-stack"]');
+  const checkbox = shell.getByRole('checkbox', { name: 'Select stack Stacked first', exact: true });
+  await expect(checkbox).toBeVisible();
+  // Start on the last toolbar control, immediately before the board.
+  await page.evaluate(() => [...document.querySelectorAll('.studio-board-toolbar button:not(:disabled)')].at(-1).focus());
+  await page.keyboard.press('Tab');
+  await expect(shell).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(checkbox).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(checkbox).toBeChecked();
+  await expect(shell).toHaveClass(/\bstudio-selected\b/);
+  await page.keyboard.press('Tab');
+  await expect(shell.getByRole('button', { name: /^Move stack\./ })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(checkbox).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(checkbox).not.toBeChecked();
+  await expect(shell).not.toHaveClass(/\bstudio-selected\b/);
+  // A panel's own order is the same: its checkbox, then its move handle.
+  const right = page.getByRole('checkbox', { name: 'Select Right panel', exact: true });
+  await right.focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: /^Move Right panel\./ })).toBeFocused();
+});
+
 test('Studio controls use one focus style while native widgets keep their own', async ({ page, request }) => {
   await seedFocusBoard(request);
   await page.goto('/');
@@ -114,6 +144,9 @@ test('Studio controls use one focus style while native widgets keep their own', 
   await page.keyboard.press('Shift');
   await checkbox.focus();
   expect(await focusStyle(checkbox)).toEqual(expected);
+  const stackCheckbox = page.getByRole('checkbox', { name: 'Select stack Stacked first', exact: true });
+  await stackCheckbox.focus();
+  expect(await focusStyle(stackCheckbox)).toEqual(expected);
 
   await page.getByRole('button', { name: 'Widgets', exact: true }).click();
   const find = page.getByRole('dialog').getByRole('textbox', { name: 'Find a tile or widget', exact: true });
