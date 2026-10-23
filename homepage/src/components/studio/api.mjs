@@ -6,6 +6,8 @@ export class StudioRequestError extends Error {
   }
 }
 
+const CATALOG_PATH = "/__studio/catalog.json";
+
 export function studioRequest(path, body) {
   return request(path, body, true);
 }
@@ -38,7 +40,9 @@ async function request(path, body, scoped) {
   }
   const response = await fetch(scoped ? dashboardPath(path) : path, {
     credentials: "same-origin",
-    cache: "no-store",
+    // The fixed native catalog carries a validator, so revalidate it with
+    // If-None-Match; state and configuration are never served from cache.
+    cache: body === undefined && path === CATALOG_PATH ? "no-cache" : "no-store",
     ...(body === undefined
       ? {}
       : {

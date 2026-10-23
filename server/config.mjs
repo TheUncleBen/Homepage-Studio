@@ -87,11 +87,27 @@ function maskPlaceholders(source, filename) {
   let prefix;
   do { prefix = `HOMEPAGESTUDIOPLACEHOLDER${randomUUID().replaceAll('-', '')}X`; } while (source.includes(prefix));
   const replacements = [];
-  const text = source.replace(PLACEHOLDER, (original) => {
+  // Masked-text offsets of each token, so parser positions map back to the
+  // owner's original source.
+  const shifts = [];
+  let growth = 0;
+  const text = source.replace(PLACEHOLDER, (original, offset) => {
     const token = `${prefix}${replacements.length}END`;
     replacements.push([token, original]);
+    shifts.push({ masked: offset + growth, token: token.length, original: original.length });
+    growth += token.length - original.length;
     return token;
   });
+  const sourceOffset = (masked) => {
+    let delta = 0;
+    for (const shift of shifts) {
+      if (masked < shift.masked) break;
+      // A position inside a token points at the start of its placeholder.
+      if (masked < shift.masked + shift.token) return shift.masked - delta;
+      delta += shift.token - shift.original;
+    }
+    return masked - delta;
+  };
   const restoreText = (value) => replacements.reduce((result, [token, original]) => result.replaceAll(token, () => original), value);
   const restore = (value) => {
     // YAML can represent Infinity/NaN, but the editor's JSON protocol would
@@ -104,7 +120,21 @@ function maskPlaceholders(source, filename) {
     if (object(value)) return Object.fromEntries(Object.entries(value).map(([key, entry]) => [restoreText(key), restore(entry)]));
     return value;
   };
-  return { text, restoreText, restore };
+  return { text, restoreText, restore, sourceOffset };
+}
+
+// One-based line and column of a UTF-16 offset, matching the yaml package's
+// LineCounter convention. Computed here because prettyErrors: false leaves
+// error.linePos unset.
+function linePosition(source, offset) {
+  const bounded = Math.max(0, Math.min(source.length, Number.isInteger(offset) ? offset : 0));
+  let line = 1;
+  let start = 0;
+  for (let index = source.indexOf('\n'); index !== -1 && index < bounded; index = source.indexOf('\n', index + 1)) {
+    line += 1;
+    start = index + 1;
+  }
+  return { line, column: bounded - start + 1 };
 }
 
 function yamlDocument(source, filename) {
@@ -115,9 +145,15 @@ function yamlDocument(source, filename) {
   const doc = parseDocument(masked.text, { keepSourceTokens: true, uniqueKeys: true, merge: true, prettyErrors: false });
   if (doc.errors.length) {
     // Do not echo YAML snippets: they may contain inline service credentials.
-    fail(`${filename} contains invalid YAML.`, 'INVALID_YAML', 422, {
+    // Positions and error codes are safe and let the owner find the problem.
+    const errors = doc.errors.map((error) => ({
+      code: error.code,
+      ...linePosition(source, masked.sourceOffset(error.pos?.[0])),
+    }));
+    const [first] = errors;
+    fail(`${filename} contains invalid YAML at line ${first.line}, column ${first.column}.`, 'INVALID_YAML', 422, {
       file: filename,
-      errors: doc.errors.map((error) => ({ code: error.code, line: error.linePos?.[0]?.line, column: error.linePos?.[0]?.col })),
+      errors,
     });
   }
   let data;

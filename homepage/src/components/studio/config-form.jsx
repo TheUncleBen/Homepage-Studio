@@ -67,6 +67,14 @@ const encode = (value) =>
       ? JSON.stringify(value, null, 2)
       : String(value);
 
+// js-yaml messages append an excerpt of the source, which can include inline
+// credentials. Show only the reason and the one-based position.
+export function yamlErrorMessage(err) {
+  if (err?.name === "YAMLException" && err.mark)
+    return `Invalid YAML at line ${err.mark.line + 1}, column ${err.mark.column + 1}: ${err.reason}.`;
+  return err?.message || String(err);
+}
+
 function assertSerializableValue(value) {
   try {
     JSON.stringify(value, (_key, entry) => {
@@ -302,7 +310,7 @@ export default function ConfigForm({
       setError("");
       setFieldErrors({});
     } catch (err) {
-      setError(err.message);
+      setError(yamlErrorMessage(err));
     }
   };
   const known = new Set([...fields.map((field) => field.key), ...knownKeys]);

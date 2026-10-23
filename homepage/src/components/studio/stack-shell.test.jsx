@@ -171,8 +171,11 @@ describe("Native board stack controls", () => {
     );
     expect(screen.queryByRole("button", { name: /previous|next/i })).not.toBeInTheDocument();
     const carousel = screen.getByRole("region", { name: /Clock/ });
+    // The label alone carries state; aria-pressed would announce it twice.
+    expect(screen.getByRole("button", { name: "Play slideshow" })).not.toHaveAttribute("aria-pressed");
     fireEvent.click(screen.getByRole("button", { name: "Play slideshow" }));
     expect(controller.getSnapshot().playing).toBe(true);
+    expect(screen.getByRole("button", { name: "Pause slideshow" })).not.toHaveAttribute("aria-pressed");
     act(() => {
       vi.advanceTimersByTime(2000);
     });

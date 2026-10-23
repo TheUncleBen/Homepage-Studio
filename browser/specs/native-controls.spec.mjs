@@ -3,6 +3,7 @@ import {
   mouseDrag, origin, panelPixels, seedServicePanels, setPanelSize,
   studioApi, test, touchSession,
 } from '../helpers/dashboard.mjs';
+import { playback, seedNative } from '../helpers/engineering.mjs';
 
 const carousel = page => page.locator('[aria-roledescription="carousel"]');
 const activePanel = page => page.locator('[data-stack-id]:not([aria-hidden="true"])');
@@ -82,7 +83,11 @@ test.describe('touch direct manipulation', () => {
       await touch.end();
       await expect.poll(async () => (await panelPixels(source)).top).toBeGreaterThan(before.top + 50);
       // Cancel the whole arrangement before the independent direct-stack gesture.
+      // A dirty arrangement asks before Cancel discards it.
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(page.getByRole('dialog')).toContainText('Discard unsaved changes?');
+      await page.getByRole('dialog').getByRole('button', { name: 'Discard changes', exact: true }).click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect.poll(() => panelPixels(source)).toEqual(before);
 
       point = await headerPoint();
@@ -102,19 +107,175 @@ test.describe('touch direct manipulation', () => {
   });
 });
 
+test.describe('touch on panel bodies', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test('body swipe navigates a stack and body hold selects, while native controls, links and vertical scroll keep their touch', async ({ page, request }) => {
+    await seedNative(request, {
+      widgetsYaml: JSON.stringify([
+        { greeting: { text: 'Swipe body fixture' } },
+        { search: { provider: 'duckduckgo', showSearchSuggestions: false, focus: false } },
+        { greeting: { text: 'Hold body fixture' } },
+      ]),
+      servicesYaml: JSON.stringify([{ Fixtures: [
+        { 'Link fixture': { href: `${origin}/#studio-link-fixture`, description: 'Native link body' } },
+        { 'Tall page marker': { href: `${origin}/#studio-tall-marker` } },
+      ] }]),
+    }, board => {
+      const byType = type => board.panels.filter(panel => panel.nativeLocator?.type === type);
+      const [swipe, hold] = byType('greeting');
+      const [search] = byType('search');
+      swipe.rect = { x: 0, y: 0, w: 4, h: 3 };
+      search.rect = { x: 0, y: 0, w: 4, h: 3 };
+      hold.rect = { x: 0, y: 4, w: 4, h: 3 };
+      board.panels.find(panel => panel.title === 'Link fixture').rect = { x: 0, y: 8, w: 4, h: 3 };
+      board.panels.find(panel => panel.title === 'Tall page marker').rect = { x: 0, y: 30, w: 4, h: 3 };
+      board.stacks = [{ id: 'body-stack', panelIds: [swipe.id, search.id], rect: { x: 0, y: 0, w: 4, h: 4 }, playback: playback() }];
+    });
+    await page.goto('/');
+    const editDashboard = page.getByRole('button', { name: 'Edit dashboard', exact: true });
+    const done = page.getByRole('button', { name: 'Done', exact: true });
+    const picker = page.getByRole('menu');
+    await expect(activePanel(page)).toContainText('Swipe body fixture');
+    const touch = await touchSession(page);
+    const center = async (locator) => {
+      await locator.scrollIntoViewIfNeeded();
+      const bounds = await locator.boundingBox();
+      return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    };
+    try {
+      // A short tap on the body neither opens the title picker nor edits.
+      let point = await center(activePanel(page).locator('.studio-native-content'));
+      await touch.start(point.x, point.y);
+      await touch.end();
+      await expect(picker).toHaveCount(0);
+      await expect(editDashboard).toBeVisible();
+
+      // Horizontal swipe across the stacked widget's body changes the slide.
+      await touch.start(point.x + 60, point.y);
+      await touch.move({ x: point.x + 60, y: point.y }, { x: point.x - 100, y: point.y + 4 });
+      await touch.end();
+      await expect(activePanel(page).getByRole('combobox')).toBeVisible();
+      await expect(picker).toHaveCount(0);
+      await expect(editDashboard).toBeVisible();
+
+      // A swipe or hold that starts on the native search input stays with it.
+      const input = activePanel(page).getByRole('combobox');
+      point = await center(input);
+      await touch.start(point.x + 40, point.y);
+      await touch.move({ x: point.x + 40, y: point.y }, { x: point.x - 100, y: point.y });
+      await touch.end();
+      await expect(activePanel(page).getByRole('combobox')).toBeVisible();
+      await touch.start(point.x, point.y);
+      await page.waitForTimeout(800);
+      await touch.end();
+      await expect(editDashboard).toBeVisible();
+      await expect(done).toHaveCount(0);
+
+      // A hold that starts on a native link neither selects nor navigates.
+      const link = page.locator('[data-panel-kind="service"][aria-label="Link fixture"] a[href]').first();
+      const url = page.url();
+      point = await center(link);
+      await touch.start(point.x, point.y);
+      await page.waitForTimeout(800);
+      await touch.end();
+      await expect(editDashboard).toBeVisible();
+      await expect(done).toHaveCount(0);
+      expect(page.url()).toBe(url);
+
+      // Vertical page scroll still starts from a body before any hold.
+      const holdBody = page.locator('[data-panel-kind="informationWidget"][aria-label="Greeting 2"] .studio-native-content');
+      point = await center(holdBody);
+      const scrollBefore = await page.evaluate(() => scrollY);
+      await touch.start(point.x, point.y);
+      await touch.move(point, { x: point.x, y: point.y - 120 });
+      await touch.end();
+      await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(scrollBefore + 20);
+      await expect(editDashboard).toBeVisible();
+
+      // Holding the body selects that panel for arrangement (IN-01).
+      point = await center(holdBody);
+      await touch.start(point.x, point.y);
+      await expect(done).toBeVisible();
+      await touch.end();
+      await expect(page.getByRole('checkbox', { name: 'Select Greeting 2', exact: true })).toBeChecked();
+      await expect(picker).toHaveCount(0);
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(editDashboard).toBeVisible();
+    } finally { await touch.detach(); }
+  });
+});
+
+test.describe('phone delete confirmation', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test('Delete brings its confirmation into view with focus on Keep it, which returns focus to Delete', async ({ page, request }) => {
+    await seedServicePanels(request, [{ name: 'Delete fixture', rect: { x: 0, y: 0, w: 4, h: 3 } }]);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit Delete fixture', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    const remove = dialog.getByRole('button', { name: 'Delete', exact: true });
+    await remove.click();
+    const keep = dialog.getByRole('button', { name: 'Keep it', exact: true });
+    await expect(keep).toBeFocused();
+    await expect(keep).toBeInViewport();
+    await expect(dialog.getByRole('button', { name: 'Delete permanently', exact: true })).toBeInViewport();
+    await keep.click();
+    await expect(dialog.getByText('Delete Delete fixture?')).toHaveCount(0);
+    await expect(remove).toBeFocused();
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    expect((await studioApi(request, '/__studio/api/board')).board.panels).toHaveLength(1);
+  });
+});
+
+test.describe('selection checkbox target size', () => {
+  for (const [label, use, minimum] of [
+    ['fine pointer', { viewport: { width: 1440, height: 1080 } }, 24],
+    ['coarse pointer', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }, 44],
+  ]) {
+    test.describe(label, () => {
+      test.use(use);
+      test(`the edit-mode selection target is at least ${minimum} px and toggles from its edge`, async ({ page, request }) => {
+        await seedServicePanels(request, [{ name: 'Target tile', rect: { x: 0, y: 0, w: 4, h: 3 } }]);
+        await page.goto('/');
+        await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+        const checkbox = page.getByRole('checkbox', { name: 'Select Target tile', exact: true });
+        const target = page.locator('.studio-select-target').filter({ has: checkbox });
+        const bounds = await target.boundingBox();
+        expect(bounds.width).toBeGreaterThanOrEqual(minimum);
+        expect(bounds.height).toBeGreaterThanOrEqual(minimum);
+        // A press near the target's corner, outside the drawn checkbox, still selects.
+        const box = await checkbox.boundingBox();
+        const x = bounds.x + 2;
+        const y = bounds.y + 2;
+        expect(x < box.x || y < box.y).toBe(true);
+        if (use.hasTouch) await page.touchscreen.tap(x, y);
+        else await page.mouse.click(x, y);
+        await expect(checkbox).toBeChecked();
+        // The larger target does not change the header's height.
+        const header = servicePanel(page, 'Target tile').locator('.studio-panel-header');
+        const height = (await header.boundingBox()).height;
+        await page.addStyleTag({ content: '.studio-select-target { display: none !important; }' });
+        expect((await header.boundingBox()).height).toBe(height);
+      });
+    });
+  }
+});
+
 test('native search state survives arrangement and moving out; bookmark and layout survive reload', { tag: '@cross-engine' }, async ({ page, request }) => {
   await page.goto('/');
   const bookmark = await addBookmark(page);
   await expect(bookmark.getByRole('link').first()).toHaveAttribute('href', 'https://example.test/reference');
   await addInformation(page, 'Search', 'provider: duckduckgo\nshowSearchSuggestions: false\nfocus: false\n');
-  const search = page.locator('[data-panel-kind="informationWidget"][aria-label="search"]');
+  const search = page.locator('[data-panel-kind="informationWidget"][aria-label="Search"]');
   const input = search.getByRole('combobox', { includeHidden: true });
   await input.fill('Native search state retained');
   const originalInput = await input.elementHandle();
   await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
-  await setPanelSize(page, 'search', 5, 3);
+  await setPanelSize(page, 'Search', 5, 3);
   await setPanelSize(page, 'Browser bookmark', 5, 3);
-  await page.getByRole('checkbox', { name: 'Select search', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'Select Search', exact: true }).check();
   await page.getByRole('checkbox', { name: 'Select Browser bookmark', exact: true }).check();
   await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
   await finishArrangement(page);
@@ -131,7 +292,7 @@ test('native search state survives arrangement and moving out; bookmark and layo
   await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.locator('.studio-stack-member').filter({ hasText: 'Browser bookmark' }).getByRole('button', { name: 'Move out', exact: true }).click();
+  await dialog.locator('.studio-stack-member').filter({ hasText: 'Browser bookmark' }).getByRole('button', { name: 'Move out Browser bookmark from stack', exact: true }).click();
   await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();
   await expect(carousel(page)).toHaveCount(0);
   await expect(input).toHaveValue('Native search state retained');
@@ -219,9 +380,9 @@ test('the native Custom API widget renders an actual private proxy response', as
   await addInformation(page, 'Search', 'provider: duckduckgo\nshowSearchSuggestions: false\nfocus: false\n');
   await addInformation(page, 'Greeting', 'text: Your own space\ntext_size: xl\n');
   await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
-  await setPanelSize(page, 'greeting', 5, 3);
+  await setPanelSize(page, 'Greeting', 5, 3);
   await setPanelSize(page, 'Browser bookmark', 5, 3);
-  await page.getByRole('checkbox', { name: 'Select greeting', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'Select Greeting', exact: true }).check();
   await page.getByRole('checkbox', { name: 'Select Browser bookmark', exact: true }).check();
   await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
   await finishArrangement(page);

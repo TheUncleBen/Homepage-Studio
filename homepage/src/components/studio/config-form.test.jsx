@@ -142,6 +142,16 @@ describe("Coherent native option drafts", () => {
       "keep: [",
     );
   });
+  it("reports an advanced YAML error by line and column without echoing the source", () => {
+    render(<Fixture initial={{ keep: true }} fields={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+    fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
+      target: { value: "keep: true\nsecret: synthetic-private-marker\nlist: [a, b\n" },
+    });
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/^Invalid YAML at line 4, column 1: /);
+    expect(alert).not.toHaveTextContent("synthetic-private-marker");
+  });
   it("retains cyclic YAML as a local invalid draft without exposing it to adjacent controls", () => {
     const changed = vi.fn();
     render(<Fixture initial={{ keep: true }} fields={[]} onChange={changed} />);

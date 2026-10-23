@@ -156,6 +156,10 @@ export default function StudioBoard({
   const [filter, setFilter] = useState("all");
   const [modal, setModal] = useState(null);
   const [editorData, setEditorData] = useState(null);
+  // The native catalog is large and fixed for a deployed build. Fetch it only
+  // for the editors that use it and reuse it for the rest of the page session;
+  // a failed request is forgotten so "Try again" fetches it afresh.
+  const catalogRequest = useRef(null);
   const [editorError, setEditorError] = useState(null);
   const [editorGuard, setEditorGuard] = useState({
     dirty: false,
@@ -342,6 +346,13 @@ export default function StudioBoard({
     },
     [envelope?.revision, envelope?.configurationRevision, nativeData],
   );
+  const cancelEditing = () => {
+    setDraft(null);
+    setDraftSource(null);
+    setEditing(false);
+    setSelection([]);
+    setError(null);
+  };
   const beginEditing = () => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
     setEditing(true);
@@ -424,9 +435,16 @@ export default function StudioBoard({
     setEditorData(null);
     if (type === "dashboards") return;
     try {
+      if ((type === "picker" || type === "content") && !catalogRequest.current) {
+        const request = studioRequest("/__studio/catalog.json");
+        catalogRequest.current = request;
+        request.catch(() => {
+          if (catalogRequest.current === request) catalogRequest.current = null;
+        });
+      }
       const [state, catalog, backups] = await Promise.all([
         studioRequest("/__studio/api/state"),
-        studioRequest("/__studio/catalog.json"),
+        type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
         type === "backups" ? studioRequest("/__studio/api/backups") : Promise.resolve([]),
       ]);
       if (token === generation.current) setEditorData({ state, catalog, backups });
@@ -761,6 +779,7 @@ export default function StudioBoard({
     stack: "Edit widget stack",
     position: "Position & size",
     discovery: modal?.panel?.title || "Discovered content",
+    discardArrangement: "Discard arrangement?",
   };
 
   return (
@@ -812,11 +831,10 @@ export default function StudioBoard({
                 className="studio-button studio-quiet"
                 disabled={saving}
                 onClick={() => {
-                  setDraft(null);
-                  setDraftSource(null);
-                  setEditing(false);
-                  setSelection([]);
-                  setError(null);
+                  // An unsaved arrangement uses the same explicit discard
+                  // confirmation as editor drafts.
+                  if (dirty) setModal({ type: "discardArrangement" });
+                  else cancelEditing();
                 }}
               >
                 Cancel
@@ -849,6 +867,7 @@ export default function StudioBoard({
         </div>
       </header>
       <ErrorMessage
+        arrangement
         error={error || sourceConflict || loadError}
         heading={!error && !sourceConflict && loadError ? "The dashboard could not refresh" : undefined}
         onReload={
@@ -1119,7 +1138,35 @@ export default function StudioBoard({
               </div>
             )}
             <div hidden={Boolean(discardAction)} inert={Boolean(discardAction)}>
-              {modal.type === "dashboards" ? (
+              {modal.type === "discardArrangement" ? (
+                <div className="studio-dialog-body">
+                  <h3>Discard unsaved changes?</h3>
+                  <p className="studio-note">
+                    This arrangement has moves, sizes or stacks that have not been saved. Keep editing to preserve
+                    them, or discard them to leave edit mode.
+                  </p>
+                  <div className="studio-inline-actions">
+                    <button
+                      type="button"
+                      className="studio-button studio-primary"
+                      autoFocus
+                      onClick={dismissEditor}
+                    >
+                      Keep editing
+                    </button>
+                    <button
+                      type="button"
+                      className="studio-button studio-quiet"
+                      onClick={() => {
+                        dismissEditor();
+                        cancelEditing();
+                      }}
+                    >
+                      Discard changes
+                    </button>
+                  </div>
+                </div>
+              ) : modal.type === "dashboards" ? (
                 <DashboardManager
                   currentDashboard={dashboard}
                   onClose={closeModal}

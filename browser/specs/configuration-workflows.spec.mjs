@@ -158,7 +158,7 @@ test('snapshot download and restore recover exact native source identities, stac
   await expect(dialog).toHaveCount(0);
   expect((await studioApi(request, '/__studio/api/board')).board).toEqual(previous.board);
   await expect(page.locator('[data-panel-id]')).toHaveCount(previous.board.panels.length);
-  await expect(page.locator('[aria-roledescription="carousel"]')).toContainText('greeting');
+  await expect(page.locator('[aria-roledescription="carousel"]')).toContainText('Greeting');
   await expect(page.locator('[data-stack-id]:not([aria-hidden="true"])')).toContainText('Second duplicate');
   await page.reload();
   expect((await studioApi(request, '/__studio/api/board')).board).toEqual(previous.board);

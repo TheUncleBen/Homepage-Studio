@@ -192,7 +192,6 @@ export default function StackShell({
             disabled={busy}
             aria-label={snapshot.playing ? "Pause slideshow" : "Play slideshow"}
             title={snapshot.playing ? "Pause slideshow" : "Play slideshow"}
-            aria-pressed={snapshot.playing}
             onClick={() => controller.toggle()}
           >
             <StudioIcon name={snapshot.playing ? "pause" : "play"} size={16} />
@@ -223,7 +222,7 @@ export default function StackShell({
         </button>
       )}
       <span id={`studio-stack-help-${stack.id}`} className="studio-sr-only">
-        Swipe across the stack header, drag horizontally, use a horizontal trackpad gesture, or focus this stack and
+        Swipe across the stack header or widget, drag horizontally, use a horizontal trackpad gesture, or focus this stack and
         press the left and right arrow keys. Manual switching while playing holds this widget for{" "}
         {Math.max(snapshot.intervalMs, snapshot.manualHoldMs) / 1000} seconds. The Play button starts or pauses
         rotation. Activate the widget title to choose a widget directly.

@@ -1,45 +1,109 @@
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { useEditorDraft } from "./draft-guard";
-import { clampRect, moveUnit, unitMinimum, unstackBoard } from "./geometry.mjs";
+import { COLUMNS, moveUnit, unitMinimum, unstackBoard } from "./geometry.mjs";
 import StudioIcon from "./icons";
 
-export function PositionFields({ rect, onChange, minimum = { w: 1, h: 1 } }) {
+const POSITION_FIELDS = [
+  ["x", "Column", 0, COLUMNS - 1],
+  ["y", "Row", 0, 100000],
+  ["w", "Width", 1, COLUMNS],
+  ["h", "Height", 1, 1000],
+];
+
+const positionText = (rect) =>
+  Object.fromEntries(POSITION_FIELDS.map(([key]) => [key, String(rect[key])]));
+
+// Validate the raw text of every field without rewriting any of them. Content
+// minimums are not errors here: blur raises a field to its minimum and the
+// shared geometry enforces it on Apply, so older saved sizes still apply.
+export function validatePosition(text) {
+  const rect = {};
+  for (const [key, label, min, max] of POSITION_FIELDS) {
+    const raw = String(text[key] ?? "").trim();
+    if (!raw) return { field: key, error: `Enter a ${label.toLowerCase()}.` };
+    if (!/^\d+$/.test(raw))
+      return { field: key, error: `${label} must be a whole number.` };
+    const value = Number(raw);
+    if (value < min || value > max)
+      return {
+        field: key,
+        error: `${label} must be between ${min} and ${max}.`,
+      };
+    rect[key] = value;
+  }
+  if (rect.x + rect.w > COLUMNS)
+    return {
+      field: "x",
+      error: `Column plus width cannot exceed ${COLUMNS}. Lower the column or the width.`,
+    };
+  return { rect, field: null, error: null };
+}
+
+export function PositionFields({
+  rect,
+  onChange,
+  onValidityChange,
+  minimum = { w: 1, h: 1 },
+}) {
+  const [text, setText] = useState(() => positionText(rect));
+  const errorId = useId();
+  const { error, field } = validatePosition(text);
+  useEffect(() => {
+    onValidityChange?.(error);
+  }, [error, onValidityChange]);
+  const update = (next) => {
+    setText(next);
+    const result = validatePosition(next);
+    if (!result.error) onChange({ ...rect, ...result.rect });
+  };
   return (
     <div className="studio-position-fields">
-      {[
-        ["x", "Column", 0, 11],
-        ["y", "Row", 0, 100000],
-        ["w", "Width", minimum.w, 12],
-        ["h", "Height", minimum.h, 1000],
-      ].map(([key, label, min, max]) => (
-        <label key={key}>
-          {label}
-          <input
-            aria-label={label}
-            type="number"
-            min={min}
-            max={max}
-            step={1}
-            value={rect[key]}
-            onChange={(event) =>
-              onChange(
-                clampRect({
-                  ...rect,
-                  [key]: Math.max(min, Number(event.target.value)),
-                }),
-              )
-            }
-          />
-        </label>
-      ))}
+      {POSITION_FIELDS.map(([key, label, absoluteMin, max]) => {
+        const min = Math.max(absoluteMin, minimum[key] ?? absoluteMin);
+        return (
+          <label key={key}>
+            {label}
+            <input
+              aria-label={label}
+              aria-invalid={field === key ? true : undefined}
+              aria-describedby={field === key ? errorId : undefined}
+              type="number"
+              inputMode="numeric"
+              min={min}
+              max={max}
+              step={1}
+              value={text[key]}
+              onChange={(event) =>
+                update({ ...text, [key]: event.target.value })
+              }
+              onBlur={() => {
+                const raw = String(text[key]).trim();
+                if (!/^\d+$/.test(raw)) return;
+                const value = String(
+                  Math.max(min, Math.min(max, Number(raw))),
+                );
+                if (value !== raw) update({ ...text, [key]: value });
+              }}
+            />
+          </label>
+        );
+      })}
+      {error && (
+        <p className="studio-field-error" id={errorId} role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
 
 export function PositionEditor({ unit, onApply, onClose, blocked = false }) {
   const [rect, setRect] = useState(unit.rect);
-  useEditorDraft(JSON.stringify(rect) !== JSON.stringify(unit.rect));
+  const [invalid, setInvalid] = useState(null);
+  useEditorDraft(
+    Boolean(invalid) || JSON.stringify(rect) !== JSON.stringify(unit.rect),
+  );
   return (
     <>
       <div className="studio-dialog-body">
@@ -60,7 +124,12 @@ export function PositionEditor({ unit, onApply, onClose, blocked = false }) {
             </>
           )}
         </p>
-        <PositionFields rect={rect} onChange={setRect} minimum={unit.minimum} />
+        <PositionFields
+          rect={rect}
+          onChange={setRect}
+          onValidityChange={setInvalid}
+          minimum={unit.minimum}
+        />
       </div>
       <footer className="studio-dialog-footer">
         <span className="studio-footer-spacer" />
@@ -69,7 +138,7 @@ export function PositionEditor({ unit, onApply, onClose, blocked = false }) {
         </button>
         <button
           className="studio-button studio-primary"
-          disabled={blocked}
+          disabled={blocked || Boolean(invalid)}
           onClick={() => onApply(rect)}
         >
           Apply to arrangement
@@ -91,7 +160,10 @@ export default function StackEditor({
   const [draft, setDraft] = useState(() => structuredClone(stack));
   const [movedOut, setMovedOut] = useState([]);
   const [adding, setAdding] = useState(false);
-  useEditorDraft(JSON.stringify(draft) !== JSON.stringify(stack));
+  const [invalid, setInvalid] = useState(null);
+  useEditorDraft(
+    Boolean(invalid) || JSON.stringify(draft) !== JSON.stringify(stack),
+  );
   const occupied = new Set(
     board.stacks
       .filter((item) => item.id !== stack.id)
@@ -204,6 +276,7 @@ export default function StackEditor({
                       });
                       setMovedOut([...movedOut, id]);
                     }}
+                    aria-label={`Move out ${panel?.title} from stack`}
                   >
                     Move out
                   </button>
@@ -261,7 +334,8 @@ export default function StackEditor({
             },
             stack.id,
           )}
-          onChange={(rect) => setDraft({ ...draft, rect })}
+          onChange={(rect) => setDraft((current) => ({ ...current, rect }))}
+          onValidityChange={setInvalid}
         />
         <h3>Slideshow</h3>
         <div className="studio-fields-grid">
@@ -399,7 +473,7 @@ export default function StackEditor({
         <button
           className="studio-button studio-primary"
           onClick={apply}
-          disabled={blocked}
+          disabled={blocked || Boolean(invalid)}
         >
           Apply to arrangement
         </button>
