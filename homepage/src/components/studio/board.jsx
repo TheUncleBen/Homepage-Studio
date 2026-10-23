@@ -775,6 +775,31 @@ export default function StudioBoard({
         return;
       }
     }
+    if (key === "x" && projection.columns < COLUMNS) {
+      // A narrow layout shows units in reading order, so Left and Right move
+      // one reading position, like a sideways drag, instead of shifting the
+      // desktop column (which can wrap the unit somewhere unexpected).
+      const ordered = [...projection.units].sort(
+        (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
+      );
+      const index = ordered.findIndex((item) => item.id === id);
+      const projected = ordered[index];
+      const neighbor = ordered[index + amount];
+      if (projected && neighbor) {
+        changeBoard(
+          moveProjectedUnit(
+            board,
+            id,
+            {
+              x: ((neighbor.rect.x - projected.rect.x) * COLUMNS) / projection.columns,
+              y: neighbor.rect.y - projected.rect.y,
+            },
+            projection,
+          ),
+        );
+      }
+      if (projected) return;
+    }
     changeBoard(moveUnit(board, id, { ...unit.rect, [key]: unit.rect[key] + amount }));
   };
   const longPress = (id, pointer) => {

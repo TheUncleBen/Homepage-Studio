@@ -152,6 +152,34 @@ for (const input of ['pointer', 'keyboard']) {
   });
 }
 
+test('at 8 columns Left and Right move a wrapped panel one reading position and persist the desktop order', async ({ page, request }) => {
+  await seedServicePanels(request, serviceSlots());
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.goto('/');
+  const panel = name => page.locator(`[data-panel-id][aria-label="${name}"]`);
+  await expect(panel('Gamma')).toBeVisible();
+  // Three 4-wide tiles do not fit 8 columns: Gamma wraps below Alpha.
+  expect((await panelPixels(panel('Gamma'))).top).toBeGreaterThan((await panelPixels(panel('Alpha'))).top);
+  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  const handle = page.getByRole('button', { name: 'Move Gamma. Use arrow keys; Shift and arrow keys resize.' });
+  await handle.press('ArrowLeft');
+  const [alpha, beta, gamma] = await Promise.all(['Alpha', 'Beta', 'Gamma'].map(name => panelPixels(panel(name))));
+  expect(gamma.top).toBe(alpha.top);
+  expect(gamma.left).toBeGreaterThan(alpha.left);
+  expect(beta.top).toBeGreaterThan(alpha.top);
+  expect(beta.left).toBe(alpha.left);
+  await page.getByRole('button', { name: 'Save arrangement', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save arrangement', exact: true })).toHaveCount(0);
+  const saved = await studioApi(request, '/__studio/api/board');
+  const rect = name => saved.board.panels.find(item => item.title === name).rect;
+  expect(rect('Alpha')).toEqual({ x: 0, y: 0, w: 4, h: 3 });
+  expect(rect('Gamma')).toEqual({ x: 4, y: 0, w: 4, h: 3 });
+  expect(rect('Beta')).toEqual({ x: 8, y: 0, w: 4, h: 3 });
+  await handle.press('ArrowRight');
+  expect((await panelPixels(panel('Beta'))).top).toBe((await panelPixels(panel('Alpha'))).top);
+  expect((await panelPixels(panel('Gamma'))).top).toBeGreaterThan((await panelPixels(panel('Alpha'))).top);
+});
+
 test.describe('interrupted touch arrangement', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   test('a second finger cancels the first arrangement and restores its original position', async ({ page, request }) => {

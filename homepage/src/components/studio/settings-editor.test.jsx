@@ -343,8 +343,8 @@ describe("Snapshot action and age", () => {
     expect(snapshotAge(at(-120), now, "en")).toBe("just now");
     expect(snapshotAge(at(5 * 60), now, "en")).toBe("5 minutes ago");
     expect(snapshotAge(at(2 * 60 * 60 + 59), now, "en")).toBe("2 hours ago");
-    expect(snapshotAge(at(30 * 60 * 60), now, "en")).toBe("yesterday");
-    expect(snapshotAge(at(10 * 24 * 60 * 60), now, "en")).toBe("last week");
+    expect(snapshotAge(at(30 * 60 * 60), now, "en")).toBe("1 day ago");
+    expect(snapshotAge(at(10 * 24 * 60 * 60), now, "en")).toBe("1 week ago");
     expect(snapshotAge("not a time", now, "en")).toBe("");
   });
 

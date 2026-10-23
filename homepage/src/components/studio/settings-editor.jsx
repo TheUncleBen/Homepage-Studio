@@ -59,7 +59,9 @@ export function snapshotAge(createdAt, now = Date.now(), locale = undefined) {
   if (!Number.isFinite(time)) return "";
   const seconds = Math.max(0, (now - time) / 1000);
   if (seconds < 60) return "just now";
-  const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  // numeric "always" says "1 day ago": "yesterday" would be wrong for a
+  // snapshot from two calendar days back that is under 48 hours old.
+  const format = new Intl.RelativeTimeFormat(locale, { numeric: "always" });
   const [unit, size] = AGE_UNITS.find(([, length]) => seconds >= length);
   return format.format(-Math.floor(seconds / size), unit);
 }
