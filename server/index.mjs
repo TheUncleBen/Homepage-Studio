@@ -9,7 +9,10 @@ import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute } from './dashboards.mjs';
 import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
-import { serveSharedAsset } from './static-assets.mjs';
+import { createHash } from 'node:crypto';
+import { promisify } from 'node:util';
+import zlib from 'node:zlib';
+import { serveSharedAsset, acceptedEncodings, etagMatches } from './static-assets.mjs';
 import { checkApplicationReadiness } from './application-health.mjs';
 import { renderRobotsPolicy } from './indexing-policy.mjs';
 
@@ -64,6 +67,58 @@ function json(res, code, value) {
   const data = JSON.stringify(value);
   res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(data) });
   res.end(data);
+}
+
+// Browsers navigating to a missing, renamed-away or archived dashboard get a
+// readable page; API and fetch callers keep the JSON error body. No request
+// text is reflected and the page runs no script.
+const UNAVAILABLE_PAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+function wantsHtmlPage(req) {
+  if (!['GET', 'HEAD'].includes(req.method)) return false;
+  const path = String(req.url || '').split('?')[0];
+  // Editor and native API routes, at the root or under a dashboard address.
+  if (/^\/(?:[^/]+\/)?(?:api|__studio)(?:\/|$)/.test(path)) return false;
+  return String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html');
+}
+function renderUnavailablePage(status) {
+  const code = Number(status) === 410 ? 410 : 404;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Dashboard unavailable</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: #111115; color: #eeecf1; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { width: 100%; max-width: 30rem; padding: 28px 24px; background: #1b1a20; border: 1px solid #34303b; border-radius: 12px; }
+.status { margin: 0 0 8px; color: #b4aebc; font-size: 0.875rem; letter-spacing: 0.04em; text-transform: uppercase; }
+h1 { margin: 0 0 12px; font-size: 1.375rem; line-height: 1.3; font-weight: 600; }
+p { margin: 0 0 20px; color: #b4aebc; }
+a { display: inline-block; padding: 10px 16px; border-radius: 8px; background: #685870; color: #ffffff; text-decoration: none; font-weight: 600; }
+a:hover { background: #77697e; }
+a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
+</style>
+</head>
+<body>
+<main>
+<p class="status">Error ${code}</p>
+<h1>This dashboard isn&#39;t available</h1>
+<p>Its address may have changed, or it may have been archived. Open the main dashboard, then choose the dashboard you need from its dashboard list.</p>
+<a href="/">Open the main dashboard</a>
+</main>
+</body>
+</html>
+`;
+}
+function unavailablePage(req, res, status) {
+  if (res.destroyed || res.writableEnded) return;
+  const page = renderUnavailablePage(status);
+  const policy = res.getHeader('content-security-policy');
+  res.writeHead(status === 410 ? 410 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(page), 'content-security-policy': [].concat(policy ?? [], UNAVAILABLE_PAGE_POLICY), vary: 'Accept' });
+  res.end(req.method === 'HEAD' ? undefined : page);
 }
 
 function nativeLocation(location, { basePath, upstream, host, requestPath }) {
@@ -126,6 +181,40 @@ async function readBody(req, maxBytes = 2 * 1024 * 1024) {
   catch { throw Object.assign(new Error('The request body is not valid JSON.'), { status: 400 }); }
   if (!value || Array.isArray(value) || typeof value !== 'object') throw Object.assign(new Error('Expected a configuration object.'), { status: 400 });
   return value;
+}
+
+// The widget catalog is part of the image and does not change while the
+// process runs. Read, hash and compress it once; browsers revalidate with the
+// strong per-encoding ETag instead of downloading it again.
+const gzip = promisify(zlib.gzip), brotli = promisify(zlib.brotliCompress);
+let catalogVariants;
+function loadCatalogVariants() {
+  catalogVariants ||= (async () => {
+    const identity = await readFile(join(base, 'public', 'catalog.json'));
+    const hash = createHash('sha256').update(identity).digest('base64url').slice(0, 32);
+    const [gz, br] = await Promise.all([
+      gzip(identity, { level: 9 }),
+      brotli(identity, { params: { [zlib.constants.BROTLI_PARAM_MODE]: zlib.constants.BROTLI_MODE_TEXT, [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: identity.length } }),
+    ]);
+    const variant = (encoding, body) => ({ encoding, body, etag: `"${hash}-${encoding}"` });
+    return new Map([['identity', variant('identity', identity)], ['gzip', variant('gzip', gz)], ['br', variant('br', br)]]);
+  })();
+  // A failed read is retried on the next request rather than cached.
+  catalogVariants.catch(() => { catalogVariants = undefined; });
+  return catalogVariants;
+}
+
+async function serveCatalog(req, res) {
+  const variants = await loadCatalogVariants();
+  const encoding = acceptedEncodings(req.headers['accept-encoding'])[0];
+  if (!encoding) { res.writeHead(406, { 'cache-control': 'no-store', vary: 'Accept-Encoding' }); return res.end(); }
+  const { body, etag } = variants.get(encoding);
+  const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', vary: 'Accept-Encoding', etag };
+  if (encoding !== 'identity') headers['content-encoding'] = encoding;
+  if (etagMatches(req.headers['if-none-match'], etag)) { res.writeHead(304, headers); return res.end(); }
+  headers['content-length'] = body.length;
+  res.writeHead(200, headers);
+  res.end(req.method === 'HEAD' ? undefined : body);
 }
 
 function createDashboardHandlers(options = {}) {
@@ -245,12 +334,6 @@ function createDashboardHandlers(options = {}) {
     }
   }
 
-  async function asset(req, res, name, contentType) {
-    const text = await readFile(join(base, 'public', name), 'utf8');
-    res.writeHead(200, { 'content-type': contentType, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(text) });
-    res.end(req.method === 'HEAD' ? undefined : text);
-  }
-
   async function proxy(req, res, dashboard) {
     if (res.destroyed || req.aborted) return;
     const basePath = dashboardBasePath(dashboard);
@@ -308,7 +391,7 @@ function createDashboardHandlers(options = {}) {
       if (path === '/__studio/ready' && req.method === 'GET') return await readiness(req, res, dashboard);
       if (path === '/__studio/config-ready' && req.method === 'GET') return await readiness(req, res, dashboard, true);
       if (!path.startsWith('/__studio/')) await prepareNative();
-      if (path === '/__studio/catalog.json' && req.method === 'GET') return await asset(req, res, 'catalog.json', 'application/json; charset=utf-8');
+      if (path === '/__studio/catalog.json' && ['GET', 'HEAD'].includes(req.method)) return await serveCatalog(req, res);
       const saveChange = path === '/__studio/api/save' && req.method === 'POST' ? await readBody(req) : undefined;
       // Complete board replacements must validate against newly discovered
       // membership. Structured/native-file edits use their revision-checked
@@ -394,6 +477,8 @@ export function createStudioServer(options = {}) {
     rendererPool = { acquire: async () => ({ origin, release() {} }), drain: async () => {}, close: async () => {} };
   }
   const responseHeaders = securityHeaders(parseFrameAncestors(options.frameAncestors ?? process.env.STUDIO_FRAME_ANCESTORS));
+  // Prepare the compressed catalog before the first editor opens; errors surface on request.
+  loadCatalogVariants().catch(() => {});
   rendererPool ||= createRendererPool({ configRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision });
   const handlers = new Map();
   const unpublished = new Map();
@@ -518,6 +603,7 @@ export function createStudioServer(options = {}) {
       if (route.shared) return await serveSharedAsset(req, res, rendererDir);
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
+      if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);
       const diagnostic = req.url.split('?')[0].startsWith('/__studio/api/');
       const status = error instanceof ConfigError && !diagnostic ? 503 : Number(error.status || error.statusCode) || 500;
       json(res, status, { error: error instanceof DashboardError || error instanceof ConfigError || status < 500 ? error.message : 'The dashboard could not be opened. Check the application logs and persistent storage.', code: error.code || 'DASHBOARD_ERROR' });

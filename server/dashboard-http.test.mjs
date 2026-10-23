@@ -308,3 +308,40 @@ test('bounded shutdown closes upgraded sockets and closes the worker pool exactl
   assert.equal(first, second); await first; await closed;
   assert.equal(f.closes, 1); assert.equal(f.leases, 0);
 });
+
+test('browser navigation to an unavailable dashboard gets an accessible page; API callers keep JSON', async t => {
+  const f = await fixture(t), child = await f.create('family');
+  const html = { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' };
+  assert.equal((await f.mutate({ action: 'update', id: child.id, name: 'House', slug: 'house' })).status, 200);
+  const garage = await f.create('garage');
+  assert.equal((await f.mutate({ action: 'archive', id: garage.id, confirmed: true })).status, 200);
+  for (const target of ['/family', '/family/settings?x=<script>', '/garage', '/no-such-dashboard', '/%3Cscript%3Ealert(1)']) {
+    const page = await f.request(target, { headers: html });
+    assert.equal(page.status, 404, target);
+    assert.equal(page.headers['content-type'], 'text/html; charset=utf-8', target);
+    assert.equal(page.headers['cache-control'], 'no-store');
+    assert.equal(page.headers['x-content-type-options'], 'nosniff');
+    assert.equal(page.headers['x-frame-options'], 'SAMEORIGIN');
+    assert.equal(page.headers['referrer-policy'], 'same-origin');
+    assert.match(page.headers['content-security-policy'], /frame-ancestors 'self'/);
+    assert.match(page.headers['content-security-policy'], /default-src 'none'/);
+    assert.equal(Number(page.headers['content-length']), Buffer.byteLength(page.text));
+    assert.match(page.text, /^<!doctype html>/);
+    assert.match(page.text, /<html lang="en">/);
+    assert.match(page.text, /<h1>This dashboard isn&#39;t available<\/h1>/);
+    assert.match(page.text, /Error 404/);
+    assert.match(page.text, /<a href="\/">Open the main dashboard<\/a>/);
+    assert.doesNotMatch(page.text, /<script|family|garage|no-such|alert/i, target);
+  }
+  const head = await f.request('/garage', { method: 'HEAD', headers: html });
+  assert.equal(head.status, 404); assert.equal(head.headers['content-type'], 'text/html; charset=utf-8'); assert.equal(head.text, '');
+  for (const [target, headers] of [['/family', {}], ['/family', { accept: 'application/json' }], ['/garage', { accept: '*/*' }], ['/family/api/config', html], ['/garage/__studio/api/state', html]]) {
+    const result = await f.request(target, { headers });
+    assert.equal(result.status, 404, target);
+    assert.match(result.headers['content-type'], /^application\/json/, target);
+    assert.equal(result.json.code, 'DASHBOARD_NOT_FOUND', target);
+  }
+  const posted = await f.request('/family', { method: 'POST', headers: { ...html, 'content-type': 'application/json' }, body: '{}' });
+  assert.equal(posted.status, 404); assert.match(posted.headers['content-type'], /^application\/json/);
+  assert.equal((await f.request('/house/api/config', { headers: html })).json.id, child.id);
+});

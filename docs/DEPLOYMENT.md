@@ -44,6 +44,13 @@ requests are bounded to 2 MiB of serialized JSON. Complete dashboard imports can
 use up to 40 MiB of serialized JSON, while each imported file/state remains
 limited to 2 MiB. An external proxy with a lower body limit can reject an otherwise
 valid import before Studio sees it; configure the intended limit externally.
+Request bodies sent to native dashboard routes (for example a widget action
+under `/api/` or `/<slug>/api/`) are received in full by the controller before a
+dashboard worker is used. That body is limited to 4 MiB and must arrive within
+30 seconds. A larger body receives `413`, a body that does not arrive in time
+receives `408`, and the controller closes that connection. Native API routes
+apply their own smaller limit (1 MB by default) after this. These limits are not
+configurable.
 
 Native `HOMEPAGE_VAR_*` values, `HOMEPAGE_FILE_*` file references and necessary
 secret mounts belong on the single `studio` container. Adding a variable to

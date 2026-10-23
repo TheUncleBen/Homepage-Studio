@@ -4,7 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, gunzipSync, brotliDecompressSync } from 'node:zlib';
 import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from './index.mjs';
 import { createConfigStore, MAX_IMPORT_BYTES } from './config.mjs';
 
@@ -652,4 +652,56 @@ test('both complete-board save routes await fresh membership and reject an omitt
     assert.equal((await store.load()).revision, before.revision);
     assert.equal((await store.listBackups()).length, 0);
   }
+});
+
+test('the widget catalog is compressed, revalidated by strong ETag and never proxied', async (t) => {
+  const { request, upstreamCalls } = await setup(t);
+  const original = await fs.readFile(new URL('../public/catalog.json', import.meta.url));
+  const plain = await request('/__studio/catalog.json');
+  assert.equal(plain.status, 200);
+  assert.deepEqual(plain.buffer, original);
+  assert.equal(plain.headers['content-encoding'], undefined);
+  assert.equal(plain.headers['content-type'], 'application/json; charset=utf-8');
+  assert.equal(plain.headers['cache-control'], 'no-cache');
+  assert.equal(plain.headers.vary, 'Accept-Encoding');
+  assert.equal(plain.headers['x-content-type-options'], 'nosniff');
+  assert.equal(plain.headers['content-security-policy'], "frame-ancestors 'self'");
+  assert.equal(Number(plain.headers['content-length']), original.length);
+  assert.match(plain.headers.etag, /^"[A-Za-z0-9_-]{32}-identity"$/);
+
+  const br = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'gzip, deflate, br' } });
+  assert.equal(br.headers['content-encoding'], 'br');
+  assert.deepEqual(brotliDecompressSync(br.buffer), original);
+  assert.ok(br.buffer.length < original.length / 5, `brotli catalog is ${br.buffer.length} bytes`);
+  assert.equal(Number(br.headers['content-length']), br.buffer.length);
+  const gz = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'gzip, br;q=0.5' } });
+  assert.equal(gz.headers['content-encoding'], 'gzip');
+  assert.deepEqual(gunzipSync(gz.buffer), original);
+  const etags = new Set([plain.headers.etag, br.headers.etag, gz.headers.etag]);
+  assert.equal(etags.size, 3, 'Each encoding is a distinct representation.');
+  assert.equal(new Set([...etags].map(tag => tag.replace(/-(?:identity|gzip|br)"$/, ''))).size, 1, 'All encodings share one content hash.');
+  assert.equal((await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'br' } })).headers.etag, br.headers.etag, 'The ETag is stable across requests.');
+
+  const head = await request('/__studio/catalog.json', { method: 'HEAD', headers: { 'accept-encoding': 'br' } });
+  assert.equal(head.status, 200);
+  assert.equal(head.buffer.length, 0);
+  assert.equal(head.headers.etag, br.headers.etag);
+  assert.equal(Number(head.headers['content-length']), br.buffer.length);
+
+  const revalidated = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'br', 'if-none-match': `"other", ${br.headers.etag}` } });
+  assert.equal(revalidated.status, 304);
+  assert.equal(revalidated.buffer.length, 0);
+  assert.equal(revalidated.headers.etag, br.headers.etag);
+  assert.equal(revalidated.headers['cache-control'], 'no-cache');
+  assert.equal(revalidated.headers['content-encoding'], 'br');
+  const headRevalidated = await request('/__studio/catalog.json', { method: 'HEAD', headers: { 'if-none-match': plain.headers.etag } });
+  assert.equal(headRevalidated.status, 304);
+  const otherEncoding = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'gzip', 'if-none-match': br.headers.etag } });
+  assert.equal(otherEncoding.status, 200, 'A Brotli validator does not validate the gzip representation.');
+  assert.deepEqual(gunzipSync(otherEncoding.buffer), original);
+
+  const refused = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'identity;q=0' } });
+  assert.equal(refused.status, 406);
+  assert.equal((await request('/__studio/catalog.json', { method: 'DELETE', headers: { origin: ORIGIN, 'x-studio-request': '1' } })).status, 404);
+  assert.equal(upstreamCalls.length, 0);
 });

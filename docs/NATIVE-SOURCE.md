@@ -22,6 +22,23 @@ bridge, revision matching, current-request Kubernetes configuration, independent
 dashboard routing/context and cookie/cache scoping. The reviewed
 `follow-redirects` 1.16.1 dependency correction remains in the lockfile.
 
+Later reviewed corrections to the baseline:
+
+- `next` is `^16.4.2` (locked 16.4.2, from 16.3.8) for GHSA-2464-fhr4-w9xw,
+  GHSA-673q-mjm6-r5xr and GHSA-p3m5-59mp-jv5r. `eslint-config-next` stays at
+  16.3.3; it is development-only and has no advisory.
+- `pnpm-workspace.yaml` overrides `ip-address` to `^10.7.4` (locked 10.7.4) for
+  GHSA-rxp7-6hxx-x8q5, reached through `@kubernetes/client-node` > `socks`.
+- `allowBuilds` is the single build-script policy, and it keeps the
+  `protobufjs` install script disabled; nothing in the build needs it.
+- The TrueNAS WebSocket and APC UPS proxies return a fixed list of sanitized
+  error codes and messages instead of raw socket or RPC error text. The TrueNAS
+  WebSocket also limits messages to 32 MiB and closes the socket on every path.
+
+`upstream.lock.json` runtime package and lockfile hashes match the committed
+`homepage/package.json` and `pnpm-lock.yaml`; its v2.6.0 baseline hashes are
+unchanged.
+
 An upstream update is a reviewed source merge. Record the proposed upstream
 commit, review release/security changes, preserve Studio behavior and isolation,
 update provenance and lockfiles deliberately, and qualify the resulting complete

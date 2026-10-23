@@ -24,6 +24,17 @@ sanitized native data with configuration-revision checks, and preserved native
 widget hosts. Independent-dashboard routes/storage, worker context and Studio
 management are maintained directly in this source.
 
+Dependency and security corrections made since then:
+
+- `next` `^16.4.2` (locked 16.4.2, from 16.3.8) for GHSA-2464-fhr4-w9xw,
+  GHSA-673q-mjm6-r5xr and GHSA-p3m5-59mp-jv5r.
+- An `ip-address` `^10.7.4` override in `pnpm-workspace.yaml` (locked 10.7.4)
+  for GHSA-rxp7-6hxx-x8q5, reached through `@kubernetes/client-node` > `socks`.
+- `allowBuilds` in `pnpm-workspace.yaml` is the only build-script policy and
+  keeps the `protobufjs` install script disabled.
+- The TrueNAS and APC UPS proxies sanitize connection and RPC errors to a fixed
+  set of codes and messages; the TrueNAS WebSocket limits messages to 32 MiB.
+
 Upstream CI and standalone Docker/development-cluster deployment definitions
 are excluded from the active fork to avoid competing application lifecycles.
 The root project owns build, verification, packaging and deployment. Native
