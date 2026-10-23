@@ -20,20 +20,20 @@ GitHub documents that [new GHCR packages start private](https://docs.github.com/
 
 The delivery guard binds the live GitHub run to this repository, the trusted default branch, the exact source and the expected workflow. It accepts the supported push or manual event, requires a fresh run, and does not require the initiating actor to be the repository owner. Forks, other branches, mismatched source and a reused run are rejected.
 
-Two native GitHub-hosted jobs run on AMD64 and ARM64. Each installs the locked dependencies, executes source/writer/packaging checks, checks the tracked controlled Homepage source and builds the complete application image locally. That image undergoes actual production-browser, Compose, Swarm and Portainer lifecycle checks. Portainer qualification exercises both unchanged templates through the real API, including replacement, persistence, restore and cleanup. Unit fixtures do not satisfy that gate.
+A required native source checks job runs first, once on AMD64: it installs the frozen native lockfile with the verified pinned pnpm, checks the redirect security fix, runs the blocking production dependency audit, native lint and the complete native unit suite, and verifies the Firefox/WebKit scenario selection. These source checks are architecture-independent. Two native GitHub-hosted jobs then run on AMD64 and ARM64; neither starts unless the source checks passed. Each installs the locked controller dependencies, executes controller audit/source/writer/packaging checks, checks the tracked controlled Homepage source and builds the complete application image locally (frozen install, production build and compression only). That image undergoes actual production-browser, Compose, Swarm and Portainer lifecycle checks. Portainer qualification exercises both unchanged templates through the real API, including replacement, persistence, restore and cleanup. Unit fixtures do not satisfy that gate.
 
 The qualification report records the following required checks for **each** native target:
 
 | Keys | Actual prerequisite |
 | --- | --- |
-| `controller`, `packaging`, `native`, `dependencies` | Controller and release-tool tests, packaging and source checks, full native tests/build, locked production dependency audits |
+| `controller`, `packaging`, `native`, `dependencies` | Controller and release-tool tests, packaging and source checks on that target; the native production build on that target; full native lint/tests and locked production dependency audits from the run's required native source checks job, which the target job needs |
 | `browser` | The production Chromium acceptance suite configured in the accepted source |
 | `desktopFirefox`, `desktopWebKit` | The configured desktop acceptance scenarios in each engine |
 | `hiddenDocument` | Real headed-browser document hiding and timer suspension/resume |
 | `compose`, `swarm` | Direct single-container deployment and full lifecycle acceptance |
 | `portainerCompose`, `portainerSwarm` | Actual Portainer API qualification for both templates, including cleanup |
 
-The workflow order is part of this contract. Each native image push occurs only after that target's preceding checks succeed. Assembly requires both native jobs to succeed. The report binds the commit, Git tree, pinned Homepage commit, run identity and the locally tested image configuration digests. A field saying `passed` outside that execution does not prove a test ran.
+The workflow order is part of this contract. Each native image push occurs only after the native source checks job and that target's preceding checks succeed. Assembly requires the native source checks and both native jobs to succeed. The report binds the commit, Git tree, pinned Homepage commit, run identity and the locally tested image configuration digests. A field saying `passed` outside that execution does not prove a test ran.
 
 Only the already-tested application image objects are pushed to the application repository. Their registry architecture manifests and configuration bytes must match the local image IDs tested on their native runners. Assembly constructs one multiarchitecture index from the exact architecture digests and verifies every manifest/configuration identity. It produces one corresponding-source archive, the original qualification report, candidate manifest, digest-pinned templates, environment example and checksums.
 

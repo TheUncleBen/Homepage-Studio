@@ -4,7 +4,7 @@ import { activePanel, carousel, seedPlayback } from '../helpers/engineering.mjs'
 const title = page => carousel(page).getByRole('button', { name: /^Choose widget in stack:/ });
 const menu = page => page.getByRole('menu', { name: 'Choose widget in this stack', exact: true });
 
-test('intentional stack title picker preserves native state, keyboard focus and manual hold without hijacking gestures', async ({ page, request }) => {
+test('intentional stack title picker preserves native state, keyboard focus and manual hold without hijacking gestures', { tag: '@cross-engine' }, async ({ page, request }) => {
   const seeded = await seedPlayback(request);
   const searchId = seeded.board.panels.find(panel => panel.nativeLocator.type === 'search').id;
   const greetingId = seeded.board.panels.find(panel => panel.nativeLocator.type === 'greeting').id;

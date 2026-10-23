@@ -295,13 +295,76 @@ test('runtime and Dockerfile pins agree with the reviewed source lock', async ()
     assert.ok(toolchainFiles.includes(file), `native builder must receive ${file}`);
   }
   assert.ok(native.includes('node /tmp/studio-toolchain/install-pinned-pnpm.mjs /tmp/studio-toolchain/upstream.lock.json && pnpm install --frozen-lockfile'));
-  assert.ok(native.includes('RUN pnpm lint'));
-  assert.ok(native.includes('RUN pnpm test'));
   assert.ok(native.includes('RUN node /tmp/studio-toolchain/compress-static-assets.mjs /build/homepage/.next/static'));
   assert.ok(native.includes('COPY homepage/ ./'));
   assert.ok(native.includes('homepage/src/utils/config/environment.mjs ./homepage/src/utils/config/environment.mjs'));
   assert.ok(native.includes('homepage/src/utils/config/yaml-parser.mjs ./homepage/src/utils/config/yaml-parser.mjs'));
   assert.ok(!native.includes('prepare-homepage'));
   assert.ok(!native.includes('apply-homepage-overlay'));
-  assert.ok(native.includes('STUDIO_NATIVE_SOURCE=/build/homepage node --test'));
+});
+
+test('the native image build only installs, builds and compresses; its source gates run in CI', async () => {
+  const stages = dockerStages(await fs.readFile(path.join(root, 'Dockerfile'), 'utf8'));
+  const builder = stages.find(stage => stage.name === 'native-builder');
+  const runs = builder.lines.filter(line => line.startsWith('RUN '));
+  assert.equal(runs.length, 3);
+  assert.match(runs[0], /^RUN node \/tmp\/studio-toolchain\/install-pinned-pnpm\.mjs \/tmp\/studio-toolchain\/upstream\.lock\.json && pnpm install --frozen-lockfile(?:\s|$)/);
+  assert.match(runs[1], /\bpnpm run build$/);
+  assert.equal(runs[2], 'RUN node /tmp/studio-toolchain/compress-static-assets.mjs /build/homepage/.next/static');
+  // A newly published advisory must not need the registry inside, or fail, every
+  // architecture's image build; the required native-checks job owns it.
+  for (const stage of stages) for (const line of stage.lines) {
+    assert.doesNotMatch(line, /\bpnpm\s+(?:audit|lint|test)\b|\bvitest\b|node --test|native-redirect-security/, `image builds no longer run source gates: ${line}`);
+  }
+});
+
+const NATIVE_GATES = [
+  ['install', 'node scripts/install-pinned-pnpm.mjs upstream.lock.json\npnpm --dir homepage install --frozen-lockfile'],
+  ['redirect', 'STUDIO_NATIVE_SOURCE=homepage node --test test/native-redirect-security.mjs'],
+  ['audit', 'pnpm audit --prod'],
+  ['lint', 'pnpm lint'],
+  ['unit', 'pnpm test'],
+  ['cross-engine', 'npm ci --prefix browser --ignore-scripts\nnode --test test/cross-engine-selection.test.mjs'],
+];
+const CONTROLLER_GATES = ['npm ci --ignore-scripts', 'npm audit --omit=dev', 'npm test', 'node --test test/*.test.mjs', "python3 -m unittest discover -s test -p 'test_*.py'", 'node --test test/swarm-parser.mjs', 'python3 scripts/pack-candidate-source.py --source . --commit "$GITHUB_SHA" --check'];
+const buildsImage = job => (job.steps || []).some(step => /\bdocker\s+(?:buildx\s+)?build\b/.test(step.run || ''));
+
+test('every image-building workflow gates each architecture build on the required native source checks', async () => {
+  const directory = path.join(root, '.github/workflows');
+  const workflows = {};
+  for (const name of (await fs.readdir(directory)).filter(file => file.endsWith('.yml'))) workflows[name] = parse(await fs.readFile(path.join(directory, name), 'utf8'));
+  const building = Object.entries(workflows).filter(([, workflow]) => Object.values(workflow.jobs).some(buildsImage)).map(([name]) => name).sort();
+  assert.deepEqual(building, ['candidate-approved.yml', 'validate.yml'], 'promotion must never rebuild images');
+  for (const name of building) {
+    const workflow = workflows[name];
+    const checks = workflow.jobs['native-checks'];
+    assert.ok(checks, `${name} needs a native-checks job`);
+    assert.equal(checks['runs-on'], 'ubuntu-24.04');
+    assert.equal(checks['continue-on-error'], undefined);
+    assert.equal(checks.needs, undefined);
+    const steps = checks.steps;
+    let previous = -1;
+    for (const [gate, command] of NATIVE_GATES) {
+      const index = steps.findIndex(step => step.run?.trim() === command);
+      assert.ok(index > previous, `${name}: native-checks must run the ${gate} gate in order`);
+      previous = index;
+      assert.equal(steps[index]['continue-on-error'], undefined);
+      if (['audit', 'lint', 'unit'].includes(gate)) assert.equal(steps[index]['working-directory'], 'homepage');
+      if (gate === 'cross-engine') assert.equal(steps[index].env.STUDIO_REQUIRE_PLAYWRIGHT_LIST, '1');
+    }
+    for (const step of steps) {
+      if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/);
+      assert.doesNotMatch(step.run || '', /\|\|\s*(?:true|:)|set \+e/);
+    }
+    const builders = Object.entries(workflow.jobs).filter(([, job]) => buildsImage(job));
+    assert.equal(builders.length, 1);
+    for (const [jobName, job] of builders) {
+      assert.deepEqual([job.needs].flat(), ['native-checks'], `${name}: ${jobName} must need native-checks`);
+      assert.equal(job.if, checks.if, `${name}: native-checks must run whenever ${jobName} can`);
+      assert.deepEqual(job.strategy.matrix.include.map(item => item.arch).sort(), ['amd64', 'arm64']);
+      // The controller and release-tool gates still run natively on both architectures.
+      const runs = job.steps.map(step => step.run || '').join('\n').split('\n').map(line => line.trim());
+      for (const command of CONTROLLER_GATES) assert.ok(runs.includes(command), `${name}: ${jobName} must still run ${command}`);
+    }
+  }
 });

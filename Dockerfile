@@ -10,14 +10,14 @@ ARG STUDIO_BUILD_REVISION=unreleased
 WORKDIR /build/homepage
 ENV NEXT_TELEMETRY_DISABLED=1 LOG_TARGETS=stdout STUDIO_BUILD_REVISION=${STUDIO_BUILD_REVISION}
 # Build only the complete controlled fork from this same source commit.
+# The image build installs, compiles and compresses. Its source gates (the
+# production dependency audit, redirect security check, lint and unit tests)
+# run once per workflow in the required native-checks CI job, which every
+# architecture build job needs; a new registry advisory therefore fails that
+# job instead of every image build.
 COPY homepage/ ./
 COPY upstream.lock.json scripts/install-pinned-pnpm.mjs scripts/compress-static-assets.mjs /tmp/studio-toolchain/
 RUN node /tmp/studio-toolchain/install-pinned-pnpm.mjs /tmp/studio-toolchain/upstream.lock.json && pnpm install --frozen-lockfile --prefer-offline
-COPY test/native-redirect-security.mjs ./studio-native-tests/native-redirect-security.mjs
-RUN STUDIO_NATIVE_SOURCE=/build/homepage node --test studio-native-tests/native-redirect-security.mjs
-RUN pnpm audit --prod
-RUN pnpm lint
-RUN pnpm test
 RUN NEXT_PUBLIC_VERSION="studio-${STUDIO_BUILD_REVISION}" NEXT_PUBLIC_REVISION="${STUDIO_BUILD_REVISION}" pnpm run build
 RUN node /tmp/studio-toolchain/compress-static-assets.mjs /build/homepage/.next/static
 

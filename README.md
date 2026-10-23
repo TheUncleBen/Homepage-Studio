@@ -43,7 +43,7 @@ npm ci
 npm test
 ```
 
-These commands exercise the controller and safe native discovery bridge. `node --test test/*.test.mjs` and `python3 -m unittest discover -s test -p 'test_*.py'` cover packaging, provenance and release tooling. Native lint, all native tests and production compilation run from `homepage/` with the locked pnpm toolchain and are mandatory stages of the root Docker build. CI tests that same complete image in Chromium, Firefox, WebKit, direct Compose/Swarm and actual pinned Portainer on both native architectures. [Feature acceptance](docs/FEATURE-ACCEPTANCE.md) distinguishes implemented behavior, executable gates and human-only review.
+These commands exercise the controller and safe native discovery bridge. `node --test test/*.test.mjs` and `python3 -m unittest discover -s test -p 'test_*.py'` cover packaging, provenance and release tooling. Native lint, all native tests, the redirect security check and the production dependency audit run from `homepage/` with the locked pnpm toolchain in a required CI job that every image build waits for; the root Docker build installs, compiles and compresses. [Verification](VERIFICATION.md) lists the commands. CI tests that same complete image in Chromium, Firefox, WebKit, direct Compose/Swarm and actual pinned Portainer on both native architectures. [Feature acceptance](docs/FEATURE-ACCEPTANCE.md) distinguishes implemented behavior, executable gates and human-only review.
 
 The configured dashboard and snapshots contain private data and must never be committed. Public examples and tests use synthetic hosts and values.
 
