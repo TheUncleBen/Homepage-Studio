@@ -212,8 +212,20 @@ function projectEdge(edge, columns) {
   return Math.round((edge * columns) / COLUMNS);
 }
 
+// At 8 columns (tablets) panels snap to halves: a panel up to half the
+// desktop width (6 of 12) is half the tablet width, a wider one is full width.
+// Rows therefore fill the board two-up instead of leaving a narrow strip, and a
+// desktop row of three becomes two, then one (see projectColumns).
+const HALF = 4;
+function projectHalves(rect) {
+  if (rect.w > COLUMNS / 2) return { ...rect, x: 0, w: 2 * HALF };
+  const left = Math.min(HALF, Math.round(projectEdge(rect.x, 8) / HALF) * HALF);
+  return { ...rect, x: left, w: HALF };
+}
+
 function projectRect(rect, columns) {
   if (columns === COLUMNS) return rect;
+  if (columns === 8) return projectHalves(rect);
   const left = projectEdge(rect.x, columns);
   const right = projectEdge(rect.x + rect.w, columns);
   return clampRect(

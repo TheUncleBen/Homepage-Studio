@@ -58,10 +58,12 @@ and security fixes land, including the Next.js 16.4.2 security update.
   reloading discards your unsaved arrangement.
 - Each **Move out** button names its widget for screen readers; Play/Pause
   no longer announces its state twice.
-- At 8 columns (tablets, unfolded foldables, zoomed-in desktops) tiles that
-  share an edge stay side by side, and a row that no longer fits wraps from
-  the left in reading order (three tiles become two, then one) instead of
-  stepping into a checkerboard.
+- At 8 columns (tablets, unfolded foldables, zoomed-in desktops) the board
+  becomes two-up: a panel up to half the desktop width is half the tablet
+  width and a wider one is full width, so lines fill. Panels keep their
+  reading order (a row of three becomes two, then one) instead of stepping
+  into a checkerboard, and Left/Right in edit mode move a panel one reading
+  position.
 - On a phone, a vertical swipe on a panel body scrolls the page again in
   current Chrome; only a panel whose content really scrolls keeps the swipe.
 - Links inside panels keep the iPhone and iPad long-press link menu; other

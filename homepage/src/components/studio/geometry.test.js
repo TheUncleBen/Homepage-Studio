@@ -162,7 +162,7 @@ describe("Studio grid geometry", () => {
       }));
     });
   });
-  it.each([673, 820])("projects shared canonical edges to shared 8-column edges at %s px", (width) => {
+  it.each([673, 820])("snaps 8-column panels to halves so rows fill the board at %s px", (width) => {
     const row = (widths, y = 0) => {
       let x = 0;
       return widths.map((w, index) => {
@@ -173,26 +173,25 @@ describe("Studio grid geometry", () => {
     };
     const value = {
       ...board(),
-      panels: [...row([4, 8]), ...row([8, 4], 2), ...row([6, 6], 4), ...row([5, 7], 6), ...row([10, 2], 8), { id: "under", kind: "service", rect: { x: 5, y: 10, w: 5, h: 2 } }],
+      panels: [...row([6, 6]), ...row([3, 3, 3, 3], 2), ...row([2, 4], 4), ...row([12], 6), ...row([9, 3], 8)],
     };
     const projection = projectBoard(value, width);
     expect(projection.columns).toBe(8);
     const at = (id) => projection.units.find((unit) => unit.id === id).rect;
-    // Adjacent canonical tiles stay on their canonical row and meet exactly.
-    [[0, 2], [2, 2], [4, 2], [6, 2]].forEach(([y]) => {
-      const left = at(`${y}-0`);
-      const right = at(`${y}-1`);
-      expect(right.y, `row ${y}`).toBe(left.y);
-      expect(right.x, `row ${y}`).toBe(left.x + left.w);
-      expect(right.x + right.w, `row ${y}`).toBe(8);
-    });
-    // A tile ending on the same canonical edge (x + w = 10) ends on the same projected edge.
-    expect(at("under").x + at("under").w).toBe(at("8-0").x + at("8-0").w);
+    // Every panel is half (4 of 8) or, wider than half the desktop, full width.
     projection.units.forEach((unit, index) => {
+      expect([4, 8], unit.id).toContain(unit.rect.w);
+      expect([0, 4], unit.id).toContain(unit.rect.x);
       expect(unit.rect.x + unit.rect.w).toBeLessThanOrEqual(8);
-      expect(unit.rect.w).toBeGreaterThanOrEqual(3);
       projection.units.slice(index + 1).forEach((other) => expect(intersects(unit.rect, other.rect)).toBe(false));
     });
+    // Two halves share a row and meet in the middle; quarters pair up two-up.
+    expect(at("0-0")).toMatchObject({ x: 0, y: 0, w: 4 });
+    expect(at("0-1")).toMatchObject({ x: 4, y: 0, w: 4 });
+    expect([at("2-0"), at("2-1"), at("2-2"), at("2-3")].map(({ x, y }) => [x, y])).toEqual([[0, 2], [4, 2], [0, 4], [4, 4]]);
+    expect(at("6-0")).toMatchObject({ x: 0, w: 8 });
+    expect(at("8-0")).toMatchObject({ x: 0, w: 8 });
+    expect(at("8-1")).toMatchObject({ x: 0, w: 4 });
   });
   const rects = (projection) =>
     Object.fromEntries(projection.units.map((unit) => [unit.id, [unit.rect.x, unit.rect.y, unit.rect.w, unit.rect.h]]));
@@ -218,16 +217,16 @@ describe("Studio grid geometry", () => {
     const value = { ...board(), panels: tiles(3) };
     const projection = expectReadingOrder(value, width);
     expect(projection.columns).toBe(8);
-    expect(rects(projection)).toEqual({ t0: [0, 0, 3, 3], t1: [3, 0, 3, 3], t2: [0, 3, 3, 3] });
+    expect(rects(projection)).toEqual({ t0: [0, 0, 4, 3], t1: [4, 0, 4, 3], t2: [0, 3, 4, 3] });
   });
   it.each([673, 820])("reflows a 3x3 grid of 4x3 tiles at %s px without holes or reordering", (width) => {
     const value = { ...board(), panels: tiles(9) };
     const before = JSON.stringify(value);
     const projection = expectReadingOrder(value, width);
-    // Two per projected row, packed from the left; only the last row has a remainder.
+    // Two halves per projected row, filling it; only the last row has a remainder.
     projection.units.forEach((unit) => {
       const index = Number(unit.id.slice(1));
-      expect(unit.rect, unit.id).toEqual({ x: (index % 2) * 3, y: Math.floor(index / 2) * 3, w: 3, h: 3 });
+      expect(unit.rect, unit.id).toEqual({ x: (index % 2) * 4, y: Math.floor(index / 2) * 3, w: 4, h: 3 });
     });
     expect(projection.rows).toBe(15);
     expect(JSON.stringify(value)).toBe(before);
@@ -245,8 +244,8 @@ describe("Studio grid geometry", () => {
     };
     expect(rects(expectReadingOrder(value, 820))).toEqual({
       a: [0, 0, 4, 4],
-      b: [4, 0, 3, 2],
-      c: [4, 2, 3, 2],
+      b: [4, 0, 4, 2],
+      c: [4, 2, 4, 2],
       d: [0, 4, 4, 2],
       e: [0, 6, 8, 2],
     });
@@ -265,10 +264,10 @@ describe("Studio grid geometry", () => {
       stacks: [{ id: "stack", panelIds: ["m1", "m2"], rect: { x: 4, y: 0, w: 4, h: 4 } }],
     };
     expect(rects(expectReadingOrder(value, 820))).toEqual({
-      a: [0, 0, 3, 3],
-      stack: [3, 0, 3, 4],
-      c: [0, 3, 3, 3],
-      d: [3, 4, 3, 3],
+      a: [0, 0, 4, 3],
+      stack: [4, 0, 4, 4],
+      c: [0, 3, 4, 3],
+      d: [4, 4, 4, 3],
     });
   });
   it("writes 8-column moves of a wrapped tile back to the shared desktop layout", () => {

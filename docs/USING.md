@@ -46,9 +46,10 @@ filter what the board shows while you're not editing.
 
 The board is a 12-column grid. In a narrower window it shows the same layout
 on 8 columns, and on a phone on 4, keeping the order you see from left to
-right and top to bottom. Tiles that still fit side by side on 8 columns stay
-side by side; a row that no longer fits wraps onto the next line from the
-left, so a row of three becomes two and then one. On a phone every tile takes
+right and top to bottom. On 8 columns (a tablet, or a zoomed-in browser)
+every panel is half or full width: up to half the desktop width becomes half,
+wider becomes full width. Two halves share a line, so a row of three becomes
+two and then one, and each line is filled. On a phone every tile takes
 the full width, one under the other. There is one layout, not one per screen
 size: a move you make on a phone or in a narrow window is a move on the
 desktop too.
