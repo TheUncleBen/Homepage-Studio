@@ -29,8 +29,10 @@ own address on the same host (`/family`, `/admin`, ...).
 
 - **Who uses it.**
   - The **operator** deploys the container and puts it behind a reverse proxy.
-  - **Editors** arrange dashboards in the browser. Anyone who can open the
-    page can edit it: there is no login (see [Security model](#security-model)).
+  - **Editors** sign in and view or arrange the dashboards shared with them.
+    Administrators manage people, sharing and settings (see
+    [Security model](#security-model) and
+    [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)).
 - **What it runs on:** one Docker container for `linux/amd64` or
   `linux/arm64`, with two named volumes. Only port 3000 is published.
   - **Deploy with** a Portainer Docker Swarm stack (one replica on one node)
@@ -63,16 +65,19 @@ HTTPS address.
 2. Pick a guide and work through it top to bottom:
    - **Docker Swarm, with or without Portainer:** [docs/DEPLOY.md](docs/DEPLOY.md).
    - **One machine with Docker Compose:** [docs/DEPLOY-COMPOSE.md](docs/DEPLOY-COMPOSE.md).
-3. Put it behind your proxy: [docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md).
-   That is also where access control belongs.
-4. Keep [docs/OPERATIONS.md](docs/OPERATIONS.md) handy for backups, health
+3. Put it behind your proxy for HTTPS: [docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md).
+   Studio sign-in needs an `https://` address.
+4. Open it straight away and create the administrator, then invite people
+   and share dashboards: [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
+5. Keep [docs/OPERATIONS.md](docs/OPERATIONS.md) handy for backups, health
    checks and limits, and [docs/UPGRADING.md](docs/UPGRADING.md) for the next
    version.
 
 ### Using it
 
-1. Open your dashboard's address. A new deployment starts with an empty
-   dashboard and an **Add your first widget** button.
+1. Open your dashboard's address. A new deployment first asks you to create
+   the administrator account, then shows an empty dashboard and an **Add your
+   first widget** button.
 2. [docs/USING.md](docs/USING.md) walks through adding content, arranging it,
    stacks and slideshows, configuration, snapshots and extra dashboards.
 
@@ -84,7 +89,8 @@ HTTPS address.
 | [APPEARANCE.md](docs/APPEARANCE.md) | Editors | Dark, light or device mode, accent colors, custom CSS variables, copying a design to another deployment |
 | [DEPLOY.md](docs/DEPLOY.md) | Operators | A full deploy on Docker Swarm with Portainer (or `docker stack deploy`), plus every environment variable |
 | [DEPLOY-COMPOSE.md](docs/DEPLOY-COMPOSE.md) | Operators | A full deploy on one machine with Docker Compose |
-| [REVERSE-PROXY.md](docs/REVERSE-PROXY.md) | Operators | What the proxy must pass through, request size limits, framing, and where to put access control |
+| [AUTHENTICATION.md](docs/AUTHENTICATION.md) | Operators, administrators | Sign-in, the first administrator, inviting people, sharing dashboards, session policies, Authentik and other single sign-on, email, recovery |
+| [REVERSE-PROXY.md](docs/REVERSE-PROXY.md) | Operators | What the proxy must pass through, request size limits, framing, and forwarded client addresses |
 | [OPERATIONS.md](docs/OPERATIONS.md) | Operators | Logs and health, backups and restore, snapshots and secrets, worker limits, integration secrets |
 | [UPGRADING.md](docs/UPGRADING.md) | Operators | Moving to a new version and going back |
 | [VERSIONS.md](docs/VERSIONS.md) | Operators | Candidates and official `YYYY.MM.DD` releases, what a bundle contains, how to check it |
@@ -182,16 +188,19 @@ browser ──HTTPS──▶ your reverse proxy ──▶ studio container :3000
 
 ## Security model
 
-- **No built-in login.** Studio has no accounts or passwords. Anyone who can
-  reach the page can view and edit every dashboard on it, read the
-  configuration (including any secrets written into the files) and manage the
-  other dashboards. Treat everyone who can reach it as a trusted editor.
-- **Put access control in your reverse proxy** (forward authentication, an
-  identity-aware proxy, a VPN or an IP allowlist), or keep the port off any
-  network you don't trust. [docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md) has
-  what the proxy needs.
+- **Sign-in is on by default.** People need an account; each dashboard is
+  shared with chosen people or groups to view or to arrange, and only
+  administrators change widget settings, configuration files, custom code,
+  people and sharing. Passkeys, authenticator apps, backup codes, optional
+  email codes and single sign-on through Authentik or any OpenID Connect
+  provider are supported ([docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)).
+  Sign-in needs an `https://` address.
+- **With `STUDIO_AUTH=off`** there is no login: anyone who can reach the page
+  can view and edit every dashboard, read the configuration (including any
+  secrets written into the files) and manage the other dashboards. Then put
+  access control in your reverse proxy ([docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md)).
 - **Dashboard addresses are not access control.** `/admin` and `/family` are
-  just addresses; knowing or guessing one is enough to open it.
+  just addresses; what decides access is who a dashboard is shared with.
 - **What Studio does check.** Requests must use the exact configured host.
   Editor and widget API requests from another site are refused (Origin and
   Fetch Metadata checks), so a page elsewhere can't make your browser change

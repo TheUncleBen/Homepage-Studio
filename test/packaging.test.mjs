@@ -87,7 +87,7 @@ test('the exact application health command is independent of a broken dashboard 
   await fs.mkdir(path.join(rendererDir, '.next/static'), { recursive: true });
   await fs.mkdir(path.join(rendererDir, 'public'));
   for (const name of ['server.js', '.next/BUILD_ID', '.next/build-manifest.json']) await fs.writeFile(path.join(rendererDir, name), '{}');
-  const { server, initialization } = createStudioServer({ ...dirs, rendererDir, upstream, allowedHosts: host });
+  const { server, initialization } = createStudioServer({ ...dirs, rendererDir, upstream, allowedHosts: host, auth: 'off' });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
@@ -98,7 +98,7 @@ test('the exact application health command is independent of a broken dashboard 
   assert.equal(command[0], 'node');
   const options = {
     cwd: root, timeout: 5000,
-    env: { ...process.env, PORT: String(port), STUDIO_PUBLIC_ORIGIN: `http://${host}`, HOMEPAGE_ALLOWED_HOSTS: '', STUDIO_HEALTH_HOST: '' },
+    env: { ...process.env, PORT: String(port), STUDIO_PUBLIC_ORIGIN: `http://${host}`, STUDIO_AUTH: 'off', HOMEPAGE_ALLOWED_HOSTS: '', STUDIO_HEALTH_HOST: '' },
   };
   await execute(process.execPath, command.slice(1), options);
   assert.equal(nativeRequests, 0, 'Container health must not wait for the renderer it enables.');

@@ -30,7 +30,12 @@ function newCopySlug(entry, dashboards) {
   return slug;
 }
 
-export default function DashboardManager({ currentDashboard = { id: "default" }, onClose, onNavigate = navigate }) {
+export default function DashboardManager({
+  currentDashboard = { id: "default" },
+  authEnabled = false,
+  onClose,
+  onNavigate = navigate,
+}) {
   const [registry, setRegistry] = useState(null);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(null);
@@ -102,8 +107,13 @@ export default function DashboardManager({ currentDashboard = { id: "default" },
     else if (action === "update") initial = { name: entry.name, slug: entry.slug };
     else
       initial = entry
-        ? { name: `${entry.name.slice(0, 95)} copy`, slug: newCopySlug(entry, registry.dashboards), sourceId: entry.id }
-        : { name: "", slug: "", sourceId: "" };
+        ? {
+            name: `${entry.name.slice(0, 95)} copy`,
+            slug: newCopySlug(entry, registry.dashboards),
+            sourceId: entry.id,
+            ...(authEnabled ? { copyAccess: false } : {}),
+          }
+        : { name: "", slug: "", sourceId: "", ...(authEnabled ? { copyAccess: false } : {}) };
     setForm({ action, id: entry?.id, initial, duplicate: action === "create" && Boolean(entry) });
     setDraft(structuredClone(initial));
     setSlugChecked(false);
@@ -164,6 +174,7 @@ export default function DashboardManager({ currentDashboard = { id: "default" },
         name: draft.name.trim(),
         slug: draft.slug,
         ...(draft.sourceId ? { sourceId: draft.sourceId } : {}),
+        ...(draft.sourceId && draft.copyAccess ? { copyAccess: true } : {}),
       });
   };
   const entry = registry?.dashboards.find((item) => item.id === form?.id);
@@ -325,6 +336,16 @@ export default function DashboardManager({ currentDashboard = { id: "default" },
                         </small>
                       </label>
                     )}
+                    {form.action === "create" && authEnabled && draft.sourceId && (
+                      <label className="studio-check">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(draft.copyAccess)}
+                          onChange={(event) => setDraft({ ...draft, copyAccess: event.target.checked })}
+                        />{" "}
+                        Share it with the same people and groups
+                      </label>
+                    )}
                     <p className="studio-note">
                       Dashboard address: <code>{draft.slug ? `/${draft.slug}` : "/"}</code>
                     </p>
@@ -357,14 +378,21 @@ export default function DashboardManager({ currentDashboard = { id: "default" },
           </>
         ) : (
           <>
-            <button
-              type="button"
-              className="studio-button studio-primary"
-              disabled={pending}
-              onClick={() => begin("create")}
-            >
-              Create dashboard
-            </button>
+            <div className="studio-inline-actions">
+              <button
+                type="button"
+                className="studio-button studio-primary"
+                disabled={pending}
+                onClick={() => begin("create")}
+              >
+                Create dashboard
+              </button>
+              {authEnabled && (
+                <a className="studio-button studio-quiet" href="/__studio/admin#access">
+                  Who can open each dashboard
+                </a>
+              )}
+            </div>
             <div className="studio-dashboard-list">
               {active.map((item) => (
                 <section className="studio-dashboard-row" key={item.id} aria-label={`Dashboard ${item.name}`}>

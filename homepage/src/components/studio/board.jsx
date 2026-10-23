@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import useSWR from "swr";
 
 import { studioRequest } from "./api.mjs";
+import AppearanceOnlyEditor from "./appearance-only-editor";
 import ContentEditor, { ContentPicker } from "./content-editor";
 import DashboardManager from "./dashboard-manager";
 import { dashboardPath } from "./dashboard-path.mjs";
@@ -76,6 +77,7 @@ export function PanelLayer({
   onStackDrag,
   onManualNavigation,
   onEdit,
+  canEdit,
   onSelect,
   onManipulate,
   onUnitKey,
@@ -117,6 +119,7 @@ export function PanelLayer({
             onStackDrag={stack ? (offset) => onStackDrag?.(stack.id, offset) : undefined}
             onManual={onManualNavigation}
             onEdit={onEdit}
+            canEdit={canEdit ? canEdit(panel) : true}
             onSelect={onSelect}
             onManipulate={onManipulate}
             onUnitKey={onUnitKey}
@@ -147,6 +150,21 @@ export default function StudioBoard({
     refreshInterval: 30000,
     revalidateOnFocus: true,
   });
+  // Studio sign-in decides what this person may change here. The controller
+  // enforces the same levels; this only hides controls that would be refused.
+  const { data: access, error: accessError } = useSWR("/__studio/api/access", studioRequest, {
+    revalidateOnFocus: true,
+  });
+  // Until the answer arrives every control stays disabled. A server without
+  // sign-in levels (or one that predates them) means full access.
+  const accessLoading = !access && !accessError;
+  const level = ["view", "arrange", "admin"].includes(access?.level)
+    ? access.level
+    : accessError && accessError.status !== 404
+      ? "view"
+      : "admin";
+  const isAdmin = level === "admin";
+  const canArrange = isAdmin || level === "arrange";
   const [draft, setDraft] = useState(null);
   const [draftSource, setDraftSource] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -227,7 +245,7 @@ export default function StudioBoard({
   const board = renderSnapshot?.board || sourceBoard;
   const renderedNativeData = renderSnapshot ? renderSnapshot.data : nativePairMatches ? nativeData : EMPTY_NATIVE;
   const nativeUnavailable = !envelope || nativeContentStale;
-  const controlsDisabled = saving || nativeUnavailable;
+  const controlsDisabled = saving || nativeUnavailable || accessLoading;
   const interactionBlocked = Boolean(modal) || controlsDisabled;
   const sourceConflict = draftSourceChanged
     ? {
@@ -379,13 +397,13 @@ export default function StudioBoard({
     setError(null);
   };
   const beginEditing = () => {
-    if (saveInFlight.current || nativeRefreshLock.current) return;
+    if (!canArrange || saveInFlight.current || nativeRefreshLock.current) return;
     setEditing(true);
     setFilter("all");
     setNotice("");
   };
   const emptyPress = useLongPress({
-    disabled: editing || interactionBlocked || overlayOpen,
+    disabled: !canArrange || editing || interactionBlocked || overlayOpen,
     accepts: (event) => isEmptyBoardSpace(event.target, canvas.current),
     onLongPress: beginEditing,
   });
@@ -467,6 +485,11 @@ export default function StudioBoard({
           if (catalogRequest.current === request) catalogRequest.current = null;
         });
       }
+      if (type === "appearance") {
+        const appearance = await studioRequest("/__studio/api/appearance");
+        if (token === generation.current) setEditorData({ appearance });
+        return;
+      }
       const [state, catalog, backups] = await Promise.all([
         studioRequest("/__studio/api/state"),
         type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
@@ -541,7 +564,7 @@ export default function StudioBoard({
       }
       setModal({ type: "discovery", panel });
       setEditorData(null);
-    } else openEditor("content", { panel });
+    } else if (isAdmin) openEditor("content", { panel });
   };
   const editStack = (stack) => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
@@ -810,7 +833,7 @@ export default function StudioBoard({
     changeBoard(moveUnit(board, id, { ...unit.rect, [key]: unit.rect[key] + amount }));
   };
   const longPress = (id, pointer) => {
-    if (saveInFlight.current || nativeRefreshLock.current) return;
+    if (!canArrange || saveInFlight.current || nativeRefreshLock.current) return;
     beginEditing();
     setSelection([id]);
     if (pointer) manipulate(pointer, id, "move");
@@ -823,6 +846,7 @@ export default function StudioBoard({
     picker: "Add to your dashboard",
     content: modal?.panel ? `Edit ${modal.panel.title}` : modal?.entry?.name || "Configure content",
     settings: "Dashboard settings",
+    appearance: "Appearance",
     dashboards: "Manage dashboards",
     files: "Configuration files",
     backups: "Snapshots & restore",
@@ -854,14 +878,26 @@ export default function StudioBoard({
             <span>Quick Launch</span>
             <kbd>Ctrl / ⌘ K</kbd>
           </button>
-          <button
-            className="studio-icon-button"
-            aria-label="Dashboard settings"
-            disabled={controlsDisabled}
-            onClick={() => openEditor("settings")}
-          >
-            <StudioIcon name="settings" />
-          </button>
+          {canArrange && (
+            <button
+              className="studio-icon-button"
+              aria-label={isAdmin ? "Dashboard settings" : "Dashboard appearance"}
+              disabled={controlsDisabled}
+              onClick={() => openEditor(isAdmin ? "settings" : "appearance")}
+            >
+              <StudioIcon name="settings" />
+            </button>
+          )}
+          {access?.authEnabled && access.user && (
+            <a
+              className="studio-icon-button studio-account-button"
+              href="/__studio/account"
+              aria-label={`Your account: ${access.user.displayName || access.user.username}`}
+              title={access.user.displayName || access.user.username}
+            >
+              <StudioIcon name="user" />
+            </a>
+          )}
         </div>
       </div>
       <header className="studio-page-header">
@@ -900,18 +936,22 @@ export default function StudioBoard({
             </>
           ) : (
             <>
-              <button className="studio-button studio-quiet" disabled={controlsDisabled} onClick={beginEditing}>
-                <StudioIcon name="edit" size={16} />
-                Edit dashboard
-              </button>
-              <button
-                className="studio-button studio-primary"
-                disabled={controlsDisabled}
-                onClick={() => openEditor("picker")}
-              >
-                <StudioIcon name="plus" size={17} />
-                Add widget
-              </button>
+              {canArrange && (
+                <button className="studio-button studio-quiet" disabled={controlsDisabled} onClick={beginEditing}>
+                  <StudioIcon name="edit" size={16} />
+                  Edit dashboard
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  className="studio-button studio-primary"
+                  disabled={controlsDisabled}
+                  onClick={() => openEditor("picker")}
+                >
+                  <StudioIcon name="plus" size={17} />
+                  Add widget
+                </button>
+              )}
             </>
           )}
         </div>
@@ -934,14 +974,16 @@ export default function StudioBoard({
       <div className="studio-board-toolbar">
         {editing ? (
           <>
-            <button
-              className="studio-button studio-quiet"
-              disabled={controlsDisabled}
-              onClick={() => openEditor("picker")}
-            >
-              <StudioIcon name="plus" size={16} />
-              Widgets
-            </button>
+            {isAdmin && (
+              <button
+                className="studio-button studio-quiet"
+                disabled={controlsDisabled}
+                onClick={() => openEditor("picker")}
+              >
+                <StudioIcon name="plus" size={16} />
+                Widgets
+              </button>
+            )}
             <button
               className="studio-button studio-quiet"
               disabled={controlsDisabled || stackableSelection.length < 2}
@@ -1051,20 +1093,26 @@ export default function StudioBoard({
             </span>
             <p className="studio-eyebrow">A clean slate</p>
             <h2>{envelope ? "Make room for what matters." : "Opening your dashboard…"}</h2>
-            <p>
-              Add a service, a clock, a bookmark, or a native integration.
-              <br />
-              Arrange each panel freely. Stack the ones that belong together.
-            </p>
-            <button
-              className="studio-button studio-primary"
-              disabled={controlsDisabled}
-              onClick={() => openEditor("picker")}
-            >
-              <StudioIcon name="plus" size={17} />
-              Add your first widget
-            </button>
-            <small>No sample connections. Start with your own.</small>
+            {isAdmin ? (
+              <>
+                <p>
+                  Add a service, a clock, a bookmark, or a native integration.
+                  <br />
+                  Arrange each panel freely. Stack the ones that belong together.
+                </p>
+                <button
+                  className="studio-button studio-primary"
+                  disabled={controlsDisabled}
+                  onClick={() => openEditor("picker")}
+                >
+                  <StudioIcon name="plus" size={17} />
+                  Add your first widget
+                </button>
+                <small>No sample connections. Start with your own.</small>
+              </>
+            ) : (
+              <p>An administrator hasn&apos;t added anything to this dashboard yet.</p>
+            )}
           </div>
         )}
         <div className="studio-stack-backgrounds" aria-hidden="true">
@@ -1101,6 +1149,7 @@ export default function StudioBoard({
           }
           onStackDrag={onStackDrag}
           onEdit={editPanel}
+          canEdit={(panel) => isAdmin || Boolean(panel.nativeLocator?.discovered)}
           onSelect={select}
           onManipulate={manipulate}
           onUnitKey={unitKey}
@@ -1146,7 +1195,11 @@ export default function StudioBoard({
           Homepage Studio <span className="studio-footer-dot">·</span> Powered by Homepage
         </span>
         <span>
-          {editing ? "Esc cancels a drag · arrow keys move · Shift + arrows resize" : "Hold a panel to make it yours"}
+          {editing
+            ? "Esc cancels a drag · arrow keys move · Shift + arrows resize"
+            : canArrange
+              ? "Hold a panel to make it yours"
+              : null}
         </span>
       </footer>
       {modal && (
@@ -1221,6 +1274,7 @@ export default function StudioBoard({
               ) : modal.type === "dashboards" ? (
                 <DashboardManager
                   currentDashboard={dashboard}
+                  authEnabled={Boolean(access?.authEnabled)}
                   onClose={closeModal}
                   onNavigate={(path) => {
                     // Manager navigation follows an explicit Open action or a
@@ -1319,6 +1373,13 @@ export default function StudioBoard({
                       }),
                     )
                   }
+                />
+              ) : modal.type === "appearance" ? (
+                <AppearanceOnlyEditor
+                  {...editorData}
+                  onSaved={savedContent}
+                  onClose={closeModal}
+                  onReload={reloadEditor}
                 />
               ) : modal.type === "settings" ? (
                 <SettingsEditor

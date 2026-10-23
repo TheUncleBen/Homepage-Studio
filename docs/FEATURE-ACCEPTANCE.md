@@ -9,6 +9,7 @@ historical conversation and project decisions.
 
 | Feature area | Required behavior | Engineering evidence required |
 | --- | --- | --- |
+| Sign-in and access control | Sign-in on by default and HTTPS-only (localhost for testing); first visitor creates the administrator and every dashboard stays locked until then; local accounts need a passkey or password plus second factor; OIDC with group-mapped roles; per-dashboard view/arrange grants with administrator-only configuration; default deny; session cookie never reaches workers; fail closed on unreadable sign-in data; one-time command-line recovery | `server/auth/auth-units.test.mjs` (RFC 6238 vectors, scrypt, sealing, access rules, policies, config), `server/auth/auth-http.test.mjs` (setup, invitation, levels, second factor, cross-site, next-address, fail-closed, HTTPS lock, recovery), `access-gating.test.jsx`, `browser/sign-in/passkey.spec.mjs` with a virtual passkey, container acceptance sign-in phase |
 | Controlled lifecycle | Complete native source in `homepage/`; one image/controller port; no fetched overlay or companion container | Clean-source guard, native frozen install/audit/lint/full tests/build, both architecture image qualification |
 | Independent dashboards | One accepted origin with configurable single-segment slugs; immutable IDs; create/duplicate/rename/archive/restore | Registry/path/concurrency/recovery tests and actual lifecycle fixture |
 | Dashboard configuration | All nine native files, theme/colors/CSS/JS, identities, layout/stacks, history and discovery state are independent | Nine-file duplication/divergence/import tests, real scoped page/proxy/assets and cookie/cache tests |
@@ -57,8 +58,9 @@ their reverse-proxy/network/Portainer storage environment. Engineering should
 finish feasible tests and supply a usable digest-pinned bundle first. Aesthetic
 preference and physical-device feel cannot be substituted with unit tests.
 
-Same-origin dashboard slugs do not create user authorization. The application
-does not add authentication, reverse-proxy configuration, DNS management or TLS
+Dashboard slugs alone do not grant access: Studio sign-in decides who can view
+or arrange each dashboard ([AUTHENTICATION.md](AUTHENTICATION.md)). The
+application does not add reverse-proxy configuration, DNS management or TLS
 termination. Those are explicit external responsibilities, not unfinished product
 features. Native catalog coverage is configuration support; it does not claim
 live validation of every external service.

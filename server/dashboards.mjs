@@ -168,7 +168,7 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
     }),
   };
 }
-const sharedPublic = path => /^\/(?:_next\/static\/|images\/|icons\/|locales\/|fonts\/|assets\/)/.test(path) || /^\/(?:favicon\.ico|homepage\.ico|favicon-(?:16x16|32x32)\.png|apple-touch-icon\.png|android-chrome-(?:192x192|512x512)\.png|mstile-(?:70x70|144x144|150x150|310x150|310x310)\.png|safari-pinned-tab\.svg)$/.test(path);
+export const sharedPublic = path => /^\/(?:_next\/static\/|images\/|icons\/|locales\/|fonts\/|assets\/)/.test(path) || /^\/(?:favicon\.ico|homepage\.ico|favicon-(?:16x16|32x32)\.png|apple-touch-icon\.png|android-chrome-(?:192x192|512x512)\.png|mstile-(?:70x70|144x144|150x150|310x150|310x310)\.png|safari-pinned-tab\.svg)$/.test(path);
 export function resolveDashboardRoute(manifest, target) {
   if (typeof target !== 'string' || !target.startsWith('/') || target.startsWith('//') || /[\\\u0000-\u0020\u007f]/.test(target)) throw new DashboardError('Unsupported request target.', 'INVALID_DASHBOARD_PATH');
   const [pathname] = target.split('?');

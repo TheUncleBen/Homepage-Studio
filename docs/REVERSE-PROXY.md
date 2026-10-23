@@ -1,26 +1,29 @@
 # Putting a reverse proxy in front
 
-Studio speaks plain HTTP on port 3000 and has no login. A reverse proxy in
-front of it gives it an `https://` address on your domain and, more
-importantly, decides **who may open it at all**. Studio doesn't manage DNS,
-TLS certificates, proxy configuration or sign-in; those stay with you.
+Studio speaks plain HTTP on port 3000. A reverse proxy in front of it gives it
+the `https://` address that Studio sign-in needs. Studio doesn't manage DNS,
+TLS certificates or proxy configuration; those stay with you.
 
 No proxy configuration is shipped or tested with Studio. The requirements
 below come from what the controller does, and CI exercises them by talking to
 the container directly.
 
-## Access control belongs here
+## Access control
 
-Anyone who reaches the page can view and edit every dashboard on the host,
-read the configuration, including secrets written into the files, export it,
-and create or archive dashboards. Dashboard addresses such as `/admin` don't
-change that: they're addresses, not permissions.
+With sign-in on (the default), Studio decides who may open each dashboard
+([AUTHENTICATION.md](AUTHENTICATION.md)). Your proxy only needs to provide
+HTTPS. Set `STUDIO_TRUSTED_PROXIES` to the proxy's address so sign-in
+throttling and the activity log see the real client address.
 
-So put the whole hostname behind whatever your proxy offers: forward
-authentication to your identity provider, an identity-aware proxy, a VPN, or
-an IP allowlist. Protect the **whole** origin, not selected paths: the editor
-API (`/__studio/...`), the native widget API (`/api/...` and
-`/<dashboard>/api/...`) and the shared assets all live on it.
+Extra protection in the proxy, such as a VPN or an IP allowlist, still helps.
+If you use forward authentication in the proxy instead, set `STUDIO_AUTH=off`.
+Then anyone who passes the proxy can view and edit every dashboard on the
+host, read the configuration, including secrets written into the files,
+export it, and create or archive dashboards. Dashboard addresses such as
+`/admin` don't change that: they're addresses, not permissions. Protect the
+**whole** origin, not selected paths: the editor API (`/__studio/...`), the
+native widget API (`/api/...` and `/<dashboard>/api/...`) and the shared
+assets all live on it.
 
 ## What every proxy needs
 
@@ -34,8 +37,9 @@ API (`/__studio/...`), the native widget API (`/api/...` and
 | Don't compress what's already compressed | Studio serves pre-compressed Brotli/gzip build files with `Vary: Accept-Encoding`. Respect `Content-Encoding` and `Vary`; don't add a second encoding |
 | A valid certificate | Your choice; Studio doesn't care, but browsers do |
 
-What it doesn't need: sticky sessions (there's one replica) or
-`X-Forwarded-*` headers (Studio doesn't use them).
+What it doesn't need: sticky sessions (there's one replica). Studio reads
+`X-Forwarded-For` only from the addresses in `STUDIO_TRUSTED_PROXIES`, and
+only for the client address in sign-in throttling and the activity log.
 
 ## Request limits
 
@@ -84,6 +88,31 @@ container at startup with a message naming the variable.
 
 A site allowed to frame the dashboard can trigger the dashboard's widget
 actions, so allow only sites you trust as much as the dashboard itself.
+
+### Framing with sign-in on
+
+The sign-in pages never load inside a frame, so they can't be used for
+clickjacking. A framed dashboard whose viewer isn't signed in shows a short
+page instead: **Sign in in a new tab**, then **Reload** the frame.
+
+Whether the frame then shows the dashboard depends on the browser sending
+Studio's sign-in cookie inside the frame:
+
+- **Same site: works.** Both addresses use HTTPS and share a registered
+  domain, for example `https://ha.example.test` framing
+  `https://dashboard.example.test`. Ports and subdomains don't matter.
+- **Different sites: doesn't keep you signed in.** Examples are a Home
+  Assistant reached by IP address (`http://192.168.1.10:8123`) or on another
+  domain. Browsers don't send the cookie (`SameSite=Lax`) to a frame from
+  another site, and many block such cookies anyway, so the frame keeps
+  showing the sign-in page.
+- **App built-in browsers.** An app's built-in browser, such as a phone
+  app's dashboard view, may not share sign-in with your normal browser. If
+  it opens the sign-in tab in another browser, the frame stays signed out.
+
+To frame across sites, serve the framing site and Studio under one domain
+behind the same HTTPS proxy. Alternatively, set `STUDIO_AUTH=off` and let the
+proxy decide who can open Studio.
 
 ## Checking it
 

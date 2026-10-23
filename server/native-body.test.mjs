@@ -34,7 +34,7 @@ async function fixture(t, options = {}) {
   const workerScript = path.join(rendererDir, 'worker.mjs');
   await fs.writeFile(workerScript, worker);
   const rendererPool = createRendererPool({ configRoot: configDir, appRoot: rendererDir, workerScript, allowedHosts: HOST, buildRevision: BUILD, maxWorkers: 2, startupMs: 5000 });
-  const app = createStudioServer({ configDir, stateDir, rendererDir, rendererPool, allowedHosts: HOST, buildRevision: BUILD, ...options });
+  const app = createStudioServer({ configDir, stateDir, rendererDir, rendererPool, allowedHosts: HOST, buildRevision: BUILD, auth: 'off', ...options });
   app.server.listen(0, '127.0.0.1'); await once(app.server, 'listening');
   const port = app.server.address().port;
   const sockets = new Set();

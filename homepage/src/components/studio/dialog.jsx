@@ -73,8 +73,43 @@ export default function StudioDialog({
   );
 }
 
+// Sign-in answers that need the person to act in the sign-in pages.
+function signInAction(error) {
+  const code = error?.details?.code;
+  if (typeof window === "undefined" || (code !== "REAUTH_REQUIRED" && code !== "AUTH_REQUIRED")) return null;
+  // Both open in a new tab so unsaved work on this page survives. After
+  // confirming, the person comes back and saves again.
+  return code === "REAUTH_REQUIRED"
+    ? {
+        heading: "Confirm it’s you",
+        href: `/__studio/auth/sign-in?reauth=1&next=${encodeURIComponent("/__studio/account?confirmed=1")}`,
+        label: "Confirm in a new tab",
+        after: "Your changes stay here. Once you have confirmed, try again.",
+      }
+    : {
+        heading: "Your session has ended",
+        href: `/__studio/auth/sign-in?next=${encodeURIComponent("/__studio/account?confirmed=1")}`,
+        label: "Sign in again in a new tab",
+        after: "Your changes stay here. Once you have signed in, try again.",
+      };
+}
+
 export function ErrorMessage({ error, onReload, heading, arrangement = false }) {
   if (!error) return null;
+  const action = signInAction(error);
+  if (action)
+    return (
+      <div className="studio-error" role="alert">
+        <strong>{action.heading}</strong>
+        <p>
+          {error.message}{" "}
+          <a className="studio-text-button" href={action.href} target="_blank" rel="noopener noreferrer">
+            {action.label}
+          </a>
+        </p>
+        <p>{action.after}</p>
+      </div>
+    );
   return (
     <div className="studio-error" role="alert">
       <strong>

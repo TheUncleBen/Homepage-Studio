@@ -36,9 +36,10 @@ cp portainer.env.example .env
 
 | Variable | Required | What to put | Default |
 | --- | --- | --- | --- |
-| `STUDIO_PUBLIC_ORIGIN` | Yes | The exact address people type: `https://homepage.example.test`, or `http://<machine>:3000` while you test without a proxy | |
+| `STUDIO_PUBLIC_ORIGIN` | Yes | The exact address people type: `https://homepage.example.test`. Sign-in needs HTTPS; to test on `http://<machine>:3000` without a proxy, also set `STUDIO_AUTH=off` for the test | |
 | `STUDIO_PORT` | No | The port published on the machine | `3000` |
 | `STUDIO_BACKUP_RETENTION`, `STUDIO_RENDERER_*`, `STUDIO_FRAME_ANCESTORS` | No | As in [DEPLOY.md](DEPLOY.md#3-values) | |
+| `STUDIO_AUTH`, `STUDIO_AUTH_KEY`, `STUDIO_TRUSTED_PROXIES`, `STUDIO_OIDC_*`, `STUDIO_SMTP_*` | No | Sign-in ([AUTHENTICATION.md](AUTHENTICATION.md#settings-reference)) | `STUDIO_AUTH=on` |
 
 `STUDIO_NODE` is for Swarm only; Compose ignores it. Studio answers only
 requests for the exact host and port in `STUDIO_PUBLIC_ORIGIN`, so set it to
@@ -90,6 +91,7 @@ These are the same as on Swarm:
 - secrets for native integrations, sockets and `HOMEPAGE_VAR_*` /
   `HOMEPAGE_FILE_*`: [DEPLOY.md step 5](DEPLOY.md#5-native-integrations-secrets-sockets-and-variables);
 - the reverse proxy: [REVERSE-PROXY.md](REVERSE-PROXY.md);
+- creating the administrator straight after the first start: [AUTHENTICATION.md](AUTHENTICATION.md#first-start-create-the-administrator);
 - checking it works: [DEPLOY.md step 7](DEPLOY.md#7-check-it-works). The log
   is `docker compose --project-name homepage --file portainer-compose.yml logs --tail 100 studio`.
 

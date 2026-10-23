@@ -19,6 +19,7 @@ export default function StudioIcon({ name, size = 18, ...props }) {
     chevron: "m9 5 7 7-7 7",
     more: "M5 12h.01M12 12h.01M19 12h.01",
     clock: "M12 8v4l3 2M21 12a9 9 0 1 0-18 0 9 9 0 0 0 18 0Z",
+    user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0",
   };
   return (
     <svg

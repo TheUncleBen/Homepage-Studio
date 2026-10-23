@@ -9,6 +9,33 @@ build is identified by its source commit and image digest
 
 ## [Unreleased]
 
+### Sign-in and access control
+
+Owner direction, 23 October 2026. Full guide:
+[docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
+
+- **Upgrade notes.** Sign-in is **on by default** and needs an `https://`
+  `STUDIO_PUBLIC_ORIGIN` (`http://localhost` works for testing). On plain HTTP
+  elsewhere, Studio starts but shows only a page explaining the fix; set
+  `STUDIO_AUTH=off` to keep proxy-based access control instead. After
+  updating, open Studio straight away: every dashboard stays locked until the
+  first visitor creates the administrator
+  ([docs/UPGRADING.md](docs/UPGRADING.md)).
+- Local accounts with passkeys, authenticator apps, backup codes and an
+  optional emailed code; a password alone never signs in.
+- Single sign-on through Authentik or any OpenID Connect provider, with
+  administrators and allowed people mapped from provider groups, local
+  accounts that can be turned off, and back-channel logout. Studio requests
+  `offline_access` so it can re-check groups while people are signed in;
+  Authentik needs that scope mapping on the provider. New accounts are created
+  at first sign-in only for people in an allowed or administrator group.
+- Dashboards shared per person or group to **view** or **arrange**; widget
+  settings, files, custom code, imports and sharing stay administrator-only.
+  The editor hides what each person can't use.
+- Invitations, password resets and security alerts by email (optional), per
+  person and per group session policies, an activity log, and command-line
+  recovery.
+
 Changes since the candidate built from commit `853da108`. Touch editing works
 on the whole panel now, not just its title bar, and several safety, wording
 and security fixes land, including the Next.js 16.4.2 security update.
