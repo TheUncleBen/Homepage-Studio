@@ -132,6 +132,68 @@ describe("Stack playback editor", () => {
     expect(onApply).toHaveBeenCalledWith(rect);
   });
 
+  it("keeps raw slideshow timing text while typing and validates on blur and apply without rewriting other fields", () => {
+    const stack = {
+      id: "stack",
+      panelIds: ["clock", "greeting"],
+      rect: { x: 0, y: 0, w: 4, h: 3 },
+      playback: { mode: "manual", intervalMs: 2500, manualHoldMs: 30000, transition: "horizontal", transitionDurationMs: 250, loop: true },
+    };
+    const board = {
+      version: 2,
+      columns: 12,
+      panels: ["clock", "greeting"].map((id) => ({ id, kind: "informationWidget", title: id, group: "", rect: { x: 0, y: 0, w: 4, h: 2 } })),
+      stacks: [stack],
+    };
+    const onApply = vi.fn();
+    render(<StackEditor stack={stack} board={board} onApply={onApply} onClose={vi.fn()} onPanelEdit={vi.fn()} />);
+    const interval = screen.getByRole("spinbutton", { name: "Seconds per widget" });
+    const delay = screen.getByRole("spinbutton", { name: "Manual navigation delay (seconds)" });
+    const duration = screen.getByRole("spinbutton", { name: "Animation duration (ms)" });
+    const apply = screen.getByRole("button", { name: "Apply to arrangement" });
+    expect(interval).toHaveValue(2.5);
+
+    // Clearing a field keeps it empty instead of snapping to the minimum.
+    fireEvent.change(interval, { target: { value: "" } });
+    expect(interval).toHaveValue(null);
+    expect(interval).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a seconds per widget.");
+    expect(apply).toBeDisabled();
+    expect(delay).toHaveValue(30);
+    expect(duration).toHaveValue(250);
+
+    // Typing a multi-digit value passes through intermediate digits untouched.
+    fireEvent.change(interval, { target: { value: "0" } });
+    expect(interval).toHaveValue(0);
+    expect(screen.getByRole("alert")).toHaveTextContent("between 1 and 3600 seconds");
+    fireEvent.change(interval, { target: { value: "15" } });
+    expect(interval).toHaveValue(15);
+    expect(interval).not.toHaveAttribute("aria-invalid");
+    expect(apply).toBeEnabled();
+
+    // Out-of-range text is kept while typing and clamped only on blur.
+    fireEvent.change(duration, { target: { value: "5000" } });
+    expect(duration).toHaveValue(5000);
+    expect(duration).toHaveAttribute("aria-invalid", "true");
+    expect(apply).toBeDisabled();
+    expect(interval).toHaveValue(15);
+    fireEvent.blur(duration);
+    expect(duration).toHaveValue(2000);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    fireEvent.change(delay, { target: { value: "1.5" } });
+    expect(delay).toHaveValue(1.5);
+    expect(apply).toBeEnabled();
+    fireEvent.click(apply);
+    expect(onApply).toHaveBeenCalledTimes(1);
+    expect(onApply.mock.calls[0][0].stacks[0].playback).toEqual({
+      ...stack.playback,
+      intervalMs: 15000,
+      manualHoldMs: 1500,
+      transitionDurationMs: 2000,
+    });
+  });
+
   it("names every Move out button after its member", () => {
     const stack = {
       id: "stack",
