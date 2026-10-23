@@ -13,7 +13,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomToken, tokenHash } from './primitives.mjs';
 import { AUTH_FILE } from './store.mjs';
-import { RECOVERY_FILE } from './service.mjs';
+import { RECOVERY_FILE, effectiveRole } from './service.mjs';
 
 const LINK_MINUTES = 15;
 const base = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -32,7 +32,7 @@ export async function run(argv, env = process.env, out = console) {
   const users = Array.isArray(data.users) ? data.users : [];
   if (command === 'list') {
     if (!users.length) { out.log('No accounts yet. Open Studio in a browser to create the first administrator.'); return; }
-    for (const user of users) out.log([user.username, user.role === 'admin' ? 'administrator' : 'member', user.source === 'oidc' ? 'single sign-on' : 'local', user.disabled ? 'disabled' : user.status].join('\t'));
+    for (const user of users) out.log([user.username, effectiveRole(data, user, user.source === 'oidc' ? 'oidc' : 'local') === 'admin' ? 'administrator' : 'member', user.source === 'oidc' ? 'single sign-on' : 'local', user.disabled ? 'disabled' : user.status].join('\t'));
     return;
   }
   if (command === 'recover') {
@@ -40,6 +40,9 @@ export async function run(argv, env = process.env, out = console) {
     if (!username) usage();
     const user = users.find(item => item.username === username);
     if (!user) throw new Error(`There is no account named "${username}". Run "list" to see them.`);
+    if (rest.includes('--promote') && user.source === 'oidc' && (data.settings?.oidc?.adminGroups?.length ?? 0) > 0) {
+      throw new Error(`${user.username} signs in through single sign-on, and administrator groups are set, so the provider's groups decide their role. Add them to an administrator group there, or recover a local account with --promote.`);
+    }
     const origin = env.STUDIO_PUBLIC_ORIGIN;
     if (!origin) throw new Error('STUDIO_PUBLIC_ORIGIN is not set, so the link address is unknown.');
     const token = randomToken();

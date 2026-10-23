@@ -107,7 +107,7 @@ export function isAuthNavigation(method, path) {
 
 // Paths a request may reach while signed out.
 export function isPublicAuthPath(path) {
-  return PUBLIC_PAGES.has(path) || path.startsWith('/__studio/auth/assets/') || path === '/__studio/auth/state' || /^\/__studio\/auth\/(password|second-factor(\/passkey|\/email)?|passkey\/(options|verify)|setup\/start|invite\/(details|start)|enroll\/(totp\/start|totp\/confirm|passkey\/options|passkey\/verify|finish)|recover\/(request|details|finish)|recovery\/redeem|oidc\/(start|callback|backchannel-logout)|sign-out)$/.test(path);
+  return PUBLIC_PAGES.has(path) || path.startsWith('/__studio/auth/assets/') || path === '/__studio/auth/state' || /^\/__studio\/auth\/(password|second-factor(\/passkey|\/email)?|passkey\/(options|verify)|setup\/(start|resume)|invite\/(details|start)|enroll\/(totp\/start|totp\/confirm|passkey\/options|passkey\/verify|finish)|recover\/(request|details|finish)|recovery\/redeem|oidc\/(start|callback|backchannel-logout)|sign-out)$/.test(path);
 }
 
 export function createAuthRoutes(auth, { listDashboards }) {
@@ -130,16 +130,18 @@ export function createAuthRoutes(auth, { listDashboards }) {
         return send(res, 200, body, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': [].concat(res.getHeader('content-security-policy') ?? [], AUTH_PAGE_POLICY) });
       }
       if (method === 'GET' && path === '/__studio/auth/state') return json(res, 200, auth.state(current));
+      // Plain sign-in can start from a link. Confirming and linking change an
+      // existing session, so they start with a same-origin POST (oidc/begin).
       if (method === 'GET' && path === '/__studio/auth/oidc/start') {
-        const intent = ['signin', 'reauth', 'link'].includes(url.searchParams.get('intent')) ? url.searchParams.get('intent') : 'signin';
-        if (intent !== 'signin' && !current) return redirect(res, '/__studio/auth/sign-in');
-        return redirect(res, await auth.oidcStart(res, { intent, next: url.searchParams.get('next') ?? '/', current }));
+        return redirect(res, await auth.oidcStart(res, { intent: 'signin', next: url.searchParams.get('next') ?? '/' }));
       }
       if (method === 'GET' && path === '/__studio/auth/oidc/callback') {
         try { return redirect(res, await auth.oidcCallback(req, res, current)); }
         catch (error) {
           const code = error instanceof AuthError ? error.code : 'OIDC_FAILED';
-          return redirect(res, '/__studio/auth/sign-in?error=' + encodeURIComponent(code));
+          // Someone already signed in was linking or confirming: show the
+          // problem on their account page.
+          return redirect(res, (current ? '/__studio/account?error=' : '/__studio/auth/sign-in?error=') + encodeURIComponent(code));
         }
       }
       if (method === 'GET' && path === '/__studio/auth/account') {
@@ -151,6 +153,7 @@ export function createAuthRoutes(auth, { listDashboards }) {
         const dashboards = (await listDashboards()).filter(entry => !entry.archived).map(entry => ({ id: entry.id, name: entry.name, slug: entry.slug, level: current.level(entry.id) })).filter(entry => entry.level !== 'none');
         return json(res, 200, { dashboards });
       }
+      if (method === 'GET' && path.startsWith('/__studio/auth/admin/') && !current) return json(res, 401, { error: 'Sign in first.', code: 'AUTH_REQUIRED' });
       if (method === 'GET' && path === '/__studio/auth/admin/overview') return json(res, 200, await auth.admin.overview(current));
       if (method === 'GET' && path === '/__studio/auth/admin/audit') return json(res, 200, await auth.admin.audit(current));
       if (method !== 'POST') return json(res, 404, { error: 'This sign-in endpoint does not exist.', code: 'NOT_FOUND' });
@@ -165,7 +168,8 @@ export function createAuthRoutes(auth, { listDashboards }) {
         '/__studio/auth/passkey/options': () => auth.passkeyOptions(),
         '/__studio/auth/passkey/verify': () => auth.passkeyStep(req, res, body, current),
         '/__studio/auth/sign-out': () => auth.signOut(req, res, current),
-        '/__studio/auth/setup/start': () => auth.startSetup(req, body),
+        '/__studio/auth/setup/start': () => auth.startSetup(req, res, body),
+        '/__studio/auth/setup/resume': () => auth.resumeSetup(req),
         '/__studio/auth/invite/details': () => auth.inviteDetails(body),
         '/__studio/auth/invite/start': () => auth.startInvite(req, body),
         '/__studio/auth/enroll/totp/start': async () => { const result = await auth.enrollTotpStart(body); return { ...result, qr: qrSvg(result.uri) }; },
@@ -178,6 +182,10 @@ export function createAuthRoutes(auth, { listDashboards }) {
         '/__studio/auth/recover/finish': () => auth.finishRecovery(req, res, body),
         '/__studio/auth/recovery/redeem': () => auth.redeemRecovery(req, res, body),
         '/__studio/auth/oidc/backchannel-logout': () => auth.backchannelLogout(body),
+        '/__studio/auth/oidc/begin': async () => {
+          if (!['reauth', 'link'].includes(body?.intent)) throw new AuthError('Choose what to confirm.', 'INVALID_INTENT', 400);
+          return { url: await auth.oidcStart(res, { intent: body.intent, next: typeof body.next === 'string' ? body.next : '/__studio/account', current: signedIn() }) };
+        },
         '/__studio/auth/reauth/password': () => auth.passwordStep(req, body, { intent: 'reauth', current: signedIn() }),
         '/__studio/auth/reauth/second-factor': () => auth.secondFactorStep(req, res, body, signedIn()),
         '/__studio/auth/reauth/passkey/options': () => auth.passkeyOptions({ intent: 'reauth', current: signedIn() }),
@@ -193,9 +201,11 @@ export function createAuthRoutes(auth, { listDashboards }) {
         '/__studio/auth/account/passkey/remove': () => auth.account.passkeyRemove(signedIn(), body),
         '/__studio/auth/account/backup-codes': () => auth.account.backupCodes(signedIn()),
         '/__studio/auth/account/sessions/revoke': () => auth.account.revokeSessions(signedIn(), body),
+        '/__studio/auth/account/unlink': () => auth.account.unlink(signedIn()),
         '/__studio/auth/admin/invite': () => auth.admin.invite(signedIn(), body),
         '/__studio/auth/admin/update': () => auth.admin.update(signedIn(), body),
         '/__studio/auth/admin/reset': () => auth.admin.reset(signedIn(), body),
+        '/__studio/auth/admin/unlink': () => auth.admin.unlink(signedIn(), body),
         '/__studio/auth/admin/delete': () => auth.admin.remove(signedIn(), body),
         '/__studio/auth/admin/sessions/revoke': () => auth.admin.revokeUserSessions(signedIn(), body),
         '/__studio/auth/admin/group': () => auth.admin.group(signedIn(), body),

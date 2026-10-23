@@ -1,6 +1,7 @@
 // Small, well-specified building blocks for sign-in. Everything here uses
 // node:crypto primitives; WebAuthn and OIDC use their reviewed libraries.
 import { createHash, createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual, createCipheriv, createDecipheriv, hkdfSync } from 'node:crypto';
+import { AuthError } from './store.mjs';
 
 // OWASP Password Storage Cheat Sheet minimum for scrypt: N=2^17, r=8, p=1.
 // One hash needs 128 * N * r = 128 MiB, so hashing is limited to two at once.
@@ -9,9 +10,13 @@ const SCRYPT_MAXMEM = 256 * 1024 * 1024;
 export const PASSWORD_MIN = 12;
 export const PASSWORD_MAX = 128;
 
+// A bounded queue: under a flood, new password checks are refused rather
+// than waiting behind every earlier one.
+const MAX_WAITING = 8;
 let hashing = 0;
 const waiting = [];
 async function withHashSlot(task) {
+  if (hashing >= 2 && waiting.length >= MAX_WAITING) throw Object.assign(new AuthError('Studio is busy checking other sign-ins. Wait a few seconds and try again.', 'TOO_MANY_ATTEMPTS', 429), { retryAfter: 5 });
   if (hashing >= 2) await new Promise(resolve => waiting.push(resolve));
   hashing++;
   try { return await task(); } finally { hashing--; waiting.shift()?.(); }

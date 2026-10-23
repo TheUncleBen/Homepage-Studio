@@ -67,10 +67,12 @@ export function createOidc(settings, { origin }) {
       };
     },
     // Re-reads groups with the refresh token. Returns null when the provider
-    // no longer accepts the session.
+    // refuses the session (an OAuth error response, a rejected access token
+    // or a different subject). Throws when the provider can't be reached or
+    // answers unexpectedly, so the caller can retry.
     async refresh(refreshToken, subject) {
+      const configured = await config();
       try {
-        const configured = await config();
         const tokens = await client.refreshTokenGrant(configured, refreshToken);
         let claims = tokens.claims?.() ?? {};
         if (claims.sub && claims.sub !== subject) return null;
@@ -79,8 +81,11 @@ export function createOidc(settings, { origin }) {
         }
         return { groups: groupsFrom(claims), refreshToken: tokens.refresh_token ?? refreshToken };
       } catch (error) {
-        if (error instanceof AuthError && error.code === 'OIDC_UNAVAILABLE') throw error;
-        return null;
+        if (error instanceof client.ResponseBodyError || error instanceof client.WWWAuthenticateChallengeError) return null;
+        // A userinfo subject mismatch is reported as an OperationProcessingError.
+        if (error?.code === 'OAUTH_JSON_ATTRIBUTE_COMPARISON_FAILED') return null;
+        console.error('Single sign-on refresh failed:', error?.code || error?.name);
+        throw new AuthError(`${settings.name} is not reachable right now.`, 'OIDC_UNAVAILABLE', 503);
       }
     },
     async logoutUrl(idToken, postLogout) {

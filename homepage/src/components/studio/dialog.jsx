@@ -77,10 +77,21 @@ export default function StudioDialog({
 function signInAction(error) {
   const code = error?.details?.code;
   if (typeof window === "undefined" || (code !== "REAUTH_REQUIRED" && code !== "AUTH_REQUIRED")) return null;
-  const next = encodeURIComponent(window.location.pathname + window.location.search);
+  // Both open in a new tab so unsaved work on this page survives. After
+  // confirming, the person comes back and saves again.
   return code === "REAUTH_REQUIRED"
-    ? { heading: "Confirm it’s you", href: `/__studio/auth/sign-in?reauth=1&next=${next}`, label: "Confirm it’s you" }
-    : { heading: "Your session has ended", href: `/__studio/auth/sign-in?next=${next}`, label: "Sign in again" };
+    ? {
+        heading: "Confirm it’s you",
+        href: `/__studio/auth/sign-in?reauth=1&next=${encodeURIComponent("/__studio/account?confirmed=1")}`,
+        label: "Confirm in a new tab",
+        after: "Your changes stay here. Once you have confirmed, try again.",
+      }
+    : {
+        heading: "Your session has ended",
+        href: `/__studio/auth/sign-in?next=${encodeURIComponent("/__studio/account?confirmed=1")}`,
+        label: "Sign in again in a new tab",
+        after: "Your changes stay here. Once you have signed in, try again.",
+      };
 }
 
 export function ErrorMessage({ error, onReload, heading, arrangement = false }) {
@@ -92,10 +103,11 @@ export function ErrorMessage({ error, onReload, heading, arrangement = false }) 
         <strong>{action.heading}</strong>
         <p>
           {error.message}{" "}
-          <a className="studio-text-button" href={action.href}>
+          <a className="studio-text-button" href={action.href} target="_blank" rel="noopener noreferrer">
             {action.label}
           </a>
         </p>
+        <p>{action.after}</p>
       </div>
     );
   return (

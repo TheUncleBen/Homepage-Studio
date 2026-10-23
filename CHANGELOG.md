@@ -25,7 +25,9 @@ Owner direction, 23 October 2026. Full guide:
   optional emailed code; a password alone never signs in.
 - Single sign-on through Authentik or any OpenID Connect provider, with
   administrators and allowed people mapped from provider groups, local
-  accounts that can be turned off, and back-channel logout.
+  accounts that can be turned off, and back-channel logout. Studio requests
+  `offline_access` so it can re-check groups while people are signed in;
+  Authentik needs that scope mapping on the provider.
 - Dashboards shared per person or group to **view** or **arrange**; widget
   settings, files, custom code, imports and sharing stay administrator-only.
   The editor hides what each person can't use.

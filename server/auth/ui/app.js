@@ -134,6 +134,8 @@
     ACCOUNT_DISABLED: 'This account is disabled. Ask an administrator.',
     REAUTH_MISMATCH: 'Confirm with the same account you are signed in with.',
     IDENTITY_IN_USE: 'That identity is already linked to another Studio account.',
+    REAUTH_REQUIRED: 'Confirm it’s you first, then link again.',
+    NOT_LOCAL: 'Only local accounts can link a provider identity.',
   };
 
   // ---- Backup codes ---------------------------------------------------------
@@ -281,7 +283,13 @@
     if (params.get('error')) say(message, ERRORS[params.get('error')] ?? "That didn't complete. Try again.");
     const parts = [brand(), h('h1', { text: 'Confirm it’s you' }), h('p', { class: 'lede', text: `Before changing security settings, confirm you are ${account.user.displayName || account.user.username}.` }), message];
     const factors = account.user.factors;
-    if (account.oidc && account.user.linked) parts.push(h('a', { class: 'button primary block', href: '/__studio/auth/oidc/start?intent=reauth&next=' + encodeURIComponent(next), text: `Confirm with ${account.oidc.name}` }));
+    if (account.oidc && (account.user.linked || account.user.source === 'oidc')) {
+      const viaProvider = h('button', { type: 'button', class: 'primary block', text: `Confirm with ${account.oidc.name}` });
+      viaProvider.addEventListener('click', () => busy(viaProvider, 'Opening…', async () => {
+        try { go((await api('oidc/begin', { intent: 'reauth', next })).url); } catch (error) { say(message, error.message); }
+      }));
+      parts.push(viaProvider);
+    }
     if (factors.passkeys.length && passkeysSupported()) {
       const button = h('button', { class: (account.oidc && account.user.linked) ? 'block' : 'primary block', type: 'button', text: 'Use a passkey', 'data-autofocus': true });
       button.addEventListener('click', () => busy(button, 'Waiting for passkey…', async () => {
@@ -336,13 +344,19 @@
       return render(card(false, brand(), h('h1', { text: 'Studio is already set up' }), h('p', { class: 'lede', text: 'An administrator account exists. Sign in instead.' }), h('a', { class: 'button primary', href: '/__studio/auth/sign-in', text: 'Sign in' })));
     }
     const message = notice();
-    if (state.setupInProgress) say(message, 'Someone else started setting up Studio in the last 30 minutes. If that was you in another tab, continue there.', 'warn');
+    const labels = ['Account', 'Second step', 'Backup codes'];
+    const factorOptions = { title: 'Protect the administrator account', labels, after: '/__studio/admin' };
+    if (state.setupInProgress) {
+      // This browser may have started setup before a reload.
+      try { return enrollFactors(await api('setup/resume', {}), factorOptions); } catch { /* started elsewhere */ }
+      say(message, 'Setup was started in another browser or tab in the last 30 minutes. Finish it there, or wait until it expires and reload this page. Restarting Studio also cancels it.', 'warn');
+    }
     const username = h('input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', required: true, maxlength: 64, 'data-autofocus': true });
     const displayName = h('input', { type: 'text', autocomplete: 'name', maxlength: 100 });
     const email = h('input', { type: 'email', autocomplete: 'email', maxlength: 254 });
     const passwords = passwordFields();
     const submit = h('button', { class: 'primary block', type: 'submit', text: 'Continue' });
-    render(card(true, brand(), steps(['Account', 'Second step', 'Backup codes'], 0),
+    render(card(true, brand(), steps(labels, 0),
       h('h1', { text: 'Create the administrator' }),
       h('p', { class: 'lede', text: 'This first account manages Studio: people, dashboards and sign-in settings. Whoever completes this page becomes the administrator, so finish it now.' }),
       message,
@@ -353,7 +367,7 @@
         await busy(submit, 'Creating…', async () => {
           try {
             const result = await api('setup/start', { username: username.value, displayName: displayName.value || undefined, email: email.value || undefined, password: passwords.password.value });
-            enrollFactors(result, { title: 'Protect the administrator account', labels: ['Account', 'Second step', 'Backup codes'], after: '/__studio/admin' });
+            enrollFactors(result, factorOptions);
           } catch (error) { say(message, error.message); }
         });
       } },
@@ -618,8 +632,9 @@
     let view = await api('account');
     const message = notice();
     if (params.has('linked')) say(message, `Your ${view.oidc?.name ?? 'single sign-on'} account is linked.`, 'ok');
+    if (params.has('confirmed')) say(message, 'Confirmed. You can close this tab and go back to your change.', 'ok');
     if (params.get('error')) say(message, ERRORS[params.get('error')] ?? "That didn't complete. Try again.");
-    if (params.has('linked') || params.has('error') || params.has('recovered')) history.replaceState(null, '', location.pathname);
+    if (params.has('linked') || params.has('error') || params.has('recovered') || params.has('confirmed')) history.replaceState(null, '', location.pathname);
     function draw() {
       const user = view.user;
       const factors = user.factors;
@@ -723,8 +738,20 @@
     function linkSection(user) {
       const name = view.oidc.name;
       if (user.source === 'oidc') return section(name, `You sign in with ${name}. Your role and groups come from it.`, user.oidcGroups.length ? h('p', { class: 'small' }, 'Provider groups: ', user.oidcGroups.join(', ')) : null);
-      return section(name, user.linked ? `Your account is linked. You can sign in with ${name} as well as your local methods.` : `Link your ${name} account to sign in with it as well.`,
-        user.linked ? null : h('div', { class: 'row' }, h('a', { class: 'button', href: '/__studio/auth/oidc/start?intent=link&next=/__studio/account', text: `Link ${name} account` })));
+      const box = notice();
+      const action = h('button', { type: 'button', text: user.linked ? `Unlink ${name} account` : `Link ${name} account` });
+      action.addEventListener('click', () => {
+        if (user.linked) {
+          confirmDialog(`Unlink your ${name} account?`, `You will no longer be able to sign in to Studio with ${name}. Your passkeys, password and authenticator app keep working.`, 'Unlink', async () => { view = await api('account/unlink', {}); draw(); say(message, `Your ${name} account is unlinked.`, 'ok'); });
+          return;
+        }
+        busy(action, 'Opening…', async () => {
+          try { go((await api('oidc/begin', { intent: 'link', next: '/__studio/account' })).url); } catch (error) { failure(box, error); }
+        });
+      });
+      const adminNote = user.providerAdmin ? h('p', { class: 'small muted', text: `While you sign in with ${name}, its groups also make you an administrator.` }) : null;
+      return section(name, user.linked ? `Your account is linked. You can sign in with ${name} as well as your local methods.` : `Link your ${name} account to sign in with it as well. Whoever controls that ${name} account can then sign in as you.`,
+        adminNote, box, h('div', { class: 'row' }, action));
     }
     function sessionsSection() {
       const box = notice();
@@ -784,7 +811,13 @@
       select(tabs[nextIndex][0]);
       tabList.querySelector('[aria-selected="true"]')?.focus();
     });
-    function select(key) { tab = key; history.replaceState(null, '', '#' + key); drawTabs(); drawPanel(); }
+    // Dashboards whose access list has changes that are not saved yet.
+    const unsavedAccess = new Set();
+    window.addEventListener('beforeunload', event => { if (unsavedAccess.size) event.preventDefault(); });
+    function select(key) {
+      if (key !== tab && unsavedAccess.size && !window.confirm('Dashboard access has unsaved changes. Leave without saving?')) return;
+      tab = key; history.replaceState(null, '', '#' + key); drawTabs(); drawPanel();
+    }
     async function act(work, box, success) {
       try { const next = await work(); if (next?.users) view = next; else view = await api('admin/overview'); drawPanel(); if (success) say(message, success, 'ok'); return true; }
       catch (error) { failure(box ?? message, error); return false; }
@@ -863,7 +896,7 @@
         const roleFromProvider = user.source === 'oidc' && view.settings.oidc.adminGroups.length > 0;
         const displayName = h('input', { type: 'text', maxlength: 100, value: user.displayName ?? '' });
         const email = h('input', { type: 'email', maxlength: 254, value: user.email ?? '', disabled: user.source === 'oidc' });
-        const role = h('select', { disabled: roleFromProvider }, h('option', { value: 'member', text: 'Member', selected: user.role === 'member' }), h('option', { value: 'admin', text: 'Administrator', selected: user.role === 'admin' }));
+        const role = h('select', { disabled: roleFromProvider }, h('option', { value: 'member', text: 'Member', selected: user.manualRole !== 'admin' }), h('option', { value: 'admin', text: 'Administrator', selected: user.manualRole === 'admin' }));
         const policy = h('select', {}, h('option', { value: '', text: 'From groups, or the default' }), view.policies.map(item => h('option', { value: item.id, text: item.name, selected: user.policyId === item.id })));
         const localGroups = view.groups.filter(group => group.kind === 'local');
         const groupBoxes = localGroups.map(group => ({ group, input: h('input', { type: 'checkbox', checked: user.groupIds.includes(group.id) }) }));
@@ -886,6 +919,11 @@
             }, { danger: user.status !== 'invited' });
           });
           actions.push(reset);
+          if (user.linked) {
+            const unlink = h('button', { type: 'button', text: `Unlink ${view.oidc?.name ?? 'single sign-on'}` });
+            unlink.addEventListener('click', () => { close(); confirmDialog(`Unlink ${view.oidc?.name ?? 'single sign-on'} from ${user.displayName || user.username}?`, 'That provider account can no longer sign in as them, and its sign-ins are ended. They keep their local sign-in methods.', 'Unlink', () => act(() => api('admin/unlink', { id: user.id }), null, 'Unlinked.'), { danger: true }); });
+            actions.push(unlink);
+          }
         }
         const remove = h('button', { type: 'button', class: 'danger', text: 'Delete', disabled: self });
         remove.addEventListener('click', () => { close(); confirmDialog(`Delete ${user.displayName || user.username}?`, 'Their account, sessions and dashboard access are removed. This cannot be undone.', 'Delete', () => act(() => api('admin/delete', { id: user.id }), null, 'Person deleted.')); });
@@ -901,7 +939,7 @@
           user.source === 'local' ? h('p', { class: 'small', text: `Sign-in methods: ${[user.factors.password && 'password', user.factors.totp && 'authenticator app', user.factors.passkeys.length && `${user.factors.passkeys.length} passkey${user.factors.passkeys.length === 1 ? '' : 's'}`].filter(Boolean).join(', ') || 'none yet'}; ${user.factors.backupCodesLeft} backup codes left.` }) : null,
           field('Display name', displayName),
           field('Email', email),
-          field('Role', role, roleFromProvider ? `Set by ${view.oidc?.name ?? 'the identity provider'} groups.` : (self ? 'Studio always keeps at least one active administrator.' : undefined)),
+          field('Role', role, roleFromProvider ? `Set by ${view.oidc?.name ?? 'the identity provider'} groups.` : [self ? 'Studio always keeps at least one active administrator.' : '', user.source === 'local' && user.providerAdmin && view.settings.oidc.adminGroups.length ? `Their ${view.oidc?.name ?? 'provider'} groups also make them an administrator while they sign in with it.` : ''].filter(Boolean).join(' ') || undefined),
           localGroups.length ? h('fieldset', {}, h('legend', { text: 'Groups' }), groupBoxes.map(item => check(item.group.name, item.input))) : null,
           user.oidcGroups.length ? h('p', { class: 'small muted', text: `Provider groups: ${user.oidcGroups.join(', ')}` }) : null,
           field('Session policy', policy, 'A personal policy wins. Otherwise the strictest of their groups’ policies applies, or the default.'),
@@ -942,6 +980,7 @@
 
     // Dashboard access
     function accessTab() {
+      unsavedAccess.clear();
       const subjects = [
         ...view.users.filter(user => user.role !== 'admin').map(user => ({ value: 'user:' + user.id, label: `${user.displayName || user.username} (${user.username})` })),
         ...view.groups.map(group => ({ value: 'group:' + group.id, label: `Group: ${group.name}` })),
@@ -952,6 +991,17 @@
         const box = notice();
         const body = h('div', { class: 'stack' });
         const save = h('button', { type: 'button', class: 'primary', text: 'Save access' });
+        const unsaved = h('span', { class: 'badge warn', text: 'Unsaved changes' });
+        const saveRow = h('div', { class: 'row' }, save, unsaved);
+        const snapshot = list => JSON.stringify(list.map(grant => [grant.subject, grant.level]));
+        // Marks the card when its list differs from what was last saved.
+        function mark() {
+          const dirty = snapshot(grants) !== snapshot(view.grants[entry.id] ?? []);
+          if (dirty) unsavedAccess.add(entry.id); else unsavedAccess.delete(entry.id);
+          unsaved.hidden = !dirty;
+          save.disabled = !dirty;
+          saveRow.hidden = !grants.length && !subjects.length && !dirty;
+        }
         function draw() {
           const used = new Set(grants.map(grant => grant.subject));
           const pick = h('select', { 'aria-label': `Add a person or group to ${entry.name}` }, h('option', { value: '', text: 'Add a person or group…' }), subjects.filter(item => !used.has(item.value)).map(item => h('option', { value: item.value, text: item.label })));
@@ -959,17 +1009,18 @@
           put(body, 
             grants.length ? h('ul', { class: 'list' }, grants.map((grant, index) => {
               const level = h('select', { 'aria-label': `Access for ${label(grant.subject)}`, 'data-new': index === grants.length - 1 ? '' : undefined }, h('option', { value: 'view', text: 'Can view', selected: grant.level === 'view' }), h('option', { value: 'arrange', text: 'Can arrange', selected: grant.level === 'arrange' }));
-              level.addEventListener('change', () => { grant.level = level.value; });
+              level.addEventListener('change', () => { grant.level = level.value; mark(); });
               return h('li', { class: 'list-item' }, h('div', {}, h('strong', { text: label(grant.subject) })), h('div', { class: 'row' }, level, h('button', { type: 'button', class: 'small-button', onclick: () => { grants.splice(index, 1); draw(); }, text: 'Remove', 'aria-label': `Remove ${label(grant.subject)}` })));
             })) : h('p', { class: 'small muted', text: 'Only administrators can open this dashboard.' }),
             subjects.length ? pick : h('p', { class: 'small muted', text: 'Invite people or create groups to share this dashboard.' }));
+          mark();
         }
         save.addEventListener('click', () => busy(save, 'Saving…', async () => {
           try { const result = await api('admin/grants', { dashboardId: entry.id, grants }); view.grants[entry.id] = result.grants; grants = result.grants.map(grant => ({ ...grant })); draw(); say(box, 'Access saved.', 'ok'); }
           catch (error) { failure(box, error); }
         }));
         draw();
-        return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('div', {}, h('h3', { text: entry.name }), h('span', { class: 'small muted mono', text: '/' + (entry.slug ?? '') }))), body, box, h('div', { class: 'row' }, save));
+        return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('div', {}, h('h3', { text: entry.name }), h('span', { class: 'small muted mono', text: '/' + (entry.slug ?? '') }))), body, box, saveRow);
       });
       return [section('Dashboard access', 'Can view: open the dashboard and use its widgets. Can arrange: also move tiles, hide discovered services and change the theme. Only administrators change integration settings, raw files, custom CSS and JavaScript, imports and access.'), ...cards];
     }
@@ -1052,6 +1103,7 @@
           copyRow('Redirect URI (set this in the provider)', view.oidc.redirectUri),
           copyRow('Back-channel logout URI (optional)', view.oidc.backchannelLogoutUri),
           copyBox,
+          view.oidc.lastSignIn && !view.oidc.lastSignIn.refreshToken ? h('p', { class: 'notice warn', role: 'status', text: `The last ${view.oidc.name} sign-in didn't return a refresh token, so those sessions end after ${view.oidc.refreshMinutes} minutes. Request the offline_access scope and allow it in the provider. In Authentik, add the offline_access scope mapping to the provider's selected scopes.` }) : null,
           h('form', { class: 'stack', onsubmit: async event => {
             event.preventDefault();
             await busy(save, 'Saving…', () => act(() => api('admin/settings', { oidc: { adminGroups: toList(adminGroups.value), allowedGroups: toList(allowedGroups.value), autoCreate: autoCreate.checked } }), box, 'Single sign-on settings saved.'));

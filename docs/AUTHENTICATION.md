@@ -59,7 +59,9 @@ every dashboard is locked and every address leads to the setup page.
 
 **Do this straight after deploying.** Whoever completes the setup page first
 becomes the administrator, and there is no setup code. While one browser is
-part-way through setup, another can't start it for 30 minutes.
+part-way through setup, another can't start it for 30 minutes. The browser
+that started can reload the page and carry on where it left off. Restarting
+Studio also cancels a setup that was started but not finished.
 
 ## Inviting people and sharing dashboards
 
@@ -108,7 +110,8 @@ authenticator app, so no one locks themselves out by accident.
 Changing sign-in methods, the email address, people, sharing or settings, and
 administrator actions such as raw file saves, imports, exports and restores
 ask you to **confirm it's you** if you signed in more than a short while ago
-(15 minutes by default).
+(15 minutes by default). In the dashboard editor, the confirmation opens in a
+new tab so unsaved changes stay put; confirm there, come back and save again.
 
 ## Session policies
 
@@ -136,9 +139,14 @@ with PKCE, checks state and nonce, and verifies the provider's signed tokens.
    - Client type: **Confidential**.
    - Redirect URI (strict): `https://<your Studio address>/__studio/auth/oidc/callback`.
      **Administration → Sign-in settings** shows the exact value to copy.
-   - Scopes: keep `openid`, `email` and `profile`. Authentik's `profile`
-     scope includes group membership, which Studio reads from the `groups`
-     claim.
+   - Scopes: keep `openid`, `email` and `profile`, and **add
+     `offline_access`**. Authentik's `profile` scope includes group
+     membership, which Studio reads from the `groups` claim. Since Authentik
+     2024.2, the provider issues a refresh token only when the client asks
+     for `offline_access` and the provider has that scope mapping selected.
+     Studio asks for it by default. Without it, Studio can't check groups
+     while someone is signed in, so provider sessions end at the first check
+     (15 minutes by default) and people sign in again.
    - Optional: add the back-channel logout URI that the same page shows
      (`/__studio/auth/oidc/backchannel-logout`), so signing out of Authentik
      also ends Studio sessions.
@@ -162,7 +170,14 @@ signs in with it.
 - **Administrator groups**: people in these provider groups become
   administrators. Provider accounts outside them are members. The role is
   checked again at every sign-in and every 15 minutes while signed in
-  (`STUDIO_OIDC_REFRESH_MINUTES`), using the provider's refresh token.
+  (`STUDIO_OIDC_REFRESH_MINUTES`), using the provider's refresh token. If the
+  last provider sign-in returned no refresh token, this page says so. If the
+  provider is unreachable at a check, Studio tries again each minute; after
+  one more full interval without an answer, the session ends. If the provider
+  refuses the refresh token, the session ends at once.
+  While administrator groups are set, they alone decide the role of provider
+  accounts. Without administrator groups, you set provider accounts' roles on
+  the People page.
 - **Allowed groups**: if set, only people in one of these groups (or an
   administrator group) may sign in. Removing someone from the group in the
   provider ends their Studio session at the next check.
@@ -173,7 +188,15 @@ signs in with it.
 Accounts are matched by the provider's issuer and subject identifier only,
 never by email or username, so a matching email at the provider can't take
 over a local account. A local account can link its provider identity from
-**My account → Link**.
+**My account → Link**. Linking asks you to confirm it's you first, and sends
+an email alert if the account has an address. After that, the provider
+account can sign in as you. **Unlink** on the same page (or **More actions →
+Unlink** for an administrator on the People page) removes the link and ends
+the provider sessions. An administrator's **Reset sign-in** also removes it.
+
+A linked local account is an administrator through provider groups only
+while it's signed in through the provider. Signed in locally, it has the role
+set on the People page.
 
 ### Turning local sign-in off
 
@@ -228,7 +251,7 @@ or a backup code, so a mailbox alone can't take over an account.
 | `STUDIO_OIDC_CLIENT_ID` | (unset) | |
 | `STUDIO_OIDC_CLIENT_SECRET` / `STUDIO_OIDC_CLIENT_SECRET_FILE` | (unset) | All three single sign-on settings go together |
 | `STUDIO_OIDC_NAME` | `Authentik` | The name on the sign-in button |
-| `STUDIO_OIDC_SCOPES` | `openid profile email` | |
+| `STUDIO_OIDC_SCOPES` | `openid profile email offline_access` | Keep `offline_access`, so groups can be checked while people are signed in |
 | `STUDIO_OIDC_GROUPS_CLAIM` | `groups` | |
 | `STUDIO_OIDC_REFRESH_MINUTES` | `15` | How often a signed-in provider account's groups are checked again, 1 to 1440 |
 | `STUDIO_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD` / `_PASSWORD_FILE`, `_FROM` | (unset) | See [Email](#email). `_PORT` defaults to 587 |
@@ -252,7 +275,9 @@ docker exec -it <studio container> node server/auth/cli.mjs recover <username> -
 
 The link is valid for 15 minutes and works once. It signs in as that person
 for one browser session, even with local sign-in off. `--promote` also makes
-them an administrator. From there, add a new passkey or authenticator, or fix
+them an administrator. It refuses a single sign-on account while
+administrator groups are set, because the provider's groups decide that
+account's role; recover a local account instead. From there, add a new passkey or authenticator, or fix
 the single sign-on settings. Every use is recorded in the activity log.
 
 ## Activity log

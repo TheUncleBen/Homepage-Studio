@@ -56,7 +56,8 @@ function cleanEmail(value) {
 function createThrottle(now) {
   const entries = new Map();
   const FREE = 5, MAX_DELAY = 15 * MINUTE;
-  return {
+  const delay = count => count >= FREE ? Math.min(MAX_DELAY, 1000 * 2 ** (count - FREE)) : 0;
+  const throttle = {
     check(keys) {
       const time = now();
       for (const key of keys) {
@@ -72,20 +73,50 @@ function createThrottle(now) {
       for (const key of keys) {
         const entry = entries.get(key) ?? { count: 0, until: 0 };
         entry.count++;
-        if (entry.count >= FREE) entry.until = time + Math.min(MAX_DELAY, 1000 * 2 ** (entry.count - FREE));
+        if (entry.count >= FREE) entry.until = time + delay(entry.count);
         entry.seen = time;
         entries.set(key, entry);
       }
       if (entries.size > 10000) for (const [key, entry] of entries) if (time - entry.seen > MAX_DELAY) entries.delete(key);
     },
     success(keys) { for (const key of keys) entries.delete(key); },
+    // Counts an attempt before any slow work, so parallel requests cannot
+    // all pass check() before the first failure is recorded. The returned
+    // function takes the count back when the attempt turns out correct.
+    attempt(keys) {
+      throttle.check(keys);
+      throttle.failure(keys);
+      return () => {
+        for (const key of keys) {
+          const entry = entries.get(key);
+          if (!entry) continue;
+          entry.count = Math.max(0, entry.count - 1);
+          entry.until = entry.count >= FREE ? entry.seen + delay(entry.count) : 0;
+        }
+      };
+    },
   };
+  return throttle;
+}
+
+// The stored role is the one an administrator set. A provider administrator
+// group adds Administrator on top of it, and only for a session that signed
+// in through that provider, because a local sign-in cannot tell whether the
+// person is still in the group. For provider-only accounts the groups decide
+// the role once administrator groups are listed; until then the stored role
+// applies.
+export function effectiveRole(data, user, method) {
+  const mapped = (data?.settings?.oidc?.adminGroups?.length ?? 0) > 0;
+  if (user.source === 'oidc') return mapped ? (user.providerAdmin ? 'admin' : 'member') : (user.role === 'admin' ? 'admin' : 'member');
+  if (user.role === 'admin') return 'admin';
+  return mapped && method === 'oidc' && user.providerAdmin && user.oidc ? 'admin' : 'member';
 }
 
 export function publicUser(user, data) {
   return {
     id: user.id, username: user.username, displayName: user.displayName, email: user.email ?? null,
-    role: user.role, disabled: Boolean(user.disabled), source: user.source, createdAt: user.createdAt,
+    role: effectiveRole(data, user, user.source === 'oidc' ? 'oidc' : 'local'), manualRole: user.role, providerAdmin: Boolean(user.providerAdmin && user.oidc),
+    disabled: Boolean(user.disabled), source: user.source, createdAt: user.createdAt,
     status: user.status, groupIds: user.groupIds ?? [], oidcGroups: user.oidcGroups ?? [], policyId: user.policyId ?? null,
     linked: Boolean(user.oidc),
     factors: {
@@ -104,8 +135,10 @@ function hasCompleteLocalFactors(user) {
   return (user.passkeys?.length ?? 0) > 0 || (Boolean(user.password) && Boolean(user.totp));
 }
 
+// Administrators who can always sign in as one: local administrators and
+// provider accounts whose groups (or stored role) make them one.
 function activeAdmins(data) {
-  return data.users.filter(user => user.role === 'admin' && !user.disabled && user.status === 'active');
+  return data.users.filter(user => !user.disabled && user.status === 'active' && effectiveRole(data, user, user.source === 'oidc' ? 'oidc' : 'local') === 'admin');
 }
 
 export function createAuthService({ config, stateRoot, now = () => Date.now(), listDashboards = async () => [] }) {
@@ -115,6 +148,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   const oidc = createOidc(config.oidc, config);
   const throttle = createThrottle(now);
   const pending = new Map();
+  // Work that finishes after its response, such as recovery emails.
+  const background = new Set();
 
   function putPending(value, ttl = PENDING_TTL) {
     const token = randomToken();
@@ -215,27 +250,51 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     return false;
   }
 
-  // Identity-provider sessions re-check groups with the refresh token.
-  async function recheckProvider(session, user) {
-    if (!oidc || session.method !== 'oidc' || !session.oidc?.refresh) return session;
-    if ((session.oidc.nextCheckAt ?? 0) > now()) return session;
+  // Identity-provider sessions re-check groups with the refresh token every
+  // few minutes. Without a refresh token (Authentik 2024.2 and later issue
+  // one only for the offline_access scope) the session ends at its check
+  // time, so a person removed at the provider cannot stay signed in. One
+  // re-check runs per session at a time: a dashboard loads in parallel, and
+  // providers that rotate refresh tokens reject the second use.
+  const rechecks = new Map();
+  function recheckProvider(session, user) {
+    if (!oidc || session.method !== 'oidc' || !session.oidc) return session;
+    if ((session.oidc.nextCheckAt ?? 0) > now() || (session.oidc.retryAt ?? 0) > now()) return session;
+    if (!rechecks.has(session.id)) rechecks.set(session.id, runRecheck(session.id, user).finally(() => rechecks.delete(session.id)));
+    return rechecks.get(session.id);
+  }
+  // Whether the most recent provider sign-in since start-up returned a
+  // refresh token. Without one, provider sessions end at each re-check.
+  let lastProviderSignIn = null;
+  async function runRecheck(id, user) {
+    // Read the stored session again: an earlier re-check may have finished.
+    const session = store.sessions.get(id);
+    if (!session?.oidc) return null;
+    if ((session.oidc.nextCheckAt ?? 0) > now() || (session.oidc.retryAt ?? 0) > now()) return session;
+    if (!session.oidc.refresh) return null;
     let refreshToken;
     try { refreshToken = openSecret(session.oidc.refresh, config.key).toString('utf8'); } catch { return null; }
     let result;
     try { result = await oidc.refresh(refreshToken, user.oidc?.subject); }
-    catch { store.sessions.touch(session.id, { oidc: { ...session.oidc, nextCheckAt: now() + MINUTE } }); return session; }
+    catch {
+      // The provider is unreachable. Try again in a minute, but not past one
+      // more full interval: an outage must not keep old groups for good.
+      if (now() > session.oidc.nextCheckAt + oidc.refreshMinutes * MINUTE) return null;
+      const retry = { ...session, oidc: { ...session.oidc, retryAt: now() + MINUTE } };
+      store.sessions.touch(id, { oidc: retry.oidc });
+      return retry;
+    }
     if (!result) return null;
     const allowed = applyProviderGroups(store.read(), user, result.groups).allowed;
     if (!allowed) return null;
     await store.mutate(data => {
       const target = findUser(data, user.id);
       if (!target) return;
-      const outcome = applyProviderGroups(data, target, result.groups);
-      Object.assign(target, outcome.user);
+      Object.assign(target, applyProviderGroups(data, target, result.groups).user);
       for (const name of result.groups) ensureIdpGroup(data, name);
     });
-    const updated = { ...session.oidc, refresh: sealSecret(Buffer.from(result.refreshToken), config.key), nextCheckAt: now() + oidc.refreshMinutes * MINUTE };
-    store.sessions.touch(session.id, { oidc: updated });
+    const updated = { ...session.oidc, refresh: sealSecret(Buffer.from(result.refreshToken), config.key), nextCheckAt: now() + oidc.refreshMinutes * MINUTE, retryAt: null };
+    store.sessions.touch(id, { oidc: updated });
     return { ...session, oidc: updated };
   }
 
@@ -260,8 +319,10 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       await audit('session-ended', { userId: user.id, reason: 'provider' }, req);
       return null;
     }
-    data = store.read(); user = findUser(data, session.userId); policy = effectivePolicy(data, user);
+    data = store.read(); user = findUser(data, session.userId);
     if (!user || user.disabled) return null;
+    user = { ...user, role: effectiveRole(data, user, session.method) };
+    policy = effectivePolicy(data, user);
     if (time - session.lastSeenAt >= TOUCH_INTERVAL) store.sessions.touch(session.id, { lastSeenAt: time });
     return {
       user, session, policy,
@@ -281,18 +342,16 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     if (data.groups.length >= 200) return;
     data.groups.push({ id: randomUUID(), kind: 'idp', name, policyId: null });
   }
-  // Computes role and allowed status from provider groups. Provider groups
-  // decide the role for provider accounts; a linked local account keeps its
-  // own role unless the provider maps it to administrator.
+  // Computes allowed status and the provider administrator grant from
+  // provider groups. The grant is kept apart from the stored role, so it
+  // goes away as soon as the provider stops mapping the person to it
+  // (see effectiveRole).
   function applyProviderGroups(data, user, groups) {
     const settings = data.settings.oidc;
     const set = new Set(groups);
-    const allowed = !settings.allowedGroups.length || settings.allowedGroups.some(name => set.has(name)) || (settings.adminGroups.length > 0 && settings.adminGroups.some(name => set.has(name)));
-    const mappedAdmin = settings.adminGroups.some(name => set.has(name));
-    let role = user.role;
-    if (mappedAdmin) role = 'admin';
-    else if (user.source === 'oidc') role = 'member';
-    return { allowed, user: { ...user, oidcGroups: groups, role } };
+    const providerAdmin = settings.adminGroups.some(name => set.has(name));
+    const allowed = !settings.allowedGroups.length || settings.allowedGroups.some(name => set.has(name)) || providerAdmin;
+    return { allowed, user: { ...user, oidcGroups: groups, providerAdmin } };
   }
 
   // ---- Shared factor checks ----------------------------------------------
@@ -353,19 +412,16 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     if (intent === 'signin') requireLocalSignIn(data);
     const username = intent === 'reauth' ? current.user.username : (typeof body?.username === 'string' ? body.username.trim().toLowerCase() : '');
     const keys = ['ip:' + clientIp(req), 'user:' + username];
-    throttle.check(keys);
+    const correct = throttle.attempt(keys);
     const user = data.users.find(item => item.username === username);
     const ok = await verifyPassword(String(body?.password ?? ''), user?.password);
     if (!ok || !user || user.disabled || user.status !== 'active') {
-      throttle.failure(keys);
       await audit('sign-in-failed', { username: username.slice(0, 64), step: 'password' }, req);
       genericSignInFailure();
     }
     const methods = secondFactorMethods(data, user);
-    if (!methods.length) {
-      throttle.failure(keys);
-      fail('This account has no second sign-in step. Ask an administrator to reset it.', 'NO_SECOND_FACTOR', 401);
-    }
+    if (!methods.length) fail('This account has no second sign-in step. Ask an administrator to reset it.', 'NO_SECOND_FACTOR', 401);
+    correct();
     const token = putPending({ kind: 'second-factor', intent, userId: user.id, sessionId: current?.session.id, remember: body?.remember !== false, attempts: 0, keys });
     return { next: 'second-factor', token, methods };
   }
@@ -481,12 +537,12 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   }
 
   let setupClaim = null;
-  async function startSetup(req, body) {
+  async function startSetup(req, res, body) {
     const data = store.read();
     if (data.users.length) fail('Studio is already set up. Sign in instead.', 'SETUP_DONE', 409);
     // Owner decision D6 (23 Oct 2026): the first visitor creates the
     // administrator, without a setup code. One browser at a time.
-    if (setupClaim && setupClaim.expiresAt > now() && pending.has(setupClaim.key)) fail('Someone else is setting up Studio right now. Try again in a few minutes.', 'SETUP_IN_PROGRESS', 409);
+    if (setupClaim && setupClaim.expiresAt > now() && pending.has(setupClaim.key)) fail('Setup was started in another browser or tab in the last 30 minutes. Finish it there, or wait until it expires and reload this page.', 'SETUP_IN_PROGRESS', 409);
     const username = normalizeUsername(body?.username);
     const displayName = cleanText(body?.displayName ?? username, 100, 'a display name');
     const email = cleanEmail(body?.email);
@@ -494,8 +550,20 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     if (problem) fail(problem, 'WEAK_PASSWORD');
     const token = putPending({ kind: 'enroll', purpose: 'setup', username, displayName, email, passwordHash: await hashPassword(body.password), passkeys: [], webauthnUserId: randomBytes(32).toString('base64url') }, SETUP_TTL);
     setupClaim = { key: tokenHash(token), expiresAt: now() + SETUP_TTL };
+    // Lets this browser carry on after a reload, without exposing the token
+    // to page scripts.
+    appendCookie(res, cookie(config.setupCookieName, token, { maxAge: SETUP_TTL / 1000, path: '/' }));
     await audit('setup-started', { username }, req);
     return { token, enrollment: enrollmentView(takePending(token, 'enroll', { keep: true })) };
+  }
+  // Picks up a setup this browser started, for example after a reload.
+  async function resumeSetup(req) {
+    if (store.read().users.length) fail('Studio is already set up. Sign in instead.', 'SETUP_DONE', 409);
+    const token = readCookie(req, config.setupCookieName);
+    if (!token || !setupClaim || setupClaim.key !== tokenHash(token)) fail('There is no setup to continue in this browser.', 'FLOW_EXPIRED', 410);
+    const entry = takePending(token, 'enroll', { keep: true });
+    if (entry.purpose !== 'setup') fail('There is no setup to continue in this browser.', 'FLOW_EXPIRED', 410);
+    return { token, enrollment: enrollmentView(entry) };
   }
 
   function inviteFor(data, token, purpose) {
@@ -592,7 +660,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       return target;
     });
     pending.delete(tokenHash(body.token));
-    if (entry.purpose === 'setup') setupClaim = null;
+    if (entry.purpose === 'setup') { setupClaim = null; appendCookie(res, cookie(config.setupCookieName, '', { maxAge: 0 })); }
     await createSession(req, res, user, { method: 'local' });
     await audit(entry.purpose === 'setup' ? 'setup-completed' : 'enrolled', { userId: user.id }, req);
     return { ok: true, backupCodes: backup.codes };
@@ -610,15 +678,21 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     // Same answer whether or not the account exists.
     const answer = { ok: true, message: mailer ? 'If that account has an email address, a reset link is on its way.' : 'Email is not set up here. Ask an administrator to reset your account.' };
     if (!mailer || !user?.email || !data.settings.localSignIn) return answer;
-    const token = randomToken();
-    await store.mutate(draft => {
-      draft.invites = draft.invites.filter(item => !(item.userId === user.id && item.purpose === 'recover'));
-      draft.invites.push({ tokenHash: tokenHash(token), userId: user.id, purpose: 'recover', expiresAt: now() + RECOVERY_MINUTES * MINUTE, createdAt: now() });
-    });
-    const link = new URL(`/__studio/auth/recover#${token}`, config.origin).href;
-    try { await mailer.send({ to: user.email, ...messages.recovery({ name: user.displayName || user.username, link, minutes: RECOVERY_MINUTES }) }); }
-    catch (error) { console.error('Recovery email failed:', error.code || error.name); }
-    await audit('recovery-requested', { userId: user.id }, req);
+    // Answer before writing or sending anything, so the response time does
+    // not reveal whether the account exists.
+    const ip = clientIp(req);
+    const work = (async () => {
+      const token = randomToken();
+      await store.mutate(draft => {
+        draft.invites = draft.invites.filter(item => !(item.userId === user.id && item.purpose === 'recover'));
+        draft.invites.push({ tokenHash: tokenHash(token), userId: user.id, purpose: 'recover', expiresAt: now() + RECOVERY_MINUTES * MINUTE, createdAt: now() });
+      });
+      const link = new URL(`/__studio/auth/recover#${token}`, config.origin).href;
+      try { await mailer.send({ to: user.email, ...messages.recovery({ name: user.displayName || user.username, link, minutes: RECOVERY_MINUTES }) }); }
+      catch (error) { console.error('Recovery email failed:', error.code || error.name); }
+      await audit('recovery-requested', { userId: user.id, ip });
+    })().catch(error => console.error('Recovery request failed:', error.code || error.name)).finally(() => background.delete(work));
+    background.add(work);
     return answer;
   }
 
@@ -711,7 +785,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       method: item.method, userAgent: item.userAgent, ip: item.ip,
     }));
     return {
-      user: publicUser(user, data), policy: effectivePolicy(data, user), sessions,
+      user: { ...publicUser(user, data), role: effectiveRole(data, user, current.session.method) }, policy: effectivePolicy(data, user), sessions,
       fresh: current.fresh(), recovery: Boolean(current.session.recovery), method: current.session.method,
       localSignIn: data.settings.localSignIn, oidc: oidc ? { name: oidc.name } : null, email: Boolean(mailer),
       groups: data.groups.filter(group => userGroupIds(data, user).includes(group.id)).map(group => ({ id: group.id, name: group.name, kind: group.kind })),
@@ -812,6 +886,16 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       await notify(current.user, 'New backup codes were generated. The old ones no longer work.');
       return { backupCodes: backup.codes };
     },
+    async unlink(current) {
+      requireFresh(current);
+      if (current.user.source !== 'local' || !current.user.oidc) fail('There is no linked identity to remove.', 'NOT_LINKED', 409);
+      await store.mutate(data => { Object.assign(findUser(data, current.user.id), { oidc: null, oidcGroups: [], providerAdmin: false }); });
+      await store.sessions.remove(item => item.userId === current.user.id && item.method === 'oidc' && item.id !== current.session.id);
+      await audit('identity-unlinked', { userId: current.user.id });
+      await notify(current.user, `Your ${oidc?.name ?? 'single sign-on'} account was unlinked. It can no longer sign in to Studio as you.`);
+      if (current.session.method === 'oidc') await store.sessions.remove(item => item.id === current.session.id);
+      return accountView({ ...current, session: { ...current.session, method: 'local' }, user: findUser(store.read(), current.user.id) });
+    },
     async revokeSessions(current, body) {
       const target = body?.id;
       const removed = await store.sessions.remove(item => item.userId === current.user.id && item.id !== current.session.id && (target === 'others' || (String(target).length >= 16 && item.id.startsWith(String(target)))));
@@ -878,7 +962,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         settings: data.settings,
         grants: data.grants,
         dashboards: dashboards.map(entry => ({ id: entry.id, name: entry.name, slug: entry.slug, archived: entry.archived })),
-        oidc: oidc ? { name: oidc.name, redirectUri: oidc.redirectUri, backchannelLogoutUri: new URL('/__studio/auth/oidc/backchannel-logout', config.origin).href } : null,
+        oidc: oidc ? { name: oidc.name, redirectUri: oidc.redirectUri, backchannelLogoutUri: new URL('/__studio/auth/oidc/backchannel-logout', config.origin).href, refreshMinutes: oidc.refreshMinutes, lastSignIn: lastProviderSignIn } : null,
         email: Boolean(mailer), keyConfigured: Boolean(config.key), fresh: current.fresh(), currentUserId: current.user.id,
         canDisableLocal: canDisableLocal(data, current),
       };
@@ -936,7 +1020,9 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         user = findUser(data, body?.id);
         if (!user) fail('That user no longer exists.', 'NOT_FOUND', 404);
         if (user.source !== 'local') fail('This account signs in through single sign-on and has no local factors.', 'NOT_LOCAL', 409);
-        Object.assign(user, { password: null, totp: null, passkeys: [], backupCodes: [], status: 'invited' });
+        // A reset starts the account again from nothing, including any linked
+        // provider identity, which may be the reason for the reset.
+        Object.assign(user, { password: null, totp: null, passkeys: [], backupCodes: [], status: 'invited', oidc: null, oidcGroups: [], providerAdmin: false });
         guardAdmins(data);
         token = await issueInvite(data, user, current.user.id);
       });
@@ -945,6 +1031,20 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       const emailed = body?.sendEmail === true ? await sendInvite(user, link) : false;
       await audit('user-reset', { userId: user.id, by: current.user.id });
       return { link, emailed, expiresInHours: INVITE_HOURS };
+    },
+    async unlink(current, body) {
+      requireAdmin(current);
+      let user;
+      await store.mutate(data => {
+        user = findUser(data, body?.id);
+        if (!user) fail('That user no longer exists.', 'NOT_FOUND', 404);
+        if (user.source !== 'local' || !user.oidc) fail('This account has no linked identity to remove.', 'NOT_LINKED', 409);
+        Object.assign(user, { oidc: null, oidcGroups: [], providerAdmin: false });
+      });
+      await store.sessions.remove(item => item.userId === user.id && item.method === 'oidc' && item.id !== current.session.id);
+      await audit('identity-unlinked', { userId: user.id, by: current.user.id });
+      await notify(user, `An administrator unlinked your ${oidc?.name ?? 'single sign-on'} account. It can no longer sign in to Studio as you.`);
+      return admin.overview(current);
     },
     async remove(current, body) {
       requireAdmin(current);
@@ -1065,6 +1165,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
 
   async function oidcStart(res, { intent = 'signin', next = '/', current } = {}) {
     if (!oidc) fail('Single sign-on is not configured.', 'OIDC_NOT_CONFIGURED', 404);
+    if (intent === 'link') requireFresh(current);
     const flow = await oidc.start();
     const id = randomToken();
     pending.set('oidc:' + tokenHash(id), { kind: 'oidc', ...flow, intent, next: safeNext(next), sessionId: current?.session.id, userId: current?.user.id, expiresAt: now() + PENDING_TTL });
@@ -1084,10 +1185,17 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     const findLinked = draft => draft.users.find(user => user.oidc && user.oidc.issuer === result.issuer && user.oidc.subject === result.subject);
     if (flow.intent === 'link') {
       if (!current || current.session.id !== flow.sessionId) fail('Start linking again from your account page.', 'FLOW_EXPIRED', 410);
+      requireFresh(current);
       const other = findLinked(data);
       if (other && other.id !== current.user.id) fail('That identity is already linked to another Studio account.', 'IDENTITY_IN_USE', 409);
-      await store.mutate(draft => { const user = findUser(draft, current.user.id); user.oidc = { issuer: result.issuer, subject: result.subject }; user.oidcGroups = result.groups; for (const name of result.groups) ensureIdpGroup(draft, name); });
+      await store.mutate(draft => {
+        const user = findUser(draft, current.user.id);
+        if (user.source !== 'local') fail('Only local accounts can link a provider identity.', 'NOT_LOCAL', 409);
+        Object.assign(user, applyProviderGroups(draft, user, result.groups).user, { oidc: { issuer: result.issuer, subject: result.subject } });
+        for (const name of result.groups) ensureIdpGroup(draft, name);
+      });
       await audit('identity-linked', { userId: current.user.id }, req);
+      await notify(current.user, `Your ${oidc.name} account was linked. It can now sign in to Studio as you.`);
       return '/__studio/account?linked=1';
     }
     let user = findLinked(data);
@@ -1117,10 +1225,11 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       }
       const applied = applyProviderGroups(draft, target, result.groups).user;
       target.oidcGroups = applied.oidcGroups;
-      target.role = applied.role;
+      target.providerAdmin = applied.providerAdmin;
       if (target.source === 'oidc') { if (result.name) target.displayName = result.name.slice(0, 100); if (result.email) target.email = result.email; }
       return target;
     });
+    lastProviderSignIn = { at: now(), refreshToken: Boolean(result.refreshToken) };
     const oidcState = {
       refresh: result.refreshToken ? sealSecret(Buffer.from(result.refreshToken), config.key) : null,
       idToken: result.idToken ? sealSecret(Buffer.from(result.idToken), config.key) : null,
@@ -1175,12 +1284,13 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   }
 
   return {
-    config, store, initialize: () => store.initialize(), close: () => store.close(),
+    config, store, initialize: () => store.initialize(), close: async () => { await Promise.allSettled([...background]); return store.close(); },
     get ready() { return store.ready; },
     setupRequired: () => store.ready && store.read().users.length === 0,
     principal, clientIp, audit, state, safeNext, readCookie, clearSessionCookie,
     passwordStep, secondFactorStep, secondFactorPasskeyOptions, sendEmailCode, passkeyOptions, passkeyStep, signOut,
-    startSetup, inviteDetails, startInvite, enrollTotpStart, enrollTotpConfirm, enrollPasskeyOptions, enrollPasskeyVerify, finishEnrollment,
+    settled: () => Promise.all([...background]),
+    startSetup, resumeSetup, inviteDetails, startInvite, enrollTotpStart, enrollTotpConfirm, enrollPasskeyOptions, enrollPasskeyVerify, finishEnrollment,
     requestRecovery, recoveryDetails, finishRecovery, redeemRecovery,
     account, admin, copyGrants, oidcStart, oidcCallback, backchannelLogout,
     dashboardLevel: (current, id) => current ? current.level(id) : 'none',
