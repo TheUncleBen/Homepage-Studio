@@ -11,6 +11,18 @@ import {
 import StudioIcon from "./icons";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
 
+// A Custom API widget renders only its mappings, so without any it shows an
+// empty native panel. This is valid YAML, so the editor hints instead of
+// blocking the save.
+export function customApiMappingsMissing(type, config) {
+  if (type !== "customapi") return false;
+  const mappings = config?.mappings;
+  if (mappings === undefined || mappings === null || mappings === "")
+    return true;
+  if (Array.isArray(mappings)) return mappings.length === 0;
+  return typeof mappings === "object" && Object.keys(mappings).length === 0;
+}
+
 const ENDPOINT = {
   service: "service",
   serviceWidget: "service-widget",
@@ -381,6 +393,15 @@ export default function ContentEditor({
             docs={selectedEntry?.docs}
             notice={selectedEntry?.coverage}
           />
+          {kind === "serviceWidget" &&
+            customApiMappingsMissing(source?.type || entry?.type, draft) && (
+              <p className="studio-note" role="status">
+                This Custom API widget has no <code>mappings</code> yet, so its
+                panel will be empty. Add at least one mapping (the response
+                field and the label to show) in the options above or in Advanced
+                YAML. You can still save it now.
+              </p>
+            )}
           {selectedEntry?.setupNotes?.map((note, index) => (
             <p key={index} className="studio-note">
               {note}
