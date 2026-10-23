@@ -154,7 +154,7 @@ function applyReviewedCorrections(byType) {
     ],
   });
   note('info', 'resources', 'CPU and memory describe container usage. Disks must be mounted into the Homepage container. Glances provides separate host/remote statistics.');
-  note('info', 'openmeteo', 'Provide coordinates or deliberately use browser location. Browser geolocation requires a secure context; NetBird protection alone does not make HTTP a secure context.');
+  note('info', 'openmeteo', 'Provide coordinates or deliberately use browser location. Browser geolocation requires a secure context; VPN or private-network access alone does not make HTTP a secure context.');
   // These pages introduce each list in preceding prose rather than in its
   // "Allowed fields" line. Retain the documented context explicitly.
   for (const [type, contexts] of [['azuredevops', ['Pipelines', 'Pull requests']], ['uptimerobot', ['Monitor-Specific API Key', 'Read-Only API Key']]]) {

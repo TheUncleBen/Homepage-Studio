@@ -13110,7 +13110,7 @@
       ],
       "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON.",
       "setupNotes": [
-        "Provide coordinates or deliberately use browser location. Browser geolocation requires a secure context; NetBird protection alone does not make HTTP a secure context."
+        "Provide coordinates or deliberately use browser location. Browser geolocation requires a secure context; VPN or private-network access alone does not make HTTP a secure context."
       ]
     },
     {
