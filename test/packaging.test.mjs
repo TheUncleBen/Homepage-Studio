@@ -170,6 +170,24 @@ test('automatic validation has no publication permission, registry login or imag
   assert.doesNotMatch(text, /docker\s+(?:push|login)\b|--push\b|push:\s*true|upload-artifact@|packages:\s*write|contents:\s*write|pull_request_target:/);
 });
 
+test('validation ends in one always-run result job that fails unless every other job succeeded', async () => {
+  const workflow = parse(await fs.readFile(path.join(root, '.github/workflows/validate.yml'), 'utf8'));
+  const result = workflow.jobs.result;
+  assert.ok(result, 'validate.yml needs an aggregate result job for branch protection');
+  assert.equal(result.name, 'Validation result');
+  assert.equal(result.if, 'always()');
+  assert.equal(result['continue-on-error'], undefined);
+  assert.deepEqual(result.permissions, {});
+  // A skipped dependent job counts as passing for a required check, so the
+  // result job must depend on every other job directly.
+  assert.deepEqual([...result.needs].sort(), Object.keys(workflow.jobs).filter(name => name !== 'result').sort());
+  assert.equal(result.steps.length, 1);
+  const [step] = result.steps;
+  assert.equal(step.env.NEEDS, '${{ toJSON(needs) }}');
+  assert.equal(step.uses, undefined);
+  assert.match(step.run, /jq -e 'length > 0 and all\(\.\[\]; \.result == "success"\)'/);
+});
+
 function acceptedFixture() {
   // Synthetic structure only. These digests do not identify released images.
   const sourceCommit = 'a'.repeat(40);

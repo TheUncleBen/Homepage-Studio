@@ -119,3 +119,21 @@ jobs:
         if: success()
         run: |
           printf '%s\n' '### Container qualification passed' 'Source: `'$GITHUB_SHA'`' 'Architecture: `${{ matrix.arch }}`' 'Tests built and ran the single local application image, fresh volumes, edits, snapshots, restarts, container replacement, standalone Compose, a one-node Swarm, three browser engines, real hidden-document timing, and both templates through pinned Portainer CE.' 'The disposable Portainer fixture transferred this same image through a temporary loopback registry only. No public registry login, public image push, release, date tag, or image artifact upload was performed.' >> "$GITHUB_STEP_SUMMARY"
+
+  # A failed native-checks job makes qualify "skipped", and GitHub counts a
+  # skipped required check as passing. Require this one job instead: it always
+  # runs and passes only when every job it needs succeeded.
+  result:
+    name: Validation result
+    if: always()
+    needs: [native-checks, qualify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require every validation job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s\n' "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          printf '%s\n' "$NEEDS" | jq -e 'length > 0 and all(.[]; .result == "success")' > /dev/null
