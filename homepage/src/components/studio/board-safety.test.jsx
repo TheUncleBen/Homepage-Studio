@@ -504,6 +504,32 @@ describe("Native board save and draft safety", () => {
     expect(catalogReads()).toBe(2);
   });
 
+  it("scrolls the delete confirmation into view, focuses its safe choice and restores focus on Keep it", async () => {
+    const scrolled = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function scrollIntoView(options) {
+      scrolled.push([this, options]);
+    };
+    try {
+      await mountBoard();
+      fireEvent.click(screen.getByRole("button", { name: "Edit dashboard" }));
+      fireEvent.click(screen.getByRole("button", { name: "Edit Clock" }));
+      const remove = await screen.findByRole("button", { name: "Delete", exact: true });
+      remove.focus();
+      fireEvent.click(remove);
+      const confirmation = screen.getByText("Delete Clock?").closest(".studio-delete-confirm");
+      expect(scrolled.some(([element]) => element === confirmation)).toBe(true);
+      const keep = screen.getByRole("button", { name: "Keep it" });
+      expect(keep).toHaveFocus();
+      expect(confirmation).toContainElement(screen.getByRole("button", { name: "Delete permanently" }));
+      fireEvent.click(keep);
+      expect(screen.queryByText("Delete Clock?")).not.toBeInTheDocument();
+      expect(remove).toHaveFocus();
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it("confirms before edit-mode Cancel discards an arrangement draft and leaves a clean board immediately", async () => {
     const { writer } = await mountBoard();
     const native = screen.getByLabelText("Native state clock");

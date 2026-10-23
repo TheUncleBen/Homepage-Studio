@@ -106,6 +106,29 @@ test.describe('touch direct manipulation', () => {
   });
 });
 
+test.describe('phone delete confirmation', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test('Delete brings its confirmation into view with focus on Keep it, which returns focus to Delete', async ({ page, request }) => {
+    await seedServicePanels(request, [{ name: 'Delete fixture', rect: { x: 0, y: 0, w: 4, h: 3 } }]);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit Delete fixture', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    const remove = dialog.getByRole('button', { name: 'Delete', exact: true });
+    await remove.click();
+    const keep = dialog.getByRole('button', { name: 'Keep it', exact: true });
+    await expect(keep).toBeFocused();
+    await expect(keep).toBeInViewport();
+    await expect(dialog.getByRole('button', { name: 'Delete permanently', exact: true })).toBeInViewport();
+    await keep.click();
+    await expect(dialog.getByText('Delete Delete fixture?')).toHaveCount(0);
+    await expect(remove).toBeFocused();
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    expect((await studioApi(request, '/__studio/api/board')).board.panels).toHaveLength(1);
+  });
+});
+
 test.describe('selection checkbox target size', () => {
   for (const [label, use, minimum] of [
     ['fine pointer', { viewport: { width: 1440, height: 1080 } }, 24],

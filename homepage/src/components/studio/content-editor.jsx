@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { studioRequest } from "./api.mjs";
 import ConfigForm, { LINK_FIELDS, SERVICE_FIELDS } from "./config-form";
@@ -202,6 +202,22 @@ export default function ContentEditor({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const deleteConfirm = useRef(null);
+  const keepButton = useRef(null);
+  const deleteButton = useRef(null);
+  const deleteShown = useRef(false);
+  useEffect(() => {
+    // On narrow screens the confirmation renders below the fold. Bring it into
+    // view with focus on the safe choice, and return focus to Delete on cancel.
+    if (deleting) {
+      deleteShown.current = true;
+      deleteConfirm.current?.scrollIntoView?.({ block: "nearest" });
+      keepButton.current?.focus({ preventScroll: true });
+    } else if (deleteShown.current) {
+      deleteShown.current = false;
+      deleteButton.current?.focus();
+    }
+  }, [deleting]);
   useEditorDraft(
     !valid ||
       name !== initialName ||
@@ -371,7 +387,11 @@ export default function ContentEditor({
             </p>
           ))}
           {deleting && (
-            <div className="studio-delete-confirm" role="alert">
+            <div
+              ref={deleteConfirm}
+              className="studio-delete-confirm"
+              role="alert"
+            >
               <strong>Delete {panel?.title || "this item"}?</strong>
               <p>
                 {kind === "service"
@@ -388,6 +408,7 @@ export default function ContentEditor({
                   Delete permanently
                 </button>
                 <button
+                  ref={keepButton}
                   type="button"
                   className="studio-button studio-quiet"
                   onClick={() => setDeleting(false)}
@@ -403,6 +424,7 @@ export default function ContentEditor({
         {source && (
           <>
             <button
+              ref={deleteButton}
               type="button"
               className="studio-text-button studio-danger-text"
               disabled={pending}
