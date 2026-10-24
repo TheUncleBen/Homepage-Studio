@@ -3,6 +3,9 @@
 import * as client from 'openid-client';
 import { AuthError } from './store.mjs';
 
+// How recent a provider sign-in must be to link accounts.
+export const FRESH_SECONDS = 300;
+
 export function createOidc(settings, { origin }) {
   if (!settings) return null;
   const redirectUri = new URL('/__studio/auth/oidc/callback', origin).href;
@@ -30,21 +33,25 @@ export function createOidc(settings, { origin }) {
     name: settings.name,
     redirectUri,
     refreshMinutes: settings.refreshMinutes,
-    async start() {
+    // fresh: asks the provider to sign the person in again (prompt=login)
+    // and to report when they did (max_age), for linking accounts.
+    async start({ fresh = false } = {}) {
       const verifier = client.randomPKCECodeVerifier();
       const state = client.randomState();
       const nonce = client.randomNonce();
       const url = client.buildAuthorizationUrl(await config(), {
         redirect_uri: redirectUri, scope: settings.scopes, state, nonce,
         code_challenge: await client.calculatePKCECodeChallenge(verifier), code_challenge_method: 'S256',
+        ...(fresh ? { prompt: 'login', max_age: String(FRESH_SECONDS) } : {}),
       });
-      return { url: url.href, verifier, state, nonce };
+      return { url: url.href, verifier, state, nonce, fresh };
     },
     async finish(currentUrl, flow) {
       let tokens, claims, info = {};
       try {
         const configured = await config();
-        tokens = await client.authorizationCodeGrant(configured, currentUrl, { pkceCodeVerifier: flow.verifier, expectedState: flow.state, expectedNonce: flow.nonce, idTokenExpected: true });
+        // With maxAge the ID token must carry auth_time no older than that.
+        tokens = await client.authorizationCodeGrant(configured, currentUrl, { pkceCodeVerifier: flow.verifier, expectedState: flow.state, expectedNonce: flow.nonce, idTokenExpected: true, ...(flow.fresh ? { maxAge: FRESH_SECONDS } : {}) });
         claims = tokens.claims();
         // Groups often arrive only from the userinfo endpoint.
         if (!Array.isArray(claims?.[settings.groupsClaim]) && tokens.access_token) {
@@ -56,11 +63,16 @@ export function createOidc(settings, { origin }) {
         throw new AuthError(`${settings.name} sign-in didn't complete. Try again.`, 'OIDC_FAILED', 401);
       }
       const merged = { ...info, ...claims };
+      // Owner decision L4 (24 Oct 2026): only an email the provider marks as
+      // verified is used. Authentik 2025.10 and later sends false unless its
+      // email scope mapping says otherwise.
+      const hasEmail = typeof merged.email === 'string' && merged.email.length > 0 && merged.email.length <= 254;
       return {
         issuer: claims.iss, subject: claims.sub,
         username: typeof merged.preferred_username === 'string' ? merged.preferred_username : undefined,
         name: typeof merged.name === 'string' ? merged.name : undefined,
-        email: typeof merged.email === 'string' && merged.email_verified !== false ? merged.email : undefined,
+        email: hasEmail && merged.email_verified === true ? merged.email : undefined,
+        emailUnverified: hasEmail && merged.email_verified !== true,
         groups: groupsFrom(Array.isArray(claims?.[settings.groupsClaim]) ? claims : info),
         sid: typeof claims.sid === 'string' ? claims.sid : undefined,
         refreshToken: tokens.refresh_token, idToken: tokens.id_token,

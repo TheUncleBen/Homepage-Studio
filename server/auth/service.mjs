@@ -8,8 +8,8 @@ import {
   hashPassword, verifyPassword, passwordProblem, randomToken, tokenHash, safeEqual, verifyTotp, totpUri,
   base32Encode, backupCode, backupCodeHash, emailCode, sealSecret, openSecret,
 } from './primitives.mjs';
-import { createAuthStore, AuthError, DEFAULT_POLICY } from './store.mjs';
-import { dashboardLevel, effectivePolicy, userGroupIds, validGrantList, GRANT_LEVELS } from './access.mjs';
+import { createAuthStore, AuthError, DEFAULT_POLICY, MAX_GROUPS } from './store.mjs';
+import { dashboardLevel, effectivePolicy, userGroupIds, validGrantList, rank, GRANT_LEVELS } from './access.mjs';
 import { createPasskeys } from './webauthn.mjs';
 import { createMailer, messages } from './mail.mjs';
 import { createOidc } from './oidc.mjs';
@@ -24,6 +24,9 @@ const BACKUP_CODE_COUNT = 10;
 const MAX_FACTOR_ATTEMPTS = 5;
 const TOUCH_INTERVAL = MINUTE;
 const COOKIE_MAX_SECONDS = 400 * 24 * 60 * 60;
+// Linking proves both accounts within this many minutes (owner direction,
+// 24 Oct 2026).
+const LINK_MINUTES = 5;
 export const RECOVERY_FILE = 'recovery.json';
 
 const USERNAME = /^[a-z0-9][a-z0-9._@-]{0,63}$/;
@@ -118,7 +121,7 @@ export function publicUser(user, data) {
     role: effectiveRole(data, user, user.source === 'oidc' ? 'oidc' : 'local'), manualRole: user.role, providerAdmin: Boolean(user.providerAdmin && user.oidc),
     disabled: Boolean(user.disabled), source: user.source, createdAt: user.createdAt,
     status: user.status, groupIds: user.groupIds ?? [], oidcGroups: user.oidcGroups ?? [], policyId: user.policyId ?? null,
-    linked: Boolean(user.oidc),
+    linked: Boolean(user.oidc), emailFromProvider: Boolean(user.emailFromProvider && user.oidc),
     factors: {
       password: Boolean(user.password), totp: Boolean(user.totp),
       passkeys: (user.passkeys ?? []).map(passkey => ({ id: passkey.id, name: passkey.name, createdAt: passkey.createdAt, lastUsedAt: passkey.lastUsedAt ?? null })),
@@ -168,11 +171,60 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     return entry;
   }
   const findUser = (data, id) => data.users.find(user => user.id === id);
+  const deploymentGroups = key => config.oidc?.[key] ?? null;
+  const sameNames = (a, b) => a.length === b.length && [...a].sort().every((name, index) => name === [...b].sort()[index]);
 
-  async function notify(user, event) {
-    if (!mailer || !user.email) return;
-    try { await mailer.send({ to: user.email, ...messages.alert({ name: user.displayName || user.username, event }) }); }
+  // Applies what the deployment sets: provider group lists (authoritative
+  // while set) and the one-time administrator seed.
+  async function initialize() {
+    await store.initialize();
+    const data = store.read();
+    const adminGroups = deploymentGroups('adminGroups');
+    const allowedGroups = deploymentGroups('allowedGroups');
+    const settings = data.settings.oidc;
+    const groupsDiffer = (adminGroups && !sameNames(adminGroups, settings.adminGroups)) || (allowedGroups && !sameNames(allowedGroups, settings.allowedGroups));
+    const listed = [...(adminGroups ?? settings.adminGroups), ...(allowedGroups ?? settings.allowedGroups)];
+    const missing = listed.some(name => !data.groups.some(group => group.kind === 'idp' && group.name === name));
+    if (groupsDiffer || (oidc && missing)) {
+      await store.mutate(draft => {
+        if (adminGroups) draft.settings.oidc.adminGroups = [...adminGroups];
+        if (allowedGroups) draft.settings.oidc.allowedGroups = [...allowedGroups];
+        if (oidc) for (const name of listed) ensureIdpGroup(draft, name);
+      });
+      if (groupsDiffer) await audit('settings-changed', { by: 'deployment', fields: ['oidc'] });
+    }
+    const seed = config.adminSeed;
+    if (!seed) return;
+    if (store.read().users.length) {
+      console.log('studio-auth: STUDIO_ADMIN_USERNAME is set but Studio already has accounts, so the administrator seed is ignored. You can remove it and its password secret.');
+      return;
+    }
+    const passwordHash = await hashPassword(seed.password);
+    const created = await store.mutate(draft => {
+      if (draft.users.length) return null;
+      const user = {
+        id: randomUUID(), username: seed.username, displayName: seed.username, email: seed.email, role: 'admin', status: 'seeded',
+        disabled: false, source: 'local', createdAt: now(), groupIds: [], oidcGroups: [], policyId: null, oidc: null,
+        webauthnUserId: randomBytes(32).toString('base64url'), password: passwordHash, totp: null, passkeys: [], backupCodes: [],
+      };
+      draft.users.push(user);
+      return user;
+    });
+    if (created) {
+      await audit('admin-seeded', { userId: created.id, username: created.username });
+      console.log(`studio-auth: created the administrator "${created.username}" from the deployment settings. Sign in with it to finish setup.`);
+    }
+  }
+
+  async function notify(user, event, to = user.email) {
+    if (!mailer || !to) return;
+    try { await mailer.send({ to, ...messages.alert({ name: user.displayName || user.username, event }) }); }
     catch (error) { console.error('Security alert email failed:', error.code || error.name); }
+  }
+  // An email change is announced to the old address as well as the new one.
+  async function notifyEmailChange(user, oldEmail, event) {
+    await notify(user, event);
+    if (oldEmail && oldEmail.toLowerCase() !== (user.email ?? '').toLowerCase()) await notify(user, event, oldEmail);
   }
 
   // ---- Sessions -----------------------------------------------------------
@@ -339,7 +391,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
 
   function ensureIdpGroup(data, name) {
     if (data.groups.some(group => group.kind === 'idp' && group.name === name)) return;
-    if (data.groups.length >= 200) return;
+    if (data.groups.length >= MAX_GROUPS) return;
     data.groups.push({ id: randomUUID(), kind: 'idp', name, policyId: null });
   }
   // Computes allowed status and the provider administrator grant from
@@ -408,20 +460,43 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   function requireLocalSignIn(data) {
     if (!data.settings.localSignIn) fail('Local sign-in is turned off. Use single sign-on.', 'LOCAL_SIGN_IN_DISABLED', 403);
   }
+  // Claiming proves a local account from a session signed in through the
+  // provider, as the first half of linking the two.
+  function requireProviderSession(current) {
+    if (!current || current.session.method !== 'oidc' || current.user.source !== 'oidc') fail('Sign in with single sign-on first, then claim your local account.', 'NOT_PROVIDER_ACCOUNT', 409);
+  }
+  // Local sign-in proof for a link, kept for this browser session only.
+  async function claimed(req, current, user) {
+    if (user.source !== 'local') genericSignInFailure();
+    if (user.oidc) fail('That local account is already linked. Unlink it first from its account page.', 'ALREADY_LINKED', 409);
+    pending.set('claim:' + current.session.id, { kind: 'claim', localUserId: user.id, expiresAt: now() + LINK_MINUTES * MINUTE });
+    await audit('link-local-verified', { userId: user.id, by: current.user.id }, req);
+    return { ok: true, next: 'link' };
+  }
 
   // ---- Sign-in ------------------------------------------------------------
 
   async function passwordStep(req, body, { intent = 'signin', current } = {}) {
     const data = store.read();
-    if (intent === 'signin') requireLocalSignIn(data);
+    if (intent === 'signin' || intent === 'claim') requireLocalSignIn(data);
+    if (intent === 'claim') requireProviderSession(current);
     const username = intent === 'reauth' ? current.user.username : (typeof body?.username === 'string' ? body.username.trim().toLowerCase() : '');
     const keys = ['ip:' + clientIp(req), 'user:' + username];
     const correct = throttle.attempt(keys);
     const user = data.users.find(item => item.username === username);
     const ok = await verifyPassword(String(body?.password ?? ''), user?.password);
-    if (!ok || !user || user.disabled || user.status !== 'active') {
+    // A seeded administrator signs in with the deployment's password once,
+    // and must add a second step before anything else.
+    const seeded = intent === 'signin' && user?.status === 'seeded';
+    if (!ok || !user || user.disabled || (user.status !== 'active' && !seeded) || (intent === 'claim' && user.source !== 'local')) {
       await audit('sign-in-failed', { username: username.slice(0, 64), step: 'password' }, req);
       genericSignInFailure();
+    }
+    if (seeded) {
+      correct();
+      const token = putPending({ kind: 'enroll', purpose: 'seed', userId: user.id, username: user.username, displayName: user.displayName, email: user.email, passwordHash: user.password, passkeys: [], webauthnUserId: user.webauthnUserId }, SETUP_TTL);
+      await audit('setup-started', { userId: user.id, seeded: true }, req);
+      return { next: 'enroll', token, enrollment: enrollmentView(takePending(token, 'enroll', { keep: true })) };
     }
     const methods = secondFactorMethods(data, user);
     if (!methods.length) fail('This account has no second sign-in step. Ask an administrator to reset it.', 'NO_SECOND_FACTOR', 401);
@@ -458,8 +533,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     const data = store.read();
     const user = findUser(data, entry.userId);
     if (!user || user.disabled || user.status !== 'active') genericSignInFailure();
-    if (entry.intent === 'signin') requireLocalSignIn(data);
-    if (entry.intent === 'reauth' && current?.session.id !== entry.sessionId) fail('Start again from this browser.', 'FLOW_EXPIRED', 410);
+    if (entry.intent === 'signin' || entry.intent === 'claim') requireLocalSignIn(data);
+    if ((entry.intent === 'reauth' || entry.intent === 'claim') && current?.session.id !== entry.sessionId) fail('Start again from this browser.', 'FLOW_EXPIRED', 410);
     let apply;
     try { apply = await checkSecondFactor(user, entry, body, req); }
     catch (error) { if (error.code === 'PASSKEY_INVALID') apply = null; else throw error; }
@@ -478,6 +553,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       await audit('reauthenticated', { userId: user.id, method: body.method }, req);
       return { ok: true };
     }
+    if (entry.intent === 'claim') return claimed(req, current, user);
     await createSession(req, res, user, { method: 'local', remember: entry.remember });
     await audit('signed-in', { userId: user.id, method: 'password+' + body.method }, req);
     if (body.method === 'backup') await notify(store.read().users.find(item => item.id === user.id), 'A backup code was used to sign in. Generate new codes if you are running low.');
@@ -486,7 +562,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
 
   async function passkeyOptions({ intent = 'signin', current } = {}) {
     const data = store.read();
-    if (intent === 'signin') requireLocalSignIn(data);
+    if (intent === 'signin' || intent === 'claim') requireLocalSignIn(data);
+    if (intent === 'claim') requireProviderSession(current);
     const user = intent === 'reauth' ? findUser(data, current.user.id) : null;
     if (intent === 'reauth' && !user?.passkeys?.length) fail('This account has no passkey.', 'NO_PASSKEY');
     const options = await passkeys.authenticationOptions(user ? user.passkeys : undefined);
@@ -499,11 +576,11 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     const keys = ['ip:' + clientIp(req)];
     throttle.check(keys);
     const data = store.read();
-    if (entry.intent === 'signin') requireLocalSignIn(data);
-    if (entry.intent === 'reauth' && current?.session.id !== entry.sessionId) fail('Start again from this browser.', 'FLOW_EXPIRED', 410);
+    if (entry.intent === 'signin' || entry.intent === 'claim') requireLocalSignIn(data);
+    if ((entry.intent === 'reauth' || entry.intent === 'claim') && current?.session.id !== entry.sessionId) fail('Start again from this browser.', 'FLOW_EXPIRED', 410);
     const credentialId = body?.response?.id;
     const user = typeof credentialId === 'string' ? data.users.find(item => (item.passkeys ?? []).some(passkey => passkey.id === credentialId)) : null;
-    if (!user || user.disabled || user.status !== 'active' || (entry.intent === 'reauth' && user.id !== current.user.id)) {
+    if (!user || user.disabled || user.status !== 'active' || (entry.intent === 'reauth' && user.id !== current.user.id) || (entry.intent === 'claim' && user.source !== 'local')) {
       throttle.failure(keys);
       await audit('sign-in-failed', { step: 'passkey' }, req);
       fail("That passkey isn't registered here.", 'SIGN_IN_FAILED', 401);
@@ -515,6 +592,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     await store.mutate(draft => { const target = findUser(draft, user.id).passkeys.find(item => item.id === passkey.id); target.counter = verified.newCounter; target.lastUsedAt = now(); });
     throttle.success(keys);
     if (entry.intent === 'reauth') { await refreshSession(res, current.session); await audit('reauthenticated', { userId: user.id, method: 'passkey' }, req); return { ok: true }; }
+    if (entry.intent === 'claim') return claimed(req, current, user);
     await createSession(req, res, user, { method: 'local', remember: body?.remember !== false });
     await audit('signed-in', { userId: user.id, method: 'passkey' }, req);
     return { ok: true };
@@ -543,7 +621,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   let setupClaim = null;
   async function startSetup(req, res, body) {
     const data = store.read();
-    if (data.users.length) fail('Studio is already set up. Sign in instead.', 'SETUP_DONE', 409);
+    if (data.users.length || config.adminSeed) fail('Studio is already set up. Sign in instead.', 'SETUP_DONE', 409);
     // Owner decision D6 (23 Oct 2026): the first visitor creates the
     // administrator, without a setup code. One browser at a time.
     if (setupClaim && setupClaim.expiresAt > now() && pending.has(setupClaim.key)) fail('Setup was started in another browser or tab in the last 30 minutes. Finish it there, or wait until it expires and reload this page.', 'SETUP_IN_PROGRESS', 409);
@@ -656,6 +734,13 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         data.setupCompletedAt = now();
         return created;
       }
+      if (entry.purpose === 'seed') {
+        const target = findUser(data, entry.userId);
+        if (!target || target.status !== 'seeded' || target.disabled) fail('This account was already set up. Sign in instead.', 'SETUP_DONE', 409);
+        Object.assign(target, factors, { status: 'active' });
+        data.setupCompletedAt = now();
+        return target;
+      }
       const invite = data.invites.find(item => item.tokenHash === entry.inviteHash);
       const target = findUser(data, entry.userId);
       if (!invite || invite.expiresAt <= now() || !target || target.disabled) fail('This link has expired or was already used. Ask an administrator for a new one.', 'INVITE_INVALID', 410);
@@ -666,7 +751,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     pending.delete(tokenHash(body.token));
     if (entry.purpose === 'setup') { setupClaim = null; appendCookie(res, cookie(config.setupCookieName, '', { maxAge: 0 })); }
     await createSession(req, res, user, { method: 'local' });
-    await audit(entry.purpose === 'setup' ? 'setup-completed' : 'enrolled', { userId: user.id }, req);
+    await audit(entry.purpose === 'invite' ? 'enrolled' : 'setup-completed', { userId: user.id }, req);
     return { ok: true, backupCodes: backup.codes };
   }
 
@@ -793,6 +878,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       fresh: current.fresh(), recovery: Boolean(current.session.recovery), method: current.session.method,
       localSignIn: data.settings.localSignIn, oidc: oidc ? { name: oidc.name } : null, email: Boolean(mailer),
       groups: data.groups.filter(group => userGroupIds(data, user).includes(group.id)).map(group => ({ id: group.id, name: group.name, kind: group.kind })),
+      pendingLink: oidc ? linkView(current) : null,
+      claimReady: Boolean(pending.get('claim:' + current.session.id)?.expiresAt > now()),
     };
   }
   async function changeUser(current, change, event) {
@@ -808,8 +895,10 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     async profile(current, body) {
       const displayName = cleanText(body?.displayName, 100, 'a display name');
       const email = body?.email === undefined ? undefined : cleanEmail(body.email);
-      if (email !== undefined && email !== (current.user.email ?? null)) requireFresh(current);
-      await changeUser(current, user => { user.displayName = displayName; if (email !== undefined) user.email = email; }, 'profile-changed');
+      const changing = email !== undefined && email !== (current.user.email ?? null);
+      if (changing && current.user.emailFromProvider && current.user.oidc) fail(`Your email follows your ${oidc?.name ?? 'single sign-on'} account. Change it there.`, 'EMAIL_FROM_PROVIDER', 409);
+      if (changing) requireFresh(current);
+      await changeUser(current, user => { user.displayName = displayName; if (changing) user.email = email; }, 'profile-changed');
       return accountView(await refreshed(current));
     },
     async password(current, body) {
@@ -893,12 +982,18 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     async unlink(current) {
       requireFresh(current);
       if (current.user.source !== 'local' || !current.user.oidc) fail('There is no linked identity to remove.', 'NOT_LINKED', 409);
-      await store.mutate(data => { Object.assign(findUser(data, current.user.id), { oidc: null, oidcGroups: [], providerAdmin: false }); });
+      await store.mutate(data => { Object.assign(findUser(data, current.user.id), { oidc: null, oidcGroups: [], providerAdmin: false, emailFromProvider: false }); });
       await store.sessions.remove(item => item.userId === current.user.id && item.method === 'oidc' && item.id !== current.session.id);
       await audit('identity-unlinked', { userId: current.user.id });
       await notify(current.user, `Your ${oidc?.name ?? 'single sign-on'} account was unlinked. It can no longer sign in to Studio as you.`);
       if (current.session.method === 'oidc') await store.sessions.remove(item => item.id === current.session.id);
       return accountView({ ...current, session: { ...current.session, method: 'local' }, user: findUser(store.read(), current.user.id) });
+    },
+    linkConfirm: (req, res, current) => confirmLink(req, res, current),
+    linkCancel(current) {
+      pending.delete('link:' + current.session.id);
+      pending.delete('claim:' + current.session.id);
+      return accountView(current);
     },
     async revokeSessions(current, body) {
       const target = body?.id;
@@ -969,6 +1064,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         oidc: oidc ? { name: oidc.name, redirectUri: oidc.redirectUri, backchannelLogoutUri: new URL('/__studio/auth/oidc/backchannel-logout', config.origin).href, refreshMinutes: oidc.refreshMinutes, lastSignIn: lastProviderSignIn } : null,
         email: Boolean(mailer), keyConfigured: Boolean(config.key), fresh: current.fresh(), currentUserId: current.user.id,
         canDisableLocal: canDisableLocal(data, current),
+        deployment: { adminGroups: Boolean(deploymentGroups('adminGroups')), allowedGroups: Boolean(deploymentGroups('allowedGroups')), adminSeed: Boolean(config.adminSeed) },
       };
     },
     async invite(current, body) {
@@ -995,7 +1091,11 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         const user = findUser(data, body?.id);
         if (!user) fail('That user no longer exists.', 'NOT_FOUND', 404);
         if (body.displayName !== undefined) user.displayName = cleanText(body.displayName, 100, 'a display name');
-        if (body.email !== undefined) user.email = cleanEmail(body.email);
+        if (body.email !== undefined) {
+          const email = cleanEmail(body.email);
+          if (email !== (user.email ?? null) && user.emailFromProvider && user.oidc) fail(`This account's email follows ${oidc?.name ?? 'the identity provider'}.`, 'EMAIL_FROM_PROVIDER', 409);
+          user.email = email;
+        }
         if (body.role !== undefined) {
           if (!['admin', 'member'].includes(body.role)) fail('Choose Administrator or Member.', 'INVALID_ROLE');
           if (user.source === 'oidc' && data.settings.oidc.adminGroups.length && body.role !== user.role) fail(`${oidc?.name ?? 'The identity provider'} groups decide this account's role.`, 'ROLE_FROM_PROVIDER', 409);
@@ -1026,7 +1126,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         if (user.source !== 'local') fail('This account signs in through single sign-on and has no local factors.', 'NOT_LOCAL', 409);
         // A reset starts the account again from nothing, including any linked
         // provider identity, which may be the reason for the reset.
-        Object.assign(user, { password: null, totp: null, passkeys: [], backupCodes: [], status: 'invited', oidc: null, oidcGroups: [], providerAdmin: false });
+        Object.assign(user, { password: null, totp: null, passkeys: [], backupCodes: [], status: 'invited', oidc: null, oidcGroups: [], providerAdmin: false, emailFromProvider: false });
         guardAdmins(data);
         token = await issueInvite(data, user, current.user.id);
       });
@@ -1043,7 +1143,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         user = findUser(data, body?.id);
         if (!user) fail('That user no longer exists.', 'NOT_FOUND', 404);
         if (user.source !== 'local' || !user.oidc) fail('This account has no linked identity to remove.', 'NOT_LINKED', 409);
-        Object.assign(user, { oidc: null, oidcGroups: [], providerAdmin: false });
+        Object.assign(user, { oidc: null, oidcGroups: [], providerAdmin: false, emailFromProvider: false });
       });
       await store.sessions.remove(item => item.userId === user.id && item.method === 'oidc' && item.id !== current.session.id);
       await audit('identity-unlinked', { userId: user.id, by: current.user.id });
@@ -1075,6 +1175,16 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       requireAdmin(current);
       await store.mutate(data => {
         if (body?.action === 'create') {
+          if (data.groups.length >= MAX_GROUPS) fail(`Studio holds up to ${MAX_GROUPS} groups.`, 'GROUP_LIMIT', 409);
+          // A provider group can be added by its exact name before anyone in
+          // it signs in, so dashboards can be shared with it ahead of time.
+          if (body.kind === 'idp') {
+            if (!oidc) fail('Single sign-on is not configured.', 'OIDC_NOT_CONFIGURED', 409);
+            const name = cleanText(body.name, 200, 'the group name exactly as the provider sends it');
+            if (data.groups.some(group => group.kind === 'idp' && group.name === name)) fail('That provider group is already listed.', 'GROUP_EXISTS', 409);
+            data.groups.push({ id: randomUUID(), kind: 'idp', name, policyId: null });
+            return;
+          }
           const name = cleanText(body.name, 60, 'a group name');
           if (data.groups.some(group => group.kind === 'local' && group.name.toLowerCase() === name.toLowerCase())) fail('A group with that name exists.', 'GROUP_EXISTS', 409);
           data.groups.push({ id: randomUUID(), kind: 'local', name, policyId: null });
@@ -1127,7 +1237,15 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
             if (!Array.isArray(value) || value.length > 50 || value.some(name => typeof name !== 'string' || !name.trim() || name.length > 200)) fail(`List ${label} as group names.`, 'INVALID_SETTINGS');
             return [...new Set(value.map(name => name.trim()))];
           };
-          next.oidc = { adminGroups: names(body.oidc.adminGroups ?? [], 'administrator groups'), allowedGroups: names(body.oidc.allowedGroups ?? [], 'allowed groups'), autoCreate: body.oidc.autoCreate !== false };
+          // Lists set by the deployment can't be changed here (owner decision L5).
+          const pick = (key, label) => {
+            const locked = deploymentGroups(key);
+            if (!locked) return names(body.oidc[key] ?? [], label);
+            if (body.oidc[key] !== undefined && !sameNames(names(body.oidc[key], label), locked)) fail(`The ${label} are set by the deployment (${key === 'adminGroups' ? 'STUDIO_OIDC_ADMIN_GROUPS' : 'STUDIO_OIDC_ALLOWED_GROUPS'}). Change them there.`, 'SETTING_FROM_DEPLOYMENT', 409);
+            return locked;
+          };
+          next.oidc = { adminGroups: pick('adminGroups', 'administrator groups'), allowedGroups: pick('allowedGroups', 'allowed groups'), autoCreate: body.oidc.autoCreate !== false };
+          for (const name of [...next.oidc.adminGroups, ...next.oidc.allowedGroups]) ensureIdpGroup(data, name);
         }
         if (body?.localSignIn !== undefined) {
           next.localSignIn = body.localSignIn !== false;
@@ -1167,12 +1285,29 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
 
   // ---- Single sign-on -----------------------------------------------------
 
+  // Owner direction (24 Oct 2026): a person links their own local and
+  // provider accounts, proving both in this browser within LINK_MINUTES.
+  // Signed in locally, the local proof is a recent sign-in; signed in through
+  // the provider, it is a claim (local password and second step, or a
+  // passkey). Either way the provider is asked for a fresh sign-in next.
+  function linkTarget(current) {
+    if (!current) fail('Sign in first.', 'AUTH_REQUIRED', 401);
+    if (current.user.source === 'local') {
+      if (current.user.oidc) fail('Your account is already linked. Unlink it first to link another.', 'ALREADY_LINKED', 409);
+      if (current.session.method !== 'local' || now() - current.session.authAt > LINK_MINUTES * MINUTE) fail('Confirm it’s you to continue.', 'REAUTH_REQUIRED', 401);
+      return current.user.id;
+    }
+    const claim = pending.get('claim:' + current.session.id);
+    if (!claim || claim.expiresAt <= now()) fail('Sign in to your local account first, then link again.', 'CLAIM_REQUIRED', 409);
+    return claim.localUserId;
+  }
+
   async function oidcStart(res, { intent = 'signin', next = '/', current } = {}) {
     if (!oidc) fail('Single sign-on is not configured.', 'OIDC_NOT_CONFIGURED', 404);
-    if (intent === 'link') requireFresh(current);
-    const flow = await oidc.start();
+    const localUserId = intent === 'link' ? linkTarget(current) : undefined;
+    const flow = await oidc.start({ fresh: intent === 'link' });
     const id = randomToken();
-    pending.set('oidc:' + tokenHash(id), { kind: 'oidc', ...flow, intent, next: safeNext(next), sessionId: current?.session.id, userId: current?.user.id, expiresAt: now() + PENDING_TTL });
+    pending.set('oidc:' + tokenHash(id), { kind: 'oidc', ...flow, intent, next: safeNext(next), sessionId: current?.session.id, userId: current?.user.id, localUserId, createdAt: now(), expiresAt: now() + PENDING_TTL });
     appendCookie(res, cookie(config.flowCookieName, id, { maxAge: 600 }));
     return flow.url;
   }
@@ -1189,18 +1324,14 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     const findLinked = draft => draft.users.find(user => user.oidc && user.oidc.issuer === result.issuer && user.oidc.subject === result.subject);
     if (flow.intent === 'link') {
       if (!current || current.session.id !== flow.sessionId) fail('Start linking again from your account page.', 'FLOW_EXPIRED', 410);
-      requireFresh(current);
-      const other = findLinked(data);
-      if (other && other.id !== current.user.id) fail('That identity is already linked to another Studio account.', 'IDENTITY_IN_USE', 409);
-      await store.mutate(draft => {
-        const user = findUser(draft, current.user.id);
-        if (user.source !== 'local') fail('Only local accounts can link a provider identity.', 'NOT_LOCAL', 409);
-        Object.assign(user, applyProviderGroups(draft, user, result.groups).user, { oidc: { issuer: result.issuer, subject: result.subject } });
-        for (const name of result.groups) ensureIdpGroup(draft, name);
+      const plan = linkPlan(data, current, flow.localUserId, result);
+      pending.set('link:' + current.session.id, {
+        kind: 'link', ...plan, groups: result.groups, providerUsername: result.username ?? null, email: result.email ?? null, emailUnverified: Boolean(result.emailUnverified),
+        oidcState: providerSessionState(result), expiresAt: now() + LINK_MINUTES * MINUTE,
       });
-      await audit('identity-linked', { userId: current.user.id }, req);
-      await notify(current.user, `Your ${oidc.name} account was linked. It can now sign in to Studio as you.`);
-      return '/__studio/account?linked=1';
+      pending.delete('claim:' + current.session.id);
+      await audit('link-provider-verified', { userId: plan.localUserId, by: current.user.id, merge: plan.mergeUserId }, req);
+      return '/__studio/account?link=confirm';
     }
     let user = findLinked(data);
     // Owner decision (23 Oct 2026): a new account is created only for someone
@@ -1220,6 +1351,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     if (flow.intent === 'reauth') {
       if (!current || current.session.id !== flow.sessionId || !user || user.id !== current.user.id) fail('Confirm with the same account you are signed in with.', 'REAUTH_MISMATCH', 403);
     }
+    let emailChange = null;
     user = await store.mutate(draft => {
       for (const name of result.groups) ensureIdpGroup(draft, name);
       let target = findLinked(draft);
@@ -1233,15 +1365,19 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       const applied = applyProviderGroups(draft, target, result.groups).user;
       target.oidcGroups = applied.oidcGroups;
       target.providerAdmin = applied.providerAdmin;
-      if (target.source === 'oidc') { if (result.name) target.displayName = result.name.slice(0, 100); if (result.email) target.email = result.email; }
+      if (target.source === 'oidc' && result.name) target.displayName = result.name.slice(0, 100);
+      // Owner decision L4: the email follows the provider's verified email,
+      // for provider accounts and linked local accounts alike.
+      if (result.email) {
+        if (result.email !== target.email) emailChange = { from: target.email ?? null };
+        target.email = result.email;
+        target.emailFromProvider = true;
+      }
       return target;
     });
-    lastProviderSignIn = { at: now(), refreshToken: Boolean(result.refreshToken) };
-    const oidcState = {
-      refresh: result.refreshToken ? sealSecret(Buffer.from(result.refreshToken), config.key) : null,
-      idToken: result.idToken ? sealSecret(Buffer.from(result.idToken), config.key) : null,
-      sid: result.sid ?? null, subject: result.subject, nextCheckAt: now() + oidc.refreshMinutes * MINUTE,
-    };
+    lastProviderSignIn = { at: now(), refreshToken: Boolean(result.refreshToken), emailUnverified: Boolean(result.emailUnverified) };
+    if (emailChange && user.source === 'local') await notifyEmailChange(user, emailChange.from, `Your email address in Studio was updated to match your ${oidc.name} account.`);
+    const oidcState = providerSessionState(result);
     if (flow.intent === 'reauth') {
       await refreshSession(res, current.session, { method: 'oidc', oidc: oidcState });
       await audit('reauthenticated', { userId: user.id, method: 'oidc' }, req);
@@ -1250,6 +1386,106 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     await createSession(req, res, user, { method: 'oidc', oidcState });
     await audit('signed-in', { userId: user.id, method: 'oidc' }, req);
     return flow.next;
+  }
+
+  function providerSessionState(result) {
+    return {
+      refresh: result.refreshToken ? sealSecret(Buffer.from(result.refreshToken), config.key) : null,
+      idToken: result.idToken ? sealSecret(Buffer.from(result.idToken), config.key) : null,
+      sid: result.sid ?? null, subject: result.subject, nextCheckAt: now() + oidc.refreshMinutes * MINUTE,
+    };
+  }
+
+  // Checks a link before it is shown for confirmation and again when it is
+  // confirmed. Returns the local account, the identity, which side the
+  // person started from, and a provider-only account to merge, if any.
+  function linkPlan(data, current, localUserId, identity) {
+    const local = findUser(data, localUserId);
+    if (!local || local.source !== 'local' || local.disabled || local.status !== 'active') fail('That local account can no longer be linked. Start again.', 'FLOW_EXPIRED', 410);
+    const fromProvider = current.user.source === 'oidc';
+    if (fromProvider && (current.user.oidc?.issuer !== identity.issuer || current.user.oidc?.subject !== identity.subject)) {
+      fail(`Sign in to ${oidc.name} as the account you are using Studio with now.`, 'LINK_MISMATCH', 409);
+    }
+    if (!fromProvider && current.user.id !== local.id) fail('Start linking again from your account page.', 'FLOW_EXPIRED', 410);
+    if (local.oidc) fail('That local account is already linked. Unlink it first.', 'ALREADY_LINKED', 409);
+    const holder = data.users.find(user => user.oidc && user.oidc.issuer === identity.issuer && user.oidc.subject === identity.subject);
+    if (holder && holder.source !== 'oidc') fail('That identity is already linked to another Studio account.', 'IDENTITY_IN_USE', 409);
+    if (!applyProviderGroups(data, local, identity.groups ?? []).allowed) fail(`Your ${oidc.name} account isn't in a group allowed to use this Studio.`, 'GROUP_NOT_ALLOWED', 403);
+    return { localUserId: local.id, identity: { issuer: identity.issuer, subject: identity.subject }, fromProvider, mergeUserId: holder?.id ?? null };
+  }
+
+  function pendingLink(current) {
+    const entry = pending.get('link:' + current.session.id);
+    if (!entry || entry.expiresAt <= now()) return null;
+    return entry;
+  }
+  function linkView(current) {
+    const entry = pendingLink(current);
+    if (!entry) return null;
+    const data = store.read();
+    const local = findUser(data, entry.localUserId);
+    const merge = entry.mergeUserId ? findUser(data, entry.mergeUserId) : null;
+    if (!local) return null;
+    return {
+      local: { username: local.username, displayName: local.displayName, email: local.email ?? null },
+      provider: { name: oidc.name, username: entry.providerUsername, email: entry.email, emailUnverified: entry.emailUnverified },
+      merge: merge ? { username: merge.username, displayName: merge.displayName, shares: Object.values(data.grants).filter(list => list.some(grant => grant.subject === 'user:' + merge.id)).length } : null,
+      fromProvider: entry.fromProvider, expiresAt: entry.expiresAt,
+    };
+  }
+
+  // Confirms a link shown on the account page. Owner decisions L3 and L4:
+  // a provider-only account for the same identity is merged into the local
+  // account, and the local email takes the provider's verified email. The
+  // password never changes.
+  async function confirmLink(req, res, current) {
+    const key = 'link:' + current.session.id;
+    const entry = pendingLink(current);
+    pending.delete(key);
+    if (!entry) fail('This link request expired. Start again from your account page.', 'FLOW_EXPIRED', 410);
+    let oldEmail = null, merged = null;
+    const local = await store.mutate(draft => {
+      const plan = linkPlan(draft, current, entry.localUserId, { ...entry.identity, groups: entry.groups });
+      if (plan.mergeUserId !== entry.mergeUserId) fail('Something changed while you were confirming. Start again.', 'FLOW_EXPIRED', 410);
+      const target = findUser(draft, plan.localUserId);
+      if (plan.mergeUserId) {
+        merged = findUser(draft, plan.mergeUserId);
+        for (const id of Object.keys(draft.grants)) {
+          const list = draft.grants[id];
+          const from = list.find(grant => grant.subject === 'user:' + merged.id);
+          if (!from) continue;
+          const to = list.find(grant => grant.subject === 'user:' + target.id);
+          if (to) { if (rank(from.level) > rank(to.level)) to.level = from.level; }
+          else list.push({ subject: 'user:' + target.id, level: from.level });
+          draft.grants[id] = list.filter(grant => grant.subject !== 'user:' + merged.id);
+        }
+        target.groupIds = [...new Set([...(target.groupIds ?? []), ...(merged.groupIds ?? [])])];
+        if (!target.policyId && merged.policyId) target.policyId = merged.policyId;
+        draft.users = draft.users.filter(user => user.id !== merged.id);
+        draft.invites = draft.invites.filter(item => item.userId !== merged.id);
+      }
+      Object.assign(target, applyProviderGroups(draft, target, entry.groups).user, { oidc: { ...entry.identity } });
+      for (const name of entry.groups) ensureIdpGroup(draft, name);
+      if (entry.email) {
+        oldEmail = target.email ?? null;
+        target.email = entry.email;
+        target.emailFromProvider = true;
+      }
+      guardAdmins(draft);
+      return target;
+    });
+    // Other sign-ins of both accounts end; this browser carries on.
+    const keep = entry.fromProvider ? null : current.session.id;
+    await store.sessions.remove(item => (item.userId === local.id || item.userId === merged?.id) && item.id !== keep);
+    if (entry.fromProvider) {
+      // The provider-only session belonged to the merged account; continue as
+      // the local account, signed in through the provider just now.
+      await createSession(req, res, local, { method: 'oidc', oidcState: entry.oidcState });
+    }
+    await audit('identity-linked', { userId: local.id, by: current.user.id, merged: merged?.id ?? null, emailChanged: Boolean(entry.email && entry.email !== oldEmail) }, req);
+    const who = entry.providerUsername ? ` (${entry.providerUsername})` : '';
+    await notifyEmailChange(local, oldEmail, `Your ${oidc.name} account${who} was linked to your Studio account "${local.username}". It can now sign in to Studio as you.${merged ? ` Its separate Studio account "${merged.username}" was merged into yours.` : ''} Other signed-in devices were signed out.`);
+    return { ok: true };
   }
 
   async function backchannelLogout(body) {
@@ -1280,7 +1516,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     const data = store.ready ? store.read() : null;
     return {
       ready: store.ready,
-      setupRequired: data ? data.users.length === 0 : false,
+      setupRequired: data ? data.users.length === 0 && !config.adminSeed : false,
       setupInProgress: Boolean(setupClaim && setupClaim.expiresAt > now() && pending.has(setupClaim.key)),
       localSignIn: data?.settings.localSignIn ?? true,
       oidc: oidc ? { name: oidc.name } : null,
@@ -1291,9 +1527,10 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   }
 
   return {
-    config, store, initialize: () => store.initialize(), close: async () => { await Promise.allSettled([...background]); return store.close(); },
+    config, store, initialize, close: async () => { await Promise.allSettled([...background]); return store.close(); },
     get ready() { return store.ready; },
-    setupRequired: () => store.ready && store.read().users.length === 0,
+    // With an administrator seed, the open setup page never appears.
+    setupRequired: () => store.ready && store.read().users.length === 0 && !config.adminSeed,
     principal, clientIp, audit, state, safeNext, readCookie, clearSessionCookie,
     passwordStep, secondFactorStep, secondFactorPasskeyOptions, sendEmailCode, passkeyOptions, passkeyStep, signOut,
     settled: () => Promise.all([...background]),

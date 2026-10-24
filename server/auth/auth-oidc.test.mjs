@@ -21,7 +21,7 @@ const close = async server => { server.closeAllConnections?.(); await new Promis
 async function mockProvider() {
   const { privateKey, publicKey } = await generateKeyPair('RS256');
   const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256', use: 'sig' };
-  const state = { user: { sub: 'sub-1', preferred_username: 'alice', name: 'Alice', email: 'alice@example.test', groups: ['studio-users'] }, codes: new Map(), refresh: new Map(), rotate: false, down: false, lastScope: null, refreshCalls: 0 };
+  const state = { user: { sub: 'sub-1', preferred_username: 'alice', name: 'Alice', email: 'alice@example.test', email_verified: true, groups: ['studio-users'] }, codes: new Map(), refresh: new Map(), rotate: false, down: false, lastScope: null, refreshCalls: 0 };
   let issuer;
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, issuer);
@@ -29,7 +29,7 @@ async function mockProvider() {
     if (url.pathname === '/.well-known/openid-configuration') return send(200, { issuer, authorization_endpoint: issuer + '/authorize', token_endpoint: issuer + '/token', userinfo_endpoint: issuer + '/userinfo', jwks_uri: issuer + '/jwks', end_session_endpoint: issuer + '/end', response_types_supported: ['code'], subject_types_supported: ['public'], id_token_signing_alg_values_supported: ['RS256'], code_challenge_methods_supported: ['S256'], backchannel_logout_supported: true, backchannel_logout_session_supported: true });
     if (url.pathname === '/jwks') return send(200, { keys: [jwk] });
     if (url.pathname === '/authorize') {
-      const p = url.searchParams; state.lastScope = p.get('scope');
+      const p = url.searchParams; state.lastScope = p.get('scope'); state.lastPrompt = p.get('prompt'); state.lastMaxAge = p.get('max_age');
       const code = randomUUID();
       state.codes.set(code, { nonce: p.get('nonce'), challenge: p.get('code_challenge'), scope: p.get('scope'), user: structuredClone(state.user) });
       const back = new URL(p.get('redirect_uri')); back.searchParams.set('code', code); back.searchParams.set('state', p.get('state')); back.searchParams.set('iss', issuer);
@@ -40,7 +40,7 @@ async function mockProvider() {
       let body = ''; for await (const c of req) body += c;
       const form = new URLSearchParams(body);
       const sid = 'sid-' + state.user.sub;
-      const idToken = async (nonce, user) => new SignJWT({ nonce, groups: user.groups, preferred_username: user.preferred_username, name: user.name, email: user.email, sid }).setProtectedHeader({ alg: 'RS256', kid: 'k1' }).setIssuer(issuer).setAudience('studio').setSubject(user.sub).setIssuedAt().setExpirationTime('5m').sign(privateKey);
+      const idToken = async (nonce, user) => new SignJWT({ nonce, groups: user.groups, preferred_username: user.preferred_username, name: user.name, email: user.email, email_verified: user.email_verified, sid, auth_time: state.authTime ?? Math.floor(Date.now() / 1000) }).setProtectedHeader({ alg: 'RS256', kid: 'k1' }).setIssuer(issuer).setAudience('studio').setSubject(user.sub).setIssuedAt().setExpirationTime('5m').sign(privateKey);
       if (form.get('grant_type') === 'authorization_code') {
         const entry = state.codes.get(form.get('code')); state.codes.delete(form.get('code'));
         if (!entry || createHash('sha256').update(form.get('code_verifier')).digest('base64url') !== entry.challenge) return send(400, { error: 'invalid_grant' });
@@ -132,6 +132,14 @@ async function oidcSignIn(ctx, { intent = 'signin', cookie } = {}) {
   const done = await ctx.request(back.pathname + back.search, { cookie: [cookie, flow].filter(Boolean).join('; ') });
   return { response: done, cookie: cookieOf(done) };
 }
+// Linking: the provider step, then the confirmation on the account page.
+async function link(ctx, cookie) {
+  const flow = await oidcSignIn(ctx, { intent: 'link', cookie });
+  if (flow.response.headers.location !== '/__studio/account?link=confirm') return { ...flow, confirmed: null };
+  const confirmed = await ctx.post('/__studio/auth/account/link/confirm', {}, { cookie });
+  assert.equal(confirmed.status, 200, confirmed.text);
+  return { ...flow, confirmed, cookie: cookieOf(confirmed) ?? cookie };
+}
 const role = async (ctx, cookie) => (await ctx.request('/__studio/auth/account', { cookie })).json?.user?.role;
 async function localSignIn(ctx, username, backupCode) {
   const step = await ctx.post('/__studio/auth/password', { username, password: PASSWORD });
@@ -220,9 +228,8 @@ test('provider administrator groups make a linked local account an administrator
   await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: ['studio-admins'], allowedGroups: [], autoCreate: false } }, { cookie: admin.cookie });
   const member = await invite(ctx, admin.cookie);
   ctx.provider.state.user.groups = ['studio-admins'];
-  const linked = await oidcSignIn(ctx, { intent: 'link', cookie: member.cookie });
-  assert.equal(linked.response.status, 302, linked.response.text);
-  assert.equal(linked.response.headers.location, '/__studio/account?linked=1');
+  const linked = await link(ctx, member.cookie);
+  assert.ok(linked.confirmed, linked.response.headers.location);
   const first = await oidcSignIn(ctx);
   assert.equal(await role(ctx, first.cookie), 'admin');
   assert.equal(await role(ctx, await localSignIn(ctx, 'member', member.backupCodes[0])), 'member', 'local sign-in never gets the provider role');
@@ -247,8 +254,8 @@ test('linking needs a recent sign-in, sends an alert, and unlinking or an admin 
 
   const fresh = await localSignIn(ctx, 'member', member.backupCodes[0]);
   const mails = ctx.mail.length;
-  const linked = await oidcSignIn(ctx, { intent: 'link', cookie: fresh });
-  assert.equal(linked.response.headers.location, '/__studio/account?linked=1');
+  const linked = await link(ctx, fresh);
+  assert.ok(linked.confirmed, linked.response.headers.location);
   assert.equal(ctx.mail.length, mails + 1);
   assert.match(ctx.mail.at(-1).text, /linked/);
   const asMember = await oidcSignIn(ctx);
@@ -261,7 +268,7 @@ test('linking needs a recent sign-in, sends an alert, and unlinking or an admin 
   assert.equal((await oidcSignIn(ctx)).response.headers.location, '/__studio/auth/sign-in?error=NO_ACCOUNT');
 
   // Linked again, then an administrator resets the account.
-  await oidcSignIn(ctx, { intent: 'link', cookie: fresh });
+  assert.ok((await link(ctx, fresh)).confirmed);
   const adminCookie = await localSignIn(ctx, 'admin', admin.backupCodes[0]);
   const reset = await ctx.post('/__studio/auth/admin/reset', { id: member.id }, { cookie: adminCookie });
   assert.equal(reset.status, 200, reset.text);
@@ -273,7 +280,7 @@ test('linking needs a recent sign-in, sends an alert, and unlinking or an admin 
   // An administrator can unlink too.
   const relinker = await localSignIn(ctx, 'admin', admin.backupCodes[1]);
   const other = await invite(ctx, relinker, 'other');
-  await oidcSignIn(ctx, { intent: 'link', cookie: other.cookie });
+  assert.ok((await link(ctx, other.cookie)).confirmed);
   const removed = await ctx.post('/__studio/auth/admin/unlink', { id: other.id }, { cookie: relinker });
   assert.equal(removed.status, 200, removed.text);
   assert.equal(removed.json.users.find(user => user.id === other.id).linked, false);
@@ -437,4 +444,204 @@ test('provider sign-in creates accounts only for people in an allowed or adminis
   // Turned back on, the allowed group creates the account.
   await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['family'], autoCreate: true } }, { cookie: admin.cookie });
   assert.ok((await oidcSignIn(ctx)).cookie);
+});
+
+// ---- Linking, group mapping and the administrator seed (owner direction,
+// 24 October 2026) ------------------------------------------------------------
+
+const auditOf = async ctx => (await fs.readFile(path.join(ctx.stateDir, 'auth', 'audit.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+
+test('a seeded administrator signs in once with the deployment password and must add a second step', async t => {
+  const ctx = await setup(t, { adminUsername: 'Owner', adminPassword: PASSWORD, adminEmail: 'owner@example.test' });
+  const state = await ctx.request('/__studio/auth/state');
+  assert.equal(state.json.setupRequired, false, 'no open setup page while a seed is set');
+  assert.equal((await ctx.post('/__studio/auth/setup/start', { username: 'intruder', password: PASSWORD })).json.code, 'SETUP_DONE');
+  assert.equal((await ctx.post('/__studio/auth/password', { username: 'owner', password: 'wrong password here' })).status, 401);
+  const step = await ctx.post('/__studio/auth/password', { username: 'owner', password: PASSWORD });
+  assert.equal(step.status, 200, step.text);
+  assert.equal(step.json.next, 'enroll');
+  assert.equal(cookieOf(step), undefined, 'the password alone gives no session');
+  const finishEarly = await ctx.post('/__studio/auth/enroll/finish', { token: step.json.token });
+  assert.equal(finishEarly.json.code, 'FACTOR_REQUIRED');
+  const done = await enroll(ctx, step);
+  const account = await ctx.request('/__studio/auth/account', { cookie: done.cookie });
+  assert.equal(account.json.user.role, 'admin');
+  assert.equal(account.json.user.email, 'owner@example.test');
+  // Set up now: the same password needs the second step like anyone else.
+  const again = await ctx.post('/__studio/auth/password', { username: 'owner', password: PASSWORD });
+  assert.equal(again.json.next, 'second-factor');
+  assert.ok((await auditOf(ctx)).some(event => event.type === 'admin-seeded'));
+});
+
+test('the administrator seed is ignored once accounts exist, and bad seeds stop start-up', async t => {
+  const { readAuthConfig } = await import('./config.mjs');
+  const { createAuthService } = await import('./service.mjs');
+  const stateRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-seed-'));
+  t.after(() => fs.rm(stateRoot, { recursive: true, force: true }));
+  const make = env => createAuthService({ config: readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: ORIGIN, ...env }), stateRoot });
+  const first = make({ STUDIO_ADMIN_USERNAME: 'owner', STUDIO_ADMIN_PASSWORD: PASSWORD });
+  await first.initialize(); await first.close();
+  const second = make({ STUDIO_ADMIN_USERNAME: 'someone-else', STUDIO_ADMIN_PASSWORD: PASSWORD + ' 2', STUDIO_ADMIN_EMAIL: 'x@example.test' });
+  await second.initialize();
+  const users = second.store.read().users;
+  await second.close();
+  assert.deepEqual(users.map(user => [user.username, user.email]), [['owner', null]], 'a later seed changes nothing');
+  assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: ORIGIN, STUDIO_ADMIN_USERNAME: 'owner' }), /STUDIO_ADMIN_PASSWORD_FILE/);
+  assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: ORIGIN, STUDIO_ADMIN_USERNAME: 'owner', STUDIO_ADMIN_PASSWORD: 'short' }), /not accepted/);
+  assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: ORIGIN, STUDIO_ADMIN_USERNAME: 'Bad Name!', STUDIO_ADMIN_PASSWORD: PASSWORD }), /STUDIO_ADMIN_USERNAME/);
+});
+
+test('deployment group lists are authoritative, and provider groups can be shared before anyone signs in', async t => {
+  const ctx = await setup(t, { oidcAdminGroups: 'studio-admins', oidcAllowedGroups: 'family, friends' });
+  const admin = await createAdmin(ctx);
+  let overview = await ctx.request('/__studio/auth/admin/overview', { cookie: admin.cookie });
+  assert.deepEqual(overview.json.settings.oidc.adminGroups, ['studio-admins']);
+  assert.deepEqual(overview.json.settings.oidc.allowedGroups, ['family', 'friends']);
+  assert.deepEqual(overview.json.deployment, { adminGroups: true, allowedGroups: true, adminSeed: false });
+  const family = overview.json.groups.find(group => group.kind === 'idp' && group.name === 'family');
+  assert.ok(family, 'listed groups exist before anyone signs in');
+  const changed = await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: ['everyone'], allowedGroups: ['family', 'friends'], autoCreate: true } }, { cookie: admin.cookie });
+  assert.equal(changed.status, 409);
+  assert.equal(changed.json.code, 'SETTING_FROM_DEPLOYMENT');
+  const same = await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: ['studio-admins'], allowedGroups: ['friends', 'family'], autoCreate: false } }, { cookie: admin.cookie });
+  assert.equal(same.status, 200, same.text);
+  assert.equal(same.json.settings.oidc.autoCreate, false);
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { autoCreate: true } }, { cookie: admin.cookie });
+  // Another provider group added by name, then a dashboard shared with it.
+  const added = await ctx.post('/__studio/auth/admin/group', { action: 'create', kind: 'idp', name: 'Media Fans' }, { cookie: admin.cookie });
+  assert.equal(added.status, 200, added.text);
+  assert.equal((await ctx.post('/__studio/auth/admin/group', { action: 'create', kind: 'idp', name: 'Media Fans' }, { cookie: admin.cookie })).json.code, 'GROUP_EXISTS');
+  overview = await ctx.request('/__studio/auth/admin/overview', { cookie: admin.cookie });
+  const dashboard = overview.json.dashboards[0];
+  assert.ok(dashboard, 'a dashboard exists');
+  const shared = await ctx.post('/__studio/auth/admin/grants', { dashboardId: dashboard.id, grants: [{ subject: 'group:' + family.id, level: 'view' }] }, { cookie: admin.cookie });
+  assert.equal(shared.status, 200, shared.text);
+  // The first sign-in of a family member lands on the shared dashboard.
+  ctx.provider.state.user = { sub: 'kid', preferred_username: 'kid', name: 'Kid', groups: ['family'] };
+  const kid = await oidcSignIn(ctx);
+  assert.ok(kid.cookie, kid.response.headers.location);
+  const list = await ctx.request('/__studio/auth/dashboards', { cookie: kid.cookie });
+  assert.deepEqual(list.json.dashboards.map(entry => [entry.id, entry.level]), [[dashboard.id, 'view']]);
+  assert.equal(await role(ctx, kid.cookie), 'member');
+});
+
+test('provider groups can be added by name only when single sign-on is set up', async t => {
+  const ctx = await setup(t, { oidc: false });
+  const admin = await createAdmin(ctx);
+  assert.equal((await ctx.post('/__studio/auth/admin/group', { action: 'create', kind: 'idp', name: 'family' }, { cookie: admin.cookie })).json.code, 'OIDC_NOT_CONFIGURED');
+});
+
+test('linking from a provider session claims the local account, merges the provider-only account and takes the verified email', async t => {
+  const ctx = await setup(t);
+  const setupStart = await ctx.post('/__studio/auth/setup/start', { username: 'admin', password: PASSWORD, email: 'old@example.test' });
+  const admin = await enroll(ctx, setupStart);
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: ['studio-admins'], allowedGroups: [] } }, { cookie: admin.cookie });
+  ctx.provider.state.user = { sub: 'ben', preferred_username: 'ben', name: 'Ben', email: 'ben@sso.test', email_verified: true, groups: ['studio-admins'] };
+  // Signed in through the provider first: a separate provider-only account.
+  const sso = await oidcSignIn(ctx);
+  assert.ok(sso.cookie, sso.response.headers.location);
+  let overview = await ctx.request('/__studio/auth/admin/overview', { cookie: admin.cookie });
+  const duplicate = overview.json.users.find(user => user.source === 'oidc');
+  const dashboard = overview.json.dashboards[0];
+  await ctx.post('/__studio/auth/admin/grants', { dashboardId: dashboard.id, grants: [{ subject: 'user:' + duplicate.id, level: 'arrange' }] }, { cookie: admin.cookie });
+
+  // Without claiming the local account first, linking is refused.
+  const early = await oidcSignIn(ctx, { intent: 'link', cookie: sso.cookie });
+  assert.equal(early.response.json.code, 'CLAIM_REQUIRED');
+  // A claim needs the local password and second step; a wrong one fails.
+  assert.equal((await ctx.post('/__studio/auth/claim/password', { username: 'admin', password: 'not the password!' }, { cookie: sso.cookie })).status, 401);
+  assert.equal((await ctx.post('/__studio/auth/claim/password', { username: 'admin', password: PASSWORD }, { cookie: admin.cookie })).json.code, 'NOT_PROVIDER_ACCOUNT');
+  const claim = await ctx.post('/__studio/auth/claim/password', { username: 'admin', password: PASSWORD }, { cookie: sso.cookie });
+  assert.equal(claim.status, 200, claim.text);
+  const verified = await ctx.post('/__studio/auth/claim/second-factor', { token: claim.json.token, method: 'backup', code: admin.backupCodes[0] }, { cookie: sso.cookie });
+  assert.equal(verified.status, 200, verified.text);
+  assert.equal(verified.json.next, 'link');
+  assert.equal(cookieOf(verified), undefined, 'claiming does not sign in as the local account');
+
+  const linked = await oidcSignIn(ctx, { intent: 'link', cookie: sso.cookie });
+  assert.equal(linked.response.headers.location, '/__studio/account?link=confirm');
+  assert.equal(ctx.provider.state.lastPrompt, 'login', 'the provider is asked for a fresh sign-in');
+  assert.equal(ctx.provider.state.lastMaxAge, '300');
+  const pending = (await ctx.request('/__studio/auth/account', { cookie: sso.cookie })).json.pendingLink;
+  assert.equal(pending.local.username, 'admin');
+  assert.equal(pending.local.email, 'old@example.test');
+  assert.equal(pending.provider.email, 'ben@sso.test');
+  assert.equal(pending.merge.username, duplicate.username);
+  assert.equal(pending.merge.shares, 1);
+
+  const mails = ctx.mail.length;
+  const confirmed = await ctx.post('/__studio/auth/account/link/confirm', {}, { cookie: sso.cookie });
+  assert.equal(confirmed.status, 200, confirmed.text);
+  const merged = cookieOf(confirmed);
+  assert.ok(merged, 'the browser continues as the local account');
+  const account = (await ctx.request('/__studio/auth/account', { cookie: merged })).json;
+  assert.equal(account.user.username, 'admin');
+  assert.equal(account.user.email, 'ben@sso.test');
+  assert.equal(account.user.emailFromProvider, true);
+  assert.equal(account.method, 'oidc');
+  assert.equal((await ctx.request('/__studio/auth/account', { cookie: sso.cookie })).status, 401, 'the merged account’s session ended');
+  assert.equal((await ctx.request('/__studio/auth/account', { cookie: admin.cookie })).status, 401, 'other sessions of the local account ended');
+  assert.deepEqual(ctx.mail.slice(mails).map(mail => mail.to).sort(), ['ben@sso.test', 'old@example.test']);
+
+  const local = await localSignIn(ctx, 'admin', admin.backupCodes[1]);
+  overview = await ctx.request('/__studio/auth/admin/overview', { cookie: local });
+  assert.equal(overview.json.users.length, 1, 'the provider-only account is gone');
+  assert.deepEqual(overview.json.grants[dashboard.id], [{ subject: 'user:' + account.user.id, level: 'arrange' }]);
+  // The password never changed, and the email can't be edited while linked.
+  assert.equal((await ctx.post('/__studio/auth/account/profile', { displayName: 'Ben', email: 'elsewhere@example.test' }, { cookie: local })).json.code, 'EMAIL_FROM_PROVIDER');
+  assert.equal((await ctx.post('/__studio/auth/admin/update', { id: account.user.id, email: 'elsewhere@example.test' }, { cookie: local })).json.code, 'EMAIL_FROM_PROVIDER');
+
+  // Later sign-ins keep the email in step, but only with a verified email.
+  ctx.provider.state.user.email = 'ben@new.test';
+  assert.ok((await oidcSignIn(ctx)).cookie);
+  ctx.provider.state.user = { ...ctx.provider.state.user, email: 'unverified@evil.test', email_verified: false };
+  assert.ok((await oidcSignIn(ctx)).cookie);
+  overview = await ctx.request('/__studio/auth/admin/overview', { cookie: local });
+  assert.equal(overview.json.users[0].email, 'ben@new.test');
+  assert.equal(overview.json.oidc.lastSignIn.emailUnverified, true);
+  // Unlinked, the email is the person's own again.
+  const fresh = await localSignIn(ctx, 'admin', admin.backupCodes[2]);
+  await ctx.post('/__studio/auth/account/unlink', {}, { cookie: fresh });
+  assert.equal((await ctx.post('/__studio/auth/account/profile', { displayName: 'Ben', email: 'mine@example.test' }, { cookie: fresh })).status, 200);
+});
+
+test('linking refuses a different provider account, a stale provider sign-in, an old local sign-in and an identity in use', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const ctx = await setup(t);
+  const admin = await createAdmin(ctx);
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
+  const sso = await oidcSignIn(ctx);
+  const claim = await ctx.post('/__studio/auth/claim/password', { username: 'admin', password: PASSWORD }, { cookie: sso.cookie });
+  await ctx.post('/__studio/auth/claim/second-factor', { token: claim.json.token, method: 'backup', code: admin.backupCodes[0] }, { cookie: sso.cookie });
+  // At the provider, someone signs in as a different account.
+  const original = ctx.provider.state.user;
+  ctx.provider.state.user = { ...original, sub: 'someone-else' };
+  const mismatch = await oidcSignIn(ctx, { intent: 'link', cookie: sso.cookie });
+  assert.equal(mismatch.response.headers.location, '/__studio/account?error=LINK_MISMATCH');
+  ctx.provider.state.user = original;
+
+  // A provider session older than five minutes doesn't count.
+  const local = await localSignIn(ctx, 'admin', admin.backupCodes[1]);
+  ctx.provider.state.authTime = Math.floor(Date.now() / 1000) - 600;
+  const stale = await oidcSignIn(ctx, { intent: 'link', cookie: local });
+  assert.equal(stale.response.headers.location, '/__studio/account?error=OIDC_FAILED');
+  ctx.provider.state.authTime = undefined;
+
+  // A local sign-in older than five minutes needs confirming again.
+  t.mock.timers.tick(6 * 60000);
+  const old = await oidcSignIn(ctx, { intent: 'link', cookie: local });
+  assert.equal(old.response.json.code, 'REAUTH_REQUIRED');
+
+  // Linked to one local account, the identity can't be linked to another.
+  const member = await invite(ctx, await localSignIn(ctx, 'admin', admin.backupCodes[2]), 'member');
+  ctx.provider.state.user = { ...original, sub: 'shared' };
+  assert.ok((await link(ctx, member.cookie)).confirmed);
+  const second = await oidcSignIn(ctx, { intent: 'link', cookie: await localSignIn(ctx, 'admin', admin.backupCodes[3]) });
+  assert.equal(second.response.headers.location, '/__studio/account?error=IDENTITY_IN_USE');
+  // A cancelled or expired confirmation links nothing.
+  const otherMember = await invite(ctx, await localSignIn(ctx, 'admin', admin.backupCodes[4]), 'other');
+  ctx.provider.state.user = { ...original, sub: 'third' };
+  assert.equal((await oidcSignIn(ctx, { intent: 'link', cookie: otherMember.cookie })).response.headers.location, '/__studio/account?link=confirm');
+  t.mock.timers.tick(6 * 60000);
+  assert.equal((await ctx.post('/__studio/auth/account/link/confirm', {}, { cookie: otherMember.cookie })).json.code, 'FLOW_EXPIRED');
 });

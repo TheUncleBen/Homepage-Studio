@@ -136,6 +136,9 @@
     IDENTITY_IN_USE: 'That identity is already linked to another Studio account.',
     REAUTH_REQUIRED: 'Confirm it’s you first, then link again.',
     NOT_LOCAL: 'Only local accounts can link a provider identity.',
+    LINK_MISMATCH: 'At the identity provider, sign in as the same account you are using Studio with, then try again.',
+    ALREADY_LINKED: 'That local account is already linked. Unlink it first.',
+    CLAIM_REQUIRED: 'Sign in to your local account first, then link again.',
   };
 
   // ---- Backup codes ---------------------------------------------------------
@@ -193,6 +196,9 @@
       await busy(submit, 'Checking…', async () => {
         try {
           const result = await api('password', { username: username.value, password: password.value, remember: remember.checked });
+          // An administrator created from the deployment settings adds a
+          // second step at the first sign-in.
+          if (result.next === 'enroll') return enrollFactors(result, { title: 'Protect the administrator account', labels: ['Password', 'Second step', 'Backup codes'], after: '/__studio/admin' });
           secondFactor(result, { next, remember: remember.checked, reauth: false });
         } catch (error) { say(message, error.message); password.value = ''; password.focus(); }
       });
@@ -220,14 +226,15 @@
 
   // Second step after a correct password: authenticator code, passkey,
   // backup code or emailed code.
-  function secondFactor(result, { next, reauth }) {
+  function secondFactor(result, { next, reauth, claim }) {
     const { token, methods } = result;
     const message = notice();
     const labels = { totp: 'Authenticator app', passkey: 'Passkey', backup: 'Backup code', email: 'Email code' };
     let method = methods.includes('passkey') && passkeysSupported() ? 'passkey' : methods.find(item => item !== 'passkey') ?? methods[0];
     const body = h('div', { class: 'stack' });
     async function finish(payload) {
-      const outcome = await api(reauth ? 'reauth/second-factor' : 'second-factor', { token, ...payload });
+      const outcome = await api(claim ? 'claim/second-factor' : reauth ? 'reauth/second-factor' : 'second-factor', { token, ...payload });
+      if (claim) return claim();
       if (!reauth && payload.method === 'backup' && Number.isInteger(outcome.backupCodesLeft) && outcome.backupCodesLeft <= 3) {
         return render(card(false, brand(), h('h1', { text: 'Signed in' }), h('div', { class: 'notice warn', text: `You have ${outcome.backupCodesLeft} backup code${outcome.backupCodesLeft === 1 ? '' : 's'} left. Create new ones from your account page.` }), h('div', { class: 'row' }, h('a', { class: 'button primary', href: '/__studio/account', text: 'Open my account' }), h('a', { class: 'button', href: next, text: 'Continue' }))));
       }
@@ -272,7 +279,7 @@
       if (others.length) body.append(h('div', { class: 'stack small' }, h('span', { class: 'muted', text: 'Other ways to confirm:' }), h('div', { class: 'row' }, others.map(item => h('button', { type: 'button', class: 'small-button', onclick: () => { method = item; say(message, ''); show(); body.querySelector('[data-autofocus]')?.focus(); }, text: labels[item] })))));
     }
     show();
-    render(card(false, brand(), h('h1', { text: reauth ? 'Confirm it’s you' : 'One more step' }), h('p', { class: 'lede', text: 'Confirm with your second sign-in method.' }), message, body,
+    render(card(false, brand(), h('h1', { text: claim ? 'Confirm your local account' : reauth ? 'Confirm it’s you' : 'One more step' }), h('p', { class: 'lede', text: 'Confirm with your second sign-in method.' }), message, body,
       h('p', { class: 'small' }, h('a', { href: location.pathname + location.search, text: 'Start over' }))));
   }
 
@@ -634,12 +641,14 @@
     if (params.has('linked')) say(message, `Your ${view.oidc?.name ?? 'single sign-on'} account is linked.`, 'ok');
     if (params.has('confirmed')) say(message, 'Confirmed. You can close this tab and go back to your change.', 'ok');
     if (params.get('error')) say(message, ERRORS[params.get('error')] ?? "That didn't complete. Try again.");
-    if (params.has('linked') || params.has('error') || params.has('recovered') || params.has('confirmed')) history.replaceState(null, '', location.pathname);
+    if (params.get('link') === 'confirm' && !view.pendingLink) say(message, 'That link request expired. Start again below.');
+    if (params.has('linked') || params.has('error') || params.has('recovered') || params.has('confirmed') || params.has('link')) history.replaceState(null, '', location.pathname);
     function draw() {
       const user = view.user;
       const factors = user.factors;
       const local = user.source === 'local';
       const parts = [h('h1', { text: 'My account' }), message];
+      if (view.pendingLink) parts.push(linkConfirmSection(view.pendingLink));
       if (view.recovery) parts.push(h('div', { class: 'notice warn', text: 'You signed in with a command-line recovery link. This session ends when you close the browser. Add a passkey or authenticator app now if you lost yours.' }));
       if (local) parts.push(freshBanner(view.fresh));
       parts.push(profileSection(user));
@@ -656,12 +665,13 @@
     function profileSection(user) {
       const box = notice();
       const name = h('input', { type: 'text', autocomplete: 'name', maxlength: 100, value: user.displayName ?? '' });
-      const email = h('input', { type: 'email', autocomplete: 'email', maxlength: 254, value: user.email ?? '', disabled: user.source !== 'local' });
+      const managed = user.source !== 'local' || user.emailFromProvider;
+      const email = h('input', { type: 'email', autocomplete: 'email', maxlength: 254, value: user.email ?? '', disabled: managed });
       const save = h('button', { type: 'submit', class: 'primary', text: 'Save profile' });
       return section('Profile', user.source === 'local' ? 'Your name and the address used for resets and security alerts.' : `Managed by ${view.oidc?.name ?? 'your identity provider'}; changes there appear at your next sign-in.`,
         h('dl', { class: 'facts small' }, h('dt', { class: 'muted', text: 'Username' }), h('dd', { class: 'mono', text: user.username }), h('dt', { class: 'muted', text: 'Role' }), h('dd', { text: user.role === 'admin' ? 'Administrator' : 'Member' })),
-        h('form', { class: 'stack', onsubmit: event => { event.preventDefault(); return busy(save, 'Saving…', () => update(() => api('account/profile', { displayName: name.value, ...(user.source === 'local' ? { email: email.value } : {}) }), box, 'Profile saved.')); } },
-          field('Display name', name), field('Email', email, view.email ? 'Changing it needs a recent confirmation.' : 'Email is not set up on this server, so nothing is sent yet.'), box, h('div', { class: 'row' }, save)));
+        h('form', { class: 'stack', onsubmit: event => { event.preventDefault(); return busy(save, 'Saving…', () => update(() => api('account/profile', { displayName: name.value, ...(managed ? {} : { email: email.value }) }), box, 'Profile saved.')); } },
+          field('Display name', name), field('Email', email, user.emailFromProvider ? `Follows your ${view.oidc?.name ?? 'single sign-on'} account. Change it there; Studio picks it up at your next sign-in with it.` : view.email ? 'Changing it needs a recent confirmation.' : 'Email is not set up on this server, so nothing is sent yet.'), box, h('div', { class: 'row' }, save)));
     }
     function securitySection(user, factors) {
       const box = notice();
@@ -735,9 +745,79 @@
         factors.passkeys.length ? passkeyList : h('p', { class: 'small muted', text: 'No passkeys yet. A passkey is the quickest and safest way to sign in.' }),
         box, h('div', { class: 'row' }, addPasskey, passkeysSupported() ? null : h('span', { class: 'small muted', text: 'This browser does not support passkeys.' })));
     }
+    // Shown after the provider step of a link, before anything changes.
+    function linkConfirmSection(link) {
+      const box = notice();
+      const name = link.provider.name;
+      const confirm = h('button', { type: 'button', class: 'primary', text: 'Link accounts', 'data-autofocus': true });
+      confirm.addEventListener('click', () => busy(confirm, 'Linking…', async () => {
+        try { await api('account/link/confirm', {}); go('/__studio/account?linked=1'); }
+        catch (error) { failure(box, error); }
+      }));
+      const cancel = h('button', { type: 'button', text: 'Cancel' });
+      cancel.addEventListener('click', () => busy(cancel, 'Cancelling…', () => update(() => api('account/link/cancel', {}), box, 'Nothing was linked.')));
+      const local = link.local.displayName && link.local.displayName !== link.local.username ? `${link.local.displayName} (${link.local.username})` : link.local.username;
+      const emailLine = link.provider.email
+        ? (link.provider.email === link.local.email ? `Your email stays ${link.provider.email} and follows ${name} from now on.` : `Your email changes from ${link.local.email ?? 'none'} to ${link.provider.email}, and follows ${name} from now on.`)
+        : link.provider.emailUnverified
+          ? `Your email stays ${link.local.email ?? 'empty'}: ${name} didn't mark its email address as verified.`
+          : `Your email stays ${link.local.email ?? 'empty'}: ${name} didn't send one.`;
+      return h('section', { class: 'section link-confirm', 'aria-labelledby': 'link-confirm-title' },
+        h('h2', { id: 'link-confirm-title', text: 'Link these accounts?' }),
+        h('dl', { class: 'facts' },
+          h('dt', { class: 'muted', text: 'Studio account' }), h('dd', { text: local }),
+          h('dt', { class: 'muted', text: `${name} account` }), h('dd', { text: link.provider.username ?? 'Signed in just now' })),
+        h('ul', { class: 'small stack' },
+          h('li', { text: `Either one signs you in to the same Studio account. Your local password, passkeys and authenticator stay as they are, as a fallback if ${name} is down.` }),
+          h('li', { text: emailLine }),
+          link.merge ? h('li', { text: `Your separate ${name} account in Studio, ${link.merge.username}, is merged into this one${link.merge.shares ? `: ${link.merge.shares === 1 ? 'its dashboard share moves' : `its ${link.merge.shares} dashboard shares move`} over and it is removed.` : ' and removed.'}` }) : null,
+          h('li', { text: 'Your other signed-in devices are signed out.' })),
+        box, h('div', { class: 'row' }, confirm, cancel));
+    }
+    // Signed in through the provider: prove the local account (password and
+    // second step, or a passkey), then sign in to the provider again.
+    function claimPage() {
+      const name = view.oidc.name;
+      const message = notice();
+      const startLink = async () => go((await api('oidc/begin', { intent: 'link', next: '/__studio/account' })).url);
+      const username = h('input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', required: true, 'data-autofocus': true });
+      const password = h('input', { type: 'password', autocomplete: 'current-password', required: true });
+      const submit = h('button', { class: 'primary block', type: 'submit', text: 'Continue' });
+      const form = h('form', { class: 'stack', onsubmit: async event => {
+        event.preventDefault(); say(message, '');
+        await busy(submit, 'Checking…', async () => {
+          try { secondFactor(await api('claim/password', { username: username.value, password: password.value }), { next: '/__studio/account', claim: startLink }); }
+          catch (error) { say(message, error.message); password.value = ''; password.focus(); }
+        });
+      } }, field('Local username', username), field('Password', password), submit);
+      const parts = [brand(), h('h1', { text: 'Link your local account' }),
+        h('p', { class: 'lede', text: `Sign in to your local Studio account here, then to ${name} again. Both must happen within 5 minutes. After you confirm, either one signs you in, and the local account is your way in if ${name} is down.` }), message];
+      if (passkeysSupported()) {
+        const passkeyButton = h('button', { class: 'block', type: 'button', text: 'Use the local account’s passkey' });
+        passkeyButton.addEventListener('click', () => busy(passkeyButton, 'Waiting for passkey…', async () => {
+          say(message, '');
+          try {
+            const { token, options } = await api('claim/passkey/options', {});
+            const response = await usePasskey(options);
+            await api('claim/passkey/verify', { token, response });
+            await startLink();
+          } catch (error) { say(message, passkeyError(error)); }
+        }));
+        parts.push(passkeyButton, h('div', { class: 'divider', text: 'or use the password' }));
+      }
+      parts.push(form, h('p', { class: 'small' }, h('a', { href: '/__studio/account', text: 'Cancel' })));
+      render(card(false, ...parts));
+    }
     function linkSection(user) {
       const name = view.oidc.name;
-      if (user.source === 'oidc') return section(name, `You sign in with ${name}. Your role and groups come from it.`, user.oidcGroups.length ? h('p', { class: 'small' }, 'Provider groups: ', user.oidcGroups.join(', ')) : null);
+      if (user.source === 'oidc') {
+        const claim = h('button', { type: 'button', text: 'Link a local account' });
+        claim.addEventListener('click', claimPage);
+        return section(name, `You sign in with ${name}. Your role and groups come from it.`,
+          user.oidcGroups.length ? h('p', { class: 'small' }, 'Provider groups: ', user.oidcGroups.join(', ')) : null,
+          view.localSignIn ? h('p', { class: 'small muted', text: `If you also have a local Studio account, link it so you can still sign in when ${name} is down. This account's dashboards and groups move to it.` }) : null,
+          view.localSignIn && !view.pendingLink ? h('div', { class: 'row' }, claim) : null);
+      }
       const box = notice();
       const action = h('button', { type: 'button', text: user.linked ? `Unlink ${name} account` : `Link ${name} account` });
       action.addEventListener('click', () => {
@@ -750,7 +830,7 @@
         });
       });
       const adminNote = user.providerAdmin ? h('p', { class: 'small muted', text: `While you sign in with ${name}, its groups also make you an administrator.` }) : null;
-      return section(name, user.linked ? `Your account is linked. You can sign in with ${name} as well as your local methods.` : `Link your ${name} account to sign in with it as well. Whoever controls that ${name} account can then sign in as you.`,
+      return section(name, user.linked ? `Your account is linked. You can sign in with ${name} as well as your local methods.` : `Link your ${name} account to sign in with it as well. You sign in to ${name} again to prove it's yours, and your email then follows it. Whoever controls that ${name} account can sign in as you.`,
         adminNote, box, h('div', { class: 'row' }, action));
     }
     function sessionsSection() {
@@ -969,12 +1049,22 @@
           controls.push(rename);
         }
         const remove = h('button', { type: 'button', class: 'small-button', text: 'Delete' });
-        remove.addEventListener('click', () => confirmDialog(`Delete ${group.name}?`, group.kind === 'idp' ? 'It is recreated if someone signs in with this provider group again. Dashboard access given to it is removed.' : 'Members leave the group and dashboard access given to it is removed.', 'Delete', () => act(() => api('admin/group', { action: 'delete', id: group.id }), null, 'Group deleted.')));
+        remove.addEventListener('click', () => confirmDialog(`Delete ${group.name}?`, group.kind === 'idp' ? 'It is added again if someone signs in with this provider group or it is listed in Sign-in settings. Dashboard access given to it is removed.' : 'Members leave the group and dashboard access given to it is removed.', 'Delete', () => act(() => api('admin/group', { action: 'delete', id: group.id }), null, 'Group deleted.')));
         controls.push(remove);
         return h('li', { class: 'list-item' }, h('div', {}, h('strong', {}, group.name, ' ', h('span', { class: 'badge', text: group.kind === 'idp' ? (view.oidc?.name ?? 'Provider') : 'Local' })), h('span', { class: 'small muted', text: `${group.memberCount} ${group.memberCount === 1 ? 'person' : 'people'}` })), h('div', { class: 'row' }, controls));
       });
-      return section('Groups', `Share dashboards and set session policies for several people at once. ${view.oidc ? `Groups from ${view.oidc.name} appear here automatically when someone signs in.` : ''}`,
+      // A provider group can be added by its exact name, so dashboards can be
+      // shared with it before anyone in it signs in.
+      let providerForm = null;
+      if (view.oidc) {
+        const providerName = h('input', { type: 'text', maxlength: 200, required: true, placeholder: 'For example: studio-family', autocapitalize: 'none', spellcheck: 'false' });
+        const providerAdd = h('button', { type: 'submit', text: `Add ${view.oidc.name} group` });
+        providerForm = h('form', { class: 'row', onsubmit: async event => { event.preventDefault(); await busy(providerAdd, 'Adding…', async () => { if (await act(() => api('admin/group', { action: 'create', kind: 'idp', name: providerName.value }), box, `${view.oidc.name} group added.`)) providerName.value = ''; }); } },
+          h('label', { class: 'visually-hidden', for: 'new-provider-group', text: `${view.oidc.name} group name, exactly as ${view.oidc.name} sends it` }), Object.assign(providerName, { id: 'new-provider-group', className: 'narrow-input' }), providerAdd);
+      }
+      return section('Groups', `Share dashboards and set session policies for several people at once. ${view.oidc ? `${view.oidc.name} groups appear here when someone in them signs in, and groups listed in Sign-in settings are added for you. To share a dashboard before anyone in a ${view.oidc.name} group has signed in, add the group by its exact name.` : ''}`,
         h('form', { class: 'row', onsubmit: async event => { event.preventDefault(); await busy(add, 'Creating…', async () => { if (await act(() => api('admin/group', { action: 'create', name: name.value }), box, 'Group created.')) name.value = ''; }); } }, h('label', { class: 'visually-hidden', for: 'new-group', text: 'New group name' }), Object.assign(name, { id: 'new-group', className: 'narrow-input' }), add),
+        providerForm,
         box, list.length ? h('ul', { class: 'list' }, list) : h('p', { class: 'muted', text: 'No groups yet.' }));
     }
 
@@ -1093,8 +1183,10 @@
         check('Allow emailed sign-in codes as a second step', emailToggle, 'Weaker than a passkey or authenticator app: anyone who can read the mailbox can use them.')));
       if (view.oidc) {
         const toList = text => text.split(/[\n,]/).map(item => item.trim()).filter(Boolean);
-        const adminGroups = h('textarea', { rows: 3, text: view.settings.oidc.adminGroups.join('\n') });
-        const allowedGroups = h('textarea', { rows: 3, text: view.settings.oidc.allowedGroups.join('\n') });
+        const locked = view.deployment ?? {};
+        const adminGroups = h('textarea', { rows: 3, text: view.settings.oidc.adminGroups.join('\n'), readonly: locked.adminGroups });
+        const allowedGroups = h('textarea', { rows: 3, text: view.settings.oidc.allowedGroups.join('\n'), readonly: locked.allowedGroups });
+        const fromDeployment = variable => ` Set by ${variable} in the deployment, so it can only be changed there.`;
         const autoCreate = h('input', { type: 'checkbox', checked: view.settings.oidc.autoCreate });
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save single sign-on settings' });
         const copyBox = notice();
@@ -1104,12 +1196,13 @@
           copyRow('Back-channel logout URI (optional)', view.oidc.backchannelLogoutUri),
           copyBox,
           view.oidc.lastSignIn && !view.oidc.lastSignIn.refreshToken ? h('p', { class: 'notice warn', role: 'status', text: `The last ${view.oidc.name} sign-in didn't return a refresh token, so those sessions end after ${view.oidc.refreshMinutes} minutes. Request the offline_access scope and allow it in the provider. In Authentik, add the offline_access scope mapping to the provider's selected scopes.` }) : null,
+          view.oidc.lastSignIn?.emailUnverified ? h('p', { class: 'notice warn', role: 'status', text: `The last ${view.oidc.name} sign-in sent an email address that isn't marked as verified, so Studio didn't use it. In Authentik, give the provider an email scope mapping that sets email_verified to true; see docs/AUTHENTICATION.md.` }) : null,
           h('form', { class: 'stack', onsubmit: async event => {
             event.preventDefault();
             await busy(save, 'Saving…', () => act(() => api('admin/settings', { oidc: { adminGroups: toList(adminGroups.value), allowedGroups: toList(allowedGroups.value), autoCreate: autoCreate.checked } }), box, 'Single sign-on settings saved.'));
           } },
-            field('Administrator groups', adminGroups, `One per line. People in these ${view.oidc.name} groups become administrators; provider accounts outside them are members.`),
-            field('Allowed groups', allowedGroups, 'One per line. Leave empty to allow everyone the provider signs in. Administrator groups are always allowed.'),
+            field('Administrator groups', adminGroups, `One per line. People in these ${view.oidc.name} groups become administrators; provider accounts outside them are members.${locked.adminGroups ? fromDeployment('STUDIO_OIDC_ADMIN_GROUPS') : ''}`),
+            field('Allowed groups', allowedGroups, `One per line. Leave empty to allow everyone the provider signs in. Administrator groups are always allowed.${locked.allowedGroups ? fromDeployment('STUDIO_OIDC_ALLOWED_GROUPS') : ''}`),
             check(`Create a Studio account the first time someone signs in with ${view.oidc.name}`, autoCreate, `Only for people in an allowed or administrator group. While both lists are empty, nobody new is created. Others need an invitation, then link their ${view.oidc.name} account from their account page.`),
             h('div', { class: 'row' }, save))));
       } else parts.push(section('Single sign-on', 'Not configured. Set STUDIO_OIDC_ISSUER, STUDIO_OIDC_CLIENT_ID and STUDIO_OIDC_CLIENT_SECRET_FILE to sign in with Authentik or another OpenID Connect provider. See docs/AUTHENTICATION.md.'));
