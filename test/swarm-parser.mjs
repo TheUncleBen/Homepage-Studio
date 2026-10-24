@@ -19,7 +19,6 @@ const fixture = {
   STUDIO_IMAGE: 'homepage-studio-ci:application',
   STUDIO_PUBLIC_ORIGIN: 'http://localhost:17778',
   STUDIO_NODE: 'fixture-node',
-  STUDIO_PORT: '17778',
   STUDIO_BACKUP_RETENTION: '25',
 };
 
@@ -34,7 +33,7 @@ async function withParser(run) {
 }
 
 test('the actual Swarm parser preserves required image, origin and node values', async () => {
-  await withParser(async render => {
+  await withParser(async (render, env) => {
     const { stdout } = await render();
     const result = parse(stdout);
     assert.equal(result.services.studio.image, fixture.STUDIO_IMAGE);
@@ -45,8 +44,16 @@ test('the actual Swarm parser preserves required image, origin and node values',
       assert.equal(service.deploy.replicas, 1);
       assert.equal(service.deploy.update_config.order, 'stop-first');
     }
-    assert.equal(Number(result.services.studio.ports[0].published), 17778);
-    assert.equal(result.services.studio.ports[0].mode, 'host');
+    // No published port; the proxy network and the secrets are external.
+    assert.equal(result.services.studio.ports, undefined);
+    assert.deepEqual(result.networks, { proxy: { external: true, name: 'homepage-studio' } });
+    assert.deepEqual(parse((await render({ ...env, STUDIO_NETWORK_NAME: 'Proxy-Net' })).stdout).networks.proxy.name, 'Proxy-Net');
+    const secrets = ['studio_auth_key', 'studio_oidc_client_secret', 'studio_smtp_password'];
+    assert.deepEqual(Object.keys(result.secrets), secrets);
+    for (const name of secrets) assert.equal(result.secrets[name].external, true);
+    assert.deepEqual(result.services.studio.secrets.map(item => item.source), secrets);
+    assert.equal(result.services.studio.environment.STUDIO_AUTH_KEY_FILE, '/run/secrets/studio_auth_key');
+    assert.equal(result.services.studio.environment.STUDIO_AUTH_KEY, undefined);
     // Hardening must survive the real parser; security_opt is not supported
     // by docker stack deploy, so the template must not pretend to set it.
     assert.equal(result.services.studio.init, true);

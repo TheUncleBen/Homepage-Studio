@@ -6,8 +6,40 @@ itself, and since there's no `latest` tag, nothing changes until you deploy a
 new template.
 
 **What stays as it is:** both volumes (every dashboard, layout and snapshot),
-your environment values, your proxy. **What you take new each time:** the
+your environment values, your Docker secrets and network, your proxy. **What you take new each time:** the
 bundle's `portainer-swarm.yml` or `portainer-compose.yml`, used unchanged.
+
+## Updating to the version with Docker secrets and no published port
+
+From this version the templates read Studio's keys and passwords from Docker
+secrets, publish no port, and join a network shared with your reverse proxy.
+A stack deployed from an earlier bundle needs these one-time steps before you
+paste the new template. Your volumes, dashboards and accounts stay.
+
+1. **The network.** Create it and attach your proxy, as in
+   [DEPLOY.md step 2](DEPLOY.md#2-shared-proxy-network-once). If your proxy
+   already shares a network with other services, you can use that one: set
+   `STUDIO_NETWORK_NAME` to its exact name.
+2. **The secrets.** Create `studio_auth_key`, `studio_oidc_client_secret` and
+   `studio_smtp_password` as in [DEPLOY.md step 5](DEPLOY.md#5-docker-secrets),
+   with one difference: **if you had set `STUDIO_AUTH_KEY`, put that same
+   value in `studio_auth_key`**. A new key means everyone sets up their
+   authenticator app again and single sign-on sessions end. Likewise, use your
+   current single sign-on client secret and mail password, or `off`.
+3. **The variables.** In the stack's environment variables, remove
+   `STUDIO_AUTH_KEY`, `STUDIO_AUTH_KEY_FILE`, `STUDIO_OIDC_CLIENT_SECRET`,
+   `STUDIO_OIDC_CLIENT_SECRET_FILE`, `STUDIO_SMTP_PASSWORD`,
+   `STUDIO_SMTP_PASSWORD_FILE` and `STUDIO_PORT`. The new template doesn't read
+   them, so leaving them only leaves the values on display. Set
+   `STUDIO_TRUSTED_PROXIES` to the network's subnet.
+4. **The update.** Paste the new template as in the update steps below.
+5. **The proxy.** Point the proxy host at `homepage_studio:3000` (your stack
+   name, underscore, `studio`) instead of the node's address and port
+   ([DEPLOY.md step 8](DEPLOY.md#8-nginx-proxy-manager)). Studio is
+   unreachable through the proxy between steps 4 and 5.
+
+If the new task doesn't start, `docker service ps --no-trunc homepage_studio`
+names what's missing: usually a secret or the network.
 
 ## Updating to the version with sign-in
 
@@ -22,8 +54,8 @@ Studio sign-in is **on by default** from this version
 - **Open it straight after the update.** Every dashboard is locked until the
   first visitor creates the administrator account. Do that yourself before
   anyone else can.
-- Optional: set `STUDIO_AUTH_KEY` (encrypts authenticator secrets) and
-  `STUDIO_TRUSTED_PROXIES` (real client addresses behind your proxy).
+- Set `STUDIO_TRUSTED_PROXIES` (real client addresses behind your proxy).
+  The encryption key comes from the `studio_auth_key` Docker secret (above).
 
 ## Before you update
 
@@ -54,14 +86,14 @@ image by itself.
 ### Swarm without Portainer
 
 ```bash
-export STUDIO_PUBLIC_ORIGIN=https://homepage.example.test STUDIO_NODE=node-1   # your values
-docker stack deploy --compose-file portainer-swarm.yml homepage                 # the new bundle's file
+set -a; . ./homepage.env; set +a                                  # your values (DEPLOY.md, Without Portainer)
+docker stack deploy --compose-file portainer-swarm.yml homepage   # the new bundle's file
 ```
 
 ### Docker Compose
 
 Put the new bundle's `portainer-compose.yml` in place of the old one, next to
-your `.env`, and:
+your `.env` (your secrets folder stays), and:
 
 ```bash
 docker compose --project-name homepage --file portainer-compose.yml up -d

@@ -49,12 +49,12 @@ export function stackPayload({ name, template, environment, swarmId }) {
   assert.match(name, /^[a-z][a-z0-9-]+$/, 'Use a disposable lowercase stack name');
   assert.equal(typeof template, 'string');
   assert.ok(template.trim(), 'The exact deployment template is required');
-  const keys = ['STUDIO_IMAGE', 'STUDIO_PUBLIC_ORIGIN', 'STUDIO_PORT', 'STUDIO_BACKUP_RETENTION', 'STUDIO_RENDERER_MAX_WORKERS', 'STUDIO_RENDERER_IDLE_SECONDS', 'STUDIO_RENDERER_STARTUP_SECONDS'];
+  const keys = ['STUDIO_IMAGE', 'STUDIO_PUBLIC_ORIGIN', 'STUDIO_NETWORK_NAME', 'STUDIO_BACKUP_RETENTION', 'STUDIO_RENDERER_MAX_WORKERS', 'STUDIO_RENDERER_IDLE_SECONDS', 'STUDIO_RENDERER_STARTUP_SECONDS'];
   if (swarmId !== undefined) {
     assert.equal(typeof swarmId, 'string');
     assert.ok(swarmId, 'An explicit Swarm ID is required');
     keys.push('STUDIO_NODE');
-  }
+  } else keys.push('STUDIO_SECRETS_DIR'); // Compose reads its secrets from files in this folder.
   const Env = keys.map(key => {
     assert.equal(typeof environment[key], 'string', `Provide ${key} explicitly`);
     assert.ok(environment[key].trim(), `Provide ${key} explicitly`);

@@ -4,6 +4,9 @@ import { hotp, verifyTotp, base32Encode, base32Decode, hashPassword, verifyPassw
 import { requiredLevel, dashboardLevel, effectivePolicy, validGrantList } from './access.mjs';
 import { readAuthConfig, parseTrustedProxies } from './config.mjs';
 import { emptyAuthData } from './store.mjs';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 // RFC 6238 appendix B, SHA-1 secret "12345678901234567890". The RFC lists
 // 8-digit codes; Studio uses the last 6 digits of the same values.
@@ -155,4 +158,37 @@ test('sign-in configuration requires HTTPS except on localhost', () => {
   assert.throws(() => parseTrustedProxies('proxy.local'), /not an IP/);
   assert.equal(parseTrustedProxies('10.0.0.0/8, 172.16.0.1').check('10.1.2.3', 'ipv4'), true);
   assert.equal(parseTrustedProxies(''), null);
+});
+
+test('secrets come from mounted files, and an unused optional one says off', t => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'studio-secrets-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const secret = (name, text) => { const file = path.join(directory, name); writeFileSync(file, text); return file; };
+  const origin = 'https://studio.example.test';
+  const key = secret('key', 'k'.repeat(48) + '\n');
+  const off = secret('off', 'off\n');
+  const empty = secret('empty', '');
+  const client = secret('client', ' client-secret \n');
+  const mail = secret('mail', 'mail-password');
+  // The default stack: key set, single sign-on and email unused.
+  const plain = readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_AUTH_KEY_FILE: key, STUDIO_OIDC_CLIENT_SECRET_FILE: off, STUDIO_SMTP_PASSWORD_FILE: secret('OFF', 'OFF') });
+  assert.ok(plain.key);
+  assert.equal(plain.oidc, null);
+  assert.equal(plain.smtp, null);
+  // The file wins over the plain variable.
+  assert.deepEqual(readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_AUTH_KEY_FILE: key, STUDIO_AUTH_KEY: 'other' }).key, plain.key);
+  // The encryption key can't be turned off or left empty through its file.
+  assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_AUTH_KEY_FILE: off }), /STUDIO_AUTH_KEY_FILE .*required/);
+  assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_AUTH_KEY_FILE: empty }), /STUDIO_AUTH_KEY_FILE .*required/);
+  assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_AUTH_KEY_FILE: path.join(directory, 'missing') }), /could not be read/);
+  // Single sign-on and email read their secrets, trimmed.
+  const sso = readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_AUTH_KEY_FILE: key, STUDIO_OIDC_ISSUER: 'https://id.example.test/application/o/studio/', STUDIO_OIDC_CLIENT_ID: 'studio', STUDIO_OIDC_CLIENT_SECRET_FILE: client, STUDIO_SMTP_HOST: 'smtp.example.test', STUDIO_SMTP_FROM: 'studio@example.test', STUDIO_SMTP_USER: 'studio', STUDIO_SMTP_PASSWORD_FILE: mail });
+  assert.equal(sso.oidc.clientSecret, 'client-secret');
+  assert.equal(sso.smtp.password, 'mail-password');
+  // Email without a password (an unauthenticated relay) is allowed.
+  assert.equal(readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_SMTP_HOST: 'smtp.example.test', STUDIO_SMTP_FROM: 'studio@example.test', STUDIO_SMTP_PASSWORD_FILE: off }).smtp.password, undefined);
+  // Single sign-on set up while its secret still says off names the secret.
+  assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_OIDC_ISSUER: 'https://id.example.test/', STUDIO_OIDC_CLIENT_ID: 'studio', STUDIO_OIDC_CLIENT_SECRET_FILE: off }), /STUDIO_OIDC_CLIENT_SECRET_FILE .*says off/);
+  // With sign-in off no secret is read at all.
+  assert.deepEqual(readAuthConfig({}, { STUDIO_AUTH: 'off', STUDIO_AUTH_KEY_FILE: path.join(directory, 'missing') }), { enabled: false });
 });

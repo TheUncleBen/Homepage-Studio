@@ -76,8 +76,11 @@ There are two kinds, and they do different jobs:
 | A copy of both volumes | Every dashboard, the registry, layouts and snapshot history | Disaster recovery, rollback after an upgrade, moving to another node |
 | **Export saved dashboard** in the app | One dashboard: its nine files, panels, layout and stacks | Copying a design elsewhere, a personal backup of one dashboard |
 
-Neither includes environment variables, mounted secret files or sockets:
-keep your stack's environment and secret files with your own records.
+Neither includes environment variables, Docker secrets, mounted secret files
+or sockets: keep your stack's environment file with your own records, and the
+`studio_auth_key` value in your password manager. Swarm can't show a secret's
+value again once it's created, and a restored state volume needs the same key
+for authenticator apps and single sign-on sessions to keep working.
 
 ### Backing up the volumes
 
@@ -154,7 +157,7 @@ once enough newer saves have pushed it past the limit. So:
 
 - **Prefer references.** Put the secret in the container's environment or a
   mounted file and write `{{HOMEPAGE_VAR_NAME}}` or `{{HOMEPAGE_FILE_NAME}}`
-  in the YAML ([DEPLOY.md step 5](DEPLOY.md#5-native-integrations-secrets-sockets-and-variables)).
+  in the YAML ([DEPLOY.md](DEPLOY.md#widget-api-keys-as-docker-secrets)).
   The snapshots then hold only the reference, and rotating the secret never
   touches them.
 - **After rotating a secret that was written inline,** treat the old one as

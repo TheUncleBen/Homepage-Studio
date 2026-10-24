@@ -128,23 +128,34 @@ test('health checks bound unresponsive and oversized endpoints', async t => {
   await assert.rejects(checkHealth({ url: oversized, host: 'localhost', kind: 'writer' }), /too large/);
 });
 
+// The secrets Studio reads from files, and the Docker secret each one comes from.
+const SECRETS = { STUDIO_AUTH_KEY: 'studio_auth_key', STUDIO_OIDC_CLIENT_SECRET: 'studio_oidc_client_secret', STUDIO_SMTP_PASSWORD: 'studio_smtp_password' };
+
 test('every deployment setting is in both templates, the example values and the deployment docs', async () => {
   const variables = text => new Set([...text.matchAll(/\$\{(STUDIO_[A-Z_]+)[:}]/g)].map(match => match[1]));
   const [compose, swarm] = await Promise.all(['portainer-compose.yml', 'portainer-swarm.yml'].map(file => fs.readFile(path.join(root, file), 'utf8')));
   const composeVariables = variables(compose);
   const swarmVariables = variables(swarm);
   composeVariables.add('STUDIO_NODE'); // Swarm placement only.
+  swarmVariables.add('STUDIO_SECRETS_DIR'); // Compose secret files only.
   assert.deepEqual([...composeVariables].sort(), [...swarmVariables].sort());
   const example = await fs.readFile(path.join(root, 'portainer.env.example'), 'utf8');
   const exampleVariables = new Set([...example.matchAll(/^#? ?(STUDIO_[A-Z_]+)=/gm)].map(match => match[1]));
   assert.deepEqual([...exampleVariables].sort(), [...swarmVariables].sort());
-  // Every setting Studio reads from the environment for sign-in is passed through.
+  // Every setting Studio reads from the environment for sign-in is passed
+  // through, and every secret arrives as a file, never as a variable.
   const authConfig = await fs.readFile(path.join(root, 'server/auth/config.mjs'), 'utf8');
-  const read = new Set([...authConfig.matchAll(/env\.(STUDIO_[A-Z_]+)/g)].map(match => match[1]));
-  for (const name of [...authConfig.matchAll(/secretValue\(env, '(STUDIO_[A-Z_]+)'\)/g)].map(match => match[1])) read.add(name).add(name + '_FILE');
+  const secretNames = [...authConfig.matchAll(/secretValue\(env, '(STUDIO_[A-Z_]+)'/g)].map(match => match[1]);
+  assert.deepEqual(secretNames.sort(), Object.keys(SECRETS).sort());
+  const read = new Set([...authConfig.matchAll(/env\.(STUDIO_[A-Z_]+)/g)].map(match => match[1]).filter(name => !secretNames.some(secret => name === secret + '_FILE')));
   for (const name of read) assert.ok(swarmVariables.has(name), `${name} is read but not in the templates`);
+  for (const name of secretNames) {
+    assert.ok(!swarmVariables.has(name) && !swarmVariables.has(name + '_FILE'), `${name} must come from a Docker secret, not a stack variable`);
+    assert.doesNotMatch(example, new RegExp(`^#? ?${name}(?:_FILE)?=`, 'm'), `${name} must not appear in the example values`);
+  }
   const docs = (await Promise.all(['docs/DEPLOY.md', 'docs/AUTHENTICATION.md'].map(file => fs.readFile(path.join(root, file), 'utf8')))).join('\n');
   for (const name of swarmVariables) assert.ok(docs.includes('`' + name + '`'), `${name} is not documented`);
+  for (const secret of Object.values(SECRETS)) assert.ok(docs.includes('`' + secret + '`'), `${secret} is not documented`);
   const bundled = await bundleEnvExample();
   assert.doesNotMatch(bundled, /^#? ?STUDIO_IMAGE=/m);
   assert.equal(bundled.replace(/^# --- Image -+\n(?:#.*\n)*/m, ''), example.replace(/^# --- Image -+\n(?:#.*\n)*STUDIO_IMAGE=.*\n/m, ''));
@@ -154,33 +165,52 @@ test('deployment templates publish one application and preserve bounded internal
   for (const file of ['portainer-compose.yml', 'portainer-swarm.yml']) {
     const template = parse(await fs.readFile(path.join(root, file), 'utf8'));
     assert.deepEqual(Object.keys(template.services), ['studio']);
-    assert.deepEqual(template.services.studio.volumes, ['${STUDIO_CONFIG_PATH:-config}:/app/config', '${STUDIO_STATE_PATH:-state}:/app/state']);
+    const studio = template.services.studio;
+    const volumes = ['${STUDIO_CONFIG_PATH:-config}:/app/config', '${STUDIO_STATE_PATH:-state}:/app/state'];
+    if (file.includes('compose')) volumes.push('${STUDIO_SECRETS_DIR:?Set STUDIO_SECRETS_DIR to the absolute folder that holds the three secret files}:/run/secrets:ro');
+    assert.deepEqual(studio.volumes, volumes);
     assert.deepEqual(Object.keys(template.volumes), ['config', 'state']);
-    assert.equal(template.services.studio.ports[0].target, 3000);
-    assert.equal(template.services.studio.stop_grace_period, '30s');
+    // Reached only through the reverse proxy on a shared, pre-created network.
+    assert.equal(studio.ports, undefined, `${file} must not publish a port`);
+    assert.deepEqual(Object.keys(template.networks), ['proxy']);
+    assert.deepEqual(template.networks.proxy, { external: true, name: '${STUDIO_NETWORK_NAME:-homepage-studio}' });
+    if (file.includes('compose')) assert.deepEqual(studio.networks, { proxy: { aliases: ['homepage_studio'] } });
+    else assert.deepEqual(studio.networks, ['proxy']);
+    // Secrets arrive as files only.
+    for (const [name, secret] of Object.entries(SECRETS)) {
+      assert.equal(studio.environment[name], undefined, `${file} must not pass ${name} as a variable`);
+      assert.equal(studio.environment[name + '_FILE'], `/run/secrets/${secret}`);
+    }
+    if (file.includes('swarm')) {
+      assert.deepEqual(studio.secrets, Object.values(SECRETS));
+      assert.deepEqual(template.secrets, Object.fromEntries(Object.values(SECRETS).map(secret => [secret, { external: true }])));
+    } else {
+      assert.equal(studio.secrets, undefined);
+      assert.equal(template.secrets, undefined);
+    }
+    assert.equal(studio.stop_grace_period, '30s');
     for (const [key, value] of Object.entries({ STUDIO_RENDERER_MAX_WORKERS: 8, STUDIO_RENDERER_IDLE_SECONDS: 600, STUDIO_RENDERER_STARTUP_SECONDS: 30 })) {
-      assert.equal(template.services.studio.environment[key], '${' + key + ':-' + value + '}');
+      assert.equal(studio.environment[key], '${' + key + ':-' + value + '}');
     }
     assert.ok(!JSON.stringify(template).includes('docker.sock'));
-    assert.equal(template.services.studio.environment.STUDIO_BACKUP_RETENTION, '${STUDIO_BACKUP_RETENTION:-25}');
-    assert.equal(template.services.studio.depends_on, undefined);
+    assert.equal(studio.environment.STUDIO_BACKUP_RETENTION, '${STUDIO_BACKUP_RETENTION:-25}');
+    assert.equal(studio.depends_on, undefined);
     // Hardening: the UID 1000 application needs no capabilities.
-    assert.equal(template.services.studio.init, true);
-    assert.deepEqual(template.services.studio.cap_drop, ['ALL']);
-    assert.equal(template.services.studio.cap_add, undefined);
-    assert.equal(template.services.studio.privileged, undefined);
-    assert.equal(template.services.studio.read_only, undefined, 'read-only rootfs is deferred until ping and Next cache behavior are qualified');
-    assert.equal(template.services.studio.environment.STUDIO_FRAME_ANCESTORS, '${STUDIO_FRAME_ANCESTORS:-}');
-    if (file.includes('compose')) assert.deepEqual(template.services.studio.security_opt, ['no-new-privileges:true']);
+    assert.equal(studio.init, true);
+    assert.deepEqual(studio.cap_drop, ['ALL']);
+    assert.equal(studio.cap_add, undefined);
+    assert.equal(studio.privileged, undefined);
+    assert.equal(studio.read_only, undefined, 'read-only rootfs is deferred until ping and Next cache behavior are qualified');
+    assert.equal(studio.environment.STUDIO_FRAME_ANCESTORS, '${STUDIO_FRAME_ANCESTORS:-}');
+    if (file.includes('compose')) assert.deepEqual(studio.security_opt, ['no-new-privileges:true']);
     // docker stack deploy ignores security_opt; the image strips setuid bits instead.
-    else assert.equal(template.services.studio.security_opt, undefined);
+    else assert.equal(studio.security_opt, undefined);
     if (file.includes('swarm')) {
       for (const service of Object.values(template.services)) {
         assert.equal(service.deploy.replicas, 1);
         assert.equal(service.deploy.update_config.order, 'stop-first');
         assert.equal(service.deploy.rollback_config.order, 'stop-first');
       }
-      assert.equal(template.services.studio.ports[0].mode, 'host');
     }
   }
 });

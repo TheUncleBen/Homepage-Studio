@@ -1,23 +1,26 @@
 # Deploying with Docker Compose (one machine)
 
-This runs Homepage Studio as one Compose service, `studio`, with two named
-volumes, on one machine. Portainer's standalone (non-Swarm) stacks use the
-same file. For a Swarm, see [DEPLOY.md](DEPLOY.md).
+This runs Homepage Studio as one Compose service, `studio`, on one machine.
+Portainer's standalone (non-Swarm) stacks use the same file. It's the same
+setup as the Swarm guide, minus Swarm: secrets stay out of the environment,
+there's no published port, and your reverse proxy reaches Studio over a shared
+Docker network. For a Swarm, see [DEPLOY.md](DEPLOY.md), which explains each
+choice in more detail.
 
 Placeholders used below:
 
 | Placeholder | Means |
 | --- | --- |
-| `homepage.example.test` | the dashboard's public hostname |
+| `homepage.example.test` | Studio's public hostname |
 | `homepage` | the Compose project or Portainer stack name (the volumes become `homepage_config` and `homepage_state`) |
 
 ## What you need
 
 - Docker with the Compose plugin (`docker compose version`), or Portainer
   managing a standalone Docker host.
-- A free port on the machine (3000 by default).
-- Ideally a reverse proxy for HTTPS and access control
-  ([REVERSE-PROXY.md](REVERSE-PROXY.md)).
+- A reverse proxy that runs in Docker on the same machine, for HTTPS. The
+  examples assume Nginx Proxy Manager; others are in
+  [REVERSE-PROXY.md](REVERSE-PROXY.md).
 
 ## 1. Get the bundle
 
@@ -26,24 +29,66 @@ Download a candidate bundle or an official release and check it
 `portainer-compose.yml`, used **unchanged** (its `image:` line is already the
 exact digest), and `portainer.env.example`.
 
-## 2. Values
+## 2. Shared proxy network
 
-Copy the example to `.env` next to the Compose file and fill it in:
+Create a Docker network for Studio and your proxy, then attach the proxy to it
+(as in [DEPLOY.md step 2](DEPLOY.md#2-shared-proxy-network-once), with
+`external: true` in the proxy's Compose file) and restart the proxy:
+
+```bash
+docker network create homepage-studio
+docker network inspect homepage-studio --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}'
+# for example 172.20.0.0/16  ->  STUDIO_TRUSTED_PROXIES in step 4
+```
+
+## 3. Secret files
+
+Compose on one machine has no secret store, so the three secrets are files in
+a folder only Studio's user can read. Studio reads them from `/run/secrets`
+inside the container; the folder is mounted there read-only.
+
+| File | What goes in it |
+| --- | --- |
+| `studio_auth_key` | Long random text that encrypts authenticator-app secrets and single sign-on tokens. **Keep a copy**: if it's lost or changed, everyone sets up their authenticator app again |
+| `studio_oidc_client_secret` | The Authentik Client Secret ([IDP-AUTHENTIK.md](IDP-AUTHENTIK.md)), or the word `off` |
+| `studio_smtp_password` | The mail server password, or the word `off` |
+
+```bash
+sudo mkdir -p /srv/homepage-studio/secrets && cd /srv/homepage-studio/secrets
+openssl rand -base64 48 | sudo tee studio_auth_key >/dev/null     # save a copy in your password manager
+echo off | sudo tee studio_oidc_client_secret studio_smtp_password >/dev/null
+sudo chown -R 1000:1000 /srv/homepage-studio/secrets
+sudo chmod 700 /srv/homepage-studio/secrets && sudo chmod 400 /srv/homepage-studio/secrets/*
+```
+
+To put a real value in later (for example the Authentik Client Secret), write
+it without echoing it to the screen, then restart Studio:
+
+```bash
+read -rs S && printf %s "$S" | sudo tee /srv/homepage-studio/secrets/studio_oidc_client_secret >/dev/null; unset S
+```
+
+## 4. Values
+
+Copy the example to `.env` next to the Compose file (or keep it as a separate
+file for Portainer) and fill it in:
 
 ```bash
 cp portainer.env.example .env
 ```
 
-| Variable | Required | What to put | Default |
-| --- | --- | --- | --- |
-| `STUDIO_PUBLIC_ORIGIN` | Yes | The exact address people type: `https://homepage.example.test`. Sign-in needs HTTPS; to test on `http://<machine>:3000` without a proxy, also set `STUDIO_AUTH=off` for the test | |
-| `STUDIO_PORT` | No | The port published on the machine | `3000` |
-| `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | No | Absolute host directories to bind mount instead of the named volumes (below) | the named volumes |
-| `STUDIO_BACKUP_RETENTION`, `STUDIO_RENDERER_MAX_WORKERS`, `STUDIO_RENDERER_IDLE_SECONDS`, `STUDIO_RENDERER_STARTUP_SECONDS`, `STUDIO_FRAME_ANCESTORS` | No | As in [DEPLOY.md](DEPLOY.md#3-values) | |
-| `STUDIO_AUTH`, `STUDIO_AUTH_KEY`, `STUDIO_TRUSTED_PROXIES`, every `STUDIO_OIDC_…` and `STUDIO_SMTP_…` setting | No | Sign-in, single sign-on and email, each listed in [DEPLOY.md](DEPLOY.md#3-values) and explained in [AUTHENTICATION.md](AUTHENTICATION.md#settings-reference) | `STUDIO_AUTH=on` |
+| Variable | What to put |
+| --- | --- |
+| `STUDIO_PUBLIC_ORIGIN` | The address people type, `https://homepage.example.test` |
+| `STUDIO_SECRETS_DIR` | The folder from step 3, `/srv/homepage-studio/secrets` |
+| `STUDIO_TRUSTED_PROXIES` | Recommended: the subnet from step 2 |
+| `STUDIO_NETWORK_NAME` | Only if your network isn't called `homepage-studio` |
+| `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | Only to use host directories instead of named volumes (below) |
 
-`portainer.env.example` lists every setting with a short comment and its
-default; uncomment the ones you need.
+Single sign-on (`STUDIO_OIDC_ISSUER`, `STUDIO_OIDC_CLIENT_ID`) and email
+(`STUDIO_SMTP_…`) are as in [DEPLOY.md step 6](DEPLOY.md#6-fill-in-the-environment-file).
+`STUDIO_NODE` is for Swarm only; Compose ignores it. Every other setting is in
+`portainer.env.example` with a short comment.
 
 To keep the data in host directories rather than named volumes, set both
 `STUDIO_CONFIG_PATH` and `STUDIO_STATE_PATH` to absolute paths and create them
@@ -52,11 +97,7 @@ owned by UID/GID 1000 before starting
 commands). If a path doesn't exist, Docker creates it owned by root and Studio
 can't write to it. Only one Studio may use a pair of directories at a time.
 
-`STUDIO_NODE` is for Swarm only; Compose ignores it. Studio answers only
-requests for the exact host and port in `STUDIO_PUBLIC_ORIGIN`, so set it to
-the address your browser will use.
-
-## 3. Start it
+## 5. Start it
 
 ```bash
 docker compose --project-name homepage --file portainer-compose.yml up -d
@@ -64,16 +105,18 @@ docker compose --project-name homepage --file portainer-compose.yml ps    # wait
 ```
 
 In Portainer: **Stacks → Add stack**, **Web editor**, paste the bundle's
-`portainer-compose.yml`, add the values under **Environment variables**, and
+`portainer-compose.yml`, load the values under **Environment variables**, and
 **Deploy the stack**.
 
-If `STUDIO_PUBLIC_ORIGIN` is missing, Compose stops with `Set the exact
-dashboard URL origin`.
+If a required value is missing, Compose stops with its message, for example
+`Set the exact dashboard URL origin` or `Set STUDIO_SECRETS_DIR ...`.
 
 ### Hardening already in the Compose file
 
 | Setting | What it does |
 | --- | --- |
+| No `ports:`; joins the external network | Nothing reaches Studio except through the proxy on that network |
+| Secrets folder mounted read-only at `/run/secrets` | Keys and passwords never appear in the environment or `docker inspect` |
 | `cap_drop: [ALL]` | No Linux capabilities. The image needs none: `ping` uses unprivileged ICMP sockets |
 | `security_opt: [no-new-privileges:true]` | Nothing in the container can gain privileges |
 | `init: true` | A small init process reaps stopped worker processes |
@@ -84,39 +127,50 @@ Inside, everything runs as UID/GID 1000, the application files are owned by
 root and read-only, and only `/app/config` and `/app/state` are writable. A
 read-only root filesystem isn't tested yet, so it isn't set.
 
-The port is published on every interface of the machine. To listen on one
-address only, for example when the proxy runs on the same machine, add
-`host_ip: 127.0.0.1` to the port entry (the template has a comment where it
-goes). If the proxy runs in Docker on a shared network, you can remove the port
-altogether ([REVERSE-PROXY.md](REVERSE-PROXY.md#proxy-on-a-docker-network-no-published-port)).
+## 6. Proxy, first sign-in and integrations
 
-### Adding it to an existing stack
+- **Proxy.** Point the proxy at `http://homepage_studio:3000`: the Compose file
+  gives Studio that name on the shared network. For NPM, the fields are as in
+  [DEPLOY.md step 8](DEPLOY.md#8-nginx-proxy-manager). The Compose file sets
+  that name as a fixed alias, so don't run two Studios on the same network.
+- **First sign-in.** Open Studio straight away and create the administrator
+  ([DEPLOY.md step 9](DEPLOY.md#9-first-sign-in-and-checks)). The log is
+  `docker compose --project-name homepage --file portainer-compose.yml logs --tail 100 studio`.
+- **Authentik.** [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md); the client secret goes
+  in the `studio_oidc_client_secret` file.
+- **Widget API keys.** Put each in its own file, mount it, and point a
+  `HOMEPAGE_FILE_*` variable at it in your copy of the Compose file
+  ([DEPLOY.md](DEPLOY.md#widget-api-keys-as-docker-secrets) explains the
+  variables).
 
-You can paste the `studio` service and its two volumes into a stack you
-already run. Keep the service and volume names unique in that stack and pick
-an unused published port.
+### No proxy in Docker?
 
-## 4. Integrations, proxy and check
+If your proxy runs on the host or another machine, Studio needs a published
+port. Add it in your copy of the Compose file, bound to the address the proxy
+uses (`127.0.0.1` for a proxy on the same host):
 
-These are the same as on Swarm:
+```yaml
+services:
+  studio:
+    ports:
+      - "127.0.0.1:3000:3000"
+```
 
-- secrets for native integrations, sockets and `HOMEPAGE_VAR_*` /
-  `HOMEPAGE_FILE_*`: [DEPLOY.md step 5](DEPLOY.md#5-native-integrations-secrets-sockets-and-variables);
-- the reverse proxy: [REVERSE-PROXY.md](REVERSE-PROXY.md);
-- creating the administrator straight after the first start: [AUTHENTICATION.md](AUTHENTICATION.md#first-start-create-the-administrator);
-- checking it works: [DEPLOY.md step 7](DEPLOY.md#7-check-it-works). The log
-  is `docker compose --project-name homepage --file portainer-compose.yml logs --tail 100 studio`.
+Then point the proxy at that address and set `STUDIO_TRUSTED_PROXIES` to the
+proxy's address. The network from step 2 must still exist, because the Compose
+file joins it.
 
 ## Updating
 
-Replace `portainer-compose.yml` with the new bundle's file, keep your `.env`,
-and run the same `up -d`. The old container stops and the new one starts on
-the same volumes. [UPGRADING.md](UPGRADING.md) has the backup and rollback
-steps.
+Replace `portainer-compose.yml` with the new bundle's file, keep your `.env`
+and secrets folder, and run the same `up -d`. The old container stops and the
+new one starts on the same volumes. [UPGRADING.md](UPGRADING.md) has the backup
+and rollback steps.
 
 ## Moving to Swarm later
 
 Deploy the Swarm stack ([DEPLOY.md](DEPLOY.md)) with the same values, after
 copying both volumes to the node you pick
-([OPERATIONS.md](OPERATIONS.md#moving-to-another-node)). Stop the Compose
-service first: only one Studio may use a set of volumes at a time.
+([OPERATIONS.md](OPERATIONS.md#moving-to-another-node)). Create the Swarm
+secrets from the same values, in particular the same `studio_auth_key`. Stop
+the Compose service first: only one Studio may use a set of volumes at a time.

@@ -4,7 +4,10 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { networkInterfaces } from 'node:os';
+import { randomBytes } from 'node:crypto';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { networkInterfaces, tmpdir } from 'node:os';
+import path from 'node:path';
 import { createDashboardFixture, eventually } from './acceptance-fixture.mjs';
 import { rendererProcessProbe } from './renderer-process-probe.mjs';
 
@@ -21,8 +24,16 @@ const port = 17778;
 const origin = `http://localhost:${port}`;
 // The long editing and browser qualification runs with Studio sign-in off; a
 // separate phase below qualifies the same image with sign-in on.
-const env = { ...process.env, STUDIO_AUTH: 'off', STUDIO_PUBLIC_ORIGIN: origin, STUDIO_PORT: String(port), STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30' };
-const composeArgs = ['compose', '--project-name', identity, '--file', 'portainer-compose.yml'];
+// The shipped templates publish no port; the test-only override files publish
+// one on this disposable runner instead of a reverse proxy.
+const env = { ...process.env, STUDIO_AUTH: 'off', STUDIO_PUBLIC_ORIGIN: origin, STUDIO_TEST_PORT: String(port), STUDIO_NETWORK_NAME: `${identity}-proxy`, STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30' };
+const composeArgs = ['compose', '--project-name', identity, '--file', 'portainer-compose.yml', '--file', 'test/acceptance/compose-publish.yml'];
+const swarmFiles = ['--compose-file', 'portainer-swarm.yml', '--compose-file', 'test/acceptance/swarm-publish.yml'];
+// Synthetic secrets: a random encryption key, and off for the unused
+// single sign-on and email secrets, as a deployment without them has.
+const secretValues = { studio_auth_key: randomBytes(48).toString('base64'), studio_oidc_client_secret: 'off', studio_smtp_password: 'off' };
+let secretsDirectory;
+let networkCreated = false;
 let composeStarted = false;
 let swarmStarted = false;
 let stackStarted = false;
@@ -223,6 +234,14 @@ async function swarmDiagnostics() {
 
 try {
   assert.equal(await docker(['info', '--format', '{{.Swarm.LocalNodeState}}']), 'inactive', 'Refuse to use or alter an existing Swarm');
+  // The UID 1000 application reads the secret files from a folder the runner
+  // user owns, so this disposable folder is world-readable.
+  secretsDirectory = await mkdtemp(path.join(tmpdir(), `${identity}-secrets-`));
+  for (const [name, value] of Object.entries(secretValues)) await writeFile(path.join(secretsDirectory, name), value, { mode: 0o444 });
+  await chmod(secretsDirectory, 0o755);
+  env.STUDIO_SECRETS_DIR = secretsDirectory;
+  await docker(['network', 'create', '--driver', 'bridge', env.STUDIO_NETWORK_NAME]);
+  networkCreated = true;
   await docker([...composeArgs, 'config', '--quiet']);
   composeStarted = true;
   const legacy = await seedLegacyRootVolumes();
@@ -321,6 +340,8 @@ try {
   console.log('PASS: sign-in on by default locks the real volumes behind first-administrator setup, serves the sign-in assets, keeps the Docker health check passing and runs the recovery command.');
   await docker([...composeArgs, 'down', '--volumes', '--remove-orphans']);
   composeStarted = false;
+  await docker(['network', 'rm', env.STUDIO_NETWORK_NAME]);
+  networkCreated = false;
   console.log('PASS: fresh standalone volumes, native protocol, nonroot controller and loopback workers, independently configured dashboards, child-crash recovery and broken-default isolation, edit/snapshot, restart, replacement, restore, Chromium dashboard/mobile, Firefox/WebKit desktop and real hidden-document qualification.');
 
   const address = Object.values(networkInterfaces()).flat().find(item => item && item.family === 'IPv4' && !item.internal)?.address;
@@ -328,9 +349,13 @@ try {
   await docker(['swarm', 'init', '--advertise-addr', address]);
   swarmStarted = true;
   env.STUDIO_NODE = await docker(['node', 'inspect', 'self', '--format', '{{.Description.Hostname}}']);
-  await docker(['stack', 'config', '--compose-file', 'portainer-swarm.yml']);
+  // The stack joins a pre-created overlay network and external secrets, as a
+  // deployment does (docs/DEPLOY.md, steps 2 and 5).
+  await docker(['network', 'create', '--driver', 'overlay', '--attachable', env.STUDIO_NETWORK_NAME]);
+  for (const name of Object.keys(secretValues)) await docker(['secret', 'create', name, path.join(secretsDirectory, name)]);
+  await docker(['stack', 'config', ...swarmFiles]);
   stackStarted = true;
-  await docker(['stack', 'deploy', '--resolve-image', 'never', '--compose-file', 'portainer-swarm.yml', identity]);
+  await docker(['stack', 'deploy', '--resolve-image', 'never', ...swarmFiles, identity]);
   const swarmFixture = await freshAndEdit();
   const swarmDashboards = await multiDashboard();
   const swarmContainer = await docker(['ps', '--quiet', '--filter', `label=com.docker.swarm.service.name=${identity}_studio`]);
@@ -371,8 +396,10 @@ try {
     await cleanup(() => eventually(async () => assert.equal(await docker(['ps', '--all', '--quiet', '--filter', `label=com.docker.stack.namespace=${identity}`]), ''), 'Fixture task removal', 60000));
     for (const suffix of ['config', 'state']) await cleanup(() => docker(['volume', 'rm', `${identity}_${suffix}`]));
   }
+  if (networkCreated) await cleanup(() => docker(['network', 'rm', env.STUDIO_NETWORK_NAME]));
   if (swarmStarted) {
     await cleanup(() => docker(['swarm', 'leave', '--force']));
   }
+  if (secretsDirectory) await cleanup(() => rm(secretsDirectory, { recursive: true, force: true }));
   if (cleanupFailures.length && !primaryFailure) throw new AggregateError(cleanupFailures, 'Fixture cleanup failed after successful qualification.');
 }

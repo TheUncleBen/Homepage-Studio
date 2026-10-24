@@ -54,22 +54,24 @@ own address on the same host (`/family`, `/admin`, ...).
 
 ### Running it
 
-You need a machine with Docker, a Docker Swarm (with or without Portainer) or
-Docker Compose, and ideally a reverse proxy that gives the dashboard an
-HTTPS address.
+The main guide assumes a Docker Swarm managed with Portainer, Nginx Proxy
+Manager in front for HTTPS, and Docker secrets for every key and password.
+Studio's own sign-in is built in; Authentik single sign-on is optional. Every
+piece can be swapped, and the guide links to the alternatives.
 
 1. Get a **candidate bundle** or an **official release** and check it
    ([docs/VERSIONS.md](docs/VERSIONS.md)). It contains the deployment
    templates with the image already pinned by digest. There is no `latest`
    tag to pull.
-2. Pick a guide and work through it top to bottom:
-   - **Docker Swarm, with or without Portainer:** [docs/DEPLOY.md](docs/DEPLOY.md).
-   - **One machine with Docker Compose:** [docs/DEPLOY-COMPOSE.md](docs/DEPLOY-COMPOSE.md).
-3. Put it behind your proxy for HTTPS: [docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md).
-   Studio sign-in needs an `https://` address.
-4. Open it straight away and create the administrator, then invite people
-   and share dashboards: [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
-5. Keep [docs/OPERATIONS.md](docs/OPERATIONS.md) handy for backups, health
+2. Work through [docs/DEPLOY.md](docs/DEPLOY.md) top to bottom: the shared
+   proxy network, storage, the optional Authentik provider, three Docker
+   secrets, the environment file, the Portainer stack, the NPM proxy host and
+   the first sign-in.
+   - One machine without Swarm: [docs/DEPLOY-COMPOSE.md](docs/DEPLOY-COMPOSE.md).
+   - Another proxy (Caddy, Traefik, nginx): [docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md).
+   - Another identity provider: [docs/IDP-OTHERS.md](docs/IDP-OTHERS.md).
+3. Invite people and share dashboards: [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
+4. Keep [docs/OPERATIONS.md](docs/OPERATIONS.md) handy for backups, health
    checks and limits, and [docs/UPGRADING.md](docs/UPGRADING.md) for the next
    version.
 
@@ -87,10 +89,12 @@ HTTPS address.
 | --- | --- | --- |
 | [USING.md](docs/USING.md) | Editors | Adding and arranging panels, touch and keyboard, stacks and slideshows, the title picker, configuration files, snapshots, import/export, multiple dashboards |
 | [APPEARANCE.md](docs/APPEARANCE.md) | Editors | Dark, light or device mode, accent colors, custom CSS variables, copying a design to another deployment |
-| [DEPLOY.md](docs/DEPLOY.md) | Operators | A full deploy on Docker Swarm with Portainer (or `docker stack deploy`), plus every environment variable |
-| [DEPLOY-COMPOSE.md](docs/DEPLOY-COMPOSE.md) | Operators | A full deploy on one machine with Docker Compose |
+| [DEPLOY.md](docs/DEPLOY.md) | Operators | The main guide, top to bottom: Docker Swarm with Portainer (or `docker stack deploy`), Docker secrets, Nginx Proxy Manager, optional Authentik, plus every environment variable |
+| [DEPLOY-COMPOSE.md](docs/DEPLOY-COMPOSE.md) | Operators | The same on one machine with Docker Compose |
+| [IDP-AUTHENTIK.md](docs/IDP-AUTHENTIK.md) | Operators | Single sign-on with Authentik: every provider field, the Studio settings, troubleshooting |
+| [IDP-OTHERS.md](docs/IDP-OTHERS.md) | Operators | Single sign-on with Keycloak, Authelia and other OpenID Connect providers |
 | [AUTHENTICATION.md](docs/AUTHENTICATION.md) | Operators, administrators | Sign-in, the first administrator, inviting people, sharing dashboards, session policies, Authentik and other single sign-on, email, recovery |
-| [REVERSE-PROXY.md](docs/REVERSE-PROXY.md) | Operators | What the proxy must pass through, request size limits, framing, and forwarded client addresses |
+| [REVERSE-PROXY.md](docs/REVERSE-PROXY.md) | Operators | What any proxy must pass through, Caddy, Traefik and nginx examples, a published port instead of the network, request limits, framing |
 | [OPERATIONS.md](docs/OPERATIONS.md) | Operators | Logs and health, backups and restore, snapshots and secrets, worker limits, integration secrets |
 | [UPGRADING.md](docs/UPGRADING.md) | Operators | Moving to a new version and going back |
 | [VERSIONS.md](docs/VERSIONS.md) | Operators | Candidates and official `YYYY.MM.DD` releases, what a bundle contains, how to check it |

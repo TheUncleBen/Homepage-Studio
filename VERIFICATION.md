@@ -87,6 +87,14 @@ runs natively:
   sign-in assets and recovery command present, and Chromium with a virtual
   passkey creating the administrator, signing out and signing back in.
 
+The templates publish no port and need an external proxy network and three
+secrets. The suites create a disposable network and synthetic secrets (a
+random key, `off` for the others) as a deployment would. To reach Studio
+without a proxy, the Compose and Swarm suites add a port with the test-only
+override files in `test/acceptance/`, and the Portainer suite, which stores
+the templates unchanged, forwards through a small relay container on the
+stack's network.
+
 The editing and browser qualification above runs with `STUDIO_AUTH=off`;
 sign-in itself is covered by `server/auth/*.test.mjs` (in `npm test`), the
 editor gating test in the native suite, and the sign-in phase.

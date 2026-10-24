@@ -6,11 +6,18 @@ import { deriveKey } from './primitives.mjs';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-function secretValue(env, name) {
+// The deployment templates mount every secret, so an optional one that isn't
+// used holds the word off (Docker refuses empty secrets).
+function secretValue(env, name, { optional = false } = {}) {
   const file = env[name + '_FILE'];
   if (file) {
-    try { return readFileSync(file, 'utf8').trim(); }
+    let text;
+    try { text = readFileSync(file, 'utf8').trim(); }
     catch { throw new Error(`${name}_FILE could not be read. Check the secret mount.`); }
+    const unused = text === '' || text.toLowerCase() === 'off';
+    if (unused && optional) return undefined;
+    if (unused) throw new Error(`${name}_FILE (${file}) is empty or says off. This secret is required: put long random text in it.`);
+    return text;
   }
   const value = env[name];
   return value === undefined || value === '' ? undefined : String(value);
@@ -60,9 +67,10 @@ export function readAuthConfig(options = {}, rawEnv = process.env) {
   const keyMaterial = secretValue(env, 'STUDIO_AUTH_KEY');
   const issuer = options.oidcIssuer ?? env.STUDIO_OIDC_ISSUER;
   const clientId = options.oidcClientId ?? env.STUDIO_OIDC_CLIENT_ID;
-  const clientSecret = options.oidcClientSecret ?? secretValue(env, 'STUDIO_OIDC_CLIENT_SECRET');
+  const clientSecret = options.oidcClientSecret ?? secretValue(env, 'STUDIO_OIDC_CLIENT_SECRET', { optional: true });
   let oidc = null;
   if (issuer || clientId || clientSecret) {
+    if (!clientSecret && env.STUDIO_OIDC_CLIENT_SECRET_FILE) throw new Error(`Single sign-on is set up (STUDIO_OIDC_ISSUER or STUDIO_OIDC_CLIENT_ID), but STUDIO_OIDC_CLIENT_SECRET_FILE (${env.STUDIO_OIDC_CLIENT_SECRET_FILE}) is empty or says off. Put the provider's client secret in that Docker secret.`);
     if (!issuer || !clientId || !clientSecret) throw new Error('Single sign-on needs STUDIO_OIDC_ISSUER, STUDIO_OIDC_CLIENT_ID and STUDIO_OIDC_CLIENT_SECRET (or STUDIO_OIDC_CLIENT_SECRET_FILE) together.');
     const issuerUrl = new URL(issuer);
     if (issuerUrl.protocol !== 'https:' && !(options.oidcAllowHttp || env.STUDIO_OIDC_ALLOW_HTTP === 'true')) throw new Error('STUDIO_OIDC_ISSUER must be an https:// address.');
@@ -89,7 +97,7 @@ export function readAuthConfig(options = {}, rawEnv = process.env) {
       host: smtpHost, port, from,
       secure: String(options.smtpSecure ?? env.STUDIO_SMTP_SECURE ?? (port === 465)).toLowerCase() === 'true',
       user: options.smtpUser ?? env.STUDIO_SMTP_USER,
-      password: options.smtpPassword ?? secretValue(env, 'STUDIO_SMTP_PASSWORD'),
+      password: options.smtpPassword ?? secretValue(env, 'STUDIO_SMTP_PASSWORD', { optional: true }),
       transport: options.mailTransport,
     };
   }

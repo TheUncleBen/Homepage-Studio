@@ -137,35 +137,31 @@ setting across their groups' policies applies; otherwise the default policy.
 Studio is an OpenID Connect relying party. It uses the authorization code flow
 with PKCE, checks state and nonce, and verifies the provider's signed tokens.
 
-### In Authentik
+### Setting it up
 
-1. **Applications → Providers → Create → OAuth2/OpenID Provider.**
-   - Client type: **Confidential**.
-   - Redirect URI (strict): `https://<your Studio address>/__studio/auth/oidc/callback`.
-     **Administration → Sign-in settings** shows the exact value to copy.
-   - Scopes: keep `openid`, `email` and `profile`, and **add
-     `offline_access`**. Authentik's `profile` scope includes group
-     membership, which Studio reads from the `groups` claim. Since Authentik
-     2024.2, the provider issues a refresh token only when the client asks
-     for `offline_access` and the provider has that scope mapping selected.
-     Studio asks for it by default. Without it, Studio can't check groups
-     while someone is signed in, so provider sessions end at the first check
-     (15 minutes by default) and people sign in again.
-   - Optional: add the back-channel logout URI that the same page shows
-     (`/__studio/auth/oidc/backchannel-logout`), so signing out of Authentik
-     also ends Studio sessions.
-2. **Applications → Create**, choose the provider and note the **slug**.
-3. Give Studio the provider's details:
+1. Create a confidential OpenID Connect client at the provider with the
+   redirect URI `https://<your Studio address>/__studio/auth/oidc/callback`,
+   and the scopes `openid`, `email`, `profile` and `offline_access`.
+   [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md) has every Authentik field;
+   [IDP-OTHERS.md](IDP-OTHERS.md) covers other providers.
+2. Put the client secret in the `studio_oidc_client_secret` Docker secret
+   ([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)).
+3. Set the issuer and client ID in the stack's environment:
 
 ```env
 STUDIO_OIDC_ISSUER=https://authentik.example.test/application/o/<application-slug>/
 STUDIO_OIDC_CLIENT_ID=<client ID>
-STUDIO_OIDC_CLIENT_SECRET=<client secret>      # or STUDIO_OIDC_CLIENT_SECRET_FILE with a Docker secret
 ```
 
-The issuer is Authentik's per-application issuer. Studio reads the provider's
-settings from `<issuer>/.well-known/openid-configuration` when someone first
-signs in with it.
+Studio reads the provider's settings from
+`<issuer>/.well-known/openid-configuration` when someone first signs in with
+it. Since Authentik 2024.2, the provider issues a refresh token only when the
+client asks for `offline_access` and the provider has that scope mapping
+selected. Without a refresh token, Studio can't check groups while someone is
+signed in, so provider sessions end at the first check (15 minutes by default)
+and people sign in again. The optional back-channel logout URI
+(`/__studio/auth/oidc/backchannel-logout`) lets signing out of the provider
+end Studio sessions too.
 
 ### In Studio
 
@@ -220,9 +216,9 @@ works if the provider breaks.
 Any provider that supports OpenID Connect discovery and the authorization code
 flow should work: set `STUDIO_OIDC_NAME` to the name shown on the sign-in
 button. If your provider names the groups claim differently, set
-`STUDIO_OIDC_GROUPS_CLAIM`. Only Authentik's settings are described here and
-other providers haven't been tested; check their documentation for where the
-client, redirect URI and groups claim are configured.
+`STUDIO_OIDC_GROUPS_CLAIM`. [IDP-OTHERS.md](IDP-OTHERS.md) has the checklist
+and notes for Keycloak, Authelia and others; only Authentik's behaviour is
+modelled in Studio's tests.
 
 ## Email
 
@@ -236,9 +232,12 @@ administrators send invitation links themselves and reset accounts from
 STUDIO_SMTP_HOST=smtp.example.test
 STUDIO_SMTP_PORT=587                  # 465 uses TLS from the start; other ports must offer STARTTLS
 STUDIO_SMTP_USER=studio@example.test
-STUDIO_SMTP_PASSWORD=<password>       # or STUDIO_SMTP_PASSWORD_FILE
 STUDIO_SMTP_FROM="Homepage Studio <studio@example.test>"
 ```
+
+The password goes in the `studio_smtp_password` Docker secret
+([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)), or `off` if the mail server
+needs none.
 
 Studio always requires TLS to the mail server. **Emailed sign-in codes** are
 off until an administrator turns them on in **Sign-in settings**, and they're
@@ -253,11 +252,11 @@ or a backup code, so a mailbox alone can't take over an account.
 | --- | --- | --- |
 | `STUDIO_AUTH` | `on` | `on` or `off` |
 | `STUDIO_PUBLIC_ORIGIN` | (required) | Must be `https://` while sign-in is on. `http://localhost:<port>` is accepted for testing. With plain HTTP on any other address Studio starts but shows only a page explaining the fix |
-| `STUDIO_AUTH_KEY` / `STUDIO_AUTH_KEY_FILE` | (unset) | Any long random text. Encrypts authenticator secrets and single sign-on tokens in the state volume. Recommended; **Sign-in settings** warns while it's unset. Keep it: if it's lost or changed, authenticator apps must be set up again and provider sessions end |
+| `STUDIO_AUTH_KEY_FILE` | `/run/secrets/studio_auth_key` in the templates | The file holding the encryption key: long random text that encrypts authenticator secrets and single sign-on tokens in the state volume. The templates read it from the `studio_auth_key` Docker secret, which must not be empty or `off`. Keep a copy: if it's lost or changed, authenticator apps must be set up again and provider sessions end. Without a key, **Sign-in settings** warns that these are stored unencrypted |
 | `STUDIO_TRUSTED_PROXIES` | (unset) | Comma-separated IP addresses or CIDR ranges of your reverse proxies. Studio then takes the client address from `X-Forwarded-For` for sign-in throttling and the activity log. Without it, every request seems to come from the proxy |
 | `STUDIO_OIDC_ISSUER` | (unset) | The provider's issuer URL, `https://` |
 | `STUDIO_OIDC_CLIENT_ID` | (unset) | |
-| `STUDIO_OIDC_CLIENT_SECRET` / `STUDIO_OIDC_CLIENT_SECRET_FILE` | (unset) | All three single sign-on settings go together |
+| `STUDIO_OIDC_CLIENT_SECRET_FILE` | `/run/secrets/studio_oidc_client_secret` in the templates | The file holding the client secret, from the `studio_oidc_client_secret` Docker secret. The word `off` (or an empty file) means unused. Issuer, client ID and client secret go together |
 | `STUDIO_OIDC_NAME` | `Authentik` | The name on the sign-in button |
 | `STUDIO_OIDC_SCOPES` | `openid profile email offline_access` | Keep `offline_access`, so groups can be checked while people are signed in |
 | `STUDIO_OIDC_GROUPS_CLAIM` | `groups` | |
@@ -267,13 +266,16 @@ or a backup code, so a mailbox alone can't take over an account.
 | `STUDIO_SMTP_PORT` | `587` | |
 | `STUDIO_SMTP_SECURE` | `true` on port 465, otherwise `false` | `true` for TLS from the start, `false` for STARTTLS. TLS is required either way |
 | `STUDIO_SMTP_USER` | (unset) | |
-| `STUDIO_SMTP_PASSWORD` / `STUDIO_SMTP_PASSWORD_FILE` | (unset) | |
+| `STUDIO_SMTP_PASSWORD_FILE` | `/run/secrets/studio_smtp_password` in the templates | The file holding the mail password, from the `studio_smtp_password` Docker secret. `off` (or an empty file) means no password |
 | `STUDIO_SMTP_FROM` | (unset) | The sender address, required with `STUDIO_SMTP_HOST` |
 
-The `_FILE` forms read the value from a file, such as a Docker secret mounted
-at `/run/secrets/...`, and take precedence over the plain form. The deployment
-templates pass both forms; to use a Docker secret, add the secret to the
-service and set the `_FILE` variable to its path.
+**Secrets as plain variables (not recommended).** Outside the templates, the
+three secrets can also be given directly as `STUDIO_AUTH_KEY`,
+`STUDIO_OIDC_CLIENT_SECRET` and `STUDIO_SMTP_PASSWORD`, for example
+`STUDIO_AUTH_KEY=<long random text>` when running the image by hand for a
+test. The templates don't pass these: a plain variable shows up in the stack's
+environment, Portainer's stack view and `docker inspect`, and a `_FILE`
+setting takes precedence over it anyway. Use the Docker secrets.
 
 ## Lost access: command-line recovery
 
