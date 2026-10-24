@@ -650,3 +650,57 @@ test('linking refuses a different provider account, a stale provider sign-in, an
   t.mock.timers.tick(6 * 60000);
   assert.equal((await ctx.post('/__studio/auth/account/link/confirm', {}, { cookie: otherMember.cookie })).json.code, 'FLOW_EXPIRED');
 });
+
+// Independent review of 24 October 2026, S1-S3.
+test('linking never merges a provider-only account an administrator disabled', async t => {
+  const ctx = await setup(t);
+  const admin = await createAdmin(ctx);
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
+  ctx.provider.state.user = { sub: 'bob', preferred_username: 'bob', name: 'Bob', email: 'bob@sso.test', email_verified: true, groups: ['studio-users'] };
+  assert.ok((await oidcSignIn(ctx)).cookie);
+  let overview = await ctx.request('/__studio/auth/admin/overview', { cookie: admin.cookie });
+  const ssoUser = overview.json.users.find(u => u.source === 'oidc');
+  const dashboard = overview.json.dashboards[0];
+  const member = await invite(ctx, admin.cookie, 'bobby');
+  await ctx.post('/__studio/auth/admin/grants', { dashboardId: dashboard.id, grants: [{ subject: 'user:' + ssoUser.id, level: 'arrange' }, { subject: 'user:' + member.id, level: 'view' }] }, { cookie: admin.cookie });
+  assert.equal((await ctx.post('/__studio/auth/admin/update', { id: ssoUser.id, disabled: true }, { cookie: admin.cookie })).status, 200);
+  const linked = await link(ctx, member.cookie);
+  assert.equal(linked.confirmed, null);
+  assert.equal(linked.response.headers.location, '/__studio/account?error=ACCOUNT_DISABLED');
+  overview = await ctx.request('/__studio/auth/admin/overview', { cookie: admin.cookie });
+  assert.equal(overview.json.users.find(u => u.id === ssoUser.id).disabled, true);
+  assert.equal(overview.json.users.find(u => u.id === member.id).linked, false);
+  assert.equal(overview.json.grants[dashboard.id].find(g => g.subject === 'user:' + member.id).level, 'view');
+  assert.equal((await oidcSignIn(ctx)).cookie, undefined, 'the disabled identity still cannot sign in');
+});
+
+test('the link confirmation says when a merged account loses a manual administrator role', async t => {
+  const ctx = await setup(t);
+  const admin = await createAdmin(ctx);
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
+  ctx.provider.state.user = { sub: 'carol', preferred_username: 'carol', name: 'Carol', email: 'carol@sso.test', email_verified: true, groups: ['studio-users'] };
+  await oidcSignIn(ctx);
+  const overview = await ctx.request('/__studio/auth/admin/overview', { cookie: admin.cookie });
+  const ssoUser = overview.json.users.find(u => u.source === 'oidc');
+  assert.equal((await ctx.post('/__studio/auth/admin/update', { id: ssoUser.id, role: 'admin' }, { cookie: admin.cookie })).status, 200);
+  const member = await invite(ctx, admin.cookie, 'carol-local');
+  await oidcSignIn(ctx, { intent: 'link', cookie: member.cookie });
+  const view = (await ctx.request('/__studio/auth/account', { cookie: member.cookie })).json.pendingLink;
+  assert.equal(view.merge.losesAdmin, true);
+  assert.equal((await ctx.post('/__studio/auth/account/link/confirm', {}, { cookie: member.cookie })).status, 200);
+  assert.equal(await role(ctx, (await oidcSignIn(ctx)).cookie), 'member', 'privileges are not carried over');
+});
+
+test('claiming a local account with a backup code sends an alert', async t => {
+  const ctx = await setup(t);
+  const admin = await enroll(ctx, await ctx.post('/__studio/auth/setup/start', { username: 'admin', password: PASSWORD, email: 'admin@example.test' }));
+  await ctx.post('/__studio/auth/admin/settings', { oidc: { adminGroups: [], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
+  const sso = await oidcSignIn(ctx);
+  const before = ctx.mail.length;
+  const claim = await ctx.post('/__studio/auth/claim/password', { username: 'admin', password: PASSWORD }, { cookie: sso.cookie });
+  const done = await ctx.post('/__studio/auth/claim/second-factor', { token: claim.json.token, method: 'backup', code: admin.backupCodes[0] }, { cookie: sso.cookie });
+  assert.equal(done.status, 200, done.text);
+  await waitFor(() => ctx.mail.length > before);
+  assert.equal(ctx.mail.at(-1).to, 'admin@example.test');
+  assert.match(ctx.mail.at(-1).text, /backup code was used/);
+});

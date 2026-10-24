@@ -553,7 +553,10 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       await audit('reauthenticated', { userId: user.id, method: body.method }, req);
       return { ok: true };
     }
-    if (entry.intent === 'claim') return claimed(req, current, user);
+    if (entry.intent === 'claim') {
+      if (body.method === 'backup') await notify(store.read().users.find(item => item.id === user.id), 'A backup code was used to confirm your local account for linking. Generate new codes if you are running low.');
+      return claimed(req, current, user);
+    }
     await createSession(req, res, user, { method: 'local', remember: entry.remember });
     await audit('signed-in', { userId: user.id, method: 'password+' + body.method }, req);
     if (body.method === 'backup') await notify(store.read().users.find(item => item.id === user.id), 'A backup code was used to sign in. Generate new codes if you are running low.');
@@ -1410,6 +1413,9 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     if (local.oidc) fail('That local account is already linked. Unlink it first.', 'ALREADY_LINKED', 409);
     const holder = data.users.find(user => user.oidc && user.oidc.issuer === identity.issuer && user.oidc.subject === identity.subject);
     if (holder && holder.source !== 'oidc') fail('That identity is already linked to another Studio account.', 'IDENTITY_IN_USE', 409);
+    // A disabled provider account stays disabled: merging it would let that
+    // identity sign in again and carry its shares over.
+    if (holder?.disabled) fail(`That ${oidc.name} account belongs to a disabled Studio account. Ask an administrator.`, 'ACCOUNT_DISABLED', 403);
     if (!applyProviderGroups(data, local, identity.groups ?? []).allowed) fail(`Your ${oidc.name} account isn't in a group allowed to use this Studio.`, 'GROUP_NOT_ALLOWED', 403);
     return { localUserId: local.id, identity: { issuer: identity.issuer, subject: identity.subject }, fromProvider, mergeUserId: holder?.id ?? null };
   }
@@ -1429,7 +1435,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     return {
       local: { username: local.username, displayName: local.displayName, email: local.email ?? null },
       provider: { name: oidc.name, username: entry.providerUsername, email: entry.email, emailUnverified: entry.emailUnverified },
-      merge: merge ? { username: merge.username, displayName: merge.displayName, shares: Object.values(data.grants).filter(list => list.some(grant => grant.subject === 'user:' + merge.id)).length } : null,
+      merge: merge ? { username: merge.username, displayName: merge.displayName, shares: Object.values(data.grants).filter(list => list.some(grant => grant.subject === 'user:' + merge.id)).length, losesAdmin: merge.role === 'admin' && local.role !== 'admin' } : null,
       fromProvider: entry.fromProvider, expiresAt: entry.expiresAt,
     };
   }

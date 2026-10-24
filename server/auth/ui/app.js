@@ -36,14 +36,15 @@
   function say(box, message, kind = 'error') { box.className = 'notice ' + kind; box.setAttribute('role', kind === 'error' ? 'alert' : 'status'); box.textContent = message ?? ''; }
   const brand = () => h('a', { class: 'brand', href: '/' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true', text: 'H' }), 'Homepage Studio');
   const card = (wide, ...children) => h('div', { class: 'auth-center' }, h('section', { class: 'auth-card' + (wide ? ' wide' : '') }, ...children));
-  function field(label, input, hint) {
+  function field(label, input, hint, badge) {
     const id = input.id || ('f' + Math.random().toString(36).slice(2));
     input.id = id;
     const hintNode = hint ? h('span', { class: 'hint', id: id + '-hint', text: hint }) : null;
     if (hintNode) input.setAttribute('aria-describedby', id + '-hint');
     // The hint sits outside the label so the field's name stays short; it is
     // announced as the description.
-    return h('div', { class: 'field' }, h('label', { for: id, text: label }), input, hintNode);
+    const labelNode = badge ? h('label', { for: id, class: 'with-badge' }, h('span', { text: label }), h('span', { class: 'badge', text: badge })) : h('label', { for: id, text: label });
+    return h('div', { class: 'field' }, labelNode, input, hintNode);
   }
   function check(label, input, hint) {
     if (!hint) return h('label', { class: 'check' }, input, h('span', { text: label }));
@@ -771,6 +772,7 @@
           h('li', { text: `Either one signs you in to the same Studio account. Your local password, passkeys and authenticator stay as they are, as a fallback if ${name} is down.` }),
           h('li', { text: emailLine }),
           link.merge ? h('li', { text: `Your separate ${name} account in Studio, ${link.merge.username}, is merged into this one${link.merge.shares ? `: ${link.merge.shares === 1 ? 'its dashboard share moves' : `its ${link.merge.shares} dashboard shares move`} over and it is removed.` : ' and removed.'}` }) : null,
+          link.merge?.losesAdmin ? h('li', { class: 'warn-text', text: `${link.merge.username} is an Administrator, but this account is not. The Administrator role does not carry over; ask another administrator to give it to this account if you still need it.` }) : null,
           h('li', { text: 'Your other signed-in devices are signed out.' })),
         box, h('div', { class: 'row' }, confirm, cancel));
     }
@@ -1201,8 +1203,8 @@
             event.preventDefault();
             await busy(save, 'Saving…', () => act(() => api('admin/settings', { oidc: { adminGroups: toList(adminGroups.value), allowedGroups: toList(allowedGroups.value), autoCreate: autoCreate.checked } }), box, 'Single sign-on settings saved.'));
           } },
-            field('Administrator groups', adminGroups, `One per line. People in these ${view.oidc.name} groups become administrators; provider accounts outside them are members.${locked.adminGroups ? fromDeployment('STUDIO_OIDC_ADMIN_GROUPS') : ''}`),
-            field('Allowed groups', allowedGroups, `One per line. Leave empty to allow everyone the provider signs in. Administrator groups are always allowed.${locked.allowedGroups ? fromDeployment('STUDIO_OIDC_ALLOWED_GROUPS') : ''}`),
+            field('Administrator groups', adminGroups, `One per line. People in these ${view.oidc.name} groups become administrators; provider accounts outside them are members.${locked.adminGroups ? fromDeployment('STUDIO_OIDC_ADMIN_GROUPS') : ''}`, locked.adminGroups ? 'Set by the deployment' : null),
+            field('Allowed groups', allowedGroups, `One per line. Leave empty to allow everyone the provider signs in. Administrator groups are always allowed.${locked.allowedGroups ? fromDeployment('STUDIO_OIDC_ALLOWED_GROUPS') : ''}`, locked.allowedGroups ? 'Set by the deployment' : null),
             check(`Create a Studio account the first time someone signs in with ${view.oidc.name}`, autoCreate, `Only for people in an allowed or administrator group. While both lists are empty, nobody new is created. Others need an invitation, then link their ${view.oidc.name} account from their account page.`),
             h('div', { class: 'row' }, save))));
       } else parts.push(section('Single sign-on', 'Not configured. Set STUDIO_OIDC_ISSUER, STUDIO_OIDC_CLIENT_ID and STUDIO_OIDC_CLIENT_SECRET_FILE to sign in with Authentik or another OpenID Connect provider. See docs/AUTHENTICATION.md.'));
