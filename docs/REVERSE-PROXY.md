@@ -41,6 +41,61 @@ What it doesn't need: sticky sessions (there's one replica). Studio reads
 `X-Forwarded-For` only from the addresses in `STUDIO_TRUSTED_PROXIES`, and
 only for the client address in sign-in throttling and the activity log.
 
+## Proxy on a Docker network (no published port)
+
+If your proxy runs in Docker and can reach Studio over a shared Docker
+network, Studio doesn't need a published port at all. That's the tighter
+setup: nothing on the host can reach Studio except through the proxy, and the
+host-firewall advice for Swarm's host-mode port no longer applies. The health
+check runs inside the container and doesn't use the published port.
+
+Edit the template (the image line and everything else stay as they are):
+
+1. Delete the whole `ports:` entry, with its comment. `STUDIO_PORT` is then
+   unused.
+2. Attach the service to the proxy's network, and declare that network as
+   external:
+
+```yaml
+services:
+  studio:
+    # ...everything else unchanged...
+    networks:
+      - proxy
+# ...volumes: unchanged...
+networks:
+  proxy:
+    external: true
+    name: <your proxy network>   # as docker network ls shows it
+```
+
+On a Swarm the network must be an overlay network (`docker network create
+--driver overlay --attachable <name>`; `--attachable` lets a proxy started
+outside the stack join it). A Swarm proxy service on the same overlay works on
+any node, whatever node Studio is pinned to.
+
+Point the proxy at `http://<stack>_studio:3000`, for example
+`http://homepage_studio:3000`: Swarm and Compose give the service a DNS name
+on the network, and Studio listens on port 3000 inside the container. Use the
+full name, because the short name `studio` may clash with another stack's
+service on a shared network. The other requirements above still apply,
+especially passing the original `Host` header.
+
+**`STUDIO_TRUSTED_PROXIES`.** Studio sees the proxy's address on that network
+as the caller. Container addresses change when containers restart, so give
+the network's subnet rather than one address:
+
+```bash
+docker network inspect <your proxy network> --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}'
+# for example 10.0.12.0/24  ->  STUDIO_TRUSTED_PROXIES=10.0.12.0/24
+```
+
+Every container on that network is then trusted to report the client address
+in `X-Forwarded-For`, so keep the network to the proxy and the services behind
+it. Make sure the proxy sets `X-Forwarded-For` (most do by default). To check,
+sign in and open **Administration → Activity**: the Address column should show your own
+device's address, not the proxy's.
+
 ## Request limits
 
 These limits are built in and can't be changed. A proxy with a **lower** body

@@ -20,6 +20,8 @@ build is identified by its source commit and image digest
 - New `STUDIO_CONFIG_PATH` and `STUDIO_STATE_PATH` bind mount host directories
   (owned by UID/GID 1000) instead of the named volumes. DEPLOY.md explains
   using them on shared storage such as CephFS, and why the node pin stays.
+- REVERSE-PROXY.md explains running without a published port when the proxy
+  reaches Studio over a Docker network, including `STUDIO_TRUSTED_PROXIES`.
 
 ### Sign-in and access control
 

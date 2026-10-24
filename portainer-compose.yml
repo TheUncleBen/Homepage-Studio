@@ -37,6 +37,8 @@ services:
       LOG_TARGETS: stdout
     # Published on every host interface. To limit it to one address (for
     # example a reverse proxy on the same host), add host_ip: 127.0.0.1 here.
+    # A proxy on a shared Docker network needs no published port: see
+    # docs/REVERSE-PROXY.md (Proxy on a Docker network).
     ports:
       - target: 3000
         published: "${STUDIO_PORT:-3000}"

@@ -87,7 +87,8 @@ read-only root filesystem isn't tested yet, so it isn't set.
 The port is published on every interface of the machine. To listen on one
 address only, for example when the proxy runs on the same machine, add
 `host_ip: 127.0.0.1` to the port entry (the template has a comment where it
-goes).
+goes). If the proxy runs in Docker on a shared network, you can remove the port
+altogether ([REVERSE-PROXY.md](REVERSE-PROXY.md#proxy-on-a-docker-network-no-published-port)).
 
 ### Adding it to an existing stack
 
