@@ -1415,7 +1415,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     if (holder && holder.source !== 'oidc') fail('That identity is already linked to another Studio account.', 'IDENTITY_IN_USE', 409);
     // A disabled provider account stays disabled: merging it would let that
     // identity sign in again and carry its shares over.
-    if (holder?.disabled) fail(`That ${oidc.name} account belongs to a disabled Studio account. Ask an administrator.`, 'ACCOUNT_DISABLED', 403);
+    if (holder?.disabled) fail(`That ${oidc.name} account belongs to a disabled Studio account. Ask an administrator.`, 'LINK_TARGET_DISABLED', 403);
     if (!applyProviderGroups(data, local, identity.groups ?? []).allowed) fail(`Your ${oidc.name} account isn't in a group allowed to use this Studio.`, 'GROUP_NOT_ALLOWED', 403);
     return { localUserId: local.id, identity: { issuer: identity.issuer, subject: identity.subject }, fromProvider, mergeUserId: holder?.id ?? null };
   }

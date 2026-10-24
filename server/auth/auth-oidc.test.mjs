@@ -666,7 +666,7 @@ test('linking never merges a provider-only account an administrator disabled', a
   assert.equal((await ctx.post('/__studio/auth/admin/update', { id: ssoUser.id, disabled: true }, { cookie: admin.cookie })).status, 200);
   const linked = await link(ctx, member.cookie);
   assert.equal(linked.confirmed, null);
-  assert.equal(linked.response.headers.location, '/__studio/account?error=ACCOUNT_DISABLED');
+  assert.equal(linked.response.headers.location, '/__studio/account?error=LINK_TARGET_DISABLED');
   overview = await ctx.request('/__studio/auth/admin/overview', { cookie: admin.cookie });
   assert.equal(overview.json.users.find(u => u.id === ssoUser.id).disabled, true);
   assert.equal(overview.json.users.find(u => u.id === member.id).linked, false);

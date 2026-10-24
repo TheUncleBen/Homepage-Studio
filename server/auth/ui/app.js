@@ -139,6 +139,7 @@
     NOT_LOCAL: 'Only local accounts can link a provider identity.',
     LINK_MISMATCH: 'At the identity provider, sign in as the same account you are using Studio with, then try again.',
     ALREADY_LINKED: 'That local account is already linked. Unlink it first.',
+    LINK_TARGET_DISABLED: 'That provider account belongs to a Studio account an administrator disabled, so it can’t be linked. Ask an administrator.',
     CLAIM_REQUIRED: 'Sign in to your local account first, then link again.',
   };
 
