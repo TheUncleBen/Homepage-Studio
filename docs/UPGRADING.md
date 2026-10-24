@@ -20,12 +20,15 @@ paste the new template. Your volumes, dashboards and accounts stay.
    [DEPLOY.md step 2](DEPLOY.md#2-shared-proxy-network-once). If your proxy
    already shares a network with other services, you can use that one: set
    `STUDIO_NETWORK_NAME` to its exact name.
-2. **The secrets.** Create `studio_auth_key`, `studio_oidc_client_secret` and
-   `studio_smtp_password` as in [DEPLOY.md step 5](DEPLOY.md#5-docker-secrets),
+2. **The secrets.** Create `studio_auth_key`, `studio_oidc_client_secret`,
+   `studio_smtp_password` and `studio_admin_password` as in
+   [DEPLOY.md step 5](DEPLOY.md#5-docker-secrets),
    with one difference: **if you had set `STUDIO_AUTH_KEY`, put that same
    value in `studio_auth_key`**. A new key means everyone sets up their
    authenticator app again and single sign-on sessions end. Likewise, use your
-   current single sign-on client secret and mail password, or `off`.
+   current single sign-on client secret and mail password, or `off`. Your
+   accounts already exist, so `studio_admin_password` is never read: put
+   `off` in it.
 3. **The variables.** In the stack's environment variables, remove
    `STUDIO_AUTH_KEY`, `STUDIO_AUTH_KEY_FILE`, `STUDIO_OIDC_CLIENT_SECRET`,
    `STUDIO_OIDC_CLIENT_SECRET_FILE`, `STUDIO_SMTP_PASSWORD`,

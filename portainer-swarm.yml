@@ -4,7 +4,7 @@ version: "3.8"
 # Paste this whole file into Portainer's stack web editor unchanged. Everything
 # you set lives in the stack's environment variables: start from
 # portainer.env.example. Before you deploy, create the shared proxy network and
-# the three Docker secrets below (docs/DEPLOY.md, steps 2 and 5).
+# the four Docker secrets below (docs/DEPLOY.md, steps 2 and 5).
 #
 # Keep required-variable messages free of hyphens: Docker's legacy stack parser
 # checks default operators before required operators, including message text.
@@ -22,6 +22,11 @@ secrets:
   # The mail server password, or the word off while you don't use email.
   studio_smtp_password:
     external: true
+  # The first administrator's password, read once on the first start with
+  # STUDIO_ADMIN_USERNAME, or the word off to create the administrator in the
+  # browser instead.
+  studio_admin_password:
+    external: true
 
 services:
   studio:
@@ -30,6 +35,7 @@ services:
       - studio_auth_key
       - studio_oidc_client_secret
       - studio_smtp_password
+      - studio_admin_password
     environment:
       STUDIO_PUBLIC_ORIGIN: ${STUDIO_PUBLIC_ORIGIN:?Set the exact dashboard URL origin}
       STUDIO_BACKUP_RETENTION: ${STUDIO_BACKUP_RETENTION:-25}
@@ -46,6 +52,12 @@ services:
       STUDIO_AUTH_KEY_FILE: /run/secrets/studio_auth_key
       STUDIO_OIDC_CLIENT_SECRET_FILE: /run/secrets/studio_oidc_client_secret
       STUDIO_SMTP_PASSWORD_FILE: /run/secrets/studio_smtp_password
+      STUDIO_ADMIN_PASSWORD_FILE: /run/secrets/studio_admin_password
+      # The first administrator, created once on the first start with the
+      # studio_admin_password secret (docs/AUTHENTICATION.md). Ignored as soon
+      # as Studio has any account.
+      STUDIO_ADMIN_USERNAME: ${STUDIO_ADMIN_USERNAME:-}
+      STUDIO_ADMIN_EMAIL: ${STUDIO_ADMIN_EMAIL:-}
       # Optional single sign-on (docs/IDP-AUTHENTIK.md). Issuer and client ID
       # turn it on; the client secret is the studio_oidc_client_secret secret.
       STUDIO_OIDC_ISSUER: ${STUDIO_OIDC_ISSUER:-}
@@ -54,6 +66,10 @@ services:
       STUDIO_OIDC_SCOPES: ${STUDIO_OIDC_SCOPES:-}
       STUDIO_OIDC_GROUPS_CLAIM: ${STUDIO_OIDC_GROUPS_CLAIM:-}
       STUDIO_OIDC_REFRESH_MINUTES: ${STUDIO_OIDC_REFRESH_MINUTES:-}
+      # Provider groups that make administrators and that may sign in. Set
+      # here, they can't be changed in Studio.
+      STUDIO_OIDC_ADMIN_GROUPS: ${STUDIO_OIDC_ADMIN_GROUPS:-}
+      STUDIO_OIDC_ALLOWED_GROUPS: ${STUDIO_OIDC_ALLOWED_GROUPS:-}
       # Testing only: true accepts a plain http issuer.
       STUDIO_OIDC_ALLOW_HTTP: ${STUDIO_OIDC_ALLOW_HTTP:-}
       # Optional email for invitations, password resets and security alerts.

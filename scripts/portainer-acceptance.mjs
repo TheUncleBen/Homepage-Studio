@@ -29,7 +29,7 @@ const fixture = createDashboardFixture({ origin, expectedRevision: process.env.S
 const env = { ...process.env, STUDIO_AUTH: 'off', STUDIO_PUBLIC_ORIGIN: origin, STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30' };
 // Synthetic secrets: a random encryption key, and off for the unused single
 // sign-on and email secrets, as a deployment without them has.
-const secretValues = { studio_auth_key: randomBytes(48).toString('base64'), studio_oidc_client_secret: 'off', studio_smtp_password: 'off' };
+const secretValues = { studio_auth_key: randomBytes(48).toString('base64'), studio_oidc_client_secret: 'off', studio_smtp_password: 'off', studio_admin_password: 'off' };
 let secretsDirectory;
 // The templates publish no port. A disposable relay on the stack's proxy
 // network stands in for the reverse proxy: it forwards the loopback fixture

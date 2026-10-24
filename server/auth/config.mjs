@@ -2,7 +2,7 @@
 // refuses unsafe combinations at startup.
 import { readFileSync } from 'node:fs';
 import net from 'node:net';
-import { deriveKey } from './primitives.mjs';
+import { deriveKey, passwordProblem } from './primitives.mjs';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -25,6 +25,32 @@ function secretValue(env, name, { optional = false } = {}) {
 
 function list(value) {
   return String(value ?? '').split(',').map(item => item.trim()).filter(Boolean);
+}
+
+// Provider group names set by the deployment. Unset or empty means the
+// administration page decides; otherwise the deployment does, and the page
+// shows the list read-only.
+function groupList(value, name) {
+  if (value === undefined) return null;
+  const names = [...new Set(Array.isArray(value) ? value.map(item => String(item).trim()).filter(Boolean) : list(value))];
+  if (names.length > 50 || names.some(item => item.length > 200)) throw new Error(`${name} takes up to 50 comma-separated group names of up to 200 characters.`);
+  return names;
+}
+
+// Owner decision L1 (24 Oct 2026): the first administrator can be seeded
+// once from the deployment. It is read only while Studio has no accounts.
+function adminSeed(options, env) {
+  const username = options.adminUsername ?? env.STUDIO_ADMIN_USERNAME;
+  const password = options.adminPassword ?? secretValue(env, 'STUDIO_ADMIN_PASSWORD', { optional: true });
+  const email = options.adminEmail ?? env.STUDIO_ADMIN_EMAIL;
+  if (!username && !password && !email) return null;
+  if (!username || !password) throw new Error('Seeding the first administrator needs STUDIO_ADMIN_USERNAME and its password in the studio_admin_password secret (STUDIO_ADMIN_PASSWORD_FILE) together. Leave the username empty and put off in the secret to skip seeding.');
+  const name = String(username).trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9._@-]{0,63}$/.test(name)) throw new Error('STUDIO_ADMIN_USERNAME must be 1 to 64 lowercase letters, numbers, dots, hyphens, underscores or @, starting with a letter or number.');
+  const problem = passwordProblem(password);
+  if (problem) throw new Error(`STUDIO_ADMIN_PASSWORD is not accepted: ${problem}`);
+  if (email && !/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(String(email).trim())) throw new Error('STUDIO_ADMIN_EMAIL must be an email address.');
+  return { username: name, password, email: email ? String(email).trim() : null };
 }
 
 export function parseTrustedProxies(value) {
@@ -83,6 +109,9 @@ export function readAuthConfig(options = {}, rawEnv = process.env) {
       groupsClaim: options.oidcGroupsClaim ?? env.STUDIO_OIDC_GROUPS_CLAIM ?? 'groups',
       allowHttp: issuerUrl.protocol === 'http:',
       refreshMinutes: Number(env.STUDIO_OIDC_REFRESH_MINUTES ?? 15),
+      // Owner decision L5 (24 Oct 2026): optional, and authoritative while set.
+      adminGroups: groupList(options.oidcAdminGroups ?? env.STUDIO_OIDC_ADMIN_GROUPS, 'STUDIO_OIDC_ADMIN_GROUPS'),
+      allowedGroups: groupList(options.oidcAllowedGroups ?? env.STUDIO_OIDC_ALLOWED_GROUPS, 'STUDIO_OIDC_ALLOWED_GROUPS'),
     };
     if (!Number.isInteger(oidc.refreshMinutes) || oidc.refreshMinutes < 1 || oidc.refreshMinutes > 1440) throw new Error('STUDIO_OIDC_REFRESH_MINUTES must be a whole number from 1 to 1440.');
   }
@@ -114,5 +143,6 @@ export function readAuthConfig(options = {}, rawEnv = process.env) {
     trustedProxies: parseTrustedProxies(options.trustedProxies ?? env.STUDIO_TRUSTED_PROXIES),
     oidc,
     smtp,
+    adminSeed: adminSeed(options, env),
   };
 }

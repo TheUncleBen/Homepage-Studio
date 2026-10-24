@@ -46,6 +46,8 @@ This comes from Studio's sign-in code (`server/auth/oidc.mjs`,
 | Signed ID token | Requires an ID token and verifies its signature against the provider's published keys | Provider → **Signing Key**: a certificate, for example `authentik Self-signed Certificate` |
 | Groups | Reads the `groups` claim (`STUDIO_OIDC_GROUPS_CLAIM`) from the ID token, or from the userinfo endpoint when the ID token has none | Authentik's `profile` scope mapping includes `groups` |
 | Stable identity | Knows an Authentik account by the issuer and its `sub` only, never by email or username | Provider → **Subject mode**: `Based on the User's hashed ID` (the default) |
+| Email | Uses the `email` claim only when `email_verified` is `true`: as the address of an Authentik account, and as the address of a local account linked to it | An `email` scope mapping that marks addresses verified ([Email addresses](#email-addresses)). The built-in mapping says `false` since Authentik 2025.10, and Studio then leaves the email alone |
+| Fresh sign-in for linking | When someone links accounts, asks Authentik to sign them in again (`prompt=login`, `max_age=300`) and checks the ID token's `auth_time` | Nothing to set |
 | Staying in sync | Every 15 minutes (`STUDIO_OIDC_REFRESH_MINUTES`) uses the refresh token to check the person's groups again. Someone taken out of the groups is signed out at the next check | The `offline_access` scope mapping. Without it Authentik issues no refresh token, and Authentik sessions in Studio end at the first check |
 | Signing out | **Sign out** in Studio ends the Studio session and, when Authentik publishes an end-session endpoint, sends the browser there to end the Authentik session too, asking it to return to `https://homepage.example.test/__studio/auth/sign-in?signedOut=1` | Nothing required. Optional: the back-channel logout URI (section 4), so signing out of Authentik also ends Studio sessions |
 
@@ -113,6 +115,42 @@ Save.
 
 Field labels move between Authentik versions. If one isn't where this table
 says, go by the meaning in the *Why* column.
+
+### Email addresses
+
+Optional, but needed if you want Studio to use people's Authentik email
+addresses, including the local administrator's email following yours once you
+link them (section 7). Studio only trusts an email the provider marks as
+verified. Since Authentik 2025.10, the built-in
+`authentik default OAuth Mapping: OpenID 'email'` returns
+`email_verified: false`, because Authentik can't know whether an address was
+checked ([Authentik: Verify email address](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/verify-email-address/)).
+Studio then keeps whatever email it already has, and **Sign-in settings**
+warns about it.
+
+Only mark addresses verified if they are trustworthy: people can't change
+their own email in Authentik, or your enrollment checks the address. Otherwise
+someone could point Studio's security alerts at an address they own. To do it:
+
+1. **Customization → Property Mappings → Create → Scope Mapping**.
+   - Name: `Homepage Studio email (verified)`.
+   - Scope name: `email`.
+   - Expression:
+
+     ```python
+     return {
+         "email": request.user.email,
+         "email_verified": True,
+     }
+     ```
+
+2. On the provider, under **Advanced protocol settings → Scopes**, select the
+   new mapping and **remove** `authentik default OAuth Mapping: OpenID 'email'`.
+   Two mappings for the same scope on one provider conflict.
+
+Authentik's page linked above has a variant that reads a per-user attribute
+instead of always saying `True`. This page hasn't been checked against every
+Authentik version; if your mapping editor differs, follow Authentik's page.
 
 ## 5. Create the application and bind the groups
 
@@ -187,7 +225,10 @@ Sign-in settings**. The **Authentik** section shows:
 - **Redirect URI**: must match the provider's exactly (section 4).
 - **Back-channel logout URI**: optional (section 4).
 
-Then fill in the three settings and click **Save single sign-on settings**:
+If you set `STUDIO_OIDC_ADMIN_GROUPS` and `STUDIO_OIDC_ALLOWED_GROUPS` in the
+stack, the two group lists below are already filled in and read-only: change
+them in the stack instead. Otherwise fill in the three settings and click
+**Save single sign-on settings**:
 
 | Setting | Value | What it does |
 | --- | --- | --- |
@@ -198,11 +239,34 @@ Then fill in the three settings and click **Save single sign-on settings**:
 One group per line. Studio compares names exactly, so copy them from
 Authentik.
 
-**Your own account.** The administrator you created at the first start is a
-local account. To sign in to it with Authentik as well, open **My account →
-Link** and sign in to Authentik. A linked local account is an administrator
-through Authentik groups only while it's signed in through Authentik; signed
-in locally, it keeps the role set on the People page.
+**Share dashboards before anyone signs in.** Both groups are listed under
+**Administration → Groups** as soon as they're in the settings. To share with
+another Authentik group, add it there by its exact name (**Add Authentik
+group**). Then pick the groups under **Dashboard access**. Someone signing in
+with Authentik for the first time lands on exactly those dashboards, with the
+role their groups give them, and nobody has to do anything in Studio.
+
+**Link your administrator account.** The administrator from the first start
+is a local account. Link it to your Authentik account, so either signs you in
+and the local one still works when Authentik is down:
+
+1. Signed in with the local account, open **My account → Link Authentik
+   account**. (Signed in more than 5 minutes ago? Confirm it's you first.)
+2. Authentik asks you to sign in again, even if you already were.
+3. Back in Studio, check the two accounts on **Link these accounts?** and
+   click **Link accounts**.
+
+The local password stays as it was. The local email changes to your Authentik
+email (if Authentik marks it verified, see [Email addresses](#email-addresses))
+and follows it from then on. Signed in with Authentik first? Then Studio
+already made you a separate Authentik account; use **My account → Link a
+local account** from there, sign in to the local account, then to Authentik,
+and confirm. The separate account is merged into the local one, dashboard
+shares included.
+
+A linked local account is an administrator through Authentik groups only
+while it's signed in through Authentik; signed in locally, it keeps the role
+set on the People page.
 
 **Local sign-in off (optional).** Once Authentik sign-in works, you can make
 it the only way in: **Allow local sign-in** off. Studio allows that only while
@@ -269,6 +333,9 @@ Studio's own messages are in the browser; its log
 | Studio doesn't start; log says `STUDIO_OIDC_CLIENT_SECRET_FILE ... is empty or says off` | The issuer or client ID is set, but the secret still says `off`. Recreate the secret with the Client Secret (section 6) |
 | Studio doesn't start; log says `Single sign-on needs STUDIO_OIDC_ISSUER, STUDIO_OIDC_CLIENT_ID ...` | Only one of the two variables is set. Set both, or neither |
 | An administrator in Authentik is only a member in Studio | They're not in a group listed under **Administrator groups**, or they signed in locally rather than through Authentik |
+| Linking ends at *At the identity provider, sign in as the same account you are using Studio with* | You started from an Authentik session but signed in to Authentik as someone else. Sign in to Authentik as the account you were using Studio with |
+| Linking ends at *Single sign-on didn't complete* | The Authentik sign-in was more than 5 minutes old (Studio asks for a fresh one), or the clocks differ. Try again; if it repeats, check the time on Studio's node and on Authentik |
+| The linked account's email doesn't follow Authentik; **Sign-in settings** says the email isn't marked as verified | Set up the verified email mapping ([Email addresses](#email-addresses)), then sign in with Authentik again |
 | Everyone is suddenly a new account | The provider's **Subject mode** was changed, or the issuer changed (another slug or provider). Put it back; Studio matches accounts by issuer and subject only |
 
 ## 11. What is tested
@@ -276,7 +343,9 @@ Studio's own messages are in the browser; its log
 - **Studio's tests** run the whole sign-in (discovery, PKCE, ID token check,
   groups, refresh, sign-out and back-channel logout) against a mock OpenID
   Connect provider modelled on Authentik 2024.2 and later, including its
-  refresh-token behaviour (`server/auth/auth-oidc.test.mjs`).
+  refresh-token behaviour (`server/auth/auth-oidc.test.mjs`). They also cover
+  linking from either side, the forced fresh sign-in, merging, the verified
+  email rule and groups set by the deployment.
 - **Not tested in CI:** a real Authentik. The Authentik menu paths and field
   labels on this page are as Authentik documents them, not checked on a live
   screen for every version. If a step doesn't match what you see, please open

@@ -31,7 +31,7 @@ const composeArgs = ['compose', '--project-name', identity, '--file', 'portainer
 const swarmFiles = ['--compose-file', 'portainer-swarm.yml', '--compose-file', 'test/acceptance/swarm-publish.yml'];
 // Synthetic secrets: a random encryption key, and off for the unused
 // single sign-on and email secrets, as a deployment without them has.
-const secretValues = { studio_auth_key: randomBytes(48).toString('base64'), studio_oidc_client_secret: 'off', studio_smtp_password: 'off' };
+const secretValues = { studio_auth_key: randomBytes(48).toString('base64'), studio_oidc_client_secret: 'off', studio_smtp_password: 'off', studio_admin_password: 'off' };
 let secretsDirectory;
 let networkCreated = false;
 let composeStarted = false;

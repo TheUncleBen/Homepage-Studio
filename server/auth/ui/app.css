@@ -117,6 +117,7 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .page-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--text); }
 .page-body { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 20px; }
 .section { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 14px; min-width: 0; }
+.section.link-confirm { border-color: var(--accent); background: var(--accent-soft); }
 .section-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; justify-content: space-between; }
 .section-head > div { display: grid; gap: 4px; }
 .tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
@@ -139,6 +140,9 @@ input[type="text"], input[type="password"], input[type="email"], input[type="num
   min-height: 44px;
 }
 textarea { min-height: 88px; resize: vertical; }
+textarea[readonly], input:disabled { opacity: 0.75; cursor: not-allowed; }
+textarea[readonly] { background: var(--bg); border-style: dashed; resize: none; }
+label.with-badge { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 input[aria-invalid="true"] { border-color: var(--danger-line); }
 input.code-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.18em; font-size: 1.25rem; text-align: center; }
 .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 450; }
@@ -236,3 +240,4 @@ dialog::backdrop { background: rgb(0 0 0 / 0.6); }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
 .facts dd { margin: 0; }
 strong .badge, h3 .badge, strong + .badge { margin-left: 8px; vertical-align: 1px; }
+.link-confirm li.warn-text { color: var(--warn-text); font-weight: 600; }
