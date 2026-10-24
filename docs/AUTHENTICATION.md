@@ -307,8 +307,17 @@ administrators send invitation links themselves and reset accounts from
 STUDIO_SMTP_HOST=smtp.example.test
 STUDIO_SMTP_PORT=587                  # 465 uses TLS from the start; other ports must offer STARTTLS
 STUDIO_SMTP_USER=studio@example.test
-STUDIO_SMTP_FROM="Homepage Studio <studio@example.test>"
+STUDIO_SMTP_FROM_ADDRESS=studio@example.test   # a sender your mail provider has verified
+STUDIO_SMTP_FROM_NAME=Homepage Studio           # the name people see; this is the default
 ```
+
+The sender's name and address are separate, so mail shows the name rather
+than the bare address. Most mail providers refuse a sender address they
+haven't verified for your account. When a message can't be sent, Studio
+records it in **Administration → Activity** as *email failed*, with the mail
+server's answer (for example *550 Sender address is not verified*), and an
+invitation or reset you started shows the same answer so you can share the
+link yourself.
 
 The password goes in the `studio_smtp_password` Docker secret
 ([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)), or `off` if the mail server
@@ -347,7 +356,9 @@ or a backup code, so a mailbox alone can't take over an account.
 | `STUDIO_SMTP_SECURE` | `true` on port 465, otherwise `false` | `true` for TLS from the start, `false` for STARTTLS. TLS is required either way |
 | `STUDIO_SMTP_USER` | (unset) | |
 | `STUDIO_SMTP_PASSWORD_FILE` | `/run/secrets/studio_smtp_password` in the templates | The file holding the mail password, from the `studio_smtp_password` Docker secret. `off` (or an empty file) means no password |
-| `STUDIO_SMTP_FROM` | (unset) | The sender address, required with `STUDIO_SMTP_HOST` |
+| `STUDIO_SMTP_FROM_ADDRESS` | (unset) | The sender address, required with `STUDIO_SMTP_HOST`. A plain address, such as `studio@example.test` |
+| `STUDIO_SMTP_FROM_NAME` | `Homepage Studio` | The sender name people see. Needs `STUDIO_SMTP_FROM_ADDRESS` |
+| `STUDIO_SMTP_FROM` | (unset) | The older single setting (an address, or `Name <address>`), still accepted instead of the two above. Not both |
 
 **Secrets as plain variables (not recommended).** Outside the templates, the
 four secrets can also be given directly as `STUDIO_AUTH_KEY`,

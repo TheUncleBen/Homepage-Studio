@@ -15,7 +15,7 @@ secrets:
   # app again.
   studio_auth_key:
     external: true
-  # The client secret of the Authentik (or other OpenID Connect) provider, or
+  # The client secret from your OpenID Connect identity provider, or
   # the word off while you don't use single sign-on.
   studio_oidc_client_secret:
     external: true
@@ -58,7 +58,8 @@ services:
       # as Studio has any account.
       STUDIO_ADMIN_USERNAME: ${STUDIO_ADMIN_USERNAME:-}
       STUDIO_ADMIN_EMAIL: ${STUDIO_ADMIN_EMAIL:-}
-      # Optional single sign-on (docs/IDP-AUTHENTIK.md). Issuer and client ID
+      # Optional single sign-on with an identity provider (docs/IDP-AUTHENTIK.md,
+      # docs/IDP-OTHERS.md). Issuer and client ID
       # turn it on; the client secret is the studio_oidc_client_secret secret.
       STUDIO_OIDC_ISSUER: ${STUDIO_OIDC_ISSUER:-}
       STUDIO_OIDC_CLIENT_ID: ${STUDIO_OIDC_CLIENT_ID:-}
@@ -78,6 +79,9 @@ services:
       STUDIO_SMTP_PORT: ${STUDIO_SMTP_PORT:-}
       STUDIO_SMTP_SECURE: ${STUDIO_SMTP_SECURE:-}
       STUDIO_SMTP_USER: ${STUDIO_SMTP_USER:-}
+      STUDIO_SMTP_FROM_ADDRESS: ${STUDIO_SMTP_FROM_ADDRESS:-}
+      STUDIO_SMTP_FROM_NAME: ${STUDIO_SMTP_FROM_NAME:-}
+      # Older single setting (an address, or "Name <address>"); use the two above instead.
       STUDIO_SMTP_FROM: ${STUDIO_SMTP_FROM:-}
       LOG_TARGETS: stdout
     # No published port: the reverse proxy reaches Studio as

@@ -944,6 +944,7 @@
       return h('div', { class: 'stack' },
         h('p', { text: intro }),
         result.emailed ? h('div', { class: 'notice ok', text: 'The link was emailed as well.' }) : null,
+        result.emailError ? h('div', { class: 'notice warn', role: 'alert', text: `The email couldn't be sent, so share the link yourself. The mail server said: ${result.emailError}. Administration → Activity keeps the details.` }) : null,
         field('One-time link', linkInput, `Works once and expires in ${result.expiresInHours} hours. Send it privately; anyone with the link can claim the account.`),
         box,
         h('div', { class: 'actions' }, h('button', { type: 'button', onclick: () => copyText(result.link, box), text: 'Copy link' }), h('button', { type: 'button', class: 'primary', onclick: close, text: 'Done' })));

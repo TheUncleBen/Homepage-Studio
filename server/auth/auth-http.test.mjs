@@ -328,3 +328,25 @@ test('a signed-out dashboard inside a frame offers sign-in in a new tab instead 
   const top = await context.request('/', { headers: html });
   assert.equal(top.status, 302, 'a top-level visit still goes to the sign-in page');
 });
+
+test('a refused email is reported to the administrator and recorded in Activity with the server answer', async t => {
+  const sent = [];
+  const transport = { sendMail: async message => {
+    sent.push(message);
+    const error = new Error("Can't send mail - all recipients were rejected"); error.code = 'EENVELOPE'; error.responseCode = 550; error.response = '550 5.7.1 Sender address is not verified';
+    throw error;
+  } };
+  const context = await setup(t, { smtpHost: 'smtp.example.test', smtpFromAddress: 'studio@example.test', smtpFromName: 'Family Dashboards', mailTransport: transport });
+  const { cookie } = await createAdmin(context);
+  const invited = await context.post('/__studio/auth/admin/invite', { username: 'mailtest', email: 'person@example.test', sendEmail: true }, { cookie });
+  assert.equal(invited.status, 200, invited.text);
+  assert.equal(invited.json.emailed, false);
+  assert.match(invited.json.emailError, /EENVELOPE 550: 550 5\.7\.1 Sender address is not verified/);
+  // Name and address arrive separately, so the mail shows the name.
+  assert.deepEqual(sent[0].from, { name: 'Family Dashboards', address: 'studio@example.test' });
+  const { events } = (await context.request('/__studio/auth/admin/audit', { cookie })).json;
+  const failure = events.find(event => event.type === 'email-failed');
+  assert.equal(failure.kind, 'Invitation');
+  assert.match(failure.reason, /not verified/);
+  assert.doesNotMatch(JSON.stringify(failure), /password/i);
+});

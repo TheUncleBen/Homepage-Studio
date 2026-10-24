@@ -118,8 +118,18 @@ export function readAuthConfig(options = {}, rawEnv = process.env) {
   const smtpHost = options.smtpHost ?? env.STUDIO_SMTP_HOST;
   let smtp = null;
   if (smtpHost) {
-    const from = options.smtpFrom ?? env.STUDIO_SMTP_FROM;
-    if (!from) throw new Error('Email needs STUDIO_SMTP_FROM, the sender address.');
+    // The sender's display name and address are separate settings, so mail
+    // shows a name rather than the bare address. STUDIO_SMTP_FROM (an address,
+    // or "Name <address>") still works on its own.
+    const fromAddress = String(options.smtpFromAddress ?? env.STUDIO_SMTP_FROM_ADDRESS ?? '').trim();
+    const fromName = String(options.smtpFromName ?? env.STUDIO_SMTP_FROM_NAME ?? '').trim();
+    const legacyFrom = String(options.smtpFrom ?? env.STUDIO_SMTP_FROM ?? '').trim();
+    if (fromAddress && legacyFrom) throw new Error('Set STUDIO_SMTP_FROM_ADDRESS or STUDIO_SMTP_FROM, not both.');
+    if (fromAddress && !/^[^\s@<>"]+@[^\s@<>"]+$/.test(fromAddress)) throw new Error('STUDIO_SMTP_FROM_ADDRESS must be a plain email address, such as studio@example.com.');
+    if (/[\u0000-\u001f\u007f<>"]/.test(fromName) || fromName.length > 100) throw new Error('STUDIO_SMTP_FROM_NAME must be a plain name of up to 100 characters.');
+    if (fromName && !fromAddress) throw new Error('STUDIO_SMTP_FROM_NAME needs STUDIO_SMTP_FROM_ADDRESS.');
+    if (!fromAddress && !legacyFrom) throw new Error('Email needs STUDIO_SMTP_FROM_ADDRESS, the sender address.');
+    const from = fromAddress ? { name: fromName || 'Homepage Studio', address: fromAddress } : legacyFrom;
     const port = Number(options.smtpPort ?? env.STUDIO_SMTP_PORT ?? 587);
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('STUDIO_SMTP_PORT must be a port number.');
     smtp = {

@@ -20,6 +20,15 @@ export function createMailer(smtp) {
   };
 }
 
+// What went wrong, in words an administrator can act on: the error code and
+// the mail server's own answer (for example a refused, unverified sender).
+// Never includes credentials; trimmed and kept to one line.
+export function describeMailError(error) {
+  const parts = [error?.code, error?.responseCode ? String(error.responseCode) : null].filter(Boolean).join(' ');
+  const answer = String(error?.response ?? error?.message ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 200);
+  return [parts, answer].filter(Boolean).join(': ') || 'unknown error';
+}
+
 const sign = 'Homepage Studio';
 export const messages = {
   invite: ({ name, link, hours }) => ({

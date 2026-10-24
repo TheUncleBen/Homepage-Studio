@@ -200,3 +200,15 @@ test('the [hidden] attribute always hides, whatever a component class sets', asy
   const css = await readFile(new URL('./ui/app.css', import.meta.url), 'utf8');
   assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
 });
+
+test('the email sender name and address are separate settings; the old single setting still works', () => {
+  const origin = 'https://studio.example.test';
+  const base = { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_SMTP_HOST: 'smtp.example.test' };
+  assert.deepEqual(readAuthConfig({}, { ...base, STUDIO_SMTP_FROM_ADDRESS: 'studio@example.test', STUDIO_SMTP_FROM_NAME: 'Family Dashboards' }).smtp.from, { name: 'Family Dashboards', address: 'studio@example.test' });
+  assert.deepEqual(readAuthConfig({}, { ...base, STUDIO_SMTP_FROM_ADDRESS: 'studio@example.test' }).smtp.from, { name: 'Homepage Studio', address: 'studio@example.test' });
+  assert.equal(readAuthConfig({}, { ...base, STUDIO_SMTP_FROM: 'Studio <studio@example.test>' }).smtp.from, 'Studio <studio@example.test>');
+  assert.throws(() => readAuthConfig({}, { ...base, STUDIO_SMTP_FROM_NAME: 'Name only' }), /needs STUDIO_SMTP_FROM_ADDRESS/);
+  assert.throws(() => readAuthConfig({}, { ...base, STUDIO_SMTP_FROM_ADDRESS: 'Name <studio@example.test>' }), /plain email address/);
+  assert.throws(() => readAuthConfig({}, { ...base, STUDIO_SMTP_FROM_ADDRESS: 'a@example.test', STUDIO_SMTP_FROM: 'b@example.test' }), /not both/);
+  assert.throws(() => readAuthConfig({}, base), /STUDIO_SMTP_FROM_ADDRESS/);
+});
