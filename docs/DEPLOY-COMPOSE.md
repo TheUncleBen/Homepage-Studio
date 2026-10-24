@@ -43,7 +43,7 @@ docker network inspect homepage-studio --format '{{range .IPAM.Config}}{{.Subnet
 
 ## 3. Secret files
 
-Compose on one machine has no secret store, so the three secrets are files in
+Compose on one machine has no secret store, so the four secrets are files in
 a folder only Studio's user can read. Studio reads them from `/run/secrets`
 inside the container; the folder is mounted there read-only.
 
@@ -52,11 +52,13 @@ inside the container; the folder is mounted there read-only.
 | `studio_auth_key` | Long random text that encrypts authenticator-app secrets and single sign-on tokens. **Keep a copy**: if it's lost or changed, everyone sets up their authenticator app again |
 | `studio_oidc_client_secret` | The Authentik Client Secret ([IDP-AUTHENTIK.md](IDP-AUTHENTIK.md)), or the word `off` |
 | `studio_smtp_password` | The mail server password, or the word `off` |
+| `studio_admin_password` | The first administrator's password (with `STUDIO_ADMIN_USERNAME` in step 4), or the word `off` to create the administrator in the browser. Read once, on the first start ([AUTHENTICATION.md](AUTHENTICATION.md#first-start-the-administrator)) |
 
 ```bash
 sudo mkdir -p /srv/homepage-studio/secrets && cd /srv/homepage-studio/secrets
 openssl rand -base64 48 | sudo tee studio_auth_key >/dev/null     # save a copy in your password manager
 echo off | sudo tee studio_oidc_client_secret studio_smtp_password >/dev/null
+read -rs S && printf %s "$S" | sudo tee studio_admin_password >/dev/null; unset S   # the administrator's password, or off
 sudo chown -R 1000:1000 /srv/homepage-studio/secrets
 sudo chmod 700 /srv/homepage-studio/secrets && sudo chmod 400 /srv/homepage-studio/secrets/*
 ```
@@ -84,8 +86,10 @@ cp portainer.env.example .env
 | `STUDIO_TRUSTED_PROXIES` | Recommended: the subnet from step 2 |
 | `STUDIO_NETWORK_NAME` | Only if your network isn't called `homepage-studio` |
 | `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | Only to use host directories instead of named volumes (below) |
+| `STUDIO_ADMIN_USERNAME`, `STUDIO_ADMIN_EMAIL` | Recommended: the first administrator, whose password is the `studio_admin_password` file. Leave them unset if that file says `off` |
 
-Single sign-on (`STUDIO_OIDC_ISSUER`, `STUDIO_OIDC_CLIENT_ID`) and email
+Single sign-on (`STUDIO_OIDC_ISSUER`, `STUDIO_OIDC_CLIENT_ID`, and the group
+lists `STUDIO_OIDC_ADMIN_GROUPS` and `STUDIO_OIDC_ALLOWED_GROUPS`) and email
 (`STUDIO_SMTP_…`) are as in [DEPLOY.md step 6](DEPLOY.md#6-fill-in-the-environment-file).
 `STUDIO_NODE` is for Swarm only; Compose ignores it. Every other setting is in
 `portainer.env.example` with a short comment.

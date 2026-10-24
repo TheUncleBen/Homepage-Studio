@@ -12,7 +12,7 @@ who may open it, such as forward authentication in your reverse proxy.
 ## Contents
 
 - [What people can do](#what-people-can-do)
-- [First start: create the administrator](#first-start-create-the-administrator)
+- [First start: the administrator](#first-start-the-administrator)
 - [Inviting people and sharing dashboards](#inviting-people-and-sharing-dashboards)
 - [Signing in](#signing-in)
 - [Session policies](#session-policies)
@@ -44,11 +44,43 @@ the ability to read every secret or act as every viewer.
 Studio checks every request on the server. The dashboard also hides the
 controls a person can't use, but hiding is only a convenience.
 
-## First start: create the administrator
+## First start: the administrator
 
-The first person to open a fresh deployment (or one updated from a version
-without sign-in) is asked to create the administrator. Until that's done,
-every dashboard is locked and every address leads to the setup page.
+Until an administrator exists, every dashboard is locked. There are two ways
+to make the first one.
+
+### Prepared by the deployment (recommended)
+
+Set `STUDIO_ADMIN_USERNAME` (and optionally `STUDIO_ADMIN_EMAIL`) in the
+stack, and put the password in the `studio_admin_password` Docker secret
+([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)). On its first start, Studio
+creates that administrator account, and the open setup page below never
+appears.
+
+1. Open the dashboard's address and sign in with that username and password.
+2. Studio asks for a second step straight away: a **passkey**, an
+   **authenticator app**, or both. Until you add one, the password gets you no
+   further than that page.
+3. Save the ten **backup codes**.
+
+Studio uses the seed **once**. As soon as any account exists, it ignores
+`STUDIO_ADMIN_USERNAME`, `STUDIO_ADMIN_EMAIL` and the secret on every start
+(the log says so), so changing your password or email in Studio, or linking
+the account to Authentik, never clashes with what the deployment says. A
+password that's too short or too common, or a username without a password,
+stops Studio from starting, with the reason in the log.
+
+The intended setup is that this local administrator is then **linked to your
+Authentik administrator account** ([Linking](#linking-a-local-account-and-a-provider-account)):
+day to day you sign in with Authentik, and the local account is the way in
+when Authentik is down.
+
+### Created in the browser
+
+Without a seed (`studio_admin_password` says `off`), the first person to open
+a fresh deployment (or one updated from a version without sign-in) is asked
+to create the administrator. Every address leads to the setup page until
+that's done.
 
 1. Open the dashboard's address. You land on **Create the administrator**.
 2. Choose a username and a password of at least 12 characters.
@@ -189,14 +221,57 @@ end Studio sessions too.
   administrator. Turn the setting off to require an invitation for everyone;
   the invited person links their provider account from **My account**.
 
+**Set by the deployment.** `STUDIO_OIDC_ADMIN_GROUPS` and
+`STUDIO_OIDC_ALLOWED_GROUPS` (comma-separated) fill in the two lists from the
+stack. While one is set, it's shown read-only here and only the deployment
+changes it, so the stack and Studio can't disagree. Unset, the list is edited
+on this page; it keeps the last value the deployment gave it.
+
+**Sharing before anyone signs in.** A provider group appears under
+**Administration → Groups** when someone in it signs in, and every group named
+in the two lists is there from the start. Add any other provider group by its
+exact name with **Add Authentik group**. Share dashboards with these groups
+under **Dashboard access**, and people get them at their first sign-in, with
+the role their groups give them.
+
+### Linking a local account and a provider account
+
 Accounts are matched by the provider's issuer and subject identifier only,
 never by email or username, so a matching email at the provider can't take
-over a local account. A local account can link its provider identity from
-**My account → Link**. Linking asks you to confirm it's you first, and sends
-an email alert if the account has an address. After that, the provider
-account can sign in as you. **Unlink** on the same page (or **More actions →
-Unlink** for an administrator on the People page) removes the link and ends
-the provider sessions. An administrator's **Reset sign-in** also removes it.
+over a local account, and nothing is ever linked automatically. A person links
+their **own** two accounts, and has to prove both in the same browser within
+5 minutes:
+
+- **Signed in locally:** **My account → Link Authentik account**. If you
+  signed in more than 5 minutes ago, confirm it's you first.
+- **Signed in through the provider:** **My account → Link a local account**,
+  then sign in to the local account there (its password and second step, or
+  its passkey).
+
+Either way Studio then sends you to the provider with a request to sign in
+again (`prompt=login`, `max_age=300`) and refuses an ID token whose sign-in is
+older than 5 minutes. Back in Studio, a confirmation shows both accounts and
+what will change; nothing changes until you click **Link accounts**:
+
+- Either account signs you in to the same Studio account from then on. The
+  local password, passkeys, authenticator and backup codes stay exactly as
+  they were.
+- The local email takes the provider's **verified** email, and follows it at
+  every provider sign-in; it's read-only in Studio while linked. An email the
+  provider doesn't mark as verified is never used (see
+  [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md#email-addresses)), and **Sign-in
+  settings** warns when the last sign-in sent one.
+- If Studio already made a separate account for that provider identity (you
+  signed in with the provider before linking), it's **merged** into the local
+  account: its dashboard shares and local groups move over and it's removed.
+- Other signed-in devices of both accounts are signed out, and a security
+  alert goes to the old and the new email address.
+
+Nobody, administrators included, can link someone else's accounts.
+**Unlink** on the same page (or **More actions → Unlink** for an administrator
+on the People page) removes the link and ends the provider sessions; the
+email becomes editable again. An administrator's **Reset sign-in** also
+removes it.
 
 A linked local account is an administrator through provider groups only
 while it's signed in through the provider. Signed in locally, it has the role
@@ -261,6 +336,11 @@ or a backup code, so a mailbox alone can't take over an account.
 | `STUDIO_OIDC_SCOPES` | `openid profile email offline_access` | Keep `offline_access`, so groups can be checked while people are signed in |
 | `STUDIO_OIDC_GROUPS_CLAIM` | `groups` | |
 | `STUDIO_OIDC_REFRESH_MINUTES` | `15` | How often a signed-in provider account's groups are checked again, 1 to 1440 |
+| `STUDIO_OIDC_ADMIN_GROUPS` | (unset) | Comma-separated provider groups whose members are administrators. While set, it decides **Administrator groups** and that list is read-only in Studio |
+| `STUDIO_OIDC_ALLOWED_GROUPS` | (unset) | Comma-separated provider groups whose members may sign in. While set, it decides **Allowed groups** and that list is read-only in Studio |
+| `STUDIO_ADMIN_USERNAME` | (unset) | The first administrator's username, created once on the first start. Ignored once any account exists. See [First start](#first-start-the-administrator) |
+| `STUDIO_ADMIN_EMAIL` | (unset) | That administrator's email, optional |
+| `STUDIO_ADMIN_PASSWORD_FILE` | `/run/secrets/studio_admin_password` in the templates | The file holding that administrator's password, from the `studio_admin_password` Docker secret. `off` (or an empty file) means no seed; then leave `STUDIO_ADMIN_USERNAME` unset too |
 | `STUDIO_OIDC_ALLOW_HTTP` | (unset) | Testing only. `true` accepts a plain `http://` issuer; leave it unset in use, because tokens and the client secret would cross the network unencrypted |
 | `STUDIO_SMTP_HOST` | (unset) | The mail server. Setting it turns email on. See [Email](#email) |
 | `STUDIO_SMTP_PORT` | `587` | |
@@ -270,8 +350,8 @@ or a backup code, so a mailbox alone can't take over an account.
 | `STUDIO_SMTP_FROM` | (unset) | The sender address, required with `STUDIO_SMTP_HOST` |
 
 **Secrets as plain variables (not recommended).** Outside the templates, the
-three secrets can also be given directly as `STUDIO_AUTH_KEY`,
-`STUDIO_OIDC_CLIENT_SECRET` and `STUDIO_SMTP_PASSWORD`, for example
+four secrets can also be given directly as `STUDIO_AUTH_KEY`,
+`STUDIO_OIDC_CLIENT_SECRET`, `STUDIO_SMTP_PASSWORD` and `STUDIO_ADMIN_PASSWORD`, for example
 `STUDIO_AUTH_KEY=<long random text>` when running the image by hand for a
 test. The templates don't pass these: a plain variable shows up in the stack's
 environment, Portainer's stack view and `docker inspect`, and a `_FILE`

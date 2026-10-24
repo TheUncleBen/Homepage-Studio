@@ -41,10 +41,10 @@ function groupList(value, name) {
 // once from the deployment. It is read only while Studio has no accounts.
 function adminSeed(options, env) {
   const username = options.adminUsername ?? env.STUDIO_ADMIN_USERNAME;
-  const password = options.adminPassword ?? secretValue(env, 'STUDIO_ADMIN_PASSWORD');
+  const password = options.adminPassword ?? secretValue(env, 'STUDIO_ADMIN_PASSWORD', { optional: true });
   const email = options.adminEmail ?? env.STUDIO_ADMIN_EMAIL;
   if (!username && !password && !email) return null;
-  if (!username || !password) throw new Error('Seeding the first administrator needs STUDIO_ADMIN_USERNAME and STUDIO_ADMIN_PASSWORD_FILE (or STUDIO_ADMIN_PASSWORD) together.');
+  if (!username || !password) throw new Error('Seeding the first administrator needs STUDIO_ADMIN_USERNAME and its password in the studio_admin_password secret (STUDIO_ADMIN_PASSWORD_FILE) together. Leave the username empty and put off in the secret to skip seeding.');
   const name = String(username).trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9._@-]{0,63}$/.test(name)) throw new Error('STUDIO_ADMIN_USERNAME must be 1 to 64 lowercase letters, numbers, dots, hyphens, underscores or @, starting with a letter or number.');
   const problem = passwordProblem(password);

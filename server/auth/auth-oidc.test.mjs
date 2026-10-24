@@ -487,6 +487,11 @@ test('the administrator seed is ignored once accounts exist, and bad seeds stop 
   await second.close();
   assert.deepEqual(users.map(user => [user.username, user.email]), [['owner', null]], 'a later seed changes nothing');
   assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: ORIGIN, STUDIO_ADMIN_USERNAME: 'owner' }), /STUDIO_ADMIN_PASSWORD_FILE/);
+  // The templates always mount the secret; the word off means no seed.
+  const off = path.join(stateRoot, 'admin-password');
+  await fs.writeFile(off, 'off\n');
+  assert.equal(readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: ORIGIN, STUDIO_ADMIN_PASSWORD_FILE: off }).adminSeed, null);
+  assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: ORIGIN, STUDIO_ADMIN_USERNAME: 'owner', STUDIO_ADMIN_PASSWORD_FILE: off }), /studio_admin_password/);
   assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: ORIGIN, STUDIO_ADMIN_USERNAME: 'owner', STUDIO_ADMIN_PASSWORD: 'short' }), /not accepted/);
   assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: ORIGIN, STUDIO_ADMIN_USERNAME: 'Bad Name!', STUDIO_ADMIN_PASSWORD: PASSWORD }), /STUDIO_ADMIN_USERNAME/);
 });

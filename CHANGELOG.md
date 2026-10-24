@@ -9,6 +9,33 @@ build is identified by its source commit and image digest
 
 ## [Unreleased]
 
+### Linking local and Authentik accounts, a prepared administrator, groups set ahead
+
+- **Prepared administrator.** `STUDIO_ADMIN_USERNAME` (and optionally
+  `STUDIO_ADMIN_EMAIL`) with the new `studio_admin_password` Docker secret
+  create the first administrator once, on the first start. The first sign-in
+  must add a passkey or authenticator app, and the open setup page is off.
+  Studio ignores the seed as soon as any account exists. Put `off` in the
+  secret to keep creating the administrator in the browser. **All stacks need
+  the fourth secret** (`off` for an existing deployment).
+- **Groups from the deployment.** `STUDIO_OIDC_ADMIN_GROUPS` and
+  `STUDIO_OIDC_ALLOWED_GROUPS` set the administrator and allowed groups;
+  while set they're read-only in Studio.
+- **Sharing before the first sign-in.** Groups named in those lists appear
+  under **Groups** at once, and any other provider group can be added by its
+  exact name, so dashboards can be shared with it before anyone in it signs in.
+- **Linking.** A person links their own local and Authentik accounts from
+  either side: a local sign-in (or a claim of the local account) within
+  5 minutes, then a fresh Authentik sign-in, then a confirmation page. A
+  separate Authentik account Studio made earlier is merged into the local one.
+  The local email follows the Authentik email and is read-only while linked;
+  the password never changes. Alerts go to the old and the new address.
+- **Verified emails only.** Studio uses a provider's email only when
+  `email_verified` is `true`. Authentik 2025.10 and later sends `false` by
+  default; [docs/IDP-AUTHENTIK.md](docs/IDP-AUTHENTIK.md#email-addresses)
+  shows the mapping, and **Sign-in settings** warns when an unverified email
+  arrives.
+
 ### Docker secrets, a shared proxy network and a rewritten deployment guide
 
 Existing stacks need one-time steps before taking this template:

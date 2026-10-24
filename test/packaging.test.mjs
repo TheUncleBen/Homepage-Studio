@@ -129,7 +129,7 @@ test('health checks bound unresponsive and oversized endpoints', async t => {
 });
 
 // The secrets Studio reads from files, and the Docker secret each one comes from.
-const SECRETS = { STUDIO_AUTH_KEY: 'studio_auth_key', STUDIO_OIDC_CLIENT_SECRET: 'studio_oidc_client_secret', STUDIO_SMTP_PASSWORD: 'studio_smtp_password' };
+const SECRETS = { STUDIO_AUTH_KEY: 'studio_auth_key', STUDIO_OIDC_CLIENT_SECRET: 'studio_oidc_client_secret', STUDIO_SMTP_PASSWORD: 'studio_smtp_password', STUDIO_ADMIN_PASSWORD: 'studio_admin_password' };
 
 test('every deployment setting is in both templates, the example values and the deployment docs', async () => {
   const variables = text => new Set([...text.matchAll(/\$\{(STUDIO_[A-Z_]+)[:}]/g)].map(match => match[1]));
@@ -167,7 +167,7 @@ test('deployment templates publish one application and preserve bounded internal
     assert.deepEqual(Object.keys(template.services), ['studio']);
     const studio = template.services.studio;
     const volumes = ['${STUDIO_CONFIG_PATH:-config}:/app/config', '${STUDIO_STATE_PATH:-state}:/app/state'];
-    if (file.includes('compose')) volumes.push('${STUDIO_SECRETS_DIR:?Set STUDIO_SECRETS_DIR to the absolute folder that holds the three secret files}:/run/secrets:ro');
+    if (file.includes('compose')) volumes.push('${STUDIO_SECRETS_DIR:?Set STUDIO_SECRETS_DIR to the absolute folder that holds the four secret files}:/run/secrets:ro');
     assert.deepEqual(studio.volumes, volumes);
     assert.deepEqual(Object.keys(template.volumes), ['config', 'state']);
     // Reached only through the reverse proxy on a shared, pre-created network.

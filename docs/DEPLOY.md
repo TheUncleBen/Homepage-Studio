@@ -35,12 +35,12 @@ is a Docker secret.**
 | [2](#2-shared-proxy-network-once) | Create the network Studio shares with NPM | a Swarm manager |
 | [3](#3-node-and-storage) | Pick the node and the storage | a Swarm manager |
 | [4](#4-authentik-provider-optional) | Optional: create the Authentik provider | Authentik |
-| [5](#5-docker-secrets) | Create three Docker secrets | Portainer or a Swarm manager |
+| [5](#5-docker-secrets) | Create four Docker secrets, including the administrator's password | Portainer or a Swarm manager |
 | [6](#6-fill-in-the-environment-file) | Fill in the environment file | your computer |
 | [7](#7-deploy-the-stack-in-portainer) | Deploy the stack | Portainer |
 | [8](#8-nginx-proxy-manager) | Add the proxy host | NPM |
-| [9](#9-first-sign-in-and-checks) | Create the administrator and check it works | your browser |
-| [10](#10-finish-single-sign-on-in-studio-optional) | Optional: finish single sign-on | Studio |
+| [9](#9-first-sign-in-and-checks) | Sign in as the administrator and check it works | your browser |
+| [10](#10-finish-single-sign-on-in-studio-optional) | Optional: finish single sign-on and link your account | Studio |
 
 Placeholders used below:
 
@@ -208,6 +208,11 @@ Authentik admin interface:
      Authentik are signed out of Studio after 15 minutes.
    - Subject mode: **Based on the User's hashed ID** (the default). Keep it,
      and never change it once people have signed in.
+   - Optional: so Studio uses people's Authentik email addresses, replace the
+     `email` mapping with one that marks them verified
+     ([IDP-AUTHENTIK.md section 4](IDP-AUTHENTIK.md#email-addresses)). Since
+     Authentik 2025.10 the built-in mapping says they aren't, and Studio then
+     ignores them.
    - Note the **Client ID**. Leave the **Client Secret** where it is for now;
      it goes straight into a Docker secret in step 5.
 3. **Applications → Applications → Create**: name `Homepage Studio`, slug
@@ -221,7 +226,7 @@ Authentik admin interface:
 
 ## 5. Docker secrets
 
-The stack expects three Swarm secrets with exactly these names. Each must
+The stack expects four Swarm secrets with exactly these names. Each must
 exist before you deploy, so a feature you don't use gets the word `off`.
 
 | Secret name | What goes in it |
@@ -229,6 +234,7 @@ exist before you deploy, so a feature you don't use gets the word `off`.
 | `studio_auth_key` | Long random text that encrypts authenticator-app secrets and single sign-on tokens in Studio's state. **Keep a copy** in your password manager. If it's lost or changed, everyone sets up their authenticator app again and single sign-on sessions end |
 | `studio_oidc_client_secret` | The **Client Secret** from the Authentik provider (step 4), or the word `off` if you don't use single sign-on |
 | `studio_smtp_password` | Your mail server password, or the word `off` if you don't use email (or your mail server needs no password) |
+| `studio_admin_password` | The password for the first administrator account, at least 12 characters. Studio creates that account once, on the first start, with the username you set in step 6, and never reads this secret again. Put `off` to create the administrator in the browser instead (step 9) |
 
 Make random values on your own machine when you need them. They go only into
 the secret, never into the stack's environment variables, a file you keep
@@ -248,13 +254,14 @@ around, or a chat. Pick one of the two ways below.
    secret** on (the default), and click **Create the secret**. Save the key in
    your password manager now.
 4. Do the same for `studio_oidc_client_secret` (paste the Client Secret
-   straight from Authentik, or type `off`) and `studio_smtp_password` (the mail
-   password, or `off`).
+   straight from Authentik, or type `off`), `studio_smtp_password` (the mail
+   password, or `off`) and `studio_admin_password` (a password you choose for
+   the administrator, saved in your password manager, or `off`).
 5. Clear your terminal (`clear`) so the key isn't left on screen.
 
 ### Option B: on a Swarm manager
 
-This creates the same three secrets, each only if it doesn't exist yet, so
+This creates the same four secrets, each only if it doesn't exist yet, so
 it's safe to run again. Nothing is written to disk or your shell history.
 
 ```bash
@@ -270,16 +277,21 @@ missing studio_oidc_client_secret && read -rs S && printf %s "$S" | docker secre
 
 # 3. studio_smtp_password. Type the mail password (or off) and press Enter.
 missing studio_smtp_password && read -rs S && printf %s "$S" | docker secret create studio_smtp_password - ; unset S
+
+# 4. studio_admin_password. Type the administrator's password (or off) and press Enter.
+missing studio_admin_password && read -rs S && printf %s "$S" | docker secret create studio_admin_password - ; unset S
 ```
 
 Either way, Portainer's **Secrets** page (or `docker secret ls`) now lists all
-three. Studio ignores a trailing newline in a secret.
+four. Studio ignores a trailing newline in a secret.
 
 **Changing a secret later.** Swarm secrets can't be edited. Remove the stack
 (your volumes stay), delete the secret, create it again with the same name and
 the new value, and deploy the stack again. That's how you add Authentik or
 email later: replace `off` with the real value. Don't change `studio_auth_key`
 unless you mean to: it resets everyone's authenticator app.
+`studio_admin_password` never needs changing: once any account exists Studio
+ignores it, and you change your password under **My account**.
 
 ## 6. Fill in the environment file
 
@@ -295,6 +307,8 @@ default. **No secret values go in this file.**
 | `STUDIO_TRUSTED_PROXIES` | Recommended: the subnet from step 2, for example `10.0.10.0/24`. Remove the `# ` in front of the line |
 | `STUDIO_NETWORK_NAME` | Only if your network isn't called `homepage-studio` |
 | `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | Only for host directories (step 3) |
+| `STUDIO_ADMIN_USERNAME` | Recommended: the first administrator's username, for example `admin`. Its password is the `studio_admin_password` secret. Leave it unset if that secret says `off` |
+| `STUDIO_ADMIN_EMAIL` | Optional: that administrator's email. Once you link the account to Authentik (step 10) it follows your Authentik email |
 
 With Authentik (step 4), also uncomment and fill in:
 
@@ -302,6 +316,12 @@ With Authentik (step 4), also uncomment and fill in:
 | --- | --- |
 | `STUDIO_OIDC_ISSUER` | The issuer from step 4, `https://authentik.example.test/application/o/homepage-studio/` |
 | `STUDIO_OIDC_CLIENT_ID` | The Client ID from step 4 |
+| `STUDIO_OIDC_ADMIN_GROUPS` | Recommended: `Homepage Studio Admins`. Members are Studio administrators from their first Authentik sign-in |
+| `STUDIO_OIDC_ALLOWED_GROUPS` | Recommended: `Homepage Studio Users`. Only members of these groups (and the admin groups) may sign in through Authentik |
+
+The two group lists are comma-separated and spelled exactly as in Authentik.
+Set here, Studio shows them read-only; leave them unset to fill them in under
+**Administration → Sign-in settings** instead (step 10).
 
 The client secret is already in the `studio_oidc_client_secret` secret. For
 email, fill in the `STUDIO_SMTP_…` lines; the password is already in
@@ -438,14 +458,25 @@ curl -s https://homepage.example.test/__studio/application-ready
 # {"status":"ready"}
 ```
 
-Then open `https://homepage.example.test/` in a browser **straight away**. A
-fresh Studio asks the first visitor to create the administrator account, so
-do it before anyone else can:
+Then open `https://homepage.example.test/` in a browser.
 
-1. Pick a username, then secure the account with a **passkey**, or with a
-   password plus an **authenticator app**. Keep the backup codes Studio shows
-   you somewhere safe.
-2. You land on an empty dashboard with **Add your first widget**.
+**With `STUDIO_ADMIN_USERNAME` and the `studio_admin_password` secret** (the
+recommended setup), Studio created that administrator on its first start and
+the open setup page is off:
+
+1. Sign in with that username and password.
+2. Studio asks for a second step before anything else: add a **passkey**, an
+   **authenticator app**, or both. Keep the backup codes Studio shows you
+   somewhere safe.
+3. You land on **Administration**.
+
+The password alone gets nobody further than step 2, but finish it now anyway.
+Studio never reads the secret again, so changing it later changes nothing.
+
+**Without them** (the secret says `off`), a fresh Studio asks the first visitor
+to create the administrator account, so do it **straight away**, before anyone
+else can: pick a username and password, add a passkey or authenticator app, and
+keep the backup codes.
 
 Then check two things under **Administration**:
 
@@ -466,22 +497,32 @@ Only if you set up Authentik in step 4. Signed in as the administrator, open
 **Administration → Sign-in settings**. The **Authentik** section shows the
 redirect URI Studio expects; it must match the one on the provider exactly.
 
-1. **Administrator groups**: `Homepage Studio Admins`. People in it become
-   Studio administrators.
-2. **Allowed groups**: `Homepage Studio Users`. Only people in an allowed or
-   administrator group may sign in through Authentik.
-3. Leave **Create a Studio account the first time someone signs in with
-   Authentik** on, so people in those groups get an account at their first
-   sign-in. Click **Save single sign-on settings**.
+1. **Groups.** If you set `STUDIO_OIDC_ADMIN_GROUPS` and
+   `STUDIO_OIDC_ALLOWED_GROUPS` in step 6, they're already filled in and
+   locked. Otherwise enter `Homepage Studio Admins` under **Administrator
+   groups** and `Homepage Studio Users` under **Allowed groups**. Leave
+   **Create a Studio account the first time someone signs in with Authentik**
+   on, and click **Save single sign-on settings**.
+2. **Share dashboards before anyone signs in.** The listed groups appear under
+   **Administration → Groups** straight away; add any other Authentik group
+   there by its exact name (**Add Authentik group**). Then share dashboards
+   with those groups under **Dashboard access**. People get them at their very
+   first Authentik sign-in.
+3. **Link your administrator account to Authentik**, so either one signs you
+   in and the local account is your way in when Authentik is down: **My
+   account → Link Authentik account**, sign in to Authentik, and confirm on
+   the page that follows. Your local password stays as it is, and the
+   account's email changes to your Authentik email and follows it from then
+   on. Signed in through Authentik already? Use **My account → Link a local
+   account** instead; the separate Authentik account Studio made for you is
+   merged into the local one.
 4. In a private window, open Studio and choose to sign in with Authentik. Sign
-   in as someone in `Homepage Studio Users`: you should land on Studio as a
-   member.
-5. Optional: link your own administrator account to Authentik, so you can
-   sign in either way: **My account → Link**.
+   in as someone in `Homepage Studio Users`: you should land on the dashboards
+   shared with that group.
 
 Once Authentik sign-in works, you can make it the only way in (**Allow local
 sign-in** off). [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md#7-finish-in-studio)
-explains each setting, and what to check when the sign-in fails.
+explains each setting, linking, and what to check when the sign-in fails.
 
 ## Widget API keys as Docker secrets
 
@@ -542,9 +583,11 @@ variables with a short comment each.
 | `STUDIO_NETWORK_NAME` | `homepage-studio` | The existing network shared with the reverse proxy |
 | `STUDIO_TRUSTED_PROXIES` | (unset) | Comma-separated IP addresses or CIDR ranges of your reverse proxy, usually the network's subnet. Studio then takes the client address from `X-Forwarded-For` for sign-in throttling and the activity log |
 | `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | the named volumes `config` and `state` | Absolute host directories to bind mount instead ([step 3](#host-directories-instead-of-named-volumes)) |
-| `STUDIO_SECRETS_DIR` | (required for Compose) | Docker Compose only: the folder with the three secret files ([DEPLOY-COMPOSE.md](DEPLOY-COMPOSE.md)). The Swarm stack doesn't use it |
+| `STUDIO_SECRETS_DIR` | (required for Compose) | Docker Compose only: the folder with the four secret files ([DEPLOY-COMPOSE.md](DEPLOY-COMPOSE.md)). The Swarm stack doesn't use it |
 | `STUDIO_AUTH` | `on` | `off` only if your proxy already decides who may open Studio ([AUTHENTICATION.md](AUTHENTICATION.md#turning-sign-in-off)) |
 | `STUDIO_OIDC_ISSUER`, `STUDIO_OIDC_CLIENT_ID` | (unset) | Single sign-on; both together, plus the `studio_oidc_client_secret` secret ([IDP-AUTHENTIK.md](IDP-AUTHENTIK.md)) |
+| `STUDIO_ADMIN_USERNAME`, `STUDIO_ADMIN_EMAIL` | (unset) | The first administrator, created once with the `studio_admin_password` secret ([AUTHENTICATION.md](AUTHENTICATION.md#first-start-the-administrator)) |
+| `STUDIO_OIDC_ADMIN_GROUPS`, `STUDIO_OIDC_ALLOWED_GROUPS` | (unset) | Comma-separated Authentik groups for administrators and for who may sign in. Set here, they're read-only in Studio |
 | `STUDIO_OIDC_NAME`, `STUDIO_OIDC_SCOPES`, `STUDIO_OIDC_GROUPS_CLAIM`, `STUDIO_OIDC_REFRESH_MINUTES`, `STUDIO_OIDC_ALLOW_HTTP` | see [AUTHENTICATION.md](AUTHENTICATION.md#settings-reference) | Rarely changed |
 | `STUDIO_SMTP_HOST`, `STUDIO_SMTP_PORT`, `STUDIO_SMTP_SECURE`, `STUDIO_SMTP_USER`, `STUDIO_SMTP_FROM` | (unset) | Email, plus the `studio_smtp_password` secret ([AUTHENTICATION.md](AUTHENTICATION.md#email)) |
 | `STUDIO_FRAME_ANCESTORS` | empty | Space-separated `'self'` and exact origins allowed to show a dashboard in a frame ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) |
@@ -554,8 +597,8 @@ variables with a short comment each.
 | `STUDIO_RENDERER_STARTUP_SECONDS` | `30` | Seconds a worker may take to start, up to 120 |
 
 Set by the stack itself, not by you: `STUDIO_AUTH_KEY_FILE`,
-`STUDIO_OIDC_CLIENT_SECRET_FILE` and `STUDIO_SMTP_PASSWORD_FILE` (the paths of
-the three secrets), and `LOG_TARGETS=stdout`. Your own `HOMEPAGE_FILE_*` and
+`STUDIO_OIDC_CLIENT_SECRET_FILE`, `STUDIO_SMTP_PASSWORD_FILE` and
+`STUDIO_ADMIN_PASSWORD_FILE` (the paths of the four secrets), and `LOG_TARGETS=stdout`. Your own `HOMEPAGE_FILE_*` and
 `HOMEPAGE_VAR_*` variables are [above](#widget-api-keys-as-docker-secrets).
 
 The image fixes the paths (`/app/config`, `/app/state`), the internal port
