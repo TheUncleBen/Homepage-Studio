@@ -35,6 +35,9 @@
   const notice = (kind = '') => h('div', { class: 'notice ' + kind, role: kind === 'error' ? 'alert' : 'status' });
   function say(box, message, kind = 'error') { box.className = 'notice ' + kind; box.setAttribute('role', kind === 'error' ? 'alert' : 'status'); box.textContent = message ?? ''; }
   const brand = () => h('a', { class: 'brand', href: '/' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true', text: 'H' }), 'Homepage Studio');
+  // A way out of a sign-in step (cancel, start over, back): a quiet button,
+  // never a bare inline link.
+  const exitLink = (href, text) => h('a', { class: 'button quiet block', href, text });
   const card = (wide, ...children) => h('div', { class: 'auth-center' }, h('section', { class: 'auth-card' + (wide ? ' wide' : '') }, ...children));
   function field(label, input, hint, badge) {
     const id = input.id || ('f' + Math.random().toString(36).slice(2));
@@ -221,7 +224,7 @@
       children.push(passkeyButton, h('div', { class: 'divider', text: 'or use your password' }));
     }
     children.push(form);
-    if (state.recoveryEmail) children.push(h('p', { class: 'small' }, h('a', { href: '/__studio/auth/recover', text: 'Forgot your password?' })));
+    if (state.recoveryEmail) children.push(exitLink('/__studio/auth/recover', 'Forgot your password?'));
     else children.push(h('p', { class: 'small muted', text: 'Forgot your password? Ask an administrator to reset your sign-in.' }));
     return h('div', { class: 'stack' }, children);
   }
@@ -282,7 +285,7 @@
     }
     show();
     render(card(false, brand(), h('h1', { text: claim ? 'Confirm your local account' : reauth ? 'Confirm it’s you' : 'One more step' }), h('p', { class: 'lede', text: 'Confirm with your second sign-in method.' }), message, body,
-      h('p', { class: 'small' }, h('a', { href: location.pathname + location.search, text: 'Start over' }))));
+      exitLink(location.pathname + location.search, 'Start over')));
   }
 
   async function reauthPage(state, next) {
@@ -323,7 +326,7 @@
         });
       } }, field('Password', password), submit));
     }
-    parts.push(h('p', { class: 'small' }, h('a', { href: next, text: 'Cancel' })));
+    parts.push(exitLink(next, 'Cancel'));
     render(card(false, ...parts));
   }
 
@@ -526,11 +529,11 @@
             catch (error) { say(message, error.message); }
           });
         } }, field('Username or email', identifier), submit) : null,
-        h('p', { class: 'small' }, h('a', { href: '/__studio/auth/sign-in', text: 'Back to sign-in' }))));
+        exitLink('/__studio/auth/sign-in', 'Back to sign-in')));
     }
     let details;
     try { details = await api('recover/details', { token }); }
-    catch (error) { return render(card(false, brand(), h('h1', { text: 'This link no longer works' }), h('div', { class: 'notice error', text: error.message }), h('a', { href: '/__studio/auth/recover', text: 'Request a new link' }))); }
+    catch (error) { return render(card(false, brand(), h('h1', { text: 'This link no longer works' }), h('div', { class: 'notice error', text: error.message }), h('a', { class: 'button primary block', href: '/__studio/auth/recover', text: 'Request a new link' }))); }
     const passwords = passwordFields();
     passwords.password.setAttribute('data-autofocus', '');
     const labels = { totp: 'Authenticator code', backup: 'Backup code', passkey: 'Passkey' };
@@ -745,7 +748,7 @@
       return section('Sign-in methods', 'Keep at least a passkey, or a password with an authenticator app.',
         h('ul', { class: 'list' }, items), h('h3', { text: 'Passkeys' }),
         factors.passkeys.length ? passkeyList : h('p', { class: 'small muted', text: 'No passkeys yet. A passkey is the quickest and safest way to sign in.' }),
-        box, h('div', { class: 'actions' }, addPasskey, passkeysSupported() ? null : h('span', { class: 'small muted', text: 'This browser does not support passkeys.' })));
+        box, passkeysSupported() ? null : h('p', { class: 'small muted center', text: 'This browser does not support passkeys.' }), h('div', { class: 'actions' }, addPasskey));
     }
     // Shown after the provider step of a link, before anything changes.
     function linkConfirmSection(link) {
@@ -808,7 +811,7 @@
         }));
         parts.push(passkeyButton, h('div', { class: 'divider', text: 'or use the password' }));
       }
-      parts.push(form, h('p', { class: 'small' }, h('a', { href: '/__studio/account', text: 'Cancel' })));
+      parts.push(form, exitLink('/__studio/account', 'Cancel'));
       render(card(false, ...parts));
     }
     function linkSection(user) {
@@ -1085,7 +1088,7 @@
         const body = h('div', { class: 'stack' });
         const save = h('button', { type: 'button', class: 'primary', text: 'Save access' });
         const unsaved = h('span', { class: 'badge warn', text: 'Unsaved changes' });
-        const saveRow = h('div', { class: 'actions' }, unsaved, save);
+        const saveRow = h('div', { class: 'actions' }, save);
         const snapshot = list => JSON.stringify(list.map(grant => [grant.subject, grant.level]));
         // Marks the card when its list differs from what was last saved.
         function mark() {
@@ -1113,7 +1116,7 @@
           catch (error) { failure(box, error); }
         }));
         draw();
-        return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('div', {}, h('h3', { text: entry.name }), h('span', { class: 'small muted mono', text: '/' + (entry.slug ?? '') }))), body, box, saveRow);
+        return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('div', {}, h('h3', { text: entry.name }), h('span', { class: 'small muted mono', text: '/' + (entry.slug ?? '') })), unsaved), body, box, saveRow);
       });
       return [section('Dashboard access', 'Can view: open the dashboard and use its widgets. Can arrange: also move tiles, hide discovered services and change the theme. Only administrators change integration settings, raw files, custom CSS and JavaScript, imports and access.'), ...cards];
     }
