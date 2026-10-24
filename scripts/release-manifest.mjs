@@ -65,6 +65,17 @@ export function validateReleaseManifest(manifest) {
   return { version: manifest.version, artifactSetSha256: fingerprint };
 }
 
+// The bundle's example values come from the repository's portainer.env.example,
+// minus STUDIO_IMAGE: bundle templates already carry the image digest.
+export async function bundleEnvExample(sourceRoot = root) {
+  const text = await fs.readFile(path.join(sourceRoot, 'portainer.env.example'), 'utf8');
+  const image = /^# --- Image -+\n(?:#.*\n)*STUDIO_IMAGE=.*\n/gm;
+  if ([...text.matchAll(image)].length !== 1) throw new Error('portainer.env.example needs exactly one Image section ending in STUDIO_IMAGE.');
+  const result = text.replace(image, "# --- Image -------------------------------------------------------------------\n# Nothing to set: this bundle's templates already pin the image by digest.\n");
+  if (/^STUDIO_IMAGE=/m.test(result)) throw new Error('portainer.env.example sets STUDIO_IMAGE outside its Image section.');
+  return result;
+}
+
 export async function materializeRelease(manifest, outputDirectory, sourceRoot = root) {
   const result = validateReleaseManifest(manifest);
   const output = path.resolve(outputDirectory);
@@ -83,7 +94,7 @@ export async function materializeRelease(manifest, outputDirectory, sourceRoot =
       await fs.writeFile(path.join(temporary, name), contents, { mode: 0o644 });
     }
     await fs.writeFile(path.join(temporary, 'release-manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o644 });
-    await fs.writeFile(path.join(temporary, 'portainer.env.example'), '# Set the dashboard address; image digests are already in the release templates.\nSTUDIO_PUBLIC_ORIGIN=https://homepage.example.test\nSTUDIO_PORT=3000\n# Swarm only: exact node hostname holding the named volumes.\nSTUDIO_NODE=<docker-node-hostname>\n# Optional, default 25.\nSTUDIO_BACKUP_RETENTION=25\nSTUDIO_RENDERER_MAX_WORKERS=8\nSTUDIO_RENDERER_IDLE_SECONDS=600\nSTUDIO_RENDERER_STARTUP_SECONDS=30\n# Optional: origins allowed to embed the dashboard in a frame (default: same origin only).\n# STUDIO_FRAME_ANCESTORS="\'self\' https://ha.example.test:8123"\n# Sign-in is on by default and needs https:// (docs/AUTHENTICATION.md).\n# STUDIO_AUTH=on\n# STUDIO_AUTH_KEY=<long random text>\n# STUDIO_TRUSTED_PROXIES=<reverse proxy IP or CIDR>\n', { mode: 0o644 });
+    await fs.writeFile(path.join(temporary, 'portainer.env.example'), await bundleEnvExample(sourceRoot), { mode: 0o644 });
     await fs.rename(temporary, output);
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
   return result;

@@ -1,7 +1,8 @@
 # Deploying on Docker Swarm (with or without Portainer)
 
 This gets you one Swarm stack with one service, `studio`, running one replica
-on a node you choose, with two named volumes on that node. Nothing is built on
+on a node you choose, with its data in two named volumes on that node (or in
+host directories you choose). Nothing is built on
 your machines: the stack pulls an image that CI has already built and tested.
 
 Not running a Swarm? [DEPLOY-COMPOSE.md](DEPLOY-COMPOSE.md) does the same on
@@ -37,11 +38,12 @@ pulled anonymously yet; see [VERSIONS.md](VERSIONS.md#checking-a-bundle).
 Don't use `portainer-swarm.yml` from the repository itself: it has no image
 in it, only `STUDIO_IMAGE` for CI to fill in.
 
-## 2. Pick the node
+## 2. Pick the node and the storage
 
-Studio keeps its data in two Docker named volumes, and named volumes live on
-one node. The stack therefore pins the service to one node by hostname, and
-the data stays on that node.
+Studio keeps its data in two directories: `/app/config` (the dashboards) and
+`/app/state` (snapshot history, accounts, sessions and the activity log). By
+default they're two Docker named volumes, and named volumes live on one node.
+The stack therefore pins the service to one node by hostname.
 
 ```bash
 docker node ls          # the HOSTNAME column; pick one, e.g. node-1
@@ -53,6 +55,48 @@ docker node ls          # the HOSTNAME column; pick one, e.g. node-1
 - Moving to another node later means moving both volumes yourself
   ([OPERATIONS.md](OPERATIONS.md#moving-to-another-node)). Don't scale the
   service above one replica: there must only ever be one writer.
+
+### Host directories instead of named volumes
+
+Set `STUDIO_CONFIG_PATH` and `STUDIO_STATE_PATH` to absolute paths on the host
+and the template bind mounts those directories instead. Use both or neither,
+so the two halves of the data stay together. Create them first: Swarm refuses
+to start the task if a bind path doesn't exist, and nothing in the container
+can fix ownership, so:
+
+```bash
+sudo mkdir -p /srv/homepage-studio/config /srv/homepage-studio/state
+sudo chown 1000:1000 /srv/homepage-studio/config /srv/homepage-studio/state
+sudo chmod 750 /srv/homepage-studio/config
+sudo chmod 700 /srv/homepage-studio/state
+```
+
+If UID 1000 can't write either directory, Studio doesn't become healthy and
+reports that application storage is unavailable or not writable.
+
+### Shared storage (CephFS)
+
+The two directories can live on a CephFS mount that every node sees. Studio
+writes each file to a temporary name, flushes it with `fsync`, renames it into
+place and flushes the directory. Those are ordinary POSIX operations that
+CephFS provides, and Studio uses no database or SQLite file. CI doesn't test
+on CephFS, so treat it as supported by design rather than by test.
+
+What Studio doesn't have is a lock that works across hosts: it serializes
+writes inside its one process. Two copies of Studio on the same directories
+would each overwrite the other's changes (for example a revoked session coming
+back, or a dashboard edit disappearing). Hence:
+
+- **Keep the node pin.** With shared storage, moving Studio is just changing
+  `STUDIO_NODE` and updating the stack; there's nothing to copy. Updates are
+  safe as they are: `stop-first` stops the old task before the new one starts.
+- **Don't remove the pin for automatic failover.** If a node loses contact
+  with the managers but keeps running, Swarm starts a replacement elsewhere
+  while the old container may still be writing, and Swarm has no way to stop
+  it. Only remove the pin if you accept that risk, and never set more than one
+  replica.
+- Make sure the CephFS mount is up before Docker starts on each node, or
+  Studio will write into the empty mount point on the local disk.
 
 ## 3. Values
 
@@ -67,7 +111,13 @@ docker node ls          # the HOSTNAME column; pick one, e.g. node-1
 | `STUDIO_RENDERER_STARTUP_SECONDS` | No | Seconds a worker may take to start, up to 120 | `30` |
 | `STUDIO_FRAME_ANCESTORS` | No | Other sites allowed to show the dashboard in a frame ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) | empty: same origin only |
 | `STUDIO_AUTH` | No | `on` for Studio sign-in, `off` only if your proxy already controls access ([AUTHENTICATION.md](AUTHENTICATION.md)) | `on` |
-| `STUDIO_AUTH_KEY`, `STUDIO_TRUSTED_PROXIES`, `STUDIO_OIDC_*`, `STUDIO_SMTP_*` | No | Encryption key, proxy addresses, single sign-on and email ([AUTHENTICATION.md](AUTHENTICATION.md#settings-reference)) | unset |
+| `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | No | Absolute host directories to bind mount instead of the named volumes ([step 2](#host-directories-instead-of-named-volumes)) | the named volumes `config` and `state` |
+| `STUDIO_AUTH_KEY` (or `STUDIO_AUTH_KEY_FILE`), `STUDIO_TRUSTED_PROXIES` | No | Encryption key and reverse proxy addresses ([AUTHENTICATION.md](AUTHENTICATION.md#settings-reference)) | unset |
+| `STUDIO_OIDC_ISSUER`, `STUDIO_OIDC_CLIENT_ID`, `STUDIO_OIDC_CLIENT_SECRET` (or `_FILE`), `STUDIO_OIDC_NAME`, `STUDIO_OIDC_SCOPES`, `STUDIO_OIDC_GROUPS_CLAIM`, `STUDIO_OIDC_REFRESH_MINUTES`, `STUDIO_OIDC_ALLOW_HTTP` | No | Single sign-on ([AUTHENTICATION.md](AUTHENTICATION.md#single-sign-on-with-authentik-or-another-provider)) | unset |
+| `STUDIO_SMTP_HOST`, `STUDIO_SMTP_PORT`, `STUDIO_SMTP_SECURE`, `STUDIO_SMTP_USER`, `STUDIO_SMTP_PASSWORD` (or `_FILE`), `STUDIO_SMTP_FROM` | No | Email ([AUTHENTICATION.md](AUTHENTICATION.md#email)) | unset |
+
+`portainer.env.example` lists every one of these with a short comment and its
+default.
 
 `STUDIO_PUBLIC_ORIGIN` matters more than it looks. Studio answers only
 requests for exactly that host and port, and the browser's address must match
@@ -102,7 +152,7 @@ What the stack does, so you don't have to:
 
 | In the template | Why |
 | --- | --- |
-| One replica, `node.hostname == STUDIO_NODE` | One writer, on the node that holds the volumes |
+| One replica, `node.hostname == STUDIO_NODE` | One writer, on the node that holds the data |
 | `order: stop-first` for updates and rollbacks, `failure_action: rollback`, 180-second monitor | The old container stops before the new one starts on the same volumes; a new version that doesn't become healthy is rolled back |
 | `mode: host` for the port | The port is published on that node only. Swarm can't bind host-mode ports to one address, so limit access with a host firewall |
 | `stop_grace_period: 30s` | Time to finish saves and stop workers cleanly |

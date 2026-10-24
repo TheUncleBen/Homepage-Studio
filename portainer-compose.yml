@@ -10,17 +10,29 @@ services:
       STUDIO_FRAME_ANCESTORS: ${STUDIO_FRAME_ANCESTORS:-}
       # Studio sign-in (docs/AUTHENTICATION.md). On by default; it needs an
       # https:// STUDIO_PUBLIC_ORIGIN. Set off only if another layer controls access.
+      # Empty optional values use Studio's defaults (portainer.env.example).
       STUDIO_AUTH: ${STUDIO_AUTH:-on}
       STUDIO_AUTH_KEY: ${STUDIO_AUTH_KEY:-}
+      STUDIO_AUTH_KEY_FILE: ${STUDIO_AUTH_KEY_FILE:-}
       STUDIO_TRUSTED_PROXIES: ${STUDIO_TRUSTED_PROXIES:-}
+      # Single sign-on: issuer, client ID and client secret go together.
       STUDIO_OIDC_ISSUER: ${STUDIO_OIDC_ISSUER:-}
       STUDIO_OIDC_CLIENT_ID: ${STUDIO_OIDC_CLIENT_ID:-}
       STUDIO_OIDC_CLIENT_SECRET: ${STUDIO_OIDC_CLIENT_SECRET:-}
+      STUDIO_OIDC_CLIENT_SECRET_FILE: ${STUDIO_OIDC_CLIENT_SECRET_FILE:-}
       STUDIO_OIDC_NAME: ${STUDIO_OIDC_NAME:-}
+      STUDIO_OIDC_SCOPES: ${STUDIO_OIDC_SCOPES:-}
+      STUDIO_OIDC_GROUPS_CLAIM: ${STUDIO_OIDC_GROUPS_CLAIM:-}
+      STUDIO_OIDC_REFRESH_MINUTES: ${STUDIO_OIDC_REFRESH_MINUTES:-}
+      # Testing only: true accepts a plain http issuer.
+      STUDIO_OIDC_ALLOW_HTTP: ${STUDIO_OIDC_ALLOW_HTTP:-}
+      # Optional email for invitations, password resets and security alerts.
       STUDIO_SMTP_HOST: ${STUDIO_SMTP_HOST:-}
       STUDIO_SMTP_PORT: ${STUDIO_SMTP_PORT:-}
+      STUDIO_SMTP_SECURE: ${STUDIO_SMTP_SECURE:-}
       STUDIO_SMTP_USER: ${STUDIO_SMTP_USER:-}
       STUDIO_SMTP_PASSWORD: ${STUDIO_SMTP_PASSWORD:-}
+      STUDIO_SMTP_PASSWORD_FILE: ${STUDIO_SMTP_PASSWORD_FILE:-}
       STUDIO_SMTP_FROM: ${STUDIO_SMTP_FROM:-}
       LOG_TARGETS: stdout
     # Published on every host interface. To limit it to one address (for
@@ -29,9 +41,11 @@ services:
       - target: 3000
         published: "${STUDIO_PORT:-3000}"
         protocol: tcp
+    # Named volumes by default. Set STUDIO_CONFIG_PATH and STUDIO_STATE_PATH to
+    # absolute host directories owned by UID/GID 1000 to bind mount instead.
     volumes:
-      - config:/app/config
-      - state:/app/state
+      - ${STUDIO_CONFIG_PATH:-config}:/app/config
+      - ${STUDIO_STATE_PATH:-state}:/app/state
     restart: unless-stopped
     # A minimal init (docker-init) is PID 1 and reaps orphaned processes.
     init: true

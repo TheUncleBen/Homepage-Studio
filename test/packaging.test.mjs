@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { runtimeHost } from '../scripts/runtime-host.mjs';
 import { UPSTREAM_COMMIT, checkHealth } from '../scripts/healthcheck.mjs';
-import { artifactFingerprint, validateReleaseManifest, materializeRelease } from '../scripts/release-manifest.mjs';
+import { artifactFingerprint, validateReleaseManifest, materializeRelease, bundleEnvExample } from '../scripts/release-manifest.mjs';
 import { createStudioServer } from '../server/index.mjs';
 
 const execute = promisify(execFile);
@@ -128,11 +128,34 @@ test('health checks bound unresponsive and oversized endpoints', async t => {
   await assert.rejects(checkHealth({ url: oversized, host: 'localhost', kind: 'writer' }), /too large/);
 });
 
+test('every deployment setting is in both templates, the example values and the deployment docs', async () => {
+  const variables = text => new Set([...text.matchAll(/\$\{(STUDIO_[A-Z_]+)[:}]/g)].map(match => match[1]));
+  const [compose, swarm] = await Promise.all(['portainer-compose.yml', 'portainer-swarm.yml'].map(file => fs.readFile(path.join(root, file), 'utf8')));
+  const composeVariables = variables(compose);
+  const swarmVariables = variables(swarm);
+  composeVariables.add('STUDIO_NODE'); // Swarm placement only.
+  assert.deepEqual([...composeVariables].sort(), [...swarmVariables].sort());
+  const example = await fs.readFile(path.join(root, 'portainer.env.example'), 'utf8');
+  const exampleVariables = new Set([...example.matchAll(/^#? ?(STUDIO_[A-Z_]+)=/gm)].map(match => match[1]));
+  assert.deepEqual([...exampleVariables].sort(), [...swarmVariables].sort());
+  // Every setting Studio reads from the environment for sign-in is passed through.
+  const authConfig = await fs.readFile(path.join(root, 'server/auth/config.mjs'), 'utf8');
+  const read = new Set([...authConfig.matchAll(/env\.(STUDIO_[A-Z_]+)/g)].map(match => match[1]));
+  for (const name of [...authConfig.matchAll(/secretValue\(env, '(STUDIO_[A-Z_]+)'\)/g)].map(match => match[1])) read.add(name).add(name + '_FILE');
+  for (const name of read) assert.ok(swarmVariables.has(name), `${name} is read but not in the templates`);
+  const docs = (await Promise.all(['docs/DEPLOY.md', 'docs/AUTHENTICATION.md'].map(file => fs.readFile(path.join(root, file), 'utf8')))).join('\n');
+  for (const name of swarmVariables) assert.ok(docs.includes('`' + name + '`'), `${name} is not documented`);
+  const bundled = await bundleEnvExample();
+  assert.doesNotMatch(bundled, /^#? ?STUDIO_IMAGE=/m);
+  assert.equal(bundled.replace(/^# --- Image -+\n(?:#.*\n)*/m, ''), example.replace(/^# --- Image -+\n(?:#.*\n)*STUDIO_IMAGE=.*\n/m, ''));
+});
+
 test('deployment templates publish one application and preserve bounded internal worker controls', async () => {
   for (const file of ['portainer-compose.yml', 'portainer-swarm.yml']) {
     const template = parse(await fs.readFile(path.join(root, file), 'utf8'));
     assert.deepEqual(Object.keys(template.services), ['studio']);
-    assert.deepEqual(template.services.studio.volumes, ['config:/app/config', 'state:/app/state']);
+    assert.deepEqual(template.services.studio.volumes, ['${STUDIO_CONFIG_PATH:-config}:/app/config', '${STUDIO_STATE_PATH:-state}:/app/state']);
+    assert.deepEqual(Object.keys(template.volumes), ['config', 'state']);
     assert.equal(template.services.studio.ports[0].target, 3000);
     assert.equal(template.services.studio.stop_grace_period, '30s');
     for (const [key, value] of Object.entries({ STUDIO_RENDERER_MAX_WORKERS: 8, STUDIO_RENDERER_IDLE_SECONDS: 600, STUDIO_RENDERER_STARTUP_SECONDS: 30 })) {

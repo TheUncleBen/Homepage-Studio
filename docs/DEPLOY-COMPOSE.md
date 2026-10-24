@@ -38,8 +38,19 @@ cp portainer.env.example .env
 | --- | --- | --- | --- |
 | `STUDIO_PUBLIC_ORIGIN` | Yes | The exact address people type: `https://homepage.example.test`. Sign-in needs HTTPS; to test on `http://<machine>:3000` without a proxy, also set `STUDIO_AUTH=off` for the test | |
 | `STUDIO_PORT` | No | The port published on the machine | `3000` |
-| `STUDIO_BACKUP_RETENTION`, `STUDIO_RENDERER_*`, `STUDIO_FRAME_ANCESTORS` | No | As in [DEPLOY.md](DEPLOY.md#3-values) | |
-| `STUDIO_AUTH`, `STUDIO_AUTH_KEY`, `STUDIO_TRUSTED_PROXIES`, `STUDIO_OIDC_*`, `STUDIO_SMTP_*` | No | Sign-in ([AUTHENTICATION.md](AUTHENTICATION.md#settings-reference)) | `STUDIO_AUTH=on` |
+| `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | No | Absolute host directories to bind mount instead of the named volumes (below) | the named volumes |
+| `STUDIO_BACKUP_RETENTION`, `STUDIO_RENDERER_MAX_WORKERS`, `STUDIO_RENDERER_IDLE_SECONDS`, `STUDIO_RENDERER_STARTUP_SECONDS`, `STUDIO_FRAME_ANCESTORS` | No | As in [DEPLOY.md](DEPLOY.md#3-values) | |
+| `STUDIO_AUTH`, `STUDIO_AUTH_KEY`, `STUDIO_TRUSTED_PROXIES`, every `STUDIO_OIDC_…` and `STUDIO_SMTP_…` setting | No | Sign-in, single sign-on and email, each listed in [DEPLOY.md](DEPLOY.md#3-values) and explained in [AUTHENTICATION.md](AUTHENTICATION.md#settings-reference) | `STUDIO_AUTH=on` |
+
+`portainer.env.example` lists every setting with a short comment and its
+default; uncomment the ones you need.
+
+To keep the data in host directories rather than named volumes, set both
+`STUDIO_CONFIG_PATH` and `STUDIO_STATE_PATH` to absolute paths and create them
+owned by UID/GID 1000 before starting
+([DEPLOY.md](DEPLOY.md#host-directories-instead-of-named-volumes) has the
+commands). If a path doesn't exist, Docker creates it owned by root and Studio
+can't write to it. Only one Studio may use a pair of directories at a time.
 
 `STUDIO_NODE` is for Swarm only; Compose ignores it. Studio answers only
 requests for the exact host and port in `STUDIO_PUBLIC_ORIGIN`, so set it to

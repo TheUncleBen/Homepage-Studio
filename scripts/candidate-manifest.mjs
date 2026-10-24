@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UPSTREAM_COMMIT } from './healthcheck.mjs';
-import { validateReleaseManifest } from './release-manifest.mjs';
+import { validateReleaseManifest, bundleEnvExample } from './release-manifest.mjs';
 
 export const IMAGE_REPOSITORIES = Object.freeze({
   studio: 'ghcr.io/theuncleben/homepage-studio',
@@ -104,7 +104,7 @@ export async function materializeCandidate(manifest, inputDirectory, sourceRoot,
     files.set(name, Buffer.from(contents));
   }
   files.set('candidate-manifest.json', Buffer.from(JSON.stringify(manifest, null, 2) + '\n'));
-  files.set('portainer.env.example', Buffer.from('STUDIO_PUBLIC_ORIGIN=https://homepage.example.test\nSTUDIO_PORT=3000\n# Swarm only: the node holding the named volumes.\nSTUDIO_NODE=<docker-node-hostname>\nSTUDIO_BACKUP_RETENTION=25\nSTUDIO_RENDERER_MAX_WORKERS=8\nSTUDIO_RENDERER_IDLE_SECONDS=600\nSTUDIO_RENDERER_STARTUP_SECONDS=30\n# Optional: origins allowed to embed the dashboard in a frame (default: same origin only).\n# STUDIO_FRAME_ANCESTORS="\'self\' https://ha.example.test:8123"\n# Sign-in is on by default and needs https:// (docs/AUTHENTICATION.md).\n# STUDIO_AUTH=on\n# STUDIO_AUTH_KEY=<long random text>\n# STUDIO_TRUSTED_PROXIES=<reverse proxy IP or CIDR>\n'));
+  files.set('portainer.env.example', Buffer.from(await bundleEnvExample(sourceRoot)));
   files.set('READ-ME-FIRST.txt', Buffer.from(`Homepage Studio human-test candidate\n\nSource: ${manifest.sourceCommit}\nArtifact set: ${result.artifactSetSha256}\nHuman acceptance: pending. No official version is assigned.\n\nCheck delivery-receipt.json for registry access. The build retains the exact\nqualified images; GitHub may require a one-time package visibility setting\nbefore anonymous deployment. No candidate workflow approval is required.\nAn access-pending receipt is not a completed public deployment handoff.\n\nDeploy the studio service with its configuration and state volumes.\nIt can be added to an existing Portainer stack with unused service/volume\nnames and port. All native workers are managed inside this same container.\nA separate test stack can use the template unchanged and is also supported.\nSet the exact dashboard origin and, for Swarm, the node holding the volumes.\nUse fresh configuration/state volumes for the empty first evaluation.\nRetain the existing dashboard configuration so you can return to it.\n\nHuman checks: your phone's touch/scroll feel and Samsung-style stack behavior;\ntheme and readability on your displays; actual service credentials and widget\ndata; hostname/network access and storage on your Portainer host.\n\nRecord findings against this artifact set. Keep the image and its matching configuration/state backup together.\nFor rollback, retain the previous digest-pinned application image and its matching\nconfiguration/state backup. Restore the application image and matching data together.\nA first evaluation on a new stack can be stopped without altering the old one.\n`));
   files.set('SHA256SUMS', Buffer.from([...files.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, bytes]) => `${sha256(bytes)}  ${name}\n`).join('')));
   const output = path.resolve(outputDirectory);

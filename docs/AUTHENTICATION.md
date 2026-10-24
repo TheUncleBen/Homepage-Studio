@@ -262,12 +262,18 @@ or a backup code, so a mailbox alone can't take over an account.
 | `STUDIO_OIDC_SCOPES` | `openid profile email offline_access` | Keep `offline_access`, so groups can be checked while people are signed in |
 | `STUDIO_OIDC_GROUPS_CLAIM` | `groups` | |
 | `STUDIO_OIDC_REFRESH_MINUTES` | `15` | How often a signed-in provider account's groups are checked again, 1 to 1440 |
-| `STUDIO_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD` / `_PASSWORD_FILE`, `_FROM` | (unset) | See [Email](#email). `_PORT` defaults to 587 |
+| `STUDIO_OIDC_ALLOW_HTTP` | (unset) | Testing only. `true` accepts a plain `http://` issuer; leave it unset in use, because tokens and the client secret would cross the network unencrypted |
+| `STUDIO_SMTP_HOST` | (unset) | The mail server. Setting it turns email on. See [Email](#email) |
+| `STUDIO_SMTP_PORT` | `587` | |
+| `STUDIO_SMTP_SECURE` | `true` on port 465, otherwise `false` | `true` for TLS from the start, `false` for STARTTLS. TLS is required either way |
+| `STUDIO_SMTP_USER` | (unset) | |
+| `STUDIO_SMTP_PASSWORD` / `STUDIO_SMTP_PASSWORD_FILE` | (unset) | |
+| `STUDIO_SMTP_FROM` | (unset) | The sender address, required with `STUDIO_SMTP_HOST` |
 
 The `_FILE` forms read the value from a file, such as a Docker secret mounted
-at `/run/secrets/...`. The deployment templates pass the plain forms; to use a
-Docker secret, add the secret to the service and set the `_FILE` variable
-yourself.
+at `/run/secrets/...`, and take precedence over the plain form. The deployment
+templates pass both forms; to use a Docker secret, add the secret to the
+service and set the `_FILE` variable to its path.
 
 ## Lost access: command-line recovery
 
