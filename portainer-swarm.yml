@@ -40,6 +40,8 @@ services:
       LOG_TARGETS: stdout
     # Host-mode publication listens on every interface of the selected node.
     # Swarm cannot bind a single address; restrict access with a host firewall.
+    # A proxy on a shared Docker network needs no published port: see
+    # docs/REVERSE-PROXY.md (Proxy on a Docker network).
     ports:
       - target: 3000
         published: ${STUDIO_PORT:-3000}

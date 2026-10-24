@@ -104,7 +104,7 @@ back, or a dashboard edit disappearing). Hence:
 | --- | --- | --- | --- |
 | `STUDIO_PUBLIC_ORIGIN` | Yes | The exact address people type, scheme and host, plus the port if it isn't 80/443, with no path and no trailing dashboard: `https://homepage.example.test` | |
 | `STUDIO_NODE` | Yes | The node's hostname from step 2, exactly as `docker node ls` shows it | |
-| `STUDIO_PORT` | No | The port published on that node | `3000` |
+| `STUDIO_PORT` | No | The port published on that node. Unused if you remove the published port because your proxy reaches Studio over a Docker network ([REVERSE-PROXY.md](REVERSE-PROXY.md#proxy-on-a-docker-network-no-published-port)) | `3000` |
 | `STUDIO_BACKUP_RETENTION` | No | Snapshots kept per dashboard | `25` |
 | `STUDIO_RENDERER_MAX_WORKERS` | No | Dashboards that can have a running worker at once, 1 to 64 | `8` |
 | `STUDIO_RENDERER_IDLE_SECONDS` | No | Seconds before an idle dashboard's worker stops | `600` |
@@ -154,7 +154,7 @@ What the stack does, so you don't have to:
 | --- | --- |
 | One replica, `node.hostname == STUDIO_NODE` | One writer, on the node that holds the data |
 | `order: stop-first` for updates and rollbacks, `failure_action: rollback`, 180-second monitor | The old container stops before the new one starts on the same volumes; a new version that doesn't become healthy is rolled back |
-| `mode: host` for the port | The port is published on that node only. Swarm can't bind host-mode ports to one address, so limit access with a host firewall |
+| `mode: host` for the port | The port is published on that node only. Swarm can't bind host-mode ports to one address, so limit access with a host firewall. If your proxy reaches Studio over a Docker network, remove the port instead ([REVERSE-PROXY.md](REVERSE-PROXY.md#proxy-on-a-docker-network-no-published-port)) |
 | `stop_grace_period: 30s` | Time to finish saves and stop workers cleanly |
 | `init: true` | A small init process reaps stopped worker processes |
 | `cap_drop: [ALL]` | The application needs no Linux capabilities |
