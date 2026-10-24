@@ -58,6 +58,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Component display rules (.badge, .row) must never un-hide an element. */
+[hidden] { display: none !important; }
 html, body { min-height: 100%; }
 body {
   margin: 0;
@@ -98,6 +100,13 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .stack { display: grid; gap: 14px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .row.end { justify-content: flex-end; }
+/* A row of actions (form submits, dialog buttons, a section's main action)
+   sits centred under what it acts on; buttons share the width evenly. */
+.actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; }
+.actions > button, .actions > .button { min-width: 9.5rem; }
+/* Several secondary actions fill whole rows, so none is left stranded. */
+.action-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.action-grid > * { flex: 1 1 14rem; }
 .spread { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
 .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.875rem; }
 .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
@@ -195,6 +204,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .list-item { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
 .list-item > div:first-child { display: grid; gap: 2px; min-width: 0; }
+/* An item's own controls stay together at its end, on one line where they fit. */
+.list-item > .row { justify-content: flex-end; flex-wrap: nowrap; }
+.list-item > .row select { width: auto; min-width: 12rem; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -214,12 +226,20 @@ tr:last-child td { border-bottom: 0; }
 dialog { border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); color: var(--text); padding: 0; width: min(36rem, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
 dialog::backdrop { background: rgb(0 0 0 / 0.6); }
 .dialog-body { padding: 22px 20px; display: grid; gap: 16px; }
+.dialog-body > h2 { text-align: center; }
+.more-actions { border-top: 1px solid var(--line); padding-top: 14px; }
+.more-actions > summary { cursor: pointer; width: max-content; margin: 0 auto; padding: 6px 10px; border-radius: 8px; color: var(--muted); font-weight: 600; }
+.more-actions > summary:hover { color: var(--text); background: var(--raised); }
+.more-actions[open] > summary { margin-bottom: 12px; }
 
 @media (max-width: 560px) {
   .auth-card { padding: 22px 16px; }
   .section { padding: 16px 14px; }
   .codes { grid-template-columns: 1fr; }
   .inline-fields { grid-template-columns: 1fr; }
+  .actions > button, .actions > .button { flex: 1 1 0; min-width: 0; }
+  .list-item > .row { flex-wrap: wrap; justify-content: flex-start; width: 100%; }
+  .list-item > .row select { flex: 1 1 100%; }
   .hide-narrow { display: none; }
   /* Two rows on phones: brand and Sign out, then the navigation. */
   .page-header-inner { padding: 10px 16px; row-gap: 6px; }

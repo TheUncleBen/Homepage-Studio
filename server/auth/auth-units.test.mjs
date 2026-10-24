@@ -192,3 +192,11 @@ test('secrets come from mounted files, and an unused optional one says off', t =
   // With sign-in off no secret is read at all.
   assert.deepEqual(readAuthConfig({}, { STUDIO_AUTH: 'off', STUDIO_AUTH_KEY_FILE: path.join(directory, 'missing') }), { enabled: false });
 });
+
+test('the [hidden] attribute always hides, whatever a component class sets', async () => {
+  // A badge or action row with its own display rule used to stay visible when
+  // hidden, so Dashboard access always said "Unsaved changes".
+  const { readFile } = await import('node:fs/promises');
+  const css = await readFile(new URL('./ui/app.css', import.meta.url), 'utf8');
+  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
+});

@@ -155,7 +155,7 @@
       h('h2', { text: 'Save your backup codes' }),
       h('p', { class: 'lede', text: 'Each code signs you in once if you lose your passkey or phone. Keep them somewhere safe, such as a password manager. They will not be shown again.' }),
       h('ul', { class: 'codes', 'aria-label': 'Backup codes' }, codes.map(code => h('li', { text: code }))),
-      h('div', { class: 'row' },
+      h('div', { class: 'actions' },
         h('button', { type: 'button', onclick: async () => { try { await navigator.clipboard.writeText(text); say(copied, 'Copied.', 'ok'); } catch { say(copied, 'Copy failed. Select the codes and copy them yourself.'); } }, text: 'Copy' }),
         h('button', { type: 'button', onclick: () => { const link = h('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })), download: 'homepage-studio-backup-codes.txt' }); document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(link.href), 1000); }, text: 'Download' })),
       copied,
@@ -238,7 +238,7 @@
       const outcome = await api(claim ? 'claim/second-factor' : reauth ? 'reauth/second-factor' : 'second-factor', { token, ...payload });
       if (claim) return claim();
       if (!reauth && payload.method === 'backup' && Number.isInteger(outcome.backupCodesLeft) && outcome.backupCodesLeft <= 3) {
-        return render(card(false, brand(), h('h1', { text: 'Signed in' }), h('div', { class: 'notice warn', text: `You have ${outcome.backupCodesLeft} backup code${outcome.backupCodesLeft === 1 ? '' : 's'} left. Create new ones from your account page.` }), h('div', { class: 'row' }, h('a', { class: 'button primary', href: '/__studio/account', text: 'Open my account' }), h('a', { class: 'button', href: next, text: 'Continue' }))));
+        return render(card(false, brand(), h('h1', { text: 'Signed in' }), h('div', { class: 'notice warn', text: `You have ${outcome.backupCodesLeft} backup code${outcome.backupCodesLeft === 1 ? '' : 's'} left. Create new ones from your account page.` }), h('div', { class: 'actions' }, h('a', { class: 'button primary', href: '/__studio/account', text: 'Open my account' }), h('a', { class: 'button', href: next, text: 'Continue' }))));
       }
       go(next);
     }
@@ -278,7 +278,7 @@
         body.append(h('p', { class: 'small muted', text: 'Email codes are less secure than an authenticator app or passkey.' }), send, codeForm('email'));
       } else body.append(codeForm(method));
       const others = methods.filter(item => item !== method && (item !== 'passkey' || passkeysSupported()));
-      if (others.length) body.append(h('div', { class: 'stack small' }, h('span', { class: 'muted', text: 'Other ways to confirm:' }), h('div', { class: 'row' }, others.map(item => h('button', { type: 'button', class: 'small-button', onclick: () => { method = item; say(message, ''); show(); body.querySelector('[data-autofocus]')?.focus(); }, text: labels[item] })))));
+      if (others.length) body.append(h('div', { class: 'stack small' }, h('span', { class: 'muted', text: 'Other ways to confirm:' }), h('div', { class: 'actions' }, others.map(item => h('button', { type: 'button', class: 'small-button', onclick: () => { method = item; say(message, ''); show(); body.querySelector('[data-autofocus]')?.focus(); }, text: labels[item] })))));
     }
     show();
     render(card(false, brand(), h('h1', { text: claim ? 'Confirm your local account' : reauth ? 'Confirm it’s you' : 'One more step' }), h('p', { class: 'lede', text: 'Confirm with your second sign-in method.' }), message, body,
@@ -627,7 +627,7 @@
       const box = notice();
       const confirmButton = h('button', { type: 'button', class: danger ? 'danger' : 'primary', text: actionLabel });
       confirmButton.addEventListener('click', () => busy(confirmButton, 'Working…', async () => { try { await action(); close(); } catch (error) { failure(box, error); } }));
-      return h('div', { class: 'stack' }, h('p', { text }), box, h('div', { class: 'row end' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), confirmButton));
+      return h('div', { class: 'stack' }, h('p', { text }), box, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), confirmButton));
     });
   }
   async function copyText(text, box) {
@@ -673,7 +673,7 @@
       return section('Profile', user.source === 'local' ? 'Your name and the address used for resets and security alerts.' : `Managed by ${view.oidc?.name ?? 'your identity provider'}; changes there appear at your next sign-in.`,
         h('dl', { class: 'facts small' }, h('dt', { class: 'muted', text: 'Username' }), h('dd', { class: 'mono', text: user.username }), h('dt', { class: 'muted', text: 'Role' }), h('dd', { text: user.role === 'admin' ? 'Administrator' : 'Member' })),
         h('form', { class: 'stack', onsubmit: event => { event.preventDefault(); return busy(save, 'Saving…', () => update(() => api('account/profile', { displayName: name.value, ...(managed ? {} : { email: email.value }) }), box, 'Profile saved.')); } },
-          field('Display name', name), field('Email', email, user.emailFromProvider ? `Follows your ${view.oidc?.name ?? 'single sign-on'} account. Change it there; Studio picks it up at your next sign-in with it.` : view.email ? 'Changing it needs a recent confirmation.' : 'Email is not set up on this server, so nothing is sent yet.'), box, h('div', { class: 'row' }, save)));
+          field('Display name', name), field('Email', email, user.emailFromProvider ? `Follows your ${view.oidc?.name ?? 'single sign-on'} account. Change it there; Studio picks it up at your next sign-in with it.` : view.email ? 'Changing it needs a recent confirmation.' : 'Email is not set up on this server, so nothing is sent yet.'), box, h('div', { class: 'actions' }, save)));
     }
     function securitySection(user, factors) {
       const box = notice();
@@ -692,7 +692,7 @@
             try { await api('account/password', { password: passwords.password.value }); close(); view = await api('account'); draw(); say(message, 'Password saved. Other devices were signed out.', 'ok'); }
             catch (error) { failure(local, error); }
           });
-        } }, h('input', { type: 'text', autocomplete: 'username', value: user.username, hidden: true, readonly: true, tabindex: '-1', 'aria-hidden': 'true' }), ...passwords.nodes, local, h('div', { class: 'row end' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), submit));
+        } }, h('input', { type: 'text', autocomplete: 'username', value: user.username, hidden: true, readonly: true, tabindex: '-1', 'aria-hidden': 'true' }), ...passwords.nodes, local, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), submit));
       }));
       items.push(h('li', { class: 'list-item' }, h('div', {}, h('strong', { text: 'Password' }), h('span', { class: 'small muted', text: factors.password ? 'Set. Used together with an authenticator app or another step.' : 'Not set. You sign in with a passkey.' })), passwordButton));
       // Authenticator app
@@ -726,7 +726,7 @@
           const name = h('input', { type: 'text', maxlength: 60, value: passkey.name, required: true });
           const local = notice();
           const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
-          return h('form', { class: 'stack', onsubmit: async event => { event.preventDefault(); await busy(save, 'Saving…', async () => { try { view = await api('account/passkey/rename', { id: passkey.id, name: name.value }); close(); draw(); } catch (error) { failure(local, error); } }); } }, field('Name', name), local, h('div', { class: 'row end' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
+          return h('form', { class: 'stack', onsubmit: async event => { event.preventDefault(); await busy(save, 'Saving…', async () => { try { view = await api('account/passkey/rename', { id: passkey.id, name: name.value }); close(); draw(); } catch (error) { failure(local, error); } }); } }, field('Name', name), local, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
         }));
         const remove = h('button', { type: 'button', class: 'small-button', text: 'Remove' });
         remove.addEventListener('click', () => confirmDialog(`Remove “${passkey.name}”?`, 'This passkey will no longer sign you in. Remove it from the device or password manager as well.', 'Remove', async () => { view = await api('account/passkey/remove', { id: passkey.id }); draw(); say(message, 'Passkey removed.', 'ok'); }));
@@ -745,7 +745,7 @@
       return section('Sign-in methods', 'Keep at least a passkey, or a password with an authenticator app.',
         h('ul', { class: 'list' }, items), h('h3', { text: 'Passkeys' }),
         factors.passkeys.length ? passkeyList : h('p', { class: 'small muted', text: 'No passkeys yet. A passkey is the quickest and safest way to sign in.' }),
-        box, h('div', { class: 'row' }, addPasskey, passkeysSupported() ? null : h('span', { class: 'small muted', text: 'This browser does not support passkeys.' })));
+        box, h('div', { class: 'actions' }, addPasskey, passkeysSupported() ? null : h('span', { class: 'small muted', text: 'This browser does not support passkeys.' })));
     }
     // Shown after the provider step of a link, before anything changes.
     function linkConfirmSection(link) {
@@ -775,7 +775,7 @@
           link.merge ? h('li', { text: `Your separate ${name} account in Studio, ${link.merge.username}, is merged into this one${link.merge.shares ? `: ${link.merge.shares === 1 ? 'its dashboard share moves' : `its ${link.merge.shares} dashboard shares move`} over and it is removed.` : ' and removed.'}` }) : null,
           link.merge?.losesAdmin ? h('li', { class: 'warn-text', text: `${link.merge.username} is an Administrator, but this account is not. The Administrator role does not carry over; ask another administrator to give it to this account if you still need it.` }) : null,
           h('li', { text: 'Your other signed-in devices are signed out.' })),
-        box, h('div', { class: 'row' }, confirm, cancel));
+        box, h('div', { class: 'actions' }, cancel, confirm));
     }
     // Signed in through the provider: prove the local account (password and
     // second step, or a passkey), then sign in to the provider again.
@@ -819,7 +819,7 @@
         return section(name, `You sign in with ${name}. Your role and groups come from it.`,
           user.oidcGroups.length ? h('p', { class: 'small' }, 'Provider groups: ', user.oidcGroups.join(', ')) : null,
           view.localSignIn ? h('p', { class: 'small muted', text: `If you also have a local Studio account, link it so you can still sign in when ${name} is down. This account's dashboards and groups move to it.` }) : null,
-          view.localSignIn && !view.pendingLink ? h('div', { class: 'row' }, claim) : null);
+          view.localSignIn && !view.pendingLink ? h('div', { class: 'actions' }, claim) : null);
       }
       const box = notice();
       const action = h('button', { type: 'button', text: user.linked ? `Unlink ${name} account` : `Link ${name} account` });
@@ -834,7 +834,7 @@
       });
       const adminNote = user.providerAdmin ? h('p', { class: 'small muted', text: `While you sign in with ${name}, its groups also make you an administrator.` }) : null;
       return section(name, user.linked ? `Your account is linked. You can sign in with ${name} as well as your local methods.` : `Link your ${name} account to sign in with it as well. You sign in to ${name} again to prove it's yours, and your email then follows it. Whoever controls that ${name} account can sign in as you.`,
-        adminNote, box, h('div', { class: 'row' }, action));
+        adminNote, box, h('div', { class: 'actions' }, action));
     }
     function sessionsSection() {
       const box = notice();
@@ -855,7 +855,7 @@
             h('span', { class: 'small muted', text: `${item.method === 'oidc' ? (view.oidc?.name ?? 'Single sign-on') : 'Local sign-in'} · ${item.ip || 'unknown address'} · active ${ago(item.lastSeenAt)} · since ${when(item.createdAt)}` })),
             item.current ? null : end);
         })),
-        box, h('div', { class: 'row' }, signOutOthers));
+        box, h('div', { class: 'actions' }, signOutOthers));
     }
     function policySection() {
       const policy = view.policy;
@@ -932,7 +932,7 @@
           h('td', {}, edit));
       });
       return section('People', 'Administrators can open every dashboard and change everything. Members see only the dashboards shared with them.',
-        h('div', { class: 'row' }, invite),
+        h('div', { class: 'actions' }, invite),
         h('div', { class: 'table-wrap' }, h('table', { class: 'people-table' }, h('thead', {}, h('tr', {}, ['Name', 'Role', 'Sign-in', 'Status', 'Last active', 'Actions'].map((label, index) => h('th', { class: index === 2 || index === 4 ? 'hide-narrow' : undefined, scope: 'col', text: label })))), h('tbody', {}, rows))));
     }
     function linkResult(result, close, intro) {
@@ -943,7 +943,7 @@
         result.emailed ? h('div', { class: 'notice ok', text: 'The link was emailed as well.' }) : null,
         field('One-time link', linkInput, `Works once and expires in ${result.expiresInHours} hours. Send it privately; anyone with the link can claim the account.`),
         box,
-        h('div', { class: 'row end' }, h('button', { type: 'button', onclick: () => copyText(result.link, box), text: 'Copy link' }), h('button', { type: 'button', class: 'primary', onclick: close, text: 'Done' })));
+        h('div', { class: 'actions' }, h('button', { type: 'button', onclick: () => copyText(result.link, box), text: 'Copy link' }), h('button', { type: 'button', class: 'primary', onclick: close, text: 'Done' })));
     }
     function inviteDialog() {
       openDialog('Invite a person', close => {
@@ -968,7 +968,7 @@
           field('Display name', displayName), field('Email', email, 'Optional. Needed for emailed invitations, resets and alerts.'),
           field('Role', role, 'Administrators can see every dashboard, change integrations and manage people.'),
           check('Email the invitation', sendEmail, view.email ? undefined : 'Email is not set up on this server.'),
-          box, h('div', { class: 'row end' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), submit));
+          box, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), submit));
         return form;
       });
     }
@@ -987,7 +987,6 @@
         const actions = [];
         const toggle = h('button', { type: 'button', class: user.disabled ? '' : 'danger', text: user.disabled ? 'Enable account' : 'Disable account', disabled: self });
         toggle.addEventListener('click', () => busy(toggle, 'Saving…', async () => { if (await act(() => api('admin/update', { id: user.id, disabled: !user.disabled }), box, user.disabled ? 'Account enabled.' : 'Account disabled and signed out.')) close(); }));
-        actions.push(toggle);
         const sessionsButton = h('button', { type: 'button', text: `Sign out everywhere (${user.sessionCount})`, disabled: !user.sessionCount });
         sessionsButton.addEventListener('click', () => busy(sessionsButton, 'Signing out…', async () => { if (await act(() => api('admin/sessions/revoke', { userId: user.id }), box, 'Signed out of other sessions.')) close(); }));
         actions.push(sessionsButton);
@@ -1008,6 +1007,7 @@
             actions.push(unlink);
           }
         }
+        actions.push(toggle);
         const remove = h('button', { type: 'button', class: 'danger', text: 'Delete', disabled: self });
         remove.addEventListener('click', () => { close(); confirmDialog(`Delete ${user.displayName || user.username}?`, 'Their account, sessions and dashboard access are removed. This cannot be undone.', 'Delete', () => act(() => api('admin/delete', { id: user.id }), null, 'Person deleted.')); });
         actions.push(remove);
@@ -1027,8 +1027,8 @@
           user.oidcGroups.length ? h('p', { class: 'small muted', text: `Provider groups: ${user.oidcGroups.join(', ')}` }) : null,
           field('Session policy', policy, 'A personal policy wins. Otherwise the strictest of their groups’ policies applies, or the default.'),
           box,
-          h('div', { class: 'row end' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save),
-          h('details', {}, h('summary', { text: 'More actions' }), h('div', { class: 'row' }, actions)));
+          h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save),
+          h('details', { class: 'more-actions' }, h('summary', { text: 'More actions' }), h('div', { class: 'action-grid' }, actions)));
       });
     }
 
@@ -1047,7 +1047,7 @@
             const input = h('input', { type: 'text', maxlength: 60, value: group.name, required: true });
             const local = notice();
             const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
-            return h('form', { class: 'stack', onsubmit: async event => { event.preventDefault(); await busy(save, 'Saving…', async () => { if (await act(() => api('admin/group', { action: 'update', id: group.id, name: input.value }), local)) close(); }); } }, field('Name', input), local, h('div', { class: 'row end' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
+            return h('form', { class: 'stack', onsubmit: async event => { event.preventDefault(); await busy(save, 'Saving…', async () => { if (await act(() => api('admin/group', { action: 'update', id: group.id, name: input.value }), local)) close(); }); } }, field('Name', input), local, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
           }));
           controls.push(rename);
         }
@@ -1085,7 +1085,7 @@
         const body = h('div', { class: 'stack' });
         const save = h('button', { type: 'button', class: 'primary', text: 'Save access' });
         const unsaved = h('span', { class: 'badge warn', text: 'Unsaved changes' });
-        const saveRow = h('div', { class: 'row' }, save, unsaved);
+        const saveRow = h('div', { class: 'actions' }, unsaved, save);
         const snapshot = list => JSON.stringify(list.map(grant => [grant.subject, grant.level]));
         // Marks the card when its list differs from what was last saved.
         function mark() {
@@ -1130,7 +1130,7 @@
           h('span', { class: 'small muted', text: `Idle ${duration(policy.idleMinutes)} · max ${duration(policy.absoluteMinutes)} · ${policy.persistent ? 'stays signed in' : 'ends with the browser'} · confirm after ${duration(policy.stepUpMinutes)} · ${policy.maxSessions ? `${policy.maxSessions} devices` : 'any number of devices'}` })),
           h('div', { class: 'row' }, edit, remove));
       });
-      return section('Session policies', 'How long people stay signed in. A personal policy wins; otherwise the strictest policy among a person’s groups applies; otherwise the default.', h('div', { class: 'row' }, add), h('ul', { class: 'list' }, items));
+      return section('Session policies', 'How long people stay signed in. A personal policy wins; otherwise the strictest policy among a person’s groups applies; otherwise the default.', h('div', { class: 'actions' }, add), h('ul', { class: 'list' }, items));
     }
     function durationInput(label, minutes, { allowNever, hint }) {
       const units = [['1', 'minutes'], ['60', 'hours'], ['1440', 'days']];
@@ -1161,7 +1161,7 @@
           check('Allow staying signed in after the browser closes', persistent, 'Applies when people tick “Keep me signed in”.'),
           field('Confirm it’s you after (minutes)', stepUp, 'Security changes, saves to raw files, imports and restores ask again after this long. 5 to 60.'),
           field('Devices at once', maxSessions, 'Signing in on one more device ends the oldest session. Leave empty for unlimited.'),
-          box, h('div', { class: 'row end' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
+          box, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
       });
     }
 
@@ -1207,7 +1207,7 @@
             field('Administrator groups', adminGroups, `One per line. People in these ${view.oidc.name} groups become administrators; provider accounts outside them are members.${locked.adminGroups ? fromDeployment('STUDIO_OIDC_ADMIN_GROUPS') : ''}`, locked.adminGroups ? 'Set by the deployment' : null),
             field('Allowed groups', allowedGroups, `One per line. Leave empty to allow everyone the provider signs in. Administrator groups are always allowed.${locked.allowedGroups ? fromDeployment('STUDIO_OIDC_ALLOWED_GROUPS') : ''}`, locked.allowedGroups ? 'Set by the deployment' : null),
             check(`Create a Studio account the first time someone signs in with ${view.oidc.name}`, autoCreate, `Only for people in an allowed or administrator group. While both lists are empty, nobody new is created. Others need an invitation, then link their ${view.oidc.name} account from their account page.`),
-            h('div', { class: 'row' }, save))));
+            h('div', { class: 'actions' }, save))));
       } else parts.push(section('Single sign-on', 'Not configured. Set STUDIO_OIDC_ISSUER, STUDIO_OIDC_CLIENT_ID and STUDIO_OIDC_CLIENT_SECRET_FILE to sign in with Authentik or another OpenID Connect provider. See docs/AUTHENTICATION.md.'));
       return [box, ...parts];
     }
