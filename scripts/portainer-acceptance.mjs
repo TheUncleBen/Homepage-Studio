@@ -3,8 +3,10 @@
 // The Docker socket and loopback registry exist only in this test harness.
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
-import { networkInterfaces } from 'node:os';
+import { randomBytes } from 'node:crypto';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { networkInterfaces, tmpdir } from 'node:os';
+import path from 'node:path';
 import { promisify } from 'node:util';
 import { createDashboardFixture, eventually } from './acceptance-fixture.mjs';
 import { PortainerClient, PORTAINER_IMAGE, PORTAINER_VERSION, REGISTRY_IMAGE, cleanupPortainerStack, inspectFixtureManifest, readSwarmClusterId, stackPayload } from './portainer-client.mjs';
@@ -24,7 +26,17 @@ const portainer = new PortainerClient('http://127.0.0.1:19000');
 const fixture = createDashboardFixture({ origin, expectedRevision: process.env.STUDIO_EXPECTED_REVISION });
 // Template qualification exercises editing with sign-in off; container
 // acceptance qualifies sign-in on with the same image.
-const env = { ...process.env, STUDIO_AUTH: 'off', STUDIO_PUBLIC_ORIGIN: origin, STUDIO_PORT: '17779', STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30' };
+const env = { ...process.env, STUDIO_AUTH: 'off', STUDIO_PUBLIC_ORIGIN: origin, STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30' };
+// Synthetic secrets: a random encryption key, and off for the unused single
+// sign-on and email secrets, as a deployment without them has.
+const secretValues = { studio_auth_key: randomBytes(48).toString('base64'), studio_oidc_client_secret: 'off', studio_smtp_password: 'off' };
+let secretsDirectory;
+// The templates publish no port. A disposable relay on the stack's proxy
+// network stands in for the reverse proxy: it forwards the loopback fixture
+// port to Studio's address on that network, bytes unchanged (Host included).
+// On Swarm it dials the task address (tasks.<service>), so the relay doesn't
+// depend on the runner kernel's virtual-IP load balancing.
+const RELAY = "const net = require('node:net'); net.createServer(client => { const upstream = net.connect(3000, process.env.RELAY_TARGET); client.pipe(upstream).pipe(client); client.on('error', () => upstream.destroy()); upstream.on('error', () => client.destroy()); }).listen(17779);";
 const infra = [];
 const stacks = [];
 const localTags = [];
@@ -87,10 +99,35 @@ async function verifySwarm(stack, completedUpdate = false) {
 
 const removeStackResources = stack => cleanupPortainerStack(stack, { portainer, endpointId, docker, eventually });
 
+async function prepareStack(name, swarm) {
+  // What docs/DEPLOY.md (steps 2 and 5) and docs/DEPLOY-COMPOSE.md have a
+  // person create before the first deploy: the proxy network and the secrets.
+  const network = `${name}-proxy`;
+  if (swarm) {
+    await docker(['network', 'create', '--driver', 'overlay', '--attachable', '--label', `org.homepage-studio.fixture=${identity}`, network]);
+    for (const secret of Object.keys(secretValues)) await docker(['secret', 'create', '--label', `org.homepage-studio.fixture=${identity}`, secret, path.join(secretsDirectory, secret)]);
+  } else await docker(['network', 'create', '--driver', 'bridge', '--label', `org.homepage-studio.fixture=${identity}`, network]);
+  const relay = `${name}-relay`;
+  infra.push(relay);
+  await docker(['run', '--detach', '--name', relay, '--label', `org.homepage-studio.fixture=${identity}`, '--network', network,
+    '--publish', '127.0.0.1:17779:17779', '--no-healthcheck', '--env', `RELAY_TARGET=${swarm ? `tasks.${name}_studio` : 'homepage_studio'}`,
+    '--entrypoint', 'node', env.STUDIO_IMAGE, '-e', RELAY]);
+  return { network, relay };
+}
+
+async function releaseStack(stack) {
+  await removeStackResources(stack);
+  await docker(['rm', '--force', stack.relay]);
+  infra.splice(infra.indexOf(stack.relay), 1);
+  await docker(['network', 'rm', stack.network]);
+  if (stack.swarm) for (const secret of Object.keys(secretValues)) await docker(['secret', 'rm', secret]);
+}
+
 async function runStack(swarm) {
   const name = `${identity}-${swarm ? 'swarm' : 'compose'}`;
   const template = await readFile(swarm ? 'portainer-swarm.yml' : 'portainer-compose.yml', 'utf8');
-  const stack = { name, swarm, environment: { ...env, STUDIO_IMAGE: references.studio.initial } };
+  const { network, relay } = await prepareStack(name, swarm);
+  const stack = { name, swarm, network, relay, environment: { ...env, STUDIO_IMAGE: references.studio.initial, STUDIO_NETWORK_NAME: network } };
   const swarmId = swarm ? await readSwarmClusterId(docker) : undefined;
   const payload = stackPayload({ name, template, environment: stack.environment, swarmId });
   stacks.push(stack);
@@ -117,12 +154,18 @@ async function runStack(swarm) {
   await fixture.assertPersisted(saved);
   await fixture.assertDashboardsPersisted(dashboards);
   await fixture.restoreEmpty(saved);
-  console.log(`PASS: Portainer CE ${PORTAINER_VERSION} ${swarm ? 'Swarm' : 'standalone'} API deployment, unchanged stored template, explicit environment, immutable image identity, edit/snapshot persistence, independent dashboard lifecycles, real replacement and restore.`);
-  await removeStackResources(stack);
+  console.log(`PASS: Portainer CE ${PORTAINER_VERSION} ${swarm ? 'Swarm' : 'standalone'} API deployment, unchanged stored template, external proxy network and secrets, no published port, explicit environment, immutable image identity, edit/snapshot persistence, independent dashboard lifecycles, real replacement and restore.`);
+  await releaseStack(stack);
 }
 
 try {
   assert.equal(await docker(['info', '--format', '{{.Swarm.LocalNodeState}}']), 'inactive', 'Refuse to alter an existing Swarm');
+  // The UID 1000 application reads the Compose secret files from a folder the
+  // runner user owns, so this disposable folder is world-readable.
+  secretsDirectory = await mkdtemp(path.join(tmpdir(), `${identity}-secrets-`));
+  for (const [name, value] of Object.entries(secretValues)) await writeFile(path.join(secretsDirectory, name), value, { mode: 0o444 });
+  await chmod(secretsDirectory, 0o755);
+  env.STUDIO_SECRETS_DIR = secretsDirectory;
   for (const [service, sourceImage] of [['studio', env.STUDIO_IMAGE]]) {
     const image = JSON.parse(await docker(['image', 'inspect', sourceImage]))[0];
     assert.equal(image.Config.Labels['org.opencontainers.image.revision'], env.STUDIO_EXPECTED_REVISION);
@@ -190,6 +233,10 @@ try {
   let containers;
   await cleanup(async () => { containers = new Set((await docker(['ps', '--all', '--format', '{{.Names}}'])).split('\n')); });
   for (const name of infra.reverse()) if (!containers || containers.has(name)) await cleanup(() => docker(['rm', '--force', '--volumes', name]));
+  await cleanup(async () => {
+    for (const network of (await docker(['network', 'ls', '--quiet', '--filter', `label=org.homepage-studio.fixture=${identity}`])).split('\n').filter(Boolean)) await docker(['network', 'rm', network]);
+  });
+  if (secretsDirectory) await cleanup(() => rm(secretsDirectory, { recursive: true, force: true }));
   for (const tag of localTags) await cleanup(async () => {
     const present = await docker(['image', 'ls', '--quiet', tag]);
     if (present) await docker(['image', 'rm', tag]);

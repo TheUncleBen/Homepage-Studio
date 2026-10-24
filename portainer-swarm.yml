@@ -1,9 +1,35 @@
 version: "3.8"
+# Homepage Studio: Portainer / Docker Swarm stack.
+#
+# Paste this whole file into Portainer's stack web editor unchanged. Everything
+# you set lives in the stack's environment variables: start from
+# portainer.env.example. Before you deploy, create the shared proxy network and
+# the three Docker secrets below (docs/DEPLOY.md, steps 2 and 5).
+#
 # Keep required-variable messages free of hyphens: Docker's legacy stack parser
 # checks default operators before required operators, including message text.
+
+secrets:
+  # Long random text that encrypts authenticator secrets and single sign-on
+  # tokens. Keep a copy: changing it means everyone sets up their authenticator
+  # app again.
+  studio_auth_key:
+    external: true
+  # The client secret of the Authentik (or other OpenID Connect) provider, or
+  # the word off while you don't use single sign-on.
+  studio_oidc_client_secret:
+    external: true
+  # The mail server password, or the word off while you don't use email.
+  studio_smtp_password:
+    external: true
+
 services:
   studio:
     image: ${STUDIO_IMAGE:?Set STUDIO_IMAGE to the qualified application image digest}
+    secrets:
+      - studio_auth_key
+      - studio_oidc_client_secret
+      - studio_smtp_password
     environment:
       STUDIO_PUBLIC_ORIGIN: ${STUDIO_PUBLIC_ORIGIN:?Set the exact dashboard URL origin}
       STUDIO_BACKUP_RETENTION: ${STUDIO_BACKUP_RETENTION:-25}
@@ -15,14 +41,15 @@ services:
       # https:// STUDIO_PUBLIC_ORIGIN. Set off only if another layer controls access.
       # Empty optional values use Studio's defaults (portainer.env.example).
       STUDIO_AUTH: ${STUDIO_AUTH:-on}
-      STUDIO_AUTH_KEY: ${STUDIO_AUTH_KEY:-}
-      STUDIO_AUTH_KEY_FILE: ${STUDIO_AUTH_KEY_FILE:-}
       STUDIO_TRUSTED_PROXIES: ${STUDIO_TRUSTED_PROXIES:-}
-      # Single sign-on: issuer, client ID and client secret go together.
+      # The secrets above, read from the files Swarm mounts.
+      STUDIO_AUTH_KEY_FILE: /run/secrets/studio_auth_key
+      STUDIO_OIDC_CLIENT_SECRET_FILE: /run/secrets/studio_oidc_client_secret
+      STUDIO_SMTP_PASSWORD_FILE: /run/secrets/studio_smtp_password
+      # Optional single sign-on (docs/IDP-AUTHENTIK.md). Issuer and client ID
+      # turn it on; the client secret is the studio_oidc_client_secret secret.
       STUDIO_OIDC_ISSUER: ${STUDIO_OIDC_ISSUER:-}
       STUDIO_OIDC_CLIENT_ID: ${STUDIO_OIDC_CLIENT_ID:-}
-      STUDIO_OIDC_CLIENT_SECRET: ${STUDIO_OIDC_CLIENT_SECRET:-}
-      STUDIO_OIDC_CLIENT_SECRET_FILE: ${STUDIO_OIDC_CLIENT_SECRET_FILE:-}
       STUDIO_OIDC_NAME: ${STUDIO_OIDC_NAME:-}
       STUDIO_OIDC_SCOPES: ${STUDIO_OIDC_SCOPES:-}
       STUDIO_OIDC_GROUPS_CLAIM: ${STUDIO_OIDC_GROUPS_CLAIM:-}
@@ -30,23 +57,17 @@ services:
       # Testing only: true accepts a plain http issuer.
       STUDIO_OIDC_ALLOW_HTTP: ${STUDIO_OIDC_ALLOW_HTTP:-}
       # Optional email for invitations, password resets and security alerts.
+      # The password is the studio_smtp_password secret.
       STUDIO_SMTP_HOST: ${STUDIO_SMTP_HOST:-}
       STUDIO_SMTP_PORT: ${STUDIO_SMTP_PORT:-}
       STUDIO_SMTP_SECURE: ${STUDIO_SMTP_SECURE:-}
       STUDIO_SMTP_USER: ${STUDIO_SMTP_USER:-}
-      STUDIO_SMTP_PASSWORD: ${STUDIO_SMTP_PASSWORD:-}
-      STUDIO_SMTP_PASSWORD_FILE: ${STUDIO_SMTP_PASSWORD_FILE:-}
       STUDIO_SMTP_FROM: ${STUDIO_SMTP_FROM:-}
       LOG_TARGETS: stdout
-    # Host-mode publication listens on every interface of the selected node.
-    # Swarm cannot bind a single address; restrict access with a host firewall.
-    # A proxy on a shared Docker network needs no published port: see
-    # docs/REVERSE-PROXY.md (Proxy on a Docker network).
-    ports:
-      - target: 3000
-        published: ${STUDIO_PORT:-3000}
-        protocol: tcp
-        mode: host
+    # No published port: the reverse proxy reaches Studio as
+    # <stack name>_studio:3000 on the shared network (docs/DEPLOY.md, step 8).
+    networks:
+      - proxy
     # Named volumes by default. Set STUDIO_CONFIG_PATH and STUDIO_STATE_PATH to
     # absolute host directories owned by UID/GID 1000 to bind mount instead.
     volumes:
@@ -78,6 +99,14 @@ services:
       restart_policy:
         condition: any
         delay: 5s
+
+networks:
+  # The overlay network Studio shares with your reverse proxy. Create it once
+  # before deploying (docs/DEPLOY.md, step 2); the stack only joins it.
+  proxy:
+    external: true
+    name: ${STUDIO_NETWORK_NAME:-homepage-studio}
+
 volumes:
   config:
   state:

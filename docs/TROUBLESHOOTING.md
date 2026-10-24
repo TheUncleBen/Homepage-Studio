@@ -21,6 +21,12 @@ Then find the symptom below. What the health endpoints mean is in
 | Log: `STUDIO_FRAME_ANCESTORS entry "..." is not 'self' or an exact http(s) origin ...` | Fix the entry: space-separated, `'self'` or exact origins without paths or wildcards, the whole value in double quotes in a `.env` file ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) |
 | Log: `STUDIO_RENDERER_MAX_WORKERS must be an integer between 1 and 64.`, or the same for *Renderer idle duration* or *Renderer startup duration* (shown in milliseconds) | The value is out of range or not a whole number ([OPERATIONS.md](OPERATIONS.md#workers-and-limits)) |
 | Swarm: the task stays `pending` with `no suitable node` | `STUDIO_NODE` doesn't match a node's hostname |
+| The deploy fails with `network "homepage-studio" is declared as external, but could not be found` | Create the shared proxy network first ([DEPLOY.md step 2](DEPLOY.md#2-shared-proxy-network-once)), or set `STUDIO_NETWORK_NAME` to your network's exact name (names are case-sensitive). On a Swarm it must be an overlay network |
+| Swarm: the deploy or the task fails saying a secret such as `studio_auth_key` is not found | Create all three secrets before deploying, with exactly these names ([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)). One you don't use holds the word `off` |
+| Compose refuses the stack: `Set STUDIO_SECRETS_DIR to the absolute folder that holds the three secret files` | Set `STUDIO_SECRETS_DIR` ([DEPLOY-COMPOSE.md](DEPLOY-COMPOSE.md#3-secret-files)) |
+| Log: `STUDIO_AUTH_KEY_FILE (/run/secrets/studio_auth_key) is empty or says off.` | The encryption key secret can't be `off`. Recreate it with long random text ([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)); if Studio ran with a key before, use that same key |
+| Log: `STUDIO_OIDC_CLIENT_SECRET_FILE ... is empty or says off` | Single sign-on is configured but its secret says `off`. Put the client secret in it ([IDP-AUTHENTIK.md](IDP-AUTHENTIK.md#6-give-studio-the-issuer-client-id-and-client-secret)), or remove `STUDIO_OIDC_ISSUER` and `STUDIO_OIDC_CLIENT_ID` |
+| Log: `... _FILE could not be read. Check the secret mount.` | Compose: a file is missing from `STUDIO_SECRETS_DIR`, or UID 1000 can't read it (`chown 1000:1000` the folder and files) |
 | `no basic auth credentials`, `denied` or `unauthorized` pulling from `ghcr.io` | The package isn't public yet: the bundle's `delivery-receipt.json` says `package-access-pending` ([VERSIONS.md](VERSIONS.md#checking-a-bundle)) |
 | The health check stays `unhealthy` (on Swarm the task keeps being replaced) | `/__studio/application-ready` fails: the dashboard registry is damaged or missing after initialization, a volume isn't writable by UID 1000, or the volumes don't match. The endpoint's JSON answer names the problem. Restore the volumes from a backup if the registry is gone ([OPERATIONS.md](OPERATIONS.md#restoring-the-volumes)) |
 | Permission errors on `/app/config` or `/app/state` | You replaced a named volume with a bind mount that UID 1000 can't write. `chown -R 1000:1000` that folder; Studio doesn't run as root to fix it |
@@ -38,14 +44,14 @@ Then find the symptom below. What the health endpoints mean is in
 | Passkey prompt fails with a security error | The browser's address isn't exactly `STUDIO_PUBLIC_ORIGIN`. Passkeys are bound to that host name |
 | Single sign-on says it can't reach the provider | Studio couldn't load `<issuer>/.well-known/openid-configuration`. Check `STUDIO_OIDC_ISSUER` (Authentik: `https://<authentik>/application/o/<slug>/`) and that the container can reach it |
 | Nobody can sign in at all | Use [command-line recovery](AUTHENTICATION.md#lost-access-command-line-recovery) |
-| Sign-in throttling or the activity log shows only the proxy's address | Set `STUDIO_TRUSTED_PROXIES` to the proxy's address |
+| Sign-in throttling or the activity log shows only the proxy's address | Set `STUDIO_TRUSTED_PROXIES` to the shared network's subnet ([REVERSE-PROXY.md](REVERSE-PROXY.md#how-the-proxy-reaches-studio)) |
 
 ## The page doesn't load
 
 | What you see | Cause and fix |
 | --- | --- |
 | `403` with `This dashboard address is not in HOMEPAGE_ALLOWED_HOSTS.` | The browser (or proxy) used a different host or port than `STUDIO_PUBLIC_ORIGIN`. Open the exact origin; make the proxy pass the original `Host`; or change the origin and redeploy. Only one host name is accepted |
-| `502` or `504` from the proxy | The proxy can't reach port `STUDIO_PORT` on the node, or the container isn't healthy yet (first start can take up to two minutes) |
+| `502` or `504` from the proxy | The proxy can't reach Studio: it isn't on the shared network (exact name, and redeployed after you added it), the forward host isn't `homepage_studio` port `3000` (your stack name, underscore, `studio`), or the container isn't healthy yet (first start can take up to two minutes). [DEPLOY.md step 8](DEPLOY.md#8-nginx-proxy-manager) has a command to test from the proxy |
 | The page loads but has no styles or icons | The proxy isn't routing the whole host to Studio, or it rewrites paths. `/_next/static/` and the root icon files must reach it ([REVERSE-PROXY.md](REVERSE-PROXY.md)) |
 | A page that says **This dashboard isn't available** (`404`) | Nothing is at that address: the dashboard was renamed, archived or never existed. **Open the main dashboard**, then pick it from **Dashboard settings → Manage dashboards**. An archived one can be restored there |
 | The bare host name jumps to `/something` | The main dashboard has an address of its own; that redirect is expected |

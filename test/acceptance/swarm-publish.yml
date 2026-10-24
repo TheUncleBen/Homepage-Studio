@@ -1,0 +1,11 @@
+version: "3.8"
+# Acceptance tests only: publishes Studio on the disposable one-node Swarm so
+# the suite can reach it without a reverse proxy. Deployments use
+# portainer-swarm.yml alone and reach Studio through the proxy network.
+services:
+  studio:
+    ports:
+      - target: 3000
+        published: ${STUDIO_TEST_PORT:?Set STUDIO_TEST_PORT}
+        protocol: tcp
+        mode: host

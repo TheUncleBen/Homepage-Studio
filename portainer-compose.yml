@@ -1,3 +1,8 @@
+# Homepage Studio: Docker Compose (one machine, or a Portainer standalone stack).
+#
+# Use this file unchanged. Everything you set lives in the environment
+# variables: start from portainer.env.example. Before you start it, create the
+# shared proxy network and the secrets folder (docs/DEPLOY-COMPOSE.md).
 services:
   studio:
     image: ${STUDIO_IMAGE:?Set STUDIO_IMAGE to the qualified application image digest}
@@ -12,14 +17,15 @@ services:
       # https:// STUDIO_PUBLIC_ORIGIN. Set off only if another layer controls access.
       # Empty optional values use Studio's defaults (portainer.env.example).
       STUDIO_AUTH: ${STUDIO_AUTH:-on}
-      STUDIO_AUTH_KEY: ${STUDIO_AUTH_KEY:-}
-      STUDIO_AUTH_KEY_FILE: ${STUDIO_AUTH_KEY_FILE:-}
       STUDIO_TRUSTED_PROXIES: ${STUDIO_TRUSTED_PROXIES:-}
-      # Single sign-on: issuer, client ID and client secret go together.
+      # The three secret files from STUDIO_SECRETS_DIR (mounted below).
+      STUDIO_AUTH_KEY_FILE: /run/secrets/studio_auth_key
+      STUDIO_OIDC_CLIENT_SECRET_FILE: /run/secrets/studio_oidc_client_secret
+      STUDIO_SMTP_PASSWORD_FILE: /run/secrets/studio_smtp_password
+      # Optional single sign-on (docs/IDP-AUTHENTIK.md). Issuer and client ID
+      # turn it on; the client secret is the studio_oidc_client_secret file.
       STUDIO_OIDC_ISSUER: ${STUDIO_OIDC_ISSUER:-}
       STUDIO_OIDC_CLIENT_ID: ${STUDIO_OIDC_CLIENT_ID:-}
-      STUDIO_OIDC_CLIENT_SECRET: ${STUDIO_OIDC_CLIENT_SECRET:-}
-      STUDIO_OIDC_CLIENT_SECRET_FILE: ${STUDIO_OIDC_CLIENT_SECRET_FILE:-}
       STUDIO_OIDC_NAME: ${STUDIO_OIDC_NAME:-}
       STUDIO_OIDC_SCOPES: ${STUDIO_OIDC_SCOPES:-}
       STUDIO_OIDC_GROUPS_CLAIM: ${STUDIO_OIDC_GROUPS_CLAIM:-}
@@ -27,27 +33,27 @@ services:
       # Testing only: true accepts a plain http issuer.
       STUDIO_OIDC_ALLOW_HTTP: ${STUDIO_OIDC_ALLOW_HTTP:-}
       # Optional email for invitations, password resets and security alerts.
+      # The password is the studio_smtp_password file.
       STUDIO_SMTP_HOST: ${STUDIO_SMTP_HOST:-}
       STUDIO_SMTP_PORT: ${STUDIO_SMTP_PORT:-}
       STUDIO_SMTP_SECURE: ${STUDIO_SMTP_SECURE:-}
       STUDIO_SMTP_USER: ${STUDIO_SMTP_USER:-}
-      STUDIO_SMTP_PASSWORD: ${STUDIO_SMTP_PASSWORD:-}
-      STUDIO_SMTP_PASSWORD_FILE: ${STUDIO_SMTP_PASSWORD_FILE:-}
       STUDIO_SMTP_FROM: ${STUDIO_SMTP_FROM:-}
       LOG_TARGETS: stdout
-    # Published on every host interface. To limit it to one address (for
-    # example a reverse proxy on the same host), add host_ip: 127.0.0.1 here.
-    # A proxy on a shared Docker network needs no published port: see
-    # docs/REVERSE-PROXY.md (Proxy on a Docker network).
-    ports:
-      - target: 3000
-        published: "${STUDIO_PORT:-3000}"
-        protocol: tcp
+    # No published port: the reverse proxy reaches Studio as homepage_studio:3000
+    # on the shared network (docs/DEPLOY-COMPOSE.md).
+    networks:
+      proxy:
+        aliases:
+          - homepage_studio
     # Named volumes by default. Set STUDIO_CONFIG_PATH and STUDIO_STATE_PATH to
     # absolute host directories owned by UID/GID 1000 to bind mount instead.
+    # The secrets folder holds studio_auth_key, studio_oidc_client_secret and
+    # studio_smtp_password, readable by UID 1000.
     volumes:
       - ${STUDIO_CONFIG_PATH:-config}:/app/config
       - ${STUDIO_STATE_PATH:-state}:/app/state
+      - ${STUDIO_SECRETS_DIR:?Set STUDIO_SECRETS_DIR to the absolute folder that holds the three secret files}:/run/secrets:ro
     restart: unless-stopped
     # A minimal init (docker-init) is PID 1 and reaps orphaned processes.
     init: true
@@ -57,6 +63,12 @@ services:
     security_opt:
       - no-new-privileges:true
     stop_grace_period: 30s
+networks:
+  # The Docker network Studio shares with your reverse proxy. Create it once
+  # before starting (docs/DEPLOY-COMPOSE.md); Compose only joins it.
+  proxy:
+    external: true
+    name: ${STUDIO_NETWORK_NAME:-homepage-studio}
 volumes:
   config:
   state:

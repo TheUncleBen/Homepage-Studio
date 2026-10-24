@@ -1,12 +1,20 @@
-# Putting a reverse proxy in front
+# Reverse proxy reference
 
-Studio speaks plain HTTP on port 3000. A reverse proxy in front of it gives it
-the `https://` address that Studio sign-in needs. Studio doesn't manage DNS,
-TLS certificates or proxy configuration; those stay with you.
+Studio speaks plain HTTP on port 3000 and has no published port. A reverse
+proxy on a shared Docker network gives it the `https://` address that Studio
+sign-in needs, and is the only way in. Studio doesn't manage DNS, TLS
+certificates or proxy configuration; those stay with you.
 
-No proxy configuration is shipped or tested with Studio. The requirements
-below come from what the controller does, and CI exercises them by talking to
-the container directly.
+[DEPLOY.md](DEPLOY.md) walks through the default setup with Nginx Proxy
+Manager (step 2 for the network, step 8 for the proxy host). This page is the
+reference behind it: what any proxy must do, examples for
+[Caddy](#caddy), [Traefik](#traefik) and [plain nginx](#nginx), and what to do
+if your proxy can't join a Docker network.
+
+No proxy configuration, NPM included, runs in CI. The requirements below
+follow from what Studio's controller does, and CI checks them by talking to
+the container directly. Check the examples against your proxy's
+documentation.
 
 ## Access control
 
@@ -36,65 +44,133 @@ assets all live on it.
 | Allow request bodies of at least **40 MiB** if you'll import dashboards | See [request limits](#request-limits). Everyday saves need far less |
 | Don't compress what's already compressed | Studio serves pre-compressed Brotli/gzip build files with `Vary: Accept-Encoding`. Respect `Content-Encoding` and `Vary`; don't add a second encoding |
 | A valid certificate | Your choice; Studio doesn't care, but browsers do |
+| No websocket support needed | Studio has no websocket endpoints and refuses upgrade requests |
 
 What it doesn't need: sticky sessions (there's one replica). Studio reads
 `X-Forwarded-For` only from the addresses in `STUDIO_TRUSTED_PROXIES`, and
 only for the client address in sign-in throttling and the activity log.
 
-## Proxy on a Docker network (no published port)
+## How the proxy reaches Studio
 
-If your proxy runs in Docker and can reach Studio over a shared Docker
-network, Studio doesn't need a published port at all. That's the tighter
-setup: nothing on the host can reach Studio except through the proxy, and the
-host-firewall advice for Swarm's host-mode port no longer applies. The health
-check runs inside the container and doesn't use the published port.
+The templates join an existing network, `homepage-studio` by default
+(`STUDIO_NETWORK_NAME`), and publish no port. Your proxy joins the same network
+and forwards to Studio by name:
 
-Edit the template (the image line and everything else stay as they are):
+| Deployment | Forward to |
+| --- | --- |
+| Swarm stack named `homepage` | `http://homepage_studio:3000` (stack name, underscore, `studio`) |
+| Docker Compose | `http://homepage_studio:3000` (a fixed alias in the Compose file) |
 
-1. Delete the whole `ports:` entry, with its comment. `STUDIO_PORT` is then
-   unused.
-2. Attach the service to the proxy's network, and declare that network as
-   external:
-
-```yaml
-services:
-  studio:
-    # ...everything else unchanged...
-    networks:
-      - proxy
-# ...volumes: unchanged...
-networks:
-  proxy:
-    external: true
-    name: <your proxy network>   # as docker network ls shows it
-```
-
-On a Swarm the network must be an overlay network (`docker network create
---driver overlay --attachable <name>`; `--attachable` lets a proxy started
-outside the stack join it). A Swarm proxy service on the same overlay works on
-any node, whatever node Studio is pinned to.
-
-Point the proxy at `http://<stack>_studio:3000`, for example
-`http://homepage_studio:3000`: Swarm and Compose give the service a DNS name
-on the network, and Studio listens on port 3000 inside the container. Use the
-full name, because the short name `studio` may clash with another stack's
-service on a shared network. The other requirements above still apply,
-especially passing the original `Host` header.
+Use the name, not a container IP address: addresses change when the container
+restarts. On a Swarm the network must be an overlay network created with
+`--attachable` (so a proxy started outside the stack can join it), and
+preferably `--opt encrypted` ([DEPLOY.md step 2](DEPLOY.md#2-shared-proxy-network-once)).
+A Swarm proxy service on the same overlay reaches Studio from any node. The
+health check runs inside the container and doesn't need a port.
 
 **`STUDIO_TRUSTED_PROXIES`.** Studio sees the proxy's address on that network
 as the caller. Container addresses change when containers restart, so give
 the network's subnet rather than one address:
 
 ```bash
-docker network inspect <your proxy network> --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}'
-# for example 10.0.12.0/24  ->  STUDIO_TRUSTED_PROXIES=10.0.12.0/24
+docker network inspect homepage-studio --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}'
+# for example 10.0.10.0/24  ->  STUDIO_TRUSTED_PROXIES=10.0.10.0/24
 ```
 
 Every container on that network is then trusted to report the client address
 in `X-Forwarded-For`, so keep the network to the proxy and the services behind
 it. Make sure the proxy sets `X-Forwarded-For` (most do by default). To check,
-sign in and open **Administration → Activity**: the Address column should show your own
-device's address, not the proxy's.
+sign in and open **Administration → Activity**: the Address column should show
+your own device's address, not the proxy's.
+
+### If the proxy can't join a Docker network
+
+A proxy on the host itself, or on another machine, needs a published port.
+Add one in your copy of the template. On a Swarm, publish it in host mode on
+Studio's node:
+
+```yaml
+services:
+  studio:
+    # ...everything else unchanged...
+    ports:
+      - target: 3000
+        published: 3000
+        protocol: tcp
+        mode: host
+```
+
+Swarm can't bind a host-mode port to one address, so it listens on every
+interface of that node: limit who can reach it with a host firewall. With
+Compose, bind it to one address instead, for example `"127.0.0.1:3000:3000"`
+for a proxy on the same host ([DEPLOY-COMPOSE.md](DEPLOY-COMPOSE.md#no-proxy-in-docker)).
+The templates still join the network from step 2, so it must exist. Point the
+proxy at the node's address and port, and set `STUDIO_TRUSTED_PROXIES` to the
+proxy's address.
+
+## Caddy
+
+Caddy keeps the original `Host` header, sets `X-Forwarded-For` and has no
+request body limit by default, so a site block needs only the address. With
+Caddy in Docker on the `homepage-studio` network:
+
+```caddyfile
+homepage.example.test {
+	reverse_proxy homepage_studio:3000
+}
+```
+
+Caddy gets and renews the certificate itself.
+
+## Traefik
+
+With Traefik's Swarm provider, the routing goes on the Studio service as
+labels under `deploy:` (Swarm reads service labels only there), in your copy
+of the stack. The entry point and certificate resolver names are the ones
+from your Traefik configuration:
+
+```yaml
+services:
+  studio:
+    # ...everything else unchanged...
+    deploy:
+      # ...replicas, placement and the rest unchanged...
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.homepage-studio.rule=Host(`homepage.example.test`)
+        - traefik.http.routers.homepage-studio.entrypoints=websecure
+        - traefik.http.routers.homepage-studio.tls.certresolver=letsencrypt
+        - traefik.http.services.homepage-studio.loadbalancer.server.port=3000
+        - traefik.swarm.network=homepage-studio
+```
+
+`traefik.swarm.network` is the Traefik v3 Swarm provider's label; Traefik v2
+calls it `traefik.docker.network`. Traefik passes the original `Host` header
+by default and has no body limit unless you add one.
+
+## nginx
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name homepage.example.test;
+    ssl_certificate     /etc/nginx/certs/homepage.example.test.crt;
+    ssl_certificate_key /etc/nginx/certs/homepage.example.test.key;
+
+    client_max_body_size 40m;            # Import dashboard sends up to 40 MiB
+
+    location / {
+        proxy_pass http://homepage_studio:3000;
+        proxy_set_header Host $http_host;   # the exact host (and port) the browser used
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+nginx looks up `homepage_studio` when it starts, so start it after the network
+exists and Studio's service is created. On a Swarm the service name stands for
+a fixed virtual address, so a restarted Studio task is still reached.
 
 ## Request limits
 
@@ -181,7 +257,7 @@ curl -sI https://homepage.example.test/ | grep -i -E 'frame|nosniff|referrer'
 # referrer-policy: same-origin
 
 curl -s https://homepage.example.test/__studio/application-ready
-# {"status":"ready", ...}
+# {"status":"ready"}
 ```
 
 And check your access control does what you mean: from a browser or network

@@ -9,7 +9,7 @@ import { PortainerClient, PORTAINER_IMAGE, PORTAINER_VERSION, REGISTRY_IMAGE, cl
 
 const environment = {
   STUDIO_IMAGE: '127.0.0.1:15000/studio-application@sha256:' + 'a'.repeat(64),
-  STUDIO_PUBLIC_ORIGIN: 'http://localhost:17779', STUDIO_PORT: '17779', STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30', STUDIO_NODE: 'disposable-node',
+  STUDIO_PUBLIC_ORIGIN: 'http://localhost:17779', STUDIO_NETWORK_NAME: 'studio-fixture-proxy', STUDIO_SECRETS_DIR: '/tmp/studio-fixture-secrets', STUDIO_BACKUP_RETENTION: '25', STUDIO_RENDERER_MAX_WORKERS: '8', STUDIO_RENDERER_IDLE_SECONDS: '600', STUDIO_RENDERER_STARTUP_SECONDS: '30', STUDIO_NODE: 'disposable-node',
   UNRELATED_SECRET: 'must-not-be-sent',
 };
 const json = (value, status = 200) => new Response(status === 204 ? null : JSON.stringify(value), { status });
@@ -59,7 +59,9 @@ test('both exact product templates use the documented Portainer payload and expl
     const payload = stackPayload(input);
     assert.equal(payload.StackFileContent, template);
     assert.equal(payload.SwarmID, swarm ? 'synthetic-swarm' : undefined);
-    assert.equal(payload.Env.length, swarm ? 8 : 7);
+    assert.equal(payload.Env.length, 8);
+    assert.ok(payload.Env.some(item => item.name === (swarm ? 'STUDIO_NODE' : 'STUDIO_SECRETS_DIR')));
+    assert.ok(!payload.Env.some(item => item.name === (swarm ? 'STUDIO_SECRETS_DIR' : 'STUDIO_NODE')));
     assert.ok(payload.Env.every(item => Object.keys(item).join(',') === 'name,value'));
     assert.ok(!JSON.stringify(payload).includes(environment.UNRELATED_SECRET));
     for (const key of payload.Env.map(item => item.name)) {

@@ -9,6 +9,34 @@ build is identified by its source commit and image digest
 
 ## [Unreleased]
 
+### Docker secrets, a shared proxy network and a rewritten deployment guide
+
+Existing stacks need one-time steps before taking this template:
+[docs/UPGRADING.md](docs/UPGRADING.md#updating-to-the-version-with-docker-secrets-and-no-published-port).
+Keep your current `STUDIO_AUTH_KEY` value for the new secret.
+
+- The templates read the encryption key, the single sign-on client secret and
+  the mail password only from Docker secrets (`studio_auth_key`,
+  `studio_oidc_client_secret`, `studio_smtp_password`; on Compose, files in
+  `STUDIO_SECRETS_DIR`). They no longer pass `STUDIO_AUTH_KEY`,
+  `STUDIO_OIDC_CLIENT_SECRET` or `STUDIO_SMTP_PASSWORD` as variables, and
+  `portainer.env.example` holds no secrets.
+- A secret you don't use holds the word `off`. Studio now treats an empty or
+  `off` client secret or mail password file as unset, refuses to start with an
+  empty or `off` encryption key file, and names the secret when single sign-on
+  is configured but its secret says `off`.
+- The templates publish no port. Studio joins an existing network shared with
+  the reverse proxy (`STUDIO_NETWORK_NAME`, default `homepage-studio`) and the
+  proxy forwards to `homepage_studio:3000`. `STUDIO_PORT` is gone;
+  REVERSE-PROXY.md shows how to add a port back for a proxy outside Docker.
+- DEPLOY.md is rewritten as one top-to-bottom guide for Docker Swarm with
+  Portainer, Nginx Proxy Manager and optional Authentik. New
+  [IDP-AUTHENTIK.md](docs/IDP-AUTHENTIK.md) covers every Authentik field and
+  the Studio settings that finish single sign-on, and
+  [IDP-OTHERS.md](docs/IDP-OTHERS.md) covers other providers.
+  REVERSE-PROXY.md adds Caddy, Traefik and nginx examples, and
+  DEPLOY-COMPOSE.md follows the same secrets-and-network setup.
+
 ### Deployment settings and storage
 
 - `portainer.env.example` now lists every setting the templates pass, each
