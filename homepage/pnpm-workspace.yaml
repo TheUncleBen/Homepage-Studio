@@ -15,3 +15,6 @@ allowBuilds:
 overrides:
   # GHSA-rxp7-6hxx-x8q5: reached through @kubernetes/client-node > socks.
   ip-address: ^10.7.4
+  # GHSA-xjj6-f33q-929c, GHSA-4qv8-2p9j-2685, GHSA-f72v-6w45-q472: reached
+  # through @kubernetes/client-node > undici (and jsdom in tests).
+  undici: ^8.12.2
