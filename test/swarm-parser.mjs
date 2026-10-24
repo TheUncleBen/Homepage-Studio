@@ -48,10 +48,11 @@ test('the actual Swarm parser preserves required image, origin and node values',
     assert.equal(result.services.studio.ports, undefined);
     assert.deepEqual(result.networks, { proxy: { external: true, name: 'homepage-studio' } });
     assert.deepEqual(parse((await render({ ...env, STUDIO_NETWORK_NAME: 'Proxy-Net' })).stdout).networks.proxy.name, 'Proxy-Net');
-    const secrets = ['studio_auth_key', 'studio_oidc_client_secret', 'studio_smtp_password', 'studio_admin_password'];
-    assert.deepEqual(Object.keys(result.secrets), secrets);
+    // The parser sorts secrets by name, so compare without relying on template order.
+    const secrets = ['studio_admin_password', 'studio_auth_key', 'studio_oidc_client_secret', 'studio_smtp_password'];
+    assert.deepEqual(Object.keys(result.secrets).sort(), secrets);
     for (const name of secrets) assert.equal(result.secrets[name].external, true);
-    assert.deepEqual(result.services.studio.secrets.map(item => item.source), secrets);
+    assert.deepEqual(result.services.studio.secrets.map(item => item.source).sort(), secrets);
     assert.equal(result.services.studio.environment.STUDIO_AUTH_KEY_FILE, '/run/secrets/studio_auth_key');
     assert.equal(result.services.studio.environment.STUDIO_AUTH_KEY, undefined);
     // Hardening must survive the real parser; security_opt is not supported
