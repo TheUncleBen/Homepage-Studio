@@ -57,6 +57,21 @@ test('the actual Swarm parser preserves required image, origin and node values',
   });
 });
 
+test('the actual Swarm parser uses named volumes by default and absolute host paths when set', async () => {
+  await withParser(async (render, env) => {
+    const named = parse((await render()).stdout).services.studio.volumes;
+    assert.deepEqual(named.map(({ type, source, target }) => ({ type, source, target })), [
+      { type: 'volume', source: 'config', target: '/app/config' },
+      { type: 'volume', source: 'state', target: '/app/state' },
+    ]);
+    const bound = parse((await render({ ...env, STUDIO_CONFIG_PATH: '/srv/studio/config', STUDIO_STATE_PATH: '/srv/studio/state' })).stdout).services.studio.volumes;
+    assert.deepEqual(bound.map(({ type, source, target }) => ({ type, source, target })), [
+      { type: 'bind', source: '/srv/studio/config', target: '/app/config' },
+      { type: 'bind', source: '/srv/studio/state', target: '/app/state' },
+    ]);
+  });
+});
+
 test('the actual Swarm parser rejects every unset or empty required deployment value', async () => {
   await withParser(async (render, env) => {
     for (const name of required) {

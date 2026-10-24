@@ -9,6 +9,18 @@ build is identified by its source commit and image digest
 
 ## [Unreleased]
 
+### Deployment settings and storage
+
+- `portainer.env.example` now lists every setting the templates pass, each
+  with a short comment and its default, and the bundle's copy is generated
+  from it (it used to be a shorter hard-coded list). The templates now also
+  pass `STUDIO_OIDC_SCOPES`, `STUDIO_OIDC_GROUPS_CLAIM`,
+  `STUDIO_OIDC_REFRESH_MINUTES`, `STUDIO_OIDC_ALLOW_HTTP`,
+  `STUDIO_SMTP_SECURE` and the `_FILE` forms of the three secrets.
+- New `STUDIO_CONFIG_PATH` and `STUDIO_STATE_PATH` bind mount host directories
+  (owned by UID/GID 1000) instead of the named volumes. DEPLOY.md explains
+  using them on shared storage such as CephFS, and why the node pin stays.
+
 ### Sign-in and access control
 
 Owner direction, 23 October 2026. Full guide:

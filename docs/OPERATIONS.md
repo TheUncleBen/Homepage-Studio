@@ -97,6 +97,10 @@ docker run --rm \
 docker service scale homepage_studio=1
 ```
 
+With host directories (`STUDIO_CONFIG_PATH` and `STUDIO_STATE_PATH`), use
+the same steps with `-v /srv/homepage-studio/config:/from/config:ro` and so on
+in place of the volume names.
+
 Any small image with `tar` works in place of `alpine`. Keep the archive
 somewhere other than that node, and keep a note of which image digest it was
 taken with: a backup and the image that wrote it go together
@@ -192,6 +196,11 @@ a security boundary between them: every dashboard is equally reachable by
 anyone who can reach the host.
 
 ## Moving to another node
+
+With host directories on storage every node shares, such as CephFS
+([DEPLOY.md](DEPLOY.md#shared-storage-cephfs)), there's nothing to copy: scale
+the service to 0, change `STUDIO_NODE` to the new node's hostname and update
+the stack.
 
 Named volumes stay on the node they were created on. To move:
 

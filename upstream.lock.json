@@ -7,7 +7,7 @@
     "packageSha256": "536b707256d05ab70fe0b8159c201138a4f084a1da60b389808f6b2d90711f88",
     "lockfileSha256": "f8762d41894a32f3066f1114dc5e4d5b54e0f97ff05a956e7179384686b94d3d",
     "runtimePackageSha256": "6748e2f751e9cc879a77ea941d5447ff4d96dc96b32036877982efcf144c3802",
-    "runtimeLockfileSha256": "f6d26bcc8a387e9a8bb19ac0f0f4aefc3cf986b1c211e3c378b5b59daebdf2ea"
+    "runtimeLockfileSha256": "8ff7b92a8bbed61b7600531e61caa8d6ce2f694ec6b9cfd721859fd51f299778"
   },
   "nodeImage": "node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5",
   "pnpmVersion": "10.34.7",
