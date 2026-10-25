@@ -88,14 +88,15 @@ piece can be swapped, and the guide links to the alternatives.
 | Guide | For | What's in it |
 | --- | --- | --- |
 | [USING.md](docs/USING.md) | Editors | Adding and arranging panels, touch and keyboard, stacks and slideshows, the title picker, configuration files, snapshots, import/export, multiple dashboards |
-| [APPEARANCE.md](docs/APPEARANCE.md) | Editors | Dark, light or device mode, accent colors, custom CSS variables, copying a design to another deployment |
+| [Widget reference](docs/widgets/README.md) | Editors, operators | Every widget Studio can add: what the service needs, each setting in the widget dialog, Homepage's examples |
+| [APPEARANCE.md](docs/APPEARANCE.md) | Editors | The platform default look, each dashboard's own mode and accent, logos, custom CSS variables, copying a design to another deployment |
 | [DEPLOY.md](docs/DEPLOY.md) | Operators | The main guide, top to bottom: Docker Swarm with Portainer (or `docker stack deploy`), Docker secrets, a reverse proxy, an optional identity provider (Authentik and Nginx Proxy Manager as worked examples), plus every environment variable |
 | [DEPLOY-COMPOSE.md](docs/DEPLOY-COMPOSE.md) | Operators | The same on one machine with Docker Compose |
-| [IDP-AUTHENTIK.md](docs/IDP-AUTHENTIK.md) | Operators | Worked example: single sign-on with Authentik, every provider field, the Studio settings, troubleshooting |
+| [IDP-AUTHENTIK.md](docs/IDP-AUTHENTIK.md) | Operators | Worked example: single sign-on with Authentik, every provider field, sign-in policy and token lifetimes, the Studio settings, troubleshooting |
 | [IDP-OTHERS.md](docs/IDP-OTHERS.md) | Operators | Single sign-on with Keycloak, Authelia and other OpenID Connect providers |
 | [AUTHENTICATION.md](docs/AUTHENTICATION.md) | Operators, administrators | Sign-in, the first administrator, inviting people, sharing dashboards, session policies, single sign-on with any OpenID Connect provider, email, recovery |
-| [REVERSE-PROXY.md](docs/REVERSE-PROXY.md) | Operators | What any proxy must pass through, Caddy, Traefik and nginx examples, a published port instead of the network, request limits, framing |
-| [OPERATIONS.md](docs/OPERATIONS.md) | Operators | Logs and health, backups and restore, snapshots and secrets, worker limits, integration secrets |
+| [REVERSE-PROXY.md](docs/REVERSE-PROXY.md) | Operators | What any proxy must pass through, Caddy, Traefik and nginx examples, a published port instead of the network, request limits, framing (showing a dashboard inside Home Assistant or another site) |
+| [OPERATIONS.md](docs/OPERATIONS.md) | Operators | Logs and health, backups and restore from Administration or the command line, snapshots and secrets, worker limits, integration secrets |
 | [UPGRADING.md](docs/UPGRADING.md) | Operators | Moving to a new version and going back |
 | [VERSIONS.md](docs/VERSIONS.md) | Operators | Candidates and official `YYYY.MM.DD` releases, what a bundle contains, how to check it |
 | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Operators | Symptoms and fixes, from a container that won't start to a page that says the dashboard isn't available |

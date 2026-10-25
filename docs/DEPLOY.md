@@ -515,7 +515,7 @@ the open setup page is off:
    somewhere safe.
 3. Studio opens **Dashboards** and asks for the **main dashboard's address**,
    suggesting `dashboard` (`https://homepage.example.test/dashboard`). Save
-   it; you can change it later from the dashboard's card.
+   it; you can change it later from the dashboard’s row on the Dashboards page (**⋯ → Rename or change address**).
 4. From then on the bare address, `https://homepage.example.test/`, opens
    **Dashboards**: the list of dashboards, where you open, edit and set up
    each one. **Administration** is in the top bar.

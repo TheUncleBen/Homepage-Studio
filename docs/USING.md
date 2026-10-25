@@ -50,7 +50,7 @@ to what each can open.
 The bare address (`https://homepage.example.test/`) opens:
 
 - your own **default dashboard**, if you chose one (**My account → Default
-  dashboard**, or **Make my default** on its card);
+  dashboard**, or **Make my default** in its row’s **⋯** menu);
 - otherwise, for a member, the default dashboard of the first of their groups
   that has one (administrators set the order under **Administration →
   Groups**);
@@ -94,7 +94,7 @@ may only view a dashboard are sent back to it from either address.
 On a new deployment the main dashboard has no address yet. The first time an
 administrator opens Studio (with sign-in off, whoever opens it first), the
 Dashboards page asks for one, suggesting `dashboard`, and nothing else opens
-until it's saved. You can change it later from the dashboard's card.
+until it's saved. You can change it later with **⋯ → Rename or change address** in its row.
 
 A new dashboard is empty. In the editor it shows a short note, *A clean
 slate*, and an **Add your first widget** button. Group buttons (**All
@@ -366,10 +366,10 @@ Administrators manage dashboards from the **Dashboards** page.
 | **New dashboard** | Pick a **Name** and an **Address** (suggested: the first free of `dashboard`, `dashboard-2`, `dashboard-3`, …); it starts empty. To start from an existing dashboard, use **Duplicate** |
 | **Open** | Goes to the live dashboard |
 | **Edit** / **Settings** | The editor and the dashboard settings ([Start here](#live-editor-and-settings-pages)) |
-| **More actions → Rename or change address** | Its widgets, layout and snapshots stay with it |
-| **More actions → Duplicate** | Makes an independent copy of everything, logo included, at the next suggested address; changing one never changes the other. **Share it with the same people** copies who can open it |
-| **More actions → Who can open it** | Opens **Administration → Dashboard access** |
-| **More actions → Archive** | Takes it off line after you confirm. Its files and snapshots are kept and its address stays reserved |
+| **⋯ → Rename or change address** | Its widgets, layout and snapshots stay with it |
+| **⋯ → Duplicate** | Makes an independent copy of everything, logo included, at the next suggested address; changing one never changes the other. **Share it with the same people** copies who can open it |
+| **⋯ → Who can open it** | Opens **Administration → Dashboard access** |
+| **⋯ → Archive** | Takes it off line after you confirm. Its files and snapshots are kept and its address stays reserved |
 | **Restore** (under *Archived*) | Brings an archived dashboard back as it was |
 
 - An address is one path segment of 1 to 64 lowercase letters, numbers and

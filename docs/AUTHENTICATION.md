@@ -114,7 +114,7 @@ then **Administration**, or `/studio/admin`).
   have access.
 - **Groups** share a dashboard or apply a session policy to several people at
   once. Groups from your identity provider appear automatically.
-- When you duplicate a dashboard (**Dashboards → More actions → Duplicate**),
+- When you duplicate a dashboard (**Dashboards → ⋯ → Duplicate**),
   tick **Share it with the same people** to copy its access list (people and
   groups).
 - **Default dashboards.** Each person can pick their own (**My account →
@@ -146,7 +146,8 @@ from that address and for that account (after five failures, waits double
 up to 15 minutes); they never lock the real owner out for good.
 
 Everyone can manage their own sign-in under **My account**
-(`/studio/account`): change the password, add or remove passkeys and the
+(`/studio/account`): change their name, email and username (a username change
+needs a recent sign-in, and a security alert goes out), change the password, add or remove passkeys and the
 authenticator app, make new backup codes, see where they're signed in and sign
 other devices out. Studio insists on keeping a passkey, or a password with an
 authenticator app, so no one locks themselves out by accident.
@@ -242,12 +243,13 @@ stack. While one is set, it's shown read-only here and only the deployment
 changes it, so the stack and Studio can't disagree. Unset, the list is edited
 on this page; it keeps the last value the deployment gave it.
 
-**Sharing before anyone signs in.** A provider group appears under
-**Administration → Groups** when someone in it signs in, and every group named
-in the two lists is there from the start. Add any other provider group by its
-exact name with **Add <provider> group** (the button uses `STUDIO_OIDC_NAME`). Share dashboards with these groups
-under **Dashboard access**, and people get them at their first sign-in, with
-the role their groups give them.
+**Which provider groups Studio keeps.** Only the groups in the two lists, and
+any you add by exact name with **Groups → New group**, kind <provider> (the label
+uses `STUDIO_OIDC_NAME`). A person's other groups at the provider are neither
+stored nor shown. Groups in the two lists are under **Administration →
+Groups** from the start, so you can share dashboards with them under
+**Dashboard access** before anyone signs in; people get them at their first
+sign-in, with the role their groups give them.
 
 ### Linking a local account and a provider account
 
@@ -271,8 +273,9 @@ what will change; nothing changes until you click **Link accounts**:
 - Either account signs you in to the same Studio account from then on. The
   local password, passkeys, authenticator and backup codes stay exactly as
   they were.
-- The local email takes the provider's **verified** email, and follows it at
-  every provider sign-in; it's read-only in Studio while linked. An email the
+- The local name takes the provider's name, and the local email the
+  provider's **verified** email. Both follow the provider at every provider
+  sign-in and are read-only in Studio while linked. An email the
   provider doesn't mark as verified is never used (with Authentik, see
   [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md#email-addresses)), and **Sign-in
   settings** warns when the last sign-in sent one.
@@ -283,9 +286,9 @@ what will change; nothing changes until you click **Link accounts**:
   alert goes to the old and the new email address.
 
 Nobody, administrators included, can link someone else's accounts.
-**Unlink** on the same page (or **More actions → Unlink** for an administrator
-on the People page) removes the link and ends the provider sessions; the
-email becomes editable again. An administrator's **Reset sign-in** also
+**Unlink** on the same page (or **Unlink** in the person's dialog on the
+People page, for an administrator) removes the link and ends the provider
+sessions; the name and email become editable again. An administrator's **Reset sign-in** also
 removes it.
 
 A linked local account is an administrator through provider groups only
