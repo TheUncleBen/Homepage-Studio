@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createPlatformStore, DEFAULT_PLATFORM } from './platform.mjs';
+import { createPlatformStore, DEFAULT_PLATFORM, studioThemeCss } from './platform.mjs';
 import { logoType } from './dashboard-logo.mjs';
 
 test('the platform default look starts at the defaults, saves with a revision and refuses stale or unsafe values', async t => {
@@ -21,6 +21,19 @@ test('the platform default look starts at the defaults, saves with a revision an
     await assert.rejects(store.update({ revision: saved.revision, mode: 'dark', accent: '#000000', background: null, css: '', ...bad }), { name: 'PlatformError' }, JSON.stringify(bad).slice(0, 60));
   }
   assert.equal((await store.read()).revision, saved.revision, 'refused changes write nothing');
+});
+
+test('the Studio page theme follows the platform mode and accent, and Auto follows the device', () => {
+  const dark = studioThemeCss(DEFAULT_PLATFORM);
+  assert.match(dark, /^:root\{color-scheme:dark;--bg:#111115;/);
+  assert.match(dark, new RegExp(`--accent:${DEFAULT_PLATFORM.accent};`));
+  assert.match(dark, /--ok-text:#b8e0c6;/);
+  assert.doesNotMatch(dark, /@media/);
+  const light = studioThemeCss({ mode: 'light', accent: '#81a8c8' });
+  assert.match(light, /^:root\{color-scheme:light;/);
+  assert.match(light, /--ok-text:#1f5a37;/);
+  const auto = studioThemeCss({ mode: 'system', accent: '#81a8c8' });
+  assert.match(auto, /^:root\{color-scheme:dark;[^}]*\}\n@media \(prefers-color-scheme: light\)\{:root\{color-scheme:light;/);
 });
 
 test('logos are recognized by their bytes, and SVGs with scripts or outside references are refused', () => {

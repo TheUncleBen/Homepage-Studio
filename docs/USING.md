@@ -291,9 +291,10 @@ this dashboard directly: `services.yaml`, `widgets.yaml`, `bookmarks.yaml`,
 
 - **Save configuration** saves every file you changed in one go, after
   checking all of them. One snapshot covers the lot.
-- **Export file** downloads the file you're looking at; **Import into this
-  file**, below the editor, loads a file (up to 2 MiB) into the editor as a
-  draft until you save.
+- **Download file** downloads the file you're looking at; **Replace from a
+  file** loads a file (up to 2 MiB) into the editor as a draft until you save.
+  **Export dashboard** downloads a backup of the whole saved dashboard; it
+  waits until your changes are saved.
 - After you change or restore `custom.js`, Studio offers **Reload dashboard**,
   because a script that already ran can't be un-run in place.
 - Native settings that lay out Homepage's own page (group tabs, column counts,
@@ -330,15 +331,15 @@ Playing slideshows, opening dialogs and exporting never make snapshots.
   the dialog is open. Snapshots made before Studio recorded this read *Saved
   change*. **Restore selected snapshot** puts back the files, the panels and
   their layout as they were.
-- **Export pre-save snapshot** downloads the selected snapshot as a file.
-- **Choose dashboard backup** stages an exported dashboard or a downloaded
+- **Download snapshot** downloads the selected snapshot as a file.
+- **Choose a backup file** stages an exported dashboard or a downloaded
   snapshot (up to 40 MiB). Nothing changes until you press **Import
   dashboard**, which checks the whole file, keeps a snapshot of the current
   dashboard first, and then replaces it. Closing the dialog while a backup is
   staged asks first and names the file, for example **Discard the staged
   backup dashboard.json?**, with **Keep editing** selected.
 
-**Configuration files → Export saved dashboard** downloads this dashboard as
+**Configuration files → Export dashboard** downloads this dashboard as
 it was last saved, as one file: all nine native files, the panels, the layout
 and the stacks. (It's unavailable while that dialog holds unsaved changes.) Use it
 to copy a dashboard to another deployment, or as a backup you keep yourself.

@@ -47,6 +47,7 @@ function shell(page, name) {
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="apple-touch-icon" href="/studio/brand/apple-touch-icon.png">
 <link rel="stylesheet" href="/studio/auth/assets/app.css">
+<link rel="stylesheet" href="/studio/theme.css" id="studio-theme">
 <script src="/studio/auth/assets/webauthn.js" defer></script>
 <script src="/studio/auth/assets/app.js" defer></script>
 </head>

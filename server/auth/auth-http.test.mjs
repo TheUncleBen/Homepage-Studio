@@ -549,6 +549,15 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   const css = await request('/studio/platform.css', { cookie: member.cookie });
   assert.equal(css.text, 'body { --platform: 1; }');
   assert.equal((await request('/studio/platform.css')).status === 200, false, 'signed-out visitors get nothing');
+  // Studio's own pages wear the look before anyone signs in: only the mode
+  // and accent, as colors, never the platform CSS.
+  const theme = await request('/studio/theme.css');
+  assert.equal(theme.status, 200);
+  assert.equal(theme.headers['content-type'], 'text/css; charset=utf-8');
+  assert.match(theme.text, /^:root\{color-scheme:light;/);
+  assert.match(theme.text, /--focus:#[0-9a-f]{6};/);
+  assert.doesNotMatch(theme.text, /--platform|@media/);
+  assert.match((await request('/studio/dashboards', { cookie: member.cookie })).text, /<link rel="stylesheet" href="\/studio\/theme.css" id="studio-theme">/);
   assert.deepEqual((await request('/home/studio/api/appearance', { cookie: member.cookie })).json.platform, { mode: 'light', accent: '#91b09e', background: null });
   // Switching the platform CSS off for one dashboard is an administrator's call.
   const appearance = (await request('/home/studio/api/appearance', { cookie: member.cookie })).json;

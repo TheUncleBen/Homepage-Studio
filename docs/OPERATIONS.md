@@ -74,7 +74,7 @@ There are two kinds, and they do different jobs:
 | Kind | Covers | Use it for |
 | --- | --- | --- |
 | A copy of both volumes | Every dashboard, the registry, layouts and snapshot history | Disaster recovery, rollback after an upgrade, moving to another node |
-| **Export saved dashboard** in the app | One dashboard: its nine files, panels, layout and stacks | Copying a design elsewhere, a personal backup of one dashboard |
+| **Export dashboard** in the app | One dashboard: its nine files, panels, layout and stacks | Copying a design elsewhere, a personal backup of one dashboard |
 
 Neither includes environment variables, Docker secrets, mounted secret files
 or sockets: keep your stack's environment file with your own records, and the
@@ -135,8 +135,8 @@ change ownership itself and doesn't run as root.
 
 ### Per-dashboard exports
 
-**Dashboard settings → Configuration files → Export saved dashboard**
-downloads one dashboard; **Snapshots & restore → Choose dashboard backup →
+**Dashboard settings → Configuration files → Export dashboard**
+downloads one dashboard; **Snapshots & restore → Choose a backup file →
 Import dashboard** puts it back, on the same or another deployment
 ([USING.md](USING.md#snapshots-export-and-import)). An import keeps a
 snapshot of what it replaces.

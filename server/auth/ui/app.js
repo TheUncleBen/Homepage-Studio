@@ -672,6 +672,13 @@
       switcher(deploymentName, current, isAdmin),
       h('nav', { class: 'top-actions', 'aria-label': 'Studio' }, menu));
   }
+  // Studio's pages wear the platform look (/studio/theme.css). A save in
+  // Administration → Appearance reloads it here and in other open tabs.
+  function refreshTheme(revision) {
+    const link = document.getElementById('studio-theme');
+    if (link) link.href = '/studio/theme.css?v=' + encodeURIComponent(revision || String(Date.now()));
+  }
+  try { new BroadcastChannel('studio-platform').onmessage = event => refreshTheme(event.data); } catch {}
   // Pages redraw their chrome, so one pair of listeners serves the latest menu.
   let popovers = [];
   document.addEventListener('pointerdown', event => { for (const item of popovers) if (!item.holder.contains(event.target)) item.close(); });
@@ -1011,7 +1018,9 @@
           const keepFilters = platform.background && typeof platform.background === 'object' ? platform.background : {};
           try {
             platform = await call('/studio/api/platform', { revision: platform.revision, mode: mode.value, accent: value, background: image ? (Object.keys(keepFilters).length ? { ...keepFilters, image } : image) : null, css: css.value });
-            // Open dashboards in this browser update at once.
+            // This page, other Studio pages and open dashboards in this browser
+            // update at once.
+            refreshTheme(platform.revision);
             try { const channel = new BroadcastChannel('studio-platform'); channel.postMessage(platform.revision); channel.close(); } catch {}
             draw('Saved.');
           } catch (error) {

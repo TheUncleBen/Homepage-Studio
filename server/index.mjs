@@ -18,7 +18,7 @@ import { renderRobotsPolicy } from './indexing-policy.mjs';
 import { readAuthConfig } from './auth/config.mjs';
 import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
 import { createLogoStore } from './dashboard-logo.mjs';
-import { createPlatformStore, PlatformError } from './platform.mjs';
+import { createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createAuthService } from './auth/service.mjs';
 import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendStudioAsset, sendStudioPage } from './auth/routes.mjs';
 import { atLeast, requiredLevel } from './auth/access.mjs';
@@ -714,6 +714,13 @@ export function createStudioServer(options = {}) {
       if (['/studio/live', '/studio/health'].includes(path)) return await original.handle(req, res);
       const brand = brandFile(path);
       if (brand) return await sendBrandFile(req, res, brand);
+      // Studio's own pages follow the platform display mode and accent. The
+      // sign-in page needs it before anyone signs in; it holds two colors.
+      if (path === '/studio/theme.css' && ['GET', 'HEAD'].includes(req.method)) {
+        const css = studioThemeCss(await platform.read().catch(() => undefined));
+        res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'content-length': Buffer.byteLength(css), 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
+        return res.end(req.method === 'HEAD' ? undefined : css);
+      }
       if (path === '/robots.txt') {
         if (!['GET', 'HEAD'].includes(req.method)) return json(res, 405, { error: 'Use GET or HEAD for the crawl policy.' });
         let status = 200, content;

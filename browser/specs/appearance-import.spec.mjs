@@ -69,7 +69,7 @@ test('a downloaded dashboard imports only after confirmation and restores exact 
   });
   await page.goto('/dashboard');
   let dialog = await openFiles(page);
-  const exported = await downloadText(page, () => dialog.getByRole('button', { name: 'Export saved dashboard', exact: true }).click());
+  const exported = await downloadText(page, () => dialog.getByRole('button', { name: 'Export dashboard', exact: true }).click());
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.waitForURL(`**${DASHBOARDS}`);
   const replacement = await saveFiles(request, {
@@ -80,7 +80,7 @@ test('a downloaded dashboard imports only after confirmation and restores exact 
   await dialog.getByRole('button', { name: /Snapshots & restore/ }).click();
   dialog = page.getByRole('dialog');
   const picker = page.waitForEvent('filechooser');
-  await dialog.getByRole('button', { name: 'Choose dashboard backup', exact: true }).press('Enter');
+  await dialog.getByRole('button', { name: 'Choose a backup file', exact: true }).press('Enter');
   await (await picker).setFiles({ name: exported.name, mimeType: 'application/json', buffer: Buffer.from(exported.text) });
   await expect(dialog.getByRole('status')).toContainText(`Replace this dashboard with ${exported.name}?`);
   expect((await studioApi(request, '/dashboard/studio/api/state')).revision).toBe(replacement.revision);

@@ -108,6 +108,6 @@ The same native file editor also retains `custom.js`. Changing or restoring that
 
 ## Copying a design to another deployment
 
-Use **Configuration files → Export saved dashboard** to download all nine native files plus the saved panel identities, layout, and stacks. On the destination, use **Snapshots & restore → Choose dashboard backup**. File selection only stages the import. The final **Import dashboard** button replaces the destination after validation and creates a recovery snapshot of its previous configuration.
+Use **Configuration files → Export dashboard** to download all nine native files plus the saved panel identities, layout, and stacks. On the destination, use **Snapshots & restore → Choose a backup file**. File selection only stages the import. The final **Import dashboard** button replaces the destination after validation and creates a recovery snapshot of its previous configuration.
 
 The imported appearance and CSS belong to the destination's own files. Environment variables, mounted secret files, external services, and other deployment prerequisites still need to be present there. See [Configuration and recovery](ARCHITECTURE.md#configuration-and-recovery) for transaction and size limits.
