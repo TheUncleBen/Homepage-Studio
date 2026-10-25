@@ -532,3 +532,6 @@ dialog { overflow-y: auto; }
   .preview iframe { transition: none; }
   .preview:not(.ready):has(iframe) .preview-placeholder .avatar { animation: none; }
 }
+.spinner { width: 34px; height: 34px; margin: 6px auto 0; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }

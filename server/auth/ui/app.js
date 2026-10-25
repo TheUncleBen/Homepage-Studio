@@ -616,6 +616,10 @@
     key: 'M15.5 8.5a3.5 3.5 0 1 1-3.5-3.5M12 8.5 4 16.5V20h3.5v-2H10v-2.5h2l2-2',
     trash: 'M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3',
     more: 'M5 12h.01M12 12h.01M19 12h.01',
+    download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
+    upload: 'M12 16V5M7 10l5-5 5 5M5 20h14',
+    archive: 'M3 4h18v4H3zM5 8v12h14V8M10 12h4',
+    restore: 'M3 12a9 9 0 1 0 2.6-6.4L3 8M3 3v5h5',
   };
   function icon(name, size = 17) {
     const ns = 'http://www.w3.org/2000/svg';
@@ -1176,18 +1180,102 @@
     return holder;
   }
 
+  // Full backups (server/backups.mjs): every dashboard, the dashboard list,
+  // the default look and sign-in data, kept in the state volume.
+  const fileSize = bytes => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  const BACKUP_KINDS = { 'before-restore': 'Saved before a restore', uploaded: 'Uploaded' };
+  function backupsPanel() {
+    const holder = h('div', { class: 'stack' });
+    const message = notice();
+    let items = [];
+    async function load(success) {
+      try { items = (await call('/studio/api/backups')).backups; draw(); if (success) say(message, success, 'ok'); }
+      catch (error) { failure(message, error); }
+    }
+    async function download(item) {
+      let response;
+      try { response = await fetch('/studio/api/backups/file/' + encodeURIComponent(item.name), { credentials: 'same-origin', cache: 'no-store' }); }
+      catch { return say(message, "Studio can't be reached. Check your connection and try again."); }
+      if (!response.ok) { let data = {}; try { data = await response.json(); } catch {} return failure(message, new RequestError(data.error || `The download failed (${response.status}).`, data.code, response.status)); }
+      const link = h('a', { href: URL.createObjectURL(await response.blob()), download: item.name });
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }
+    // After a restore is staged Studio restarts; wait for it to come back.
+    function restarting(staged) {
+      if (!staged.restarting) {
+        openDialog('Restore ready', close => h('div', { class: 'stack' }, h('p', { text: 'Restart Studio to finish: the backup is restored when it next starts.' }), dialogActions(h('button', { type: 'button', class: 'primary', onclick: close, text: 'Done' }))));
+        return;
+      }
+      const status = h('p', { class: 'muted', text: 'Studio is restarting to restore it. This page continues when it’s back.' });
+      openDialog('Restoring', () => h('div', { class: 'stack center' }, h('div', { class: 'spinner', 'aria-hidden': 'true' }), status)).addEventListener('cancel', event => event.preventDefault());
+      let wentDown = false;
+      const started = Date.now();
+      const poll = async () => {
+        let up = false;
+        try { up = (await fetch('/studio/live', { cache: 'no-store' })).ok; } catch {}
+        if (!up) wentDown = true;
+        if (up && (wentDown || Date.now() - started > 20000)) { status.textContent = 'Restored. Sign in again.'; return setTimeout(() => go('/studio/auth/sign-in?next=%2Fstudio%2Fadmin%23backups'), 800); }
+        if (Date.now() - started > 180000) { status.textContent = 'Studio hasn’t come back yet. Check that its container restarted, then reload this page.'; return; }
+        setTimeout(poll, 1500);
+      };
+      setTimeout(poll, 1500);
+    }
+    function manage(item) {
+      openDialog(when(Date.parse(item.createdAt)), close => {
+        const box = notice();
+        const restore = actionRow('Restore this backup', { iconName: 'restore', danger: true, onClick: () => { close(); confirmDialog('Restore this backup?', `Everything in Studio is replaced with this backup from ${when(Date.parse(item.createdAt))}: every dashboard, the dashboard list, the default look, people and sign-in settings. What is there now is saved as a backup first. Studio restarts, and everyone signs in again.`, 'Restore', async () => restarting(await call('/studio/api/backups', { action: 'restore', name: item.name, confirmed: true }))); } });
+        const remove = actionRow('Delete backup', { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog('Delete this backup?', 'It is removed from the state volume. Downloaded copies are not affected.', 'Delete', async () => { await call('/studio/api/backups', { action: 'delete', name: item.name }); await load('Backup deleted.'); }); } });
+        const get = actionRow('Download', { iconName: 'download' });
+        get.addEventListener('click', () => busy(get, 'Preparing…', () => download(item).then(() => say(box, ''))));
+        return h('div', { class: 'stack' },
+          group({}, row('Created', value(when(Date.parse(item.createdAt)))), row('Size', value(fileSize(item.bytes))), BACKUP_KINDS[item.kind] ? row('Kind', value(BACKUP_KINDS[item.kind])) : null, row('File', value(item.name, true), { stacked: true })),
+          group({}, get), group({}, restore, remove), box,
+          dialogActions(h('button', { type: 'button', onclick: close, text: 'Done' })));
+      });
+    }
+    const create = pill('Create backup', { primary: true, iconName: 'plus' });
+    create.addEventListener('click', () => busy(create, 'Creating…', async () => {
+      try { const made = await call('/studio/api/backups', { action: 'create' }); await load(`Backup created (${fileSize(made.bytes)}).`); }
+      catch (error) { failure(message, error); }
+    }));
+    const input = h('input', { type: 'file', accept: '.gz,application/gzip', hidden: true });
+    const upload = pill('Upload', { iconName: 'upload', onclick: () => input.click() });
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      input.value = '';
+      if (!file) return;
+      busy(upload, 'Uploading…', async () => {
+        try {
+          const response = await fetch('/studio/api/backups/upload', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'content-type': 'application/gzip', accept: 'application/json', 'x-studio-request': '1' }, body: file });
+          let data = {}; try { data = await response.json(); } catch {}
+          if (!response.ok) throw new RequestError(data.error || `The upload failed (${response.status}).`, data.code, response.status);
+          await load('Backup uploaded. Open it to restore it.');
+        } catch (error) { failure(message, error instanceof RequestError ? error : new RequestError("Studio can't be reached. Check your connection and try again.")); }
+      });
+    });
+    function draw() {
+      put(holder, toolbar(upload, create, input), message,
+        group({ title: 'Backups', aside: items.length ? String(items.length) : null, info: 'A backup holds every dashboard, the dashboard list, the default look, people and sign-in settings. Backups are kept in the state volume, so the command line can restore one if these pages can’t be reached (docs/OPERATIONS.md). Store a downloaded backup like a password: it includes any API key written into a dashboard’s files.' },
+          items.length ? items.map(item => navRow({ leading: icon('archive', 18), title: when(Date.parse(item.createdAt)), detail: [fileSize(item.bytes), BACKUP_KINDS[item.kind]].filter(Boolean).join(' · '), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'No backups yet.' })));
+    }
+    put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
+    load();
+    return holder;
+  }
+
   async function adminPage() {
     // With sign-in off, Administration only holds the dashboards' default look.
     const overview = await call('/studio/api/overview');
     if (!overview.authEnabled) {
-      render(...pageChrome('/studio/admin', null, h('h1', { text: 'Administration' }), await platformAppearance()));
+      render(...pageChrome('/studio/admin', null, h('h1', { text: 'Administration' }), await platformAppearance(), backupsPanel()));
       return;
     }
     let view = await api('admin/overview');
     const state = await api('state');
     const me = state.user;
     const message = notice();
-    const tabs = [['people', 'People'], ['groups', 'Groups'], ['access', 'Dashboard access'], ['policies', 'Session policies'], ['sign-in', 'Sign-in settings'], ['appearance', 'Appearance'], ['activity', 'Activity']];
+    const tabs = [['people', 'People'], ['groups', 'Groups'], ['access', 'Dashboard access'], ['policies', 'Session policies'], ['sign-in', 'Sign-in settings'], ['appearance', 'Appearance'], ['backups', 'Backups'], ['activity', 'Activity']];
     let tab = tabs.some(([key]) => key === location.hash.slice(1)) ? location.hash.slice(1) : 'people';
     const panel = h('div', { class: 'stack', role: 'tabpanel', id: 'admin-panel' });
     const tabList = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Administration sections' });
@@ -1212,6 +1300,15 @@
       if (key !== tab && unsavedAccess.size && !window.confirm('Dashboard access has unsaved changes. Leave without saving?')) return;
       tab = key; history.replaceState(null, '', '#' + key); drawTabs(); drawPanel();
     }
+    // A link to another section of this page, such as /studio/admin#access,
+    // opens that section.
+    window.addEventListener('hashchange', () => {
+      const key = location.hash.slice(1);
+      if (key === tab || !tabs.some(([item]) => item === key)) return;
+      const before = tab;
+      select(key);
+      if (tab === before) history.replaceState(null, '', '#' + before);
+    });
     async function act(work, box, success) {
       try { const next = await work(); if (next?.users) view = next; else view = await api('admin/overview'); drawPanel(); if (success) say(message, success, 'ok'); return true; }
       catch (error) { failure(box ?? message, error); return false; }
@@ -1222,7 +1319,7 @@
 
     function drawPanel() {
       say(message, '');
-      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, appearance: appearanceTab, activity: activityTab };
+      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, appearance: appearanceTab, backups: backupsPanel, activity: activityTab };
       put(panel, ...[].concat(builders[tab]()));
     }
 

@@ -11,7 +11,7 @@ import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from '../index.m
 import { base32Decode, hotp, totpStep } from './primitives.mjs';
 // The main dashboard lives at /home. Its own addresses (native API, editor
 // API, native data) move with it; Studio-wide addresses stay at the root.
-const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview|platform)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview|platform|backups)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
 
 
 const HOST = 'localhost:3001';
@@ -583,4 +583,44 @@ test('saving the platform look needs a recent sign-in, as a dashboard custom.css
   assert.equal(stale.status, 401);
   assert.equal(stale.json.code, 'REAUTH_REQUIRED');
   assert.equal((await request('/studio/api/platform', { cookie: admin.cookie })).json.revision, platform.json.revision, 'nothing was saved');
+});
+
+test('backups are for administrators, need a recent sign-in, download as files and stage a restart to restore', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  let restarts = 0;
+  const context = await setup(t, { onRestoreStaged: () => { restarts++; } });
+  const { request, post, stateDir } = context;
+  const admin = await createAdmin(context);
+  const member = await inviteMember(context, admin.cookie);
+  assert.equal((await request('/studio/api/backups', { cookie: member.cookie })).status, 403);
+  assert.equal((await post('/studio/api/backups', { action: 'create' }, { cookie: member.cookie })).status, 403);
+  assert.equal((await request('/studio/api/backups')).status === 200, false, 'signed-out visitors get nothing');
+  const made = await post('/studio/api/backups', { action: 'create' }, { cookie: admin.cookie });
+  assert.equal(made.status, 200, made.text);
+  const listed = await request('/studio/api/backups', { cookie: admin.cookie });
+  assert.deepEqual(listed.json.backups.map(item => item.name), [made.json.name]);
+  const file = await request('/studio/api/backups/file/' + made.json.name, { cookie: admin.cookie });
+  assert.equal(file.status, 200);
+  assert.equal(file.headers['content-type'], 'application/gzip');
+  assert.match(file.headers['content-disposition'], /^attachment; filename="studio-backup-/);
+  assert.equal((await request('/studio/api/backups/file/..%2Fauth%2Fauth.json', { cookie: admin.cookie })).status, 404);
+  // Uploading needs the editor header like every other change.
+  const raw = await fs.readFile(path.join(stateDir, 'studio-backups', made.json.name));
+  assert.equal((await request('/studio/api/backups/upload', { method: 'POST', cookie: admin.cookie, body: raw, headers: { 'content-type': 'application/gzip', origin: ORIGIN } })).status, 403);
+  const uploaded = await request('/studio/api/backups/upload', { method: 'POST', cookie: admin.cookie, body: raw, headers: { 'content-type': 'application/gzip', origin: ORIGIN, 'x-studio-request': '1' } });
+  assert.equal(uploaded.status, 200, uploaded.text);
+  assert.equal((await request('/studio/api/backups/upload', { method: 'POST', cookie: admin.cookie, body: 'nope', headers: { 'content-type': 'application/gzip', origin: ORIGIN, 'x-studio-request': '1' } })).status, 400);
+  assert.equal((await post('/studio/api/backups', { action: 'restore', name: made.json.name }, { cookie: admin.cookie })).status, 400, 'a restore must be confirmed');
+  const restore = await post('/studio/api/backups', { action: 'restore', name: made.json.name, confirmed: true }, { cookie: admin.cookie });
+  assert.equal(restore.status, 202, restore.text);
+  assert.equal(restore.json.restarting, true);
+  assert.equal(restarts, 1);
+  assert.equal(JSON.parse(await fs.readFile(path.join(stateDir, 'studio-restore.json'), 'utf8')).name, made.json.name);
+  // Later, without a recent sign-in, only the list is open.
+  t.mock.timers.tick(30 * 60000);
+  assert.equal((await request('/studio/api/backups', { cookie: admin.cookie })).status, 200);
+  for (const stale of [await post('/studio/api/backups', { action: 'create' }, { cookie: admin.cookie }), await request('/studio/api/backups/file/' + made.json.name, { cookie: admin.cookie }), await post('/studio/api/backups', { action: 'delete', name: made.json.name }, { cookie: admin.cookie })]) {
+    assert.equal(stale.status, 401);
+    assert.equal(stale.json.code, 'REAUTH_REQUIRED');
+  }
 });

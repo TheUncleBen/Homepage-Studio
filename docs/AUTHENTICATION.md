@@ -444,6 +444,7 @@ sensitive.
 can view and change every dashboard, so access control must come from your
 reverse proxy ([REVERSE-PROXY.md](REVERSE-PROXY.md#access-control)). The first
 person to open Studio chooses the main dashboard's address, and
-**Administration** has only **Appearance**, the platform's default look. Accounts
+**Administration** has only **Appearance**, the platform's default look, and
+**Backups** ([OPERATIONS.md](OPERATIONS.md#backups-in-the-app)). Accounts
 and sharing are kept in the state volume and come back if you turn sign-in on
 again.

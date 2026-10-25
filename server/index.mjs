@@ -19,6 +19,7 @@ import { readAuthConfig } from './auth/config.mjs';
 import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
 import { createLogoStore } from './dashboard-logo.mjs';
 import { createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
+import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { createAuthService } from './auth/service.mjs';
 import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendStudioAsset, sendStudioPage } from './auth/routes.mjs';
 import { atLeast, requiredLevel } from './auth/access.mjs';
@@ -578,6 +579,7 @@ export function createStudioServer(options = {}) {
   // Administration's name for the deployment, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
   const platform = createPlatformStore({ configRoot });
+  const backups = createBackupStore({ configRoot, stateRoot, buildRevision: options.buildRevision ?? process.env.STUDIO_BUILD_REVISION });
   const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards }) : null;
   const privateCookies = auth ? [authConfig.cookieName, authConfig.flowCookieName, authConfig.setupCookieName] : [];
   const handlers = new Map();
@@ -836,6 +838,43 @@ export function createStudioServer(options = {}) {
         if (auth && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
         return json(res, 200, await platform.update(await readBody(req)));
       }
+      // Full backups (server/backups.mjs), for administrators. Everything but
+      // the list needs a recent sign-in: a backup holds every secret Studio has.
+      if (path === '/studio/api/backups' || path.startsWith('/studio/api/backups/')) {
+        if (!isAdmin) return forbidden(res, 'Only administrators can manage backups.');
+        if (path === '/studio/api/backups' && req.method === 'GET') return json(res, 200, { backups: await backups.list() });
+        if (auth && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
+        if (path.startsWith('/studio/api/backups/file/') && req.method === 'GET') {
+          const name = decodeURIComponent(path.slice('/studio/api/backups/file/'.length));
+          const bytes = await backups.read(name);
+          res.writeHead(200, { 'content-type': 'application/gzip', 'content-length': bytes.length, 'content-disposition': `attachment; filename="${name}"`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+          return res.end(bytes);
+        }
+        if (path === '/studio/api/backups/upload' && req.method === 'POST') {
+          continueBody(req);
+          const chunks = [];
+          let length = 0;
+          for await (const chunk of req) {
+            length += chunk.length;
+            if (length > MAX_BACKUP_BYTES) return json(res, 413, { error: `A backup can be at most ${MAX_BACKUP_BYTES / (1024 * 1024)} MiB.`, code: 'BACKUP_TOO_LARGE' });
+            chunks.push(chunk);
+          }
+          return json(res, 200, await backups.upload(Buffer.concat(chunks)));
+        }
+        if (path !== '/studio/api/backups' || req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST for backups.' });
+        const change = await readBody(req);
+        if (change.action === 'create') return json(res, 200, await backups.create());
+        if (change.action === 'delete') { await backups.remove(change.name); return json(res, 200, { backups: await backups.list() }); }
+        if (change.action === 'restore') {
+          if (change.confirmed !== true) return json(res, 400, { error: 'Confirm the restore first.', code: 'CONFIRMATION_REQUIRED' });
+          const staged = await backups.stageRestore(change.name);
+          console.log(`Studio restore: ${staged.name} staged${current?.user ? ' by ' + current.user.username : ''}; restarting to apply it.`);
+          json(res, 202, { ...staged, restarting: Boolean(options.onRestoreStaged) });
+          options.onRestoreStaged?.();
+          return;
+        }
+        return json(res, 400, { error: 'Unknown backup action.', code: 'INVALID_BACKUP_ACTION' });
+      }
       if (!auth && ['/studio/dashboards', '/studio/admin'].includes(path) && ['GET', 'HEAD'].includes(req.method)) return sendStudioPage(res, path.slice('/studio/'.length), siteName());
       if (!auth && req.method === 'GET' && path.startsWith('/studio/auth/assets/')) return await sendStudioAsset(res, path);
       // The bare address: the person's landing dashboard, or the Dashboards page.
@@ -943,7 +982,11 @@ export function createStudioServer(options = {}) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT || 3000);
-  const { server, initialization, shutdown } = createStudioServer();
+  // A restore staged in Administration → Backups (or with server/backups.mjs)
+  // is applied before anything reads the volumes.
+  await applyPendingRestore({ ...studioRoots(), buildRevision: process.env.STUDIO_BUILD_REVISION });
+  let restart = () => {};
+  const { server, initialization, shutdown } = createStudioServer({ onRestoreStaged: () => restart() });
   const startup = await initialization;
   if (!startup.ok) console.error('Studio configuration startup requires attention:', startup.code);
   server.listen(port, '0.0.0.0', () => console.log('Homepage Studio listening on port ' + port));
@@ -953,4 +996,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     shutdown().then(() => process.exit(0), error => { console.error('Application shutdown failed:', error.code || error.name); process.exit(1); });
   };
   process.on('SIGINT', close); process.on('SIGTERM', close);
+  // After a restore is staged the process ends, once the reply has gone out;
+  // the container's restart policy starts it again and the restore applies.
+  restart = () => setTimeout(close, 500);
 }
