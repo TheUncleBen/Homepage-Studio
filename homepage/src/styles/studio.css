@@ -67,7 +67,12 @@ body {
    full window width even inside the centred board. It uses the Studio pages'
    font rather than the dashboard's, so both bars look alike. */
 .studio-topbar {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   height: 56px;
   display: flex;
   align-items: center;
@@ -85,23 +90,96 @@ body {
   border-radius: 8px;
   text-decoration: none;
 }
-.studio-brand-mark {
+.studio-brand-logo {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  display: grid;
-  place-items: center;
-  color: var(--studio-accent-contrast);
-  background: var(--studio-accent-solid);
+  object-fit: cover;
+  display: block;
 }
-.studio-topbar-title {
+.studio-switcher {
+  position: relative;
   flex: 1;
   min-width: 0;
+  display: flex;
+}
+.studio-switcher-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--studio-text);
+  font: inherit;
   font-weight: 650;
   font-size: 15px;
+  cursor: pointer;
+}
+.studio-switcher-button:hover,
+.studio-switcher-button[aria-expanded="true"] {
+  background: var(--studio-raised);
+}
+.studio-switcher-button svg {
+  flex: none;
+  color: var(--studio-muted);
+}
+.studio-switcher-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.studio-switcher-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  min-width: 15rem;
+  max-width: min(22rem, calc(100vw - 32px));
+  max-height: min(70vh, 30rem);
+  overflow-y: auto;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  background: var(--studio-surface, var(--studio-raised));
+  border: 1px solid var(--studio-line);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px #0006;
+}
+.studio-switcher-popover > a {
+  display: block;
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--studio-text);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-switcher-popover > a:hover {
+  background: var(--studio-raised);
+}
+.studio-switcher-popover > a[aria-current="page"] {
+  background: var(--studio-accent-soft, var(--studio-raised));
+  font-weight: 650;
+}
+.studio-switcher-popover > hr {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--studio-line);
+}
+.studio-switcher-note {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--studio-muted);
+  font-size: 13px;
 }
 .studio-top-actions {
   display: flex;
@@ -167,7 +245,8 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.studio-menu-narrow {
+.studio-menu-narrow,
+.studio-narrow-only {
   display: none !important;
 }
 .studio-board-toolbar[hidden] {
@@ -1183,6 +1262,7 @@ body {
   gap: 6px;
 }
 .studio-field-choices input {
+  appearance: auto;
   accent-color: var(--studio-accent);
 }
 .studio-note {
@@ -1203,6 +1283,7 @@ body {
   min-height: 35px;
 }
 .studio-checkbox-field input {
+  appearance: auto;
   accent-color: var(--studio-accent);
   width: 16px;
   height: 16px;
@@ -1536,6 +1617,7 @@ body {
 .studio-accent-presets {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
 }
 .studio-accent-presets button {
@@ -1653,6 +1735,9 @@ body {
     display: none !important;
   }
   .studio-menu-narrow {
+    display: block !important;
+  }
+  .studio-narrow-only {
     display: block !important;
   }
   .studio-top-actions {
@@ -1786,4 +1871,33 @@ body {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* A dashboard's own logo, in its appearance settings. */
+.studio-logo-editor {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--studio-line);
+}
+.studio-logo-editor h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+.studio-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.studio-logo-preview {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex: none;
+}
+.studio-logo-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }

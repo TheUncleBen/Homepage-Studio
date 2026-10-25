@@ -20,13 +20,13 @@ What Studio needs, whatever the provider calls it:
 | --- | --- |
 | Client type | Confidential: Studio keeps a client secret. It authenticates at the token endpoint with HTTP Basic (`client_secret_basic`) |
 | Flow | Authorization code, with PKCE (`S256`) allowed. Refresh tokens allowed |
-| Redirect URI | `https://homepage.example.test/__studio/auth/oidc/callback`, exactly. **Administration → Sign-in settings** shows it once single sign-on is configured |
+| Redirect URI | `https://homepage.example.test/studio/auth/oidc/callback`, exactly. **Administration → Sign-in settings** shows it once single sign-on is configured |
 | Scopes | `openid profile email offline_access` by default (`STUDIO_OIDC_SCOPES`). The provider must issue a **refresh token**, because Studio checks the person's groups again every 15 minutes with it. Without one, provider sessions end at the first check |
 | Signed ID token | Signed with a key the provider publishes at its `jwks_uri` |
 | Stable subject | The `sub` claim must never change for a person and never be reused. Studio matches accounts by issuer and `sub` only |
 | Groups | A claim holding a **list of group names**, in the ID token or from the userinfo endpoint. Studio reads `groups` by default; set `STUDIO_OIDC_GROUPS_CLAIM` if your provider uses another name. Without groups, sign-in still works, but administrator and allowed groups can't be used |
 | Issuer | The provider's issuer URL, which Studio loads `<issuer>/.well-known/openid-configuration` from. It must be `https://` and reachable from the Studio container |
-| Optional | Back-channel logout to `https://homepage.example.test/__studio/auth/oidc/backchannel-logout`, and an end-session endpoint for signing out of the provider too |
+| Optional | Back-channel logout to `https://homepage.example.test/studio/auth/oidc/backchannel-logout`, and an end-session endpoint for signing out of the provider too |
 
 Then:
 

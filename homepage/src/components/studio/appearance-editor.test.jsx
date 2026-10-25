@@ -51,6 +51,9 @@ describe("dashboard appearance controls", () => {
       theme: "light",
       studioTheme: { future: null, mode: "light" },
     });
+    // Presets apply once the dashboard stops following the platform accent.
+    expect(screen.getByRole("button", { name: "Sage", exact: true })).toBeDisabled();
+    fireEvent.click(screen.getByLabelText(/Use the platform accent color/));
     fireEvent.click(screen.getByRole("button", { name: "Sage", exact: true }));
     expect(onChange.mock.lastCall[0]).toMatchObject({
       theme: "light",
@@ -64,18 +67,45 @@ describe("dashboard appearance controls", () => {
     expect(onChange.mock.lastCall[0].studioTheme.mode).toBe("system");
   });
 
+  it("follows each platform default separately until the dashboard sets its own", () => {
+    const onChange = vi.fn();
+    const platform = { mode: "light", accent: "#91b09e", background: null };
+    render(<AppearanceEditor settings={{ title: "Kitchen" }} platform={platform} onChange={onChange} />);
+    expect(screen.getByLabelText("Display mode")).toHaveValue("platform");
+    expect(screen.getByRole("option", { name: "Platform default (Light)" })).toBeInTheDocument();
+    const follow = screen.getByLabelText("Use the platform accent color (#91b09e)");
+    expect(follow).toBeChecked();
+    expect(screen.getByLabelText("Accent color")).toHaveValue("#91b09e");
+    // Choosing an own display mode leaves the accent following the platform.
+    fireEvent.change(screen.getByLabelText("Display mode"), { target: { value: "dark" } });
+    expect(onChange).toHaveBeenLastCalledWith({ title: "Kitchen", theme: "dark", studioTheme: { mode: "dark" } });
+  });
+
+  it("returns a setting to the platform default by removing only that key", () => {
+    const onChange = vi.fn();
+    const settings = { theme: "dark", studioTheme: { mode: "dark", accent: "#81a8c8", future: 1 } };
+    render(<AppearanceEditor settings={settings} platform={{ mode: "light", accent: "#91b09e" }} onChange={onChange} />);
+    fireEvent.click(screen.getByLabelText(/Use the platform accent color/));
+    expect(onChange).toHaveBeenLastCalledWith({ theme: "dark", studioTheme: { mode: "dark", future: 1 } });
+    fireEvent.change(screen.getByLabelText("Display mode"), { target: { value: "platform" } });
+    expect(onChange).toHaveBeenLastCalledWith({ studioTheme: { accent: "#81a8c8", future: 1 } });
+  });
+
   it("retains partially typed colors, reports invalid drafts and synchronizes an external YAML correction", () => {
     const onChange = vi.fn(),
       onValidity = vi.fn();
     render(<Draft onChange={onChange} onValidity={onValidity} />);
     const input = screen.getByLabelText("Accent color");
+    expect(input).toBeDisabled();
+    fireEvent.click(screen.getByLabelText(/Use the platform accent color/));
+    expect(input).toBeEnabled();
     fireEvent.change(input, { target: { value: "#abc" } });
     expect(input).toHaveValue("#abc");
     expect(onChange.mock.lastCall[0].studioTheme.accent).toBe("#aabbcc");
     fireEvent.change(input, { target: { value: "#abcd" } });
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(onValidity).toHaveBeenLastCalledWith(false);
-    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledTimes(2);
     fireEvent.click(
       screen.getByRole("button", { name: "Apply valid YAML draft" }),
     );

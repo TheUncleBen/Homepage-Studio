@@ -17,8 +17,10 @@ export async function eventually(check, label, timeout = 180000) {
   throw new Error(`${label} did not succeed: ${last?.message || 'deadline exceeded'}`);
 }
 
-// The main dashboard's address. The bare address is the Dashboards page.
-export const HOME = '/home';
+// A fresh deployment's main dashboard has no address until the first person
+// in Studio picks one; this fixture takes the suggested one. The bare address
+// is the Dashboards page while sign-in is off.
+export const HOME = '/dashboard';
 
 export function createDashboardFixture({ origin, expectedRevision }) {
   async function request(route, body, expectedStatus = 200) {
@@ -35,11 +37,11 @@ export function createDashboardFixture({ origin, expectedRevision }) {
 
   async function ready(basePath = HOME) {
     return eventually(async () => {
-      const application = (await request('/__studio/application-ready')).json();
+      const application = (await request('/studio/application-ready')).json();
       assert.equal(application.status, 'ready');
       assert.deepEqual(application.checks, { dashboardRegistry: 'ok', sharedStorage: 'ok', runtimeFiles: 'ok' });
       assert.equal(application.buildRevision, expectedRevision);
-      const result = (await request(`${basePath}/__studio/ready`)).json();
+      const result = (await request(`${basePath}/studio/ready`)).json();
       assert.equal(result.status, 'ready');
       assert.equal(result.backupRetention, 25);
       const native = (await request(`${basePath}/api/studio/health`)).json();
@@ -50,22 +52,36 @@ export function createDashboardFixture({ origin, expectedRevision }) {
     }, 'Versioned startup readiness');
   }
 
-  async function state(basePath = HOME) { return (await request(`${basePath}/__studio/api/state`)).json(); }
+  async function state(basePath = HOME) { return (await request(`${basePath}/studio/api/state`)).json(); }
+
+  async function addressMain() {
+    await eventually(async () => assert.equal((await request('/studio/application-ready')).json().status, 'ready'), 'Application readiness');
+    const bare = await request('/', undefined, 307);
+    assert.equal(bare.response.headers.get('location'), '/studio/dashboards', 'With sign-in off the bare address opens the Dashboards page');
+    const overview = (await request('/studio/api/overview')).json();
+    assert.equal(overview.mainNeedsAddress, true, 'A fresh deployment asks for the main dashboard address');
+    assert.equal(`/${overview.suggestedSlug}`, HOME);
+    const asked = await fetch(new URL(`${HOME}/`, origin), { headers: { accept: 'text/html' }, redirect: 'manual', signal: AbortSignal.timeout(35000) });
+    assert.equal(asked.status, 404, 'The main dashboard has no address before one is chosen');
+    await manage({ action: 'update', id: 'default', name: 'Main dashboard', slug: overview.suggestedSlug });
+    assert.equal((await request('/studio/api/overview')).json().mainNeedsAddress, false);
+  }
 
   async function freshAndEdit() {
+    await addressMain();
     await ready();
     const current = await state();
     for (const field of ['servicesYaml', 'widgetsYaml', 'bookmarksYaml']) assert.deepEqual(parse(current[field]), [], `${field} should start empty`);
     assert.deepEqual(parse(current.settingsYaml), {});
     const bare = await request('/', undefined, 307);
-    assert.equal(bare.response.headers.get('location'), '/__studio/dashboards', 'With sign-in off the bare address opens the Dashboards page');
+    assert.equal(bare.response.headers.get('location'), '/studio/dashboards', 'With sign-in off the bare address opens the Dashboards page');
     const page = await request(HOME);
     assert.match(page.text, /<html[\s>]/i, 'Native Homepage must serve the real dashboard page');
     assert.match(page.response.headers.get('content-type'), /text\/html/i);
-    const saved = (await request(`${HOME}/__studio/api/save`, { revision: current.revision, settingsYaml: 'title: Container acceptance fixture\n' })).json();
-    const backups = (await request(`${HOME}/__studio/api/backups`)).json();
+    const saved = (await request(`${HOME}/studio/api/save`, { revision: current.revision, settingsYaml: 'title: Container acceptance fixture\n' })).json();
+    const backups = (await request(`${HOME}/studio/api/backups`)).json();
     assert.equal(backups.length, 1);
-    const added = (await request(`${HOME}/__studio/api/service`, {
+    const added = (await request(`${HOME}/studio/api/service`, {
       revision: saved.revision, action: 'add', name: 'Persistence fixture', group: 'Acceptance', config: { href: 'https://example.test/' },
     })).json();
     const service = added.services.find(item => item.name === 'Persistence fixture');
@@ -79,39 +95,39 @@ export function createDashboardFixture({ origin, expectedRevision }) {
     assert.equal(parse(current.settingsYaml).title, 'Container acceptance fixture');
     assert.equal(current.services.find(item => item.name === 'Persistence fixture')?.id, fixture.serviceId);
     assert.equal(current.backupRetention, 25);
-    assert.ok((await request(`${HOME}/__studio/api/backups`)).json().some(item => item.id === fixture.restoreId));
+    assert.ok((await request(`${HOME}/studio/api/backups`)).json().some(item => item.id === fixture.restoreId));
   }
 
   async function restoreEmpty(fixture) {
     const current = await state();
-    const restored = (await request(`${HOME}/__studio/api/restore`, { revision: current.revision, backupId: fixture.restoreId })).json();
+    const restored = (await request(`${HOME}/studio/api/restore`, { revision: current.revision, backupId: fixture.restoreId })).json();
     assert.deepEqual(parse(restored.servicesYaml), []);
     assert.deepEqual(parse(restored.settingsYaml), {});
   }
 
   async function manage(change) {
-    const registry = (await request('/__studio/api/dashboards')).json();
-    return (await request('/__studio/api/dashboards', { revision: registry.revision, ...change })).json();
+    const registry = (await request('/studio/api/dashboards')).json();
+    return (await request('/studio/api/dashboards', { revision: registry.revision, ...change })).json();
   }
 
   async function assertDefaultAddress() {
-    const registry = (await request('/__studio/api/dashboards')).json();
+    const registry = (await request('/studio/api/dashboards')).json();
     const original = registry.dashboards.find(entry => entry.id === 'default');
-    assert.equal(original.slug, 'home', 'The address fixture starts from the main dashboard\'s /home address');
+    assert.equal(`/${original.slug}`, HOME, 'The address fixture starts from the main dashboard\'s chosen address');
     assert.ok(!registry.dashboards.some(entry => entry.slug === 'admin'), 'The disposable /admin fixture address must be available');
     const before = await state();
-    const history = (await request(`${HOME}/__studio/api/backups`)).json();
+    const history = (await request(`${HOME}/studio/api/backups`)).json();
     try {
       await manage({ action: 'update', id: 'default', name: 'Admin address fixture', slug: 'admin' });
       const redirect = await request('/?source=address-fixture', undefined, 307);
-      assert.equal(redirect.response.headers.get('location'), '/__studio/dashboards');
-      await request(`${HOME}/__studio/api/state`, undefined, 404);
+      assert.equal(redirect.response.headers.get('location'), '/studio/dashboards');
+      await request(`${HOME}/studio/api/state`, undefined, 404);
       await ready('/admin');
       const moved = await state('/admin');
       assert.equal(moved.revision, before.revision);
       for (const field of nativeFields) assert.equal(moved[field], before[field]);
       assert.deepEqual(moved.board, before.board);
-      assert.deepEqual((await request('/admin/__studio/api/backups')).json(), history);
+      assert.deepEqual((await request('/admin/studio/api/backups')).json(), history);
       assert.match((await request('/admin/')).text, /<html[\s>]/i);
       assert.equal((await request('/admin/api/config/custom.css')).text, before.customCss);
       assert.equal((await request('/admin/api/config/custom.js')).text, before.customJs);
@@ -120,18 +136,7 @@ export function createDashboardFixture({ origin, expectedRevision }) {
     }
     await ready();
     assert.equal((await state()).revision, before.revision);
-    assert.deepEqual((await request(`${HOME}/__studio/api/backups`)).json(), history);
-  }
-
-  async function assertLegacyAdopted(expected) {
-    await ready();
-    const archive = (await request(`${HOME}/__studio/api/export`)).json();
-    assert.deepEqual(archive.files, expected.archive.files, 'Adopting existing root files must preserve complete native configuration and state');
-    assert.deepEqual((await request(`${HOME}/__studio/api/backups`)).json(), expected.backups, 'Registry initialization must preserve preexisting snapshots');
-    const registry = (await request('/__studio/api/dashboards')).json();
-    assert.deepEqual(registry.dashboards, [{ id: 'default', slug: 'home', name: 'Main dashboard', archived: false }]);
-    assert.equal(parse((await state()).settingsYaml).title, 'Legacy adoption fixture');
-    await assertDefaultAddress();
+    assert.deepEqual((await request(`${HOME}/studio/api/backups`)).json(), history);
   }
 
   async function multiDashboard() {
@@ -153,38 +158,38 @@ export function createDashboardFixture({ origin, expectedRevision }) {
       customCss: ':root { --fixture-color: #7353ba; }\n',
       customJs: 'window.__studioAcceptanceFixture = "source";\n',
     };
-    let current = (await request(`${basePath}/__studio/api/save`, { revision: blank.revision, ...changes })).json();
+    let current = (await request(`${basePath}/studio/api/save`, { revision: blank.revision, ...changes })).json();
     const board = structuredClone(current.board);
     board.panels.at(-1).rect = { x: 6, y: 24, w: 6, h: 4 };
     board.stacks = [{ id: 'fixture-independent-stack', panelIds: board.panels.slice(0, 2).map(panel => panel.id), rect: { x: 0, y: 24, w: 6, h: 4 }, playback: { ...DEFAULT_PLAYBACK, intervalMs: 15000 } }];
-    await request(`${basePath}/__studio/api/board`, { revision: current.revision, board });
+    await request(`${basePath}/studio/api/board`, { revision: current.revision, board });
     current = await state(basePath);
-    const sourceArchive = (await request(`${basePath}/__studio/api/export`)).json();
+    const sourceArchive = (await request(`${basePath}/studio/api/export`)).json();
     assert.deepEqual(Object.keys(sourceArchive.files).sort(), [...nativeFiles, 'state.json'].sort());
-    const foreignSnapshot = (await request(`${basePath}/__studio/api/backups`)).json()[0].id;
+    const foreignSnapshot = (await request(`${basePath}/studio/api/backups`)).json()[0].id;
     const duplicate = (await manage({ action: 'create', name: 'Container isolation copy', slug: `fixture-copy-${suffix}`, sourceId: first.id })).dashboard;
     const copyPath = `/${duplicate.slug}`;
     let copied = await state(copyPath);
     for (const field of nativeFields) assert.equal(copied[field], current[field], `Duplicate must retain ${field}`);
     assert.deepEqual(copied.board, current.board, 'Duplicate must retain layout, stable content identities and playback');
     const beforeForeign = copied.revision;
-    const rejected = (await request(`${copyPath}/__studio/api/restore`, { revision: copied.revision, backupId: foreignSnapshot }, 404)).json();
+    const rejected = (await request(`${copyPath}/studio/api/restore`, { revision: copied.revision, backupId: foreignSnapshot }, 404)).json();
     assert.equal(rejected.code, 'BACKUP_NOT_FOUND');
     assert.equal((await state(copyPath)).revision, beforeForeign, 'Foreign snapshot must not change another dashboard');
-    copied = (await request(`${copyPath}/__studio/api/save`, { revision: copied.revision, settingsYaml: 'title: Independent copied fixture\ntheme: light\ncolor: emerald\n', customCss: ':root { --fixture-color: #15803d; }\n', customJs: 'window.__studioAcceptanceFixture = "copy";\n' })).json();
+    copied = (await request(`${copyPath}/studio/api/save`, { revision: copied.revision, settingsYaml: 'title: Independent copied fixture\ntheme: light\ncolor: emerald\n', customCss: ':root { --fixture-color: #15803d; }\n', customJs: 'window.__studioAcceptanceFixture = "copy";\n' })).json();
     assert.equal((await state(basePath)).revision, current.revision, 'Copy edits must not modify its source');
     const updated = (await manage({ action: 'update', id: first.id, name: 'Renamed source fixture', slug: `fixture-renamed-${suffix}` })).dashboard;
-    await request(`${basePath}/__studio/api/state`, undefined, 404);
+    await request(`${basePath}/studio/api/state`, undefined, 404);
     basePath = `/${updated.slug}`;
     assert.equal((await state(basePath)).revision, current.revision, 'Address changes retain immutable identity and files');
     await manage({ action: 'archive', id: first.id, confirmed: true });
-    await request(`${basePath}/__studio/api/state`, undefined, 404);
+    await request(`${basePath}/studio/api/state`, undefined, 404);
     assert.equal((await state(copyPath)).revision, copied.revision, 'Archiving the source must not affect its copy');
     await manage({ action: 'restore', id: first.id });
     assert.equal((await state(basePath)).revision, current.revision);
     const imported = (await manage({ action: 'create', name: 'Container imported fixture', slug: `fixture-imported-${suffix}` })).dashboard;
     const importPath = `/${imported.slug}`;
-    await request(`${importPath}/__studio/api/import`, { revision: (await state(importPath)).revision, archive: sourceArchive });
+    await request(`${importPath}/studio/api/import`, { revision: (await state(importPath)).revision, archive: sourceArchive });
     const importedState = await state(importPath);
     for (const field of nativeFields) assert.equal(importedState[field], current[field], `Import must retain ${field}`);
     assert.deepEqual(importedState.board, current.board);
@@ -195,7 +200,7 @@ export function createDashboardFixture({ origin, expectedRevision }) {
   }
 
   async function assertDashboardsPersisted(records) {
-    const registry = (await request('/__studio/api/dashboards')).json();
+    const registry = (await request('/studio/api/dashboards')).json();
     for (const { dashboard, state: expected } of records) {
       assert.deepEqual(registry.dashboards.find(entry => entry.id === dashboard.id), dashboard);
       const basePath = `/${dashboard.slug}`;
@@ -210,5 +215,5 @@ export function createDashboardFixture({ origin, expectedRevision }) {
     }
   }
 
-  return { request, ready, state, freshAndEdit, assertPersisted, restoreEmpty, assertDefaultAddress, assertLegacyAdopted, multiDashboard, assertDashboardsPersisted };
+  return { request, ready, state, freshAndEdit, assertPersisted, restoreEmpty, assertDefaultAddress, multiDashboard, assertDashboardsPersisted };
 }

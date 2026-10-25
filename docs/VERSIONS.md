@@ -77,7 +77,7 @@ network) is listed in [FEATURE-ACCEPTANCE.md](FEATURE-ACCEPTANCE.md#human-accept
 
 The version a running container reports is its build: the settings dialog
 shows *Studio build* and the first eight characters of the source commit, and
-`/__studio/application-ready` returns the full `buildRevision`
+`/studio/application-ready` returns the full `buildRevision`
 ([OPERATIONS.md](OPERATIONS.md#logs-and-health)).
 
 ## How builds are made

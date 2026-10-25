@@ -155,10 +155,11 @@ async function mountBoard({
     if (options?.method === "POST") {
       value = await writer(path, JSON.parse(options.body));
       state = value;
-    } else if (path === "/__studio/catalog.json") value = catalog;
-    else if (path === "/__studio/api/backups") value = backups;
+    } else if (path === "/studio/catalog.json") value = catalog;
+    else if (path === "/studio/api/access") value = { authEnabled: false, level: "admin", user: null };
+    else if (path === "/studio/api/backups") value = backups;
     else {
-      if (firstBoardRead && path === "/__studio/api/board") await firstBoardRead;
+      if (firstBoardRead && path === "/studio/api/board") await firstBoardRead;
       value = state;
     }
     return { ok: true, status: 200, json: async () => value };
@@ -168,7 +169,7 @@ async function mountBoard({
     const [data, setData] = useState(native);
     const { mutate } = useSWRConfig();
     publishNative = setData;
-    pollBoard = () => mutate("/__studio/api/board");
+    pollBoard = () => mutate("/studio/api/board");
     return (
       <StudioBoard
         nativeData={data}
@@ -363,11 +364,11 @@ describe("Native board save and draft safety", () => {
     const { fetch, writer, interactions } = await mountBoard({ mode: "settings", firstBoardRead: gate.promise });
     expect(screen.getByLabelText("Quick Launch")).toBeDisabled();
     expect(interactions).toHaveBeenLastCalledWith(true);
-    expect(fetch.mock.calls.some(([path]) => path === "/__studio/api/state")).toBe(false);
+    expect(fetch.mock.calls.some(([path]) => path === "/studio/api/state")).toBe(false);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await act(async () => gate.resolve());
     expect(await screen.findByLabelText(/Dashboard title/)).toHaveValue("My dashboard");
-    expect(fetch.mock.calls.filter(([path]) => path === "/__studio/api/state")).toHaveLength(1);
+    expect(fetch.mock.calls.filter(([path]) => path === "/studio/api/state")).toHaveLength(1);
     expect(writer).not.toHaveBeenCalled();
   });
 
@@ -421,13 +422,13 @@ describe("Native board save and draft safety", () => {
     const original = fetch.getMockImplementation();
     let failCatalog = true;
     fetch.mockImplementation(async (path, options) => {
-      if (path === "/__studio/catalog.json" && failCatalog) {
+      if (path === "/studio/catalog.json" && failCatalog) {
         failCatalog = false;
         return { ok: false, status: 503, json: async () => ({ error: "Fixture catalog unavailable" }) };
       }
       return original(path, options);
     });
-    const catalogReads = () => fetch.mock.calls.filter(([path]) => path === "/__studio/catalog.json").length;
+    const catalogReads = () => fetch.mock.calls.filter(([path]) => path === "/studio/catalog.json").length;
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Clock" }));
     fireEvent.click(screen.getByRole("button", { name: "Position & size" }));

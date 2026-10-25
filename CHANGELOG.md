@@ -9,6 +9,48 @@ build is identified by its source commit and image digest
 
 ## [Unreleased]
 
+Until version 1.0.0 every candidate is installed as a new deployment: delete
+the volumes and follow [docs/DEPLOY.md](docs/DEPLOY.md) from the start. Studio
+carries no conversions for data from earlier candidates, and the upgrade notes
+in older entries below are history only.
+
+### Studio at /studio, a deployment name and logo, a platform default look
+
+- **Studio's own pages are under `/studio`**: Dashboards at
+  `/studio/dashboards`, My account, Administration and sign-in. `studio` can't
+  be a dashboard address.
+- **The main dashboard's address is chosen at first use.** A new deployment's
+  main dashboard has no address; the first administrator (with sign-in off,
+  the first visitor) is asked for one, suggested `dashboard`. New and
+  duplicated dashboards suggest the first free of `dashboard`, `dashboard-2`, ….
+- **Dashboard cards** show who can open each dashboard (administrators) and
+  when it last changed.
+- **Deployment name.** `STUDIO_DEPLOYMENT_NAME` (default *Homepage Studio*),
+  changeable in **Administration → Sign-in settings**, names the deployment on
+  Studio's pages, the sign-in page, tab titles, email and passkey prompts.
+- **Logo and favicon.** Studio has a logo, also its favicon and app icon. Anyone
+  who may arrange a dashboard can upload that dashboard's own logo; it shows
+  in the top bar and as the dashboard's tab icon. Duplicates keep it. An SVG
+  logo with scripts, embedded HTML, event handlers or outside references
+  (including stylesheet imports) is refused.
+- **Tab titles.** A dashboard without its own title in `settings.yaml` shows
+  its name in the browser tab.
+- **Top bar.** The name opens a dashboard switcher; Dashboards,
+  Administration and the account menu fold into the menu on phones.
+- **Platform default look.** **Administration → Appearance** sets the display
+  mode, accent, background image and platform CSS for every dashboard. Each
+  dashboard follows each setting until it sets its own; platform CSS loads
+  before a dashboard's `custom.css` and can be switched off per dashboard by an
+  administrator. With sign-in off, Administration shows this page.
+  Saving it asks for a recent sign-in, like other sensitive administration
+  changes.
+- **Groups** can be reordered by dragging, as well as with the buttons.
+- **Environment example and stack files** list the required settings first
+  and the optional ones below.
+- Removed: conversions for older registries, layouts and snapshots, and the
+  old `STUDIO_SMTP_FROM` setting (use `STUDIO_SMTP_FROM_ADDRESS` and
+  `STUDIO_SMTP_FROM_NAME`).
+
 ### Linking local and Authentik accounts, a prepared administrator, groups set ahead
 
 - **Prepared administrator.** `STUDIO_ADMIN_USERNAME` (and optionally
@@ -37,10 +79,6 @@ build is identified by its source commit and image digest
   arrives.
 
 ### Docker secrets, a shared proxy network and a rewritten deployment guide
-
-Existing stacks need one-time steps before taking this template:
-[docs/UPGRADING.md](docs/UPGRADING.md#updating-to-the-version-with-docker-secrets-and-no-published-port).
-Keep your current `STUDIO_AUTH_KEY` value for the new secret.
 
 - The templates read the encryption key, the single sign-on client secret and
   the mail password only from Docker secrets (`studio_auth_key`,

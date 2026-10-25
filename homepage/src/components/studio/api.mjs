@@ -6,7 +6,7 @@ export class StudioRequestError extends Error {
   }
 }
 
-const CATALOG_PATH = "/__studio/catalog.json";
+const CATALOG_PATH = "/studio/catalog.json";
 
 export function studioRequest(path, body) {
   return request(path, body, true);
@@ -28,7 +28,7 @@ async function request(path, body, scoped) {
             );
           return value;
         });
-  const importing = path === "/__studio/api/import";
+  const importing = path === "/studio/api/import";
   const maxBytes = (importing ? 40 : 2) * 1024 * 1024;
   if (encoded !== undefined && new TextEncoder().encode(encoded).length > maxBytes) {
     throw new StudioRequestError(

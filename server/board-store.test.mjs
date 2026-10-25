@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 import { createConfigStore } from './config.mjs';
 import { DEFAULT_PLAYBACK } from './board.mjs';
 
@@ -262,37 +261,14 @@ test('restoring a snapshot restores its board and source identities and exports 
   assert.ok((await store.listBackups()).some((b) => b.revision !== before.revision));
 });
 
-test('legacy four-file transaction recovery and restore preserve newer optional files', async (t) => {
-  const { store, options, configDir, stateDir } = await fixture(t);
-  const current = await store.load(), before = {};
-  for (const file of ['services.yaml', 'widgets.yaml', 'bookmarks.yaml', 'settings.yaml']) before[file] = await fs.readFile(path.join(configDir, file), 'utf8');
-  before['state.json'] = null;
-  const after = { ...before, 'settings.yaml': 'title: Interrupted\n' };
-  const hash = (v) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
-  const backup = { version: 1, createdAt: '2026-01-01T00:00:00.000Z', revision: current.revision, changedFiles: ['settings.yaml'], before, afterHashes: Object.fromEntries(Object.entries(after).map(([k, v]) => [k, hash(v)])) };
-  await fs.writeFile(path.join(stateDir, 'backups', 'backup-legacy.json'), JSON.stringify(backup));
-  await fs.writeFile(path.join(configDir, 'settings.yaml'), after['settings.yaml']);
-  await fs.writeFile(path.join(configDir, 'custom.css'), '/* newer user theme */');
-  await fs.writeFile(path.join(stateDir, 'transaction.json'), JSON.stringify({ version: 1, backupId: 'backup-legacy' }));
-  const restarted = createConfigStore(options);
-  const recovered = await restarted.initialize();
-  assert.equal(recovered.settingsYaml, before['settings.yaml']);
-  assert.equal(recovered.customCss, '/* newer user theme */');
-  const restored = await restarted.restoreBackup({ revision: recovered.revision, backupId: 'backup-legacy' });
-  assert.equal(restored.customCss, recovered.customCss);
-});
-
-test('legacy layout is migrated without writing during reads, and unsupported state refuses silent reset', async (t) => {
+test('unsupported dashboard state refuses a silent reset', async (t) => {
   const { store, stateDir } = await fixture(t);
-  const current = await store.mutateInfoWidget({ revision: (await store.load()).revision, action: 'add', type: 'datetime', config: {} });
-  const info = current.infoWidgets[0], state = JSON.parse(await fs.readFile(path.join(stateDir, 'state.json'), 'utf8'));
-  const legacy = { version: 1, infoWidgets: state.infoWidgets, layout: { version: 1, items: { [info.id]: { x: 3, y: 8, w: 4, h: 5 } } } };
-  const bytes = JSON.stringify(legacy);
-  await fs.writeFile(path.join(stateDir, 'state.json'), bytes);
-  assert.deepEqual((await store.loadBoard()).board.panels[0].rect, legacy.layout.items[info.id]);
-  assert.equal(await fs.readFile(path.join(stateDir, 'state.json'), 'utf8'), bytes);
-  await fs.writeFile(path.join(stateDir, 'state.json'), '{"version":99}');
-  await assert.rejects(store.loadBoard(), { code: 'INVALID_STATE' });
+  await store.mutateInfoWidget({ revision: (await store.load()).revision, action: 'add', type: 'datetime', config: {} });
+  for (const bytes of ['{"version":1,"layout":{"version":1,"items":{}}}', '{"version":99}']) {
+    await fs.writeFile(path.join(stateDir, 'state.json'), bytes);
+    await assert.rejects(store.loadBoard(), { code: 'INVALID_STATE' });
+    assert.equal(await fs.readFile(path.join(stateDir, 'state.json'), 'utf8'), bytes);
+  }
 });
 
 test('deeply nested YAML fails validation without changing files or creating a snapshot', async (t) => {

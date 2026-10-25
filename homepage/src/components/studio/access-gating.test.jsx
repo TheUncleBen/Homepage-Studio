@@ -37,8 +37,8 @@ const boardState = {
 function mount(access, mode = "live") {
   const fetch = vi.fn(async (path, options) => {
     let value = boardState;
-    if (path === "/__studio/api/access") value = access;
-    if (path === "/__studio/api/appearance" && !options?.method)
+    if (path === "/studio/api/access") value = access;
+    if (path === "/studio/api/appearance" && !options?.method)
       value = { revision: "before", settings: { theme: "dark" } };
     return { ok: true, status: 200, json: async () => value };
   });
@@ -80,14 +80,14 @@ describe("dashboard controls follow the sign-in access level", () => {
     ]) {
       const view = mount(access);
       await waitFor(() => expect(screen.getByLabelText("Quick Launch")).toBeEnabled());
-      expect(screen.getByText("Family", { selector: ".studio-topbar-title" })).toBeInTheDocument();
+      expect(screen.getByText("Family", { selector: ".studio-switcher-name" })).toBeInTheDocument();
       for (const name of ["Edit dashboard", "Add widget", "Done"]) expect(screen.queryByText(name)).toBeNull();
       expect(screen.queryByLabelText("Dashboard settings")).toBeNull();
       expect(screen.queryByLabelText("Edit Found")).toBeNull();
-      expect(screen.getAllByRole("link", { name: "Dashboards" })[0]).toHaveAttribute("href", "/__studio/dashboards");
+      expect(screen.getAllByRole("link", { name: "Dashboards" })[0]).toHaveAttribute("href", "/studio/dashboards");
       expect(Boolean(screen.queryAllByRole("link", { name: "Administration" }).length)).toBe(access.level === "admin");
       fireEvent.click(screen.getByLabelText("Account: Sam"));
-      expect(screen.getByRole("menuitem", { name: "My account" })).toHaveAttribute("href", "/__studio/account");
+      expect(screen.getByRole("menuitem", { name: "My account" })).toHaveAttribute("href", "/studio/account");
       expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
       view.onLeave.mockClear();
       cleanup();
@@ -106,11 +106,11 @@ describe("dashboard controls follow the sign-in access level", () => {
     expect(screen.queryByText("Widgets", { selector: "button" })).toBeNull();
     expect(screen.queryByLabelText("Edit Clock")).toBeNull();
     expect(screen.getByLabelText("Edit Found")).toBeInTheDocument();
-    expect(edit.fetch.mock.calls.some(([path]) => path === "/__studio/api/state")).toBe(false);
+    expect(edit.fetch.mock.calls.some(([path]) => path === "/studio/api/state")).toBe(false);
     cleanup();
     const settings = mount({ authEnabled: true, level: "arrange", user }, "settings");
     expect(await screen.findByText("Save appearance")).toBeInTheDocument();
-    expect(settings.fetch.mock.calls.some(([path]) => path === "/__studio/api/state")).toBe(false);
+    expect(settings.fetch.mock.calls.some(([path]) => path === "/studio/api/state")).toBe(false);
   });
 
   it("an administrator, or a server without sign-in, gets every editor control and no account menu without sign-in", async () => {
@@ -118,6 +118,6 @@ describe("dashboard controls follow the sign-in access level", () => {
     await waitFor(() => expect(screen.getByText("Widgets", { selector: "button" })).toBeEnabled());
     expect(screen.getByLabelText("Edit Clock")).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Account/)).toBeNull();
-    expect(screen.getByText("Dashboards", { selector: ".studio-top-link" })).toHaveAttribute("href", "/__studio/dashboards");
+    expect(screen.getByText("Dashboards", { selector: ".studio-top-link" })).toHaveAttribute("href", "/studio/dashboards");
   });
 });

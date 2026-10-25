@@ -103,7 +103,7 @@ test('the exact application health command is independent of a broken dashboard 
   await execute(process.execPath, command.slice(1), options);
   assert.equal(nativeRequests, 0, 'Container health must not wait for the renderer it enables.');
   const readiness = await new Promise((resolve, reject) => {
-    const request = http.get(`http://127.0.0.1:${port}/__studio/ready`, { headers: { host } }, response => {
+    const request = http.get(`http://127.0.0.1:${port}/studio/ready`, { headers: { host } }, response => {
       let body = '';
       response.on('data', chunk => { body += chunk; });
       response.on('error', reject);

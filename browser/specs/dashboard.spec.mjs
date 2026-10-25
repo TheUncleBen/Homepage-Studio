@@ -40,7 +40,7 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   capture(page);
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
   // The live dashboard has no editing controls; the editor has them all.
-  await page.goto('/home');
+  await page.goto('/dashboard');
   await expect(page.getByRole('button', { name: 'Add your first widget' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Widgets', exact: true })).toHaveCount(0);
   await openEditor(page);
@@ -100,7 +100,7 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   // Done saves, then returns to the Dashboards page. Reopening the live
   // dashboard exercises saved state rather than a race.
   await page.waitForURL(`**${DASHBOARDS}`);
-  await page.goto('/home');
+  await page.goto('/dashboard');
   await expect(stack(page)).toHaveCount(1);
   await expect(page.locator('[data-panel-id]')).toHaveCount(2);
   await stack(page).scrollIntoViewIfNeeded();
@@ -155,7 +155,7 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   try {
     const mobile = await mobileContext.newPage();
     capture(mobile);
-    await mobile.goto(new URL('/home', process.env.STUDIO_BROWSER_ORIGIN).href);
+    await mobile.goto(new URL('/dashboard', process.env.STUDIO_BROWSER_ORIGIN).href);
     await expect(stack(mobile)).toHaveCount(1);
     await stack(mobile).scrollIntoViewIfNeeded();
     await expect.poll(() => mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);

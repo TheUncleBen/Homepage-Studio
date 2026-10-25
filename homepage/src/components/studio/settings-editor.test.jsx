@@ -39,6 +39,7 @@ describe("Appearance settings save", () => {
       target: { value: "light" },
     });
     expect(screen.getByLabelText("Item configuration YAML").value).toContain("mode: light");
+    fireEvent.click(screen.getByLabelText(/Use the platform accent color/));
     fireEvent.change(screen.getByLabelText("Accent color"), {
       target: { value: "#nothex" },
     });
@@ -109,7 +110,7 @@ describe("Portable dashboard import", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import dashboard", exact: true }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(restored, { customJsChanged: true }));
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch.mock.calls[0][0]).toBe("/__studio/api/import");
+    expect(fetch.mock.calls[0][0]).toBe("/studio/api/import");
     expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
       revision: "current-target",
       archive: content,
@@ -338,7 +339,7 @@ describe("Snapshot restoration reload handoff", () => {
       }),
     );
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch.mock.calls[0][0]).toBe("/__studio/api/restore");
+    expect(fetch.mock.calls[0][0]).toBe("/studio/api/restore");
     expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
       revision: "current-revision",
       backupId: "snapshot-fixture",
@@ -437,11 +438,11 @@ describe("Snapshot action and age", () => {
     fireEvent.click(screen.getByRole("button", { name }));
     fireEvent.click(screen.getByRole("button", { name: "Export pre-save snapshot" }));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
-    expect(fetch.mock.calls[0][0]).toBe("/__studio/api/backups/backup-1");
+    expect(fetch.mock.calls[0][0]).toBe("/studio/api/backups/backup-1");
     expect(JSON.parse(await createObjectURL.mock.calls[0][0].text())).toEqual(archive);
     fireEvent.click(screen.getByRole("button", { name: "Restore selected snapshot" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(restored, { customJsChanged: false }));
-    expect(fetch.mock.calls[1][0]).toBe("/__studio/api/restore");
+    expect(fetch.mock.calls[1][0]).toBe("/studio/api/restore");
     expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ revision: "current", backupId: "backup-1" });
     click.mockRestore();
   });

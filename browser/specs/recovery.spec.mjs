@@ -5,10 +5,10 @@ test('restoring changed custom JavaScript applies the restored script when the d
   const currentScript = "document.documentElement.dataset.studioRestoreFixture = 'current';\n";
   const previous = await saveFiles(request, { customJs: restoredScript });
   await saveFiles(request, { customJs: currentScript });
-  const backups = await studioApi(request, '/home/__studio/api/backups');
+  const backups = await studioApi(request, '/dashboard/studio/api/backups');
   const index = backups.findIndex(backup => backup.revision === previous.revision);
   expect(index).toBeGreaterThanOrEqual(0);
-  await page.goto('/home');
+  await page.goto('/dashboard');
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.studioRestoreFixture)).toBe('current');
   await (await openSettings(page)).getByRole('button', { name: /Snapshots & restore/ }).click();
   const dialog = page.getByRole('dialog');
@@ -17,7 +17,7 @@ test('restoring changed custom JavaScript applies the restored script when the d
   await dialog.getByRole('button', { name: 'Restore selected snapshot', exact: true }).click();
   // A restore saves and returns to the Dashboards page.
   await page.waitForURL(`**${DASHBOARDS}`);
-  expect((await studioApi(request, '/home/__studio/api/state')).customJs).toBe(restoredScript);
-  await page.goto('/home');
+  expect((await studioApi(request, '/dashboard/studio/api/state')).customJs).toBe(restoredScript);
+  await page.goto('/dashboard');
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.studioRestoreFixture)).toBe('restored');
 });

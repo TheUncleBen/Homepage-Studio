@@ -5,11 +5,12 @@ import { AuthError } from './store.mjs';
 
 const TIMEOUT_MS = 120000;
 
+// rpName is read at each registration: the deployment name can change.
 export function createPasskeys({ rpID, rpName, origin }) {
   return {
     async registrationOptions(user) {
       return generateRegistrationOptions({
-        rpName, rpID,
+        rpName: rpName(), rpID,
         userName: user.username,
         userDisplayName: user.displayName || user.username,
         userID: Buffer.from(user.webauthnUserId, 'base64url'),

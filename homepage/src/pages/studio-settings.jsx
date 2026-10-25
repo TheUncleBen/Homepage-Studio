@@ -1,5 +1,5 @@
 // This dashboard's settings, opened from the Dashboards page. The controller
-// serves it at <dashboard>/__studio/settings to people who can arrange it.
+// serves it at <dashboard>/studio/settings to people who can arrange it.
 import HomepageStudio, { getServerSideProps } from "./index";
 
 export { getServerSideProps };

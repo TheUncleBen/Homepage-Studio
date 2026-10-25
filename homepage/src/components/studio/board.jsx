@@ -1,3 +1,4 @@
+import Head from "next/head";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 
@@ -143,23 +144,23 @@ export default function StudioBoard({
     data: envelope,
     error: loadError,
     mutate,
-  } = useSWR("/__studio/api/board", studioRequest, {
+  } = useSWR("/studio/api/board", studioRequest, {
     refreshInterval: 30000,
     revalidateOnFocus: true,
   });
   // Studio sign-in decides what this person may change here. The controller
   // enforces the same levels; this only hides controls that would be refused.
-  const { data: access, error: accessError } = useSWR("/__studio/api/access", studioRequest, {
+  const {
+    data: access,
+    error: accessError,
+    mutate: mutateAccess,
+  } = useSWR("/studio/api/access", studioRequest, {
     revalidateOnFocus: true,
   });
-  // Until the answer arrives every control stays disabled. A server without
-  // sign-in levels (or one that predates them) means full access.
+  // Until the answer arrives every control shows but stays disabled; a failed
+  // or unexpected answer leaves only viewing. With sign-in off Studio answers admin.
   const accessLoading = !access && !accessError;
-  const level = ["view", "arrange", "admin"].includes(access?.level)
-    ? access.level
-    : accessError && accessError.status !== 404
-      ? "view"
-      : "admin";
+  const level = ["view", "arrange", "admin"].includes(access?.level) ? access.level : accessLoading ? "admin" : "view";
   const isAdmin = level === "admin";
   const canArrange = isAdmin || level === "arrange";
   const [draft, setDraft] = useState(null);
@@ -292,10 +293,7 @@ export default function StudioBoard({
   // Tab follows the projected layout (row, then column) without reordering
   // native hosts in the DOM.
   const readingOrder = useMemo(
-    () =>
-      [...projection.units]
-        .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)
-        .map((unit) => unit.id),
+    () => [...projection.units].sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x).map((unit) => unit.id),
     [projection],
   );
   useBoardFocusOrder(canvas, readingOrder);
@@ -439,7 +437,7 @@ export default function StudioBoard({
     setSaving(true);
     setError(null);
     try {
-      const saved = await studioRequest("/__studio/api/board", {
+      const saved = await studioRequest("/studio/api/board", {
         revision: draftSource?.revision,
         board,
       });
@@ -460,19 +458,21 @@ export default function StudioBoard({
 
   const loadEditorData = async (type) => {
     if ((type === "picker" || type === "content") && !catalogRequest.current) {
-      const request = studioRequest("/__studio/catalog.json");
+      const request = studioRequest("/studio/catalog.json");
       catalogRequest.current = request;
       request.catch(() => {
         if (catalogRequest.current === request) catalogRequest.current = null;
       });
     }
-    if (type === "appearance") return { appearance: await studioRequest("/__studio/api/appearance") };
-    const [state, catalog, backups] = await Promise.all([
-      studioRequest("/__studio/api/state"),
+    if (type === "appearance") return { appearance: await studioRequest("/studio/api/appearance") };
+    const [state, catalog, backups, appearance] = await Promise.all([
+      studioRequest("/studio/api/state"),
       type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
-      type === "backups" ? studioRequest("/__studio/api/backups") : Promise.resolve([]),
+      type === "backups" ? studioRequest("/studio/api/backups") : Promise.resolve([]),
+      // The platform defaults, for each "use platform default" in settings.
+      type === "settings" ? studioRequest("/studio/api/appearance").catch(() => null) : Promise.resolve(null),
     ]);
-    return { state, catalog, backups };
+    return { state, catalog, backups, platform: appearance?.platform ?? null };
   };
   const openEditor = async (type, detail = {}, reload = false) => {
     if (saveInFlight.current || (!reload && nativeRefreshLock.current)) return;
@@ -880,8 +880,17 @@ export default function StudioBoard({
 
   return (
     <main className={`studio-app${editing ? " studio-edit-mode" : ""}`} aria-busy={saving || refreshing || undefined}>
+      {/* Without a title of its own in settings.yaml, the browser tab shows the
+          dashboard's name, as the top bar does. */}
+      {!settings?.title && access?.dashboard?.name && (
+        <Head>
+          <title>{access.dashboard.name}</title>
+        </Head>
+      )}
       <StudioTopBar
         title={access?.dashboard?.name || settings?.title || "Dashboard"}
+        dashboardId={access?.dashboard?.id}
+        logo={access?.dashboard?.logo ? dashboardPath(`/studio/logo?v=${access.dashboard.logo.version}`) : undefined}
         access={access}
         onSearch={editing ? undefined : onSearch}
         searchDisabled={controlsDisabled}
@@ -891,7 +900,9 @@ export default function StudioBoard({
           <div>
             <p className="studio-eyebrow">Editing</p>
             <h1>{access?.dashboard?.name || settings?.title || "Dashboard"}</h1>
-            <p className="studio-subtitle">Move, resize and stack widgets. Done saves and takes you back to Dashboards.</p>
+            <p className="studio-subtitle">
+              Move, resize and stack widgets. Done saves and takes you back to Dashboards.
+            </p>
           </div>
           <div className="studio-header-actions">
             <button
@@ -1125,7 +1136,7 @@ export default function StudioBoard({
               onEdit={editStack}
               onManipulate={manipulate}
               onUnitKey={unitKey}
-                  onStackDrag={(offset) => onStackDrag(stack.id, offset)}
+              onStackDrag={(offset) => onStackDrag(stack.id, offset)}
             />
           ))}
         </div>
@@ -1188,8 +1199,8 @@ export default function StudioBoard({
                 <div className="studio-dialog-body">
                   <h3>Discard unsaved changes?</h3>
                   <p className="studio-note">
-                    This arrangement has moves, sizes or stacks that have not been saved. Keep editing to preserve
-                    them, or discard them to leave edit mode.
+                    This arrangement has moves, sizes or stacks that have not been saved. Keep editing to preserve them,
+                    or discard them to leave edit mode.
                   </p>
                   <div className="studio-inline-actions">
                     <button
@@ -1268,7 +1279,7 @@ export default function StudioBoard({
                   onRestore={async (id) => {
                     try {
                       await savedContent(
-                        await studioRequest("/__studio/api/discovery-visibility", {
+                        await studioRequest("/studio/api/discovery-visibility", {
                           revision: editorData.state.revision,
                           id,
                           hidden: false,
@@ -1306,6 +1317,8 @@ export default function StudioBoard({
               ) : modal.type === "appearance" ? (
                 <AppearanceOnlyEditor
                   {...editorData}
+                  logo={access?.dashboard?.logo ?? null}
+                  onLogoChange={() => mutateAccess()}
                   onSaved={savedContent}
                   onClose={closeModal}
                   onReload={reloadEditor}
@@ -1313,6 +1326,8 @@ export default function StudioBoard({
               ) : modal.type === "settings" ? (
                 <SettingsEditor
                   {...editorData}
+                  logo={access?.dashboard?.logo ?? null}
+                  onLogoChange={() => mutateAccess()}
                   onSaved={savedContent}
                   onClose={closeModal}
                   onOpenFiles={() => requestEditorAction(() => setModal({ type: "files" }))}

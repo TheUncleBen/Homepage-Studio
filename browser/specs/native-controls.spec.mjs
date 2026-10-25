@@ -14,7 +14,7 @@ test('pointer placement and resize persist independently; Escape cancels an acti
     { name: 'Pointer tile', rect: { x: 0, y: 0, w: 4, h: 3 } },
     { name: 'Unchanged tile', rect: { x: 8, y: 4, w: 4, h: 3 } },
   ]);
-  await page.goto('/home');
+  await page.goto('/dashboard');
   const tile = servicePanel(page, 'Pointer tile');
   const other = servicePanel(page, 'Unchanged tile');
   await expect(tile).toBeVisible();
@@ -35,10 +35,10 @@ test('pointer placement and resize persist independently; Escape cancels an acti
   await expect.poll(() => panelPixels(tile)).toEqual(resized);
   expect(await panelPixels(other)).toEqual(otherBefore);
   await finishArrangement(page);
-  const saved = await studioApi(request, '/home/__studio/api/board');
+  const saved = await studioApi(request, '/dashboard/studio/api/board');
   expect(saved.board.panels.find(panel => panel.title === 'Pointer tile').rect).toEqual({ x: 2, y: 1, w: 6, h: 4 });
   expect(saved.board.panels.find(panel => panel.title === 'Unchanged tile').rect).toEqual({ x: 8, y: 4, w: 4, h: 3 });
-  await page.goto('/home');
+  await page.goto('/dashboard');
   await expect.poll(() => panelPixels(tile)).toEqual(resized);
 });
 
@@ -51,7 +51,7 @@ test.describe('touch direct manipulation', () => {
       { name: 'Touch target', rect: { x: 0, y: 3, w: 4, h: 3 } },
       { name: 'Scroll fixture', rect: { x: 0, y: 8, w: 4, h: 3 } },
     ]);
-    await page.goto('/home');
+    await page.goto('/dashboard');
     const source = servicePanel(page, 'Touch source');
     const target = servicePanel(page, 'Touch target');
     await expect(source).toBeVisible();
@@ -91,7 +91,7 @@ test.describe('touch direct manipulation', () => {
       await expect(page.getByRole('dialog').getByRole('button', { name: 'Keep editing', exact: true })).toBeFocused();
       await page.getByRole('dialog').getByRole('button', { name: 'Discard changes', exact: true }).click();
       await page.waitForURL(`**${DASHBOARDS}`);
-      expect((await studioApi(request, '/home/__studio/api/board')).board.stacks).toHaveLength(0);
+      expect((await studioApi(request, '/dashboard/studio/api/board')).board.stacks).toHaveLength(0);
 
       await openEditor(page);
       await expect.poll(() => panelPixels(source)).toEqual(before);
@@ -103,7 +103,7 @@ test.describe('touch direct manipulation', () => {
       await touch.end();
       await expect(carousel(page)).toHaveCount(1);
       await finishArrangement(page);
-      const saved = await studioApi(request, '/home/__studio/api/board');
+      const saved = await studioApi(request, '/dashboard/studio/api/board');
       expect(saved.board.stacks).toHaveLength(1);
       expect(saved.board.stacks[0].panelIds).toHaveLength(2);
       expect(saved.board.panels).toHaveLength(3);
@@ -136,7 +136,7 @@ test.describe('touch on panel bodies', () => {
       board.panels.find(panel => panel.title === 'Tall page marker').rect = { x: 0, y: 30, w: 4, h: 3 };
       board.stacks = [{ id: 'body-stack', panelIds: [swipe.id, search.id], rect: { x: 0, y: 0, w: 4, h: 4 }, playback: playback() }];
     });
-    await page.goto('/home');
+    await page.goto('/dashboard');
     const done = page.getByRole('button', { name: 'Done', exact: true });
     const picker = page.getByRole('menu');
     await expect(activePanel(page)).toContainText('Swipe body fixture');
@@ -235,7 +235,7 @@ test.describe('phone delete confirmation', () => {
     await expect(dialog.getByText('Delete Delete fixture?')).toHaveCount(0);
     await expect(remove).toBeFocused();
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-    expect((await studioApi(request, '/home/__studio/api/board')).board.panels).toHaveLength(1);
+    expect((await studioApi(request, '/dashboard/studio/api/board')).board.panels).toHaveLength(1);
   });
 });
 
@@ -329,11 +329,11 @@ test('native search state survives stacking and moving out in the editor; bookma
   await expect(input).toHaveValue('Native search state retained');
   expect(await input.evaluate((node, original) => node === original, originalInput)).toBe(true);
   await finishArrangement(page);
-  const beforeReload = await studioApi(request, '/home/__studio/api/board');
-  await page.goto('/home');
+  const beforeReload = await studioApi(request, '/dashboard/studio/api/board');
+  await page.goto('/dashboard');
   await expect(search.getByRole('combobox')).toBeVisible();
   await expect(bookmark.getByRole('link').first()).toHaveAttribute('href', 'https://example.test/reference');
-  expect((await studioApi(request, '/home/__studio/api/board')).board).toEqual(beforeReload.board);
+  expect((await studioApi(request, '/dashboard/studio/api/board')).board).toEqual(beforeReload.board);
   // The native search query is transient; only config/layout must survive reload.
 });
 
@@ -343,7 +343,7 @@ test('an edited manual navigation delay survives save/reload and sets the next a
     { name: 'Delay two', rect: { x: 4, y: 0, w: 4, h: 3 } },
   ]);
   seeded.board.stacks = [{ id: 'delay-fixture', panelIds: seeded.board.panels.map(panel => panel.id), rect: { x: 0, y: 0, w: 4, h: 3 } }];
-  await studioApi(request, '/home/__studio/api/board', seeded);
+  await studioApi(request, '/dashboard/studio/api/board', seeded);
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
   await openEditor(page);
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
@@ -352,7 +352,7 @@ test('an edited manual navigation delay survives save/reload and sets the next a
   await dialog.getByLabel('Manual navigation delay (seconds)', { exact: true }).fill('45');
   await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();
   await finishArrangement(page);
-  const saved = await studioApi(request, '/home/__studio/api/board');
+  const saved = await studioApi(request, '/dashboard/studio/api/board');
   expect(saved.board.stacks[0].playback).toMatchObject({ intervalMs: 2000, manualHoldMs: 45000 });
   await openEditor(page);
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
@@ -360,8 +360,8 @@ test('an edited manual navigation delay survives save/reload and sets the next a
   await expect(dialog.getByLabel('Manual navigation delay (seconds)', { exact: true })).toHaveValue('45');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await finishArrangement(page);
-  await page.goto('/home');
-  const historyBefore = await studioApi(request, '/home/__studio/api/backups');
+  await page.goto('/dashboard');
+  const historyBefore = await studioApi(request, '/dashboard/studio/api/backups');
   await carousel(page).scrollIntoViewIfNeeded();
   await page.clock.pauseAt(new Date('2026-10-20T13:00:00Z'));
   await carousel(page).getByRole('button', { name: 'Play slideshow', exact: true }).click();
@@ -373,7 +373,7 @@ test('an edited manual navigation delay survives save/reload and sets the next a
   await expect(activePanel(page)).not.toHaveAttribute('data-panel-id', held);
   await page.clock.fastForward(2000);
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', held);
-  expect(await studioApi(request, '/home/__studio/api/backups')).toEqual(historyBefore);
+  expect(await studioApi(request, '/dashboard/studio/api/backups')).toEqual(historyBefore);
 });
 
 test('the native Custom API widget renders an actual private proxy response', async ({ page, request, browser }, testInfo) => {
@@ -382,7 +382,7 @@ test('the native Custom API widget renders an actual private proxy response', as
   await dialog.getByLabel('Name', { exact: true }).fill('Native API fixture');
   await dialog.getByLabel('Group', { exact: true }).fill('Fixtures');
   await dialog.getByRole('button', { name: 'Advanced YAML', exact: true }).click();
-  const fixtureUrl = process.env.STUDIO_BROWSER_WIDGET_FIXTURE_URL || 'http://studio:3000/__studio/config-ready';
+  const fixtureUrl = process.env.STUDIO_BROWSER_WIDGET_FIXTURE_URL || 'http://studio:3000/studio/config-ready';
   await dialog.getByRole('textbox', { name: 'Item configuration YAML' }).fill([
     `url: ${JSON.stringify(fixtureUrl)}`,
     'headers:',
@@ -394,7 +394,7 @@ test('the native Custom API widget renders an actual private proxy response', as
     '    format: text',
     '',
   ].join('\n'));
-  const responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === '/home/api/services/proxy');
+  const responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === '/dashboard/api/services/proxy');
   await dialog.getByRole('button', { name: 'Add to dashboard', exact: true }).click();
   const response = await responsePromise;
   expect(response.status()).toBe(200);
@@ -403,7 +403,7 @@ test('the native Custom API widget renders an actual private proxy response', as
   await expect(widget).toHaveCount(1);
   await expect(widget).toContainText('Configuration');
   await expect(widget).toContainText('ready');
-  expect(JSON.stringify(await studioApi(request, '/home/__studio/api/board'))).not.toContain(fixtureUrl);
+  expect(JSON.stringify(await studioApi(request, '/dashboard/studio/api/board'))).not.toContain(fixtureUrl);
 
   // Populate the same synthetic dashboard for actual desktop/mobile visual review.
   await addBookmark(page);
@@ -415,13 +415,13 @@ test('the native Custom API widget renders an actual private proxy response', as
   await page.getByRole('checkbox', { name: 'Select Browser bookmark', exact: true }).check();
   await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
   await finishArrangement(page);
-  await page.goto('/home');
+  await page.goto('/dashboard');
   await expect(widget).toContainText('ready');
   await page.screenshot({ path: testInfo.outputPath('native-populated-desktop.png'), fullPage: true });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'no-preference' });
   try {
     const mobile = await context.newPage();
-    await mobile.goto(new URL('/home', origin).href);
+    await mobile.goto(new URL('/dashboard', origin).href);
     await expect(mobile.locator('[data-panel-kind="serviceWidget"]')).toContainText('ready');
     await expect(carousel(mobile)).toHaveCount(1);
     await expect.poll(() => mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);

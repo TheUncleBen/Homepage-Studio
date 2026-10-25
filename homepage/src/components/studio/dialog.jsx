@@ -82,13 +82,13 @@ function signInAction(error) {
   return code === "REAUTH_REQUIRED"
     ? {
         heading: "Confirm it’s you",
-        href: `/__studio/auth/sign-in?reauth=1&next=${encodeURIComponent("/__studio/account?confirmed=1")}`,
+        href: `/studio/auth/sign-in?reauth=1&next=${encodeURIComponent("/studio/account?confirmed=1")}`,
         label: "Confirm in a new tab",
         after: "Your changes stay here. Once you have confirmed, try again.",
       }
     : {
         heading: "Your session has ended",
-        href: `/__studio/auth/sign-in?next=${encodeURIComponent("/__studio/account?confirmed=1")}`,
+        href: `/studio/auth/sign-in?next=${encodeURIComponent("/studio/account?confirmed=1")}`,
         label: "Sign in again in a new tab",
         after: "Your changes stay here. Once you have signed in, try again.",
       };

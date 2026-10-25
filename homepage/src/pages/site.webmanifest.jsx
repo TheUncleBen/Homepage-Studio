@@ -25,17 +25,17 @@ async function getProps({ res }) {
   const pwa = settings.pwa || {};
 
   const manifest = {
-    id: `/__studio/install/${dashboard.id}`,
+    id: `/studio/install/${dashboard.id}`,
     name: settings.title || "Homepage",
     short_name: settings.title || "Homepage",
     icons: pwa.icons || [
       {
-        src: "/android-chrome-192x192.png?v=2",
+        src: "/studio/brand/icon-192.png",
         sizes: "192x192",
         type: "image/png",
       },
       {
-        src: "/android-chrome-512x512.png?v=2",
+        src: "/studio/brand/icon-512.png",
         sizes: "512x512",
         type: "image/png",
       },

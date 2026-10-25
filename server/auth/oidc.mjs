@@ -8,7 +8,7 @@ export const FRESH_SECONDS = 300;
 
 export function createOidc(settings, { origin }) {
   if (!settings) return null;
-  const redirectUri = new URL('/__studio/auth/oidc/callback', origin).href;
+  const redirectUri = new URL('/studio/auth/oidc/callback', origin).href;
   let configuration;
   async function config() {
     if (configuration) return configuration;

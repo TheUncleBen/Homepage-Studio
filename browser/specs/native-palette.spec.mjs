@@ -51,7 +51,7 @@ async function setMode(page, mode) {
   await dialog.getByLabel('Display mode', { exact: true }).selectOption(mode);
   await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
   await page.waitForURL(`**${DASHBOARDS}`);
-  await page.goto('/home');
+  await page.goto('/dashboard');
   const expected = mode === 'system' ? await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : mode;
   await expect(page.locator('html')).toHaveClass(new RegExp(expected));
   await settledNative(page);
@@ -71,7 +71,7 @@ test('native default text remains readable in settled light and dark modes while
     settingsYaml: JSON.stringify({ title: 'Native palette fixture', studioTheme: { mode: 'light' } }),
   }, board => board.panels.forEach((panel, index) => { panel.rect = { x: (index % 2) * 6, y: Math.floor(index / 2) * 4, w: 6, h: panel.kind === 'serviceWidget' ? 4 : 3 }; }));
   await page.emulateMedia({ colorScheme: 'light' });
-  await page.goto('/home');
+  await page.goto('/dashboard');
   await expect(page.locator('html')).toHaveClass(/light/);
   await expect(page.locator('.service-block-value')).toHaveText('41');
   await expect(page.locator('.ping-status .bg-emerald-500')).toBeVisible();

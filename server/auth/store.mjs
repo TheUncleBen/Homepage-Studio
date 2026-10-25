@@ -36,7 +36,7 @@ export function emptyAuthData() {
     version: 1,
     revision: randomUUID(),
     setupCompletedAt: null,
-    settings: { localSignIn: true, emailCode: false, oidc: { adminGroups: [], allowedGroups: [], autoCreate: true } },
+    settings: { localSignIn: true, emailCode: false, deploymentName: null, oidc: { adminGroups: [], allowedGroups: [], autoCreate: true } },
     users: [],
     groups: [],
     policies: [structuredClone(DEFAULT_POLICY)],

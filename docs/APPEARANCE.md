@@ -1,8 +1,59 @@
 # Appearance
 
-Open the dashboard's **Settings** (on the **Dashboards** page, or `/<slug>/__studio/settings`) and find **Appearance** to choose Dark, Light, or Follow device, then choose an accent or enter a hex color. The default is the original muted eggplant accent on charcoal and gray surfaces. Eggplant, Graphite, Ocean, and Sage are convenient starting points; any three- or six-digit hex color is accepted. The preview changes with the draft. **Save settings** applies it to this dashboard and creates the usual recovery snapshot.
+An administrator sets a **default look** for every dashboard in
+**Administration → Appearance**. Each dashboard follows each part of it until
+it sets that part for itself in its own **Settings**, so one dashboard can
+keep the platform accent and choose its own display mode, for example.
 
-Each dashboard stores its appearance in its own `settings.yaml`. A dashboard can look completely different from another without changing the image or building another application. Studio manages separate immutable-ID configuration and state directories inside the same two deployment volumes, as described in [Where the data lives](OPERATIONS.md#where-the-data-lives). Opening settings does not insert defaults into an existing file.
+## The platform default look
+
+**Administration → Appearance → Default look for dashboards** has:
+
+| Setting | What it does |
+| --- | --- |
+| **Display mode** | Dark, Light or Follow device. Default: Dark |
+| **Accent color** | A hex color or one of the presets. Default: the muted eggplant `#b299be` |
+| **Background image** | Optional. An image address used by every dashboard without a background of its own |
+| **Platform CSS** | Optional. Loaded on every dashboard before that dashboard's own `custom.css`, which can override it |
+
+**Save default look** applies it from each dashboard's next load. If another
+administrator saved a change while you were editing, Studio says so and keeps
+your draft; saving again replaces their change. With sign-in turned off,
+**Administration** shows only this page.
+
+## A dashboard's own look
+
+Open the dashboard's **Settings** (on the **Dashboards** page, or
+`/<slug>/studio/settings`) and find **Appearance**:
+
+- **Display mode**: **Platform default (…)** follows the platform; Dark,
+  Light or Follow device sets this dashboard's own.
+- **Use the platform accent color**: on, it follows the platform accent; off,
+  choose an accent or enter a hex color. Eggplant, Graphite, Ocean, and Sage
+  are convenient starting points; any three- or six-digit hex color is
+  accepted.
+- **Load the platform CSS before this dashboard's custom.css**: on by
+  default. Administrators can switch it off for one dashboard.
+
+The preview changes with the draft. **Save settings** applies it to this
+dashboard and creates the usual recovery snapshot. Each dashboard stores its
+own choices in its own `settings.yaml`; anything it doesn't set comes from the
+platform when the dashboard loads, so a later platform change reaches it.
+Studio manages separate immutable-ID configuration and state directories inside
+the same two deployment volumes, as described in
+[Where the data lives](OPERATIONS.md#where-the-data-lives). Opening settings
+does not insert defaults into an existing file.
+
+## Logo
+
+Anyone who may arrange a dashboard can give it its own logo in its
+**Settings → Appearance → Logo**: **Upload logo** (PNG, JPEG, WebP or SVG, up
+to 256 KiB; a square image works best). It saves straight away, and shows next
+to the dashboard's name in the top bar and as its browser tab icon. **Use the
+Studio logo** goes back to the default. A duplicate keeps its source's logo.
+SVG files with scripts, embedded pages, event handlers or external references
+are refused. Homepage's own `favicon` setting, when set, still decides the
+tab icon.
 
 ## Native settings and Studio appearance
 
@@ -14,11 +65,11 @@ studioTheme:
   accent: "#b299be"
 ```
 
-`mode` accepts `dark`, `light`, or `system`. A fixed mode also updates Homepage's native `theme` setting. Follow device removes that fixed native setting and keeps the native widget theme synchronized with the browser's color-scheme preference. Changing the device preference does not save files or create snapshots. Without a Studio mode, an existing native `theme: light` remains light; other configurations use Studio's dark default.
+`mode` accepts `dark`, `light`, or `system`; without `mode` or `accent` the dashboard follows the platform for that part, and `platformCss: false` stops the platform CSS loading on it. A fixed mode also updates Homepage's native `theme` setting. Follow device removes that fixed native setting and keeps the native widget theme synchronized with the browser's color-scheme preference. Changing the device preference does not save files or create snapshots. A native `theme: dark` or `theme: light` without a Studio mode also counts as the dashboard's own mode. 
 
 The chosen accent is used to derive text, controls, focus rings, borders, and soft selection backgrounds. Studio adjusts its derived foreground colors for readability against the light or dark neutral surfaces. The exact chosen hex stays in the file. Native status colors and integration-specific chart colors keep Homepage's behavior; the native `color` palette remains independently configurable below Appearance.
 
-Background images and their native blur, brightness, saturation, and opacity settings remain available through the Background field and Advanced YAML. Widget dimensions and stack layout remain direct dashboard edits. There is no separate theme profile database or browser-only appearance setting to synchronize.
+Background images and their native blur, brightness, saturation, and opacity settings remain available through the Background field and Advanced YAML; a dashboard without one uses the platform background image, if any. Widget dimensions and stack layout remain direct dashboard edits. There is no separate theme profile database or browser-only appearance setting to synchronize.
 
 ## Custom CSS
 

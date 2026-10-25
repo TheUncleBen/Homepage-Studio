@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { BOARD_COLUMNS, DEFAULT_PLAYBACK, intersects, nextPosition, reconcileBoard, rect, validateStoredBoard } from './board.mjs';
+import { BOARD_COLUMNS, DEFAULT_PLAYBACK, intersects, nextPosition, reconcileBoard, validateStoredBoard } from './board.mjs';
 
 // The original row-major scan is deliberately retained as an independent
 // behavioral oracle for the optimized allocator, only on bounded fixtures.
@@ -17,7 +17,7 @@ function referencePosition(size, occupied) {
   return { x: 0, y: bottom, w, h };
 }
 
-function referenceBoard(sources, previous, legacyLayout = { items: {} }) {
+function referenceBoard(sources, previous) {
   previous = validateStoredBoard(previous);
   const sourceIds = new Set(sources.map(source => source.id));
   const byId = new Map(previous.panels.map(panel => [panel.id, panel]));
@@ -33,9 +33,7 @@ function referenceBoard(sources, previous, legacyLayout = { items: {} }) {
   const panels = sources.map(source => {
     let position = byId.get(source.id)?.rect;
     if (!position) {
-      const legacy = legacyLayout.items?.[source.id];
-      try { if (legacy) position = rect(legacy); } catch { /* Match legacy migration. */ }
-      if (!position || occupied.some(other => intersects(position, other))) position = referencePosition({ w: 4, h: source.kind === 'serviceWidget' ? 5 : 3 }, occupied);
+      position = referencePosition({ w: 4, h: source.kind === 'serviceWidget' ? 5 : 3 }, occupied);
       if (!stacked.has(source.id)) occupied.push(position);
     }
     return { ...source, rect: { ...position } };
@@ -77,7 +75,7 @@ test('single-placement searches preserve row-major order across varied sizes and
   }
 });
 
-test('reconciliation preserves stored panels, legacy positions, mixed sizes and surviving or collapsed stacks', () => {
+test('reconciliation preserves stored panels, mixed sizes and surviving or collapsed stacks', () => {
   const previous = board([
     { ...source('kept'), rect: { x: 0, y: 0, w: 3, h: 4 } },
     { ...source('a', 'serviceWidget'), rect: { x: 4, y: 0, w: 4, h: 5 } },
@@ -90,9 +88,8 @@ test('reconciliation preserves stored panels, legacy positions, mixed sizes and 
     { id: 'stack-kept', panelIds: ['panel-a', 'panel-b', 'panel-c'], rect: { x: 3, y: 2, w: 5, h: 7 }, playback: DEFAULT_PLAYBACK },
     { id: 'stack-collapsed', panelIds: ['panel-removed', 'panel-alone'], rect: { x: 0, y: 0, w: 7, h: 4 }, playback: DEFAULT_PLAYBACK },
   ]);
-  const sources = [source('first', 'serviceWidget'), source('kept'), source('legacy'), source('a', 'serviceWidget'), source('b', 'informationWidget'), source('alone'), source('far'), ...Array.from({ length: 60 }, (_, index) => source(index, index % 2 ? 'serviceWidget' : 'bookmark'))];
-  const legacy = { items: { 'panel-first': { x: 0, y: 0, w: 4, h: 3 }, 'panel-legacy': { x: 9, y: 10, w: 3, h: 8 }, 'panel-1': { x: 10, y: 0, w: 4, h: 5 } } };
-  assert.deepEqual(reconcileBoard(sources, previous, legacy), referenceBoard(sources, previous, legacy));
+  const sources = [source('first', 'serviceWidget'), source('kept'), source('new'), source('a', 'serviceWidget'), source('b', 'informationWidget'), source('alone'), source('far'), ...Array.from({ length: 60 }, (_, index) => source(index, index % 2 ? 'serviceWidget' : 'bookmark'))];
+  assert.deepEqual(reconcileBoard(sources, previous), referenceBoard(sources, previous));
 });
 
 test('deterministic mixed reconciliation fixtures match the original first-free placement', () => {
@@ -105,9 +102,8 @@ test('deterministic mixed reconciliation fixtures match the original first-free 
     // Interleave new and persisted entries; persisted reservations cannot depend
     // on whether their source happens to appear before a newly placed panel.
     for (let index = sources.length - 1; index > 0; index--) { const other = pick(index + 1); [sources[index], sources[other]] = [sources[other], sources[index]]; }
-    const legacy = { items: Object.fromEntries(sources.filter(() => pick(3) === 0).map(entry => [entry.id, position()])) };
     const previous = board(oldPanels, stacks);
-    assert.deepEqual(reconcileBoard(sources, previous, legacy), referenceBoard(sources, previous, legacy), `fixture ${fixture}`);
+    assert.deepEqual(reconcileBoard(sources, previous), referenceBoard(sources, previous), `fixture ${fixture}`);
   }
 });
 

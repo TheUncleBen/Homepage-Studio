@@ -122,7 +122,7 @@ test('a replace-and-rollback to identical native bytes cannot publish intervenin
   assert.equal(after.discoveredSources[0].available, false);
 });
 
-test('layout-only saves do not discard a still-current native discovery response', async t => {
+test('arrangement-only saves do not discard a still-current native discovery response', async t => {
   const { store, provider } = await fixture(t);
   await store.refreshDiscovery('dashboard.example.test');
   const before = await store.load();

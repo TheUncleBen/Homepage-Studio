@@ -24,7 +24,7 @@ export default function DiscoveryEditor({
     setError(null);
     try {
       await onSaved(
-        await studioRequest("/__studio/api/discovery-visibility", {
+        await studioRequest("/studio/api/discovery-visibility", {
           revision,
           id: panel.id,
           hidden: true,

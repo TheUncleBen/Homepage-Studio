@@ -39,13 +39,13 @@ function allowed(content, target) {
   return rules[0]?.directive !== 'Disallow';
 }
 
-test('disabled root permits enabled siblings without permitting prefix collisions or editor endpoints', async () => {
-  const manifest = { dashboards: [{ id: 'default', slug: '', archived: false }, { id: 'family', slug: 'family', archived: false }, { id: 'old', slug: 'old', archived: true }, { id: 'broken', slug: 'broken', archived: false }] };
+test('each dashboard opts out on its own; editor endpoints, an unaddressed main dashboard and prefix collisions stay safe', async () => {
+  const manifest = { dashboards: [{ id: 'default', slug: '', archived: false }, { id: 'family', slug: 'family', archived: false }, { id: 'old', slug: 'old', archived: true }, { id: 'broken', slug: 'broken', archived: false }, { id: 'private', slug: 'private', archived: false }] };
   let reads = 0;
-  const content = await renderRobotsPolicy(manifest, async entry => { reads++; if (entry.id === 'broken') throw new Error('Private settings diagnostic'); return { disableIndexing: entry.id === 'default' }; });
-  assert.equal(reads, 3, 'Archived dashboards do not touch their configuration.');
-  for (const url of ['/', '/?anything', '/api/services', '/family-other', '/family-other/widgets', '/old', '/old?x=1', '/broken/', '/__studio/api/dashboards', '/family/__studio/api/state']) assert.equal(allowed(content, url), false, url);
-  for (const url of ['/family', '/family/', '/family?x=1', '/family/api/services', '/_next/static/chunks/shared.js', '/homepage.ico']) assert.equal(allowed(content, url), true, url);
+  const content = await renderRobotsPolicy(manifest, async entry => { reads++; if (entry.id === 'broken') throw new Error('Private settings diagnostic'); return { disableIndexing: entry.id === 'private' }; });
+  assert.equal(reads, 4, 'Archived dashboards do not touch their configuration.');
+  for (const url of ['/broken', '/broken/', '/private', '/private/x', '/studio/api/dashboards', '/family/studio/api/state']) assert.equal(allowed(content, url), false, url);
+  for (const url of ['/', '/family', '/family/', '/family?x=1', '/family/api/services', '/private-other', '/_next/static/chunks/shared.js']) assert.equal(allowed(content, url), true, url);
   assert.doesNotMatch(content, /Private settings/);
 });
 
@@ -57,19 +57,12 @@ test('named dashboard exclusion matches exact path, descendants and queries only
 });
 
 test('archived dashboards are never enumerated in the public crawl policy', async () => {
-  for (const rootDisabled of [false, true]) {
-    const manifest = { dashboards: [{ id: 'default', slug: '', archived: false }, { id: 'family', slug: 'family', archived: false }, { id: 'retired', slug: 'retired-private-name', archived: true }] };
-    let reads = 0;
-    const content = await renderRobotsPolicy(manifest, async entry => { reads++; return { disableIndexing: entry.id === 'default' ? rootDisabled : false }; });
-    assert.equal(reads, 2, 'Archived dashboards do not touch their configuration.');
-    assert.doesNotMatch(content, /retired-private-name/, `archived slug leaked (root disabled: ${rootDisabled})`);
-    assert.match(content, /^Disallow: \/family\/__studio\/$/m);
-    assert.equal(allowed(content, '/family'), true);
-    if (rootDisabled) for (const url of ['/', '/retired-private-name', '/retired-private-name/']) assert.equal(allowed(content, url), false, url);
-  }
-  // A named primary that opts out still fails closed for its own paths.
-  const named = { dashboards: [{ id: 'default', slug: 'main', archived: false }, { id: 'retired', slug: 'retired-private-name', archived: true }] };
-  const content = await renderRobotsPolicy(named, async () => ({ disableIndexing: true }));
+  const manifest = { dashboards: [{ id: 'default', slug: 'main', archived: false }, { id: 'family', slug: 'family', archived: false }, { id: 'retired', slug: 'retired-private-name', archived: true }] };
+  let reads = 0;
+  const content = await renderRobotsPolicy(manifest, async entry => { reads++; return { disableIndexing: entry.id === 'default' }; });
+  assert.equal(reads, 2, 'Archived dashboards do not touch their configuration.');
   assert.doesNotMatch(content, /retired-private-name/);
+  assert.match(content, /^Disallow: \/family\/studio\/$/m);
+  assert.equal(allowed(content, '/family'), true);
   for (const url of ['/main', '/main/', '/main?x=1']) assert.equal(allowed(content, url), false, url);
 });

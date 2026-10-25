@@ -11,7 +11,7 @@ import {
 import { createAuthStore, AuthError, DEFAULT_POLICY, MAX_GROUPS } from './store.mjs';
 import { dashboardLevel, effectivePolicy, landingDashboard, userGroupIds, validGrantList, rank, GRANT_LEVELS } from './access.mjs';
 import { createPasskeys } from './webauthn.mjs';
-import { createMailer, describeMailError, messages } from './mail.mjs';
+import { createMailer, describeMailError, mailMessages } from './mail.mjs';
 import { createOidc } from './oidc.mjs';
 
 const MINUTE = 60000;
@@ -145,9 +145,11 @@ function activeAdmins(data) {
 }
 
 export function createAuthService({ config, stateRoot, now = () => Date.now(), listDashboards = async () => [] }) {
+  // The deployment's name: Administration's setting, else STUDIO_DEPLOYMENT_NAME.
+  const siteName = () => (store.ready && store.read().settings.deploymentName) || config.deploymentName;
   const store = createAuthStore({ stateRoot });
-  const passkeys = createPasskeys(config);
-  const mailer = createMailer(config.smtp);
+  const passkeys = createPasskeys({ ...config, rpName: siteName });
+  const mailer = createMailer(config.smtp, siteName);
   const oidc = createOidc(config.oidc, config);
   const throttle = createThrottle(now);
   const pending = new Map();
@@ -230,7 +232,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   }
   async function notify(user, event, to = user.email) {
     if (!mailer || !to) return;
-    await sendMail('Security alert', user, to, messages.alert({ name: user.displayName || user.username, event }));
+    await sendMail('Security alert', user, to, mailMessages(siteName()).alert({ name: user.displayName || user.username, event }));
   }
   // An email change is announced to the old address as well as the new one.
   async function notifyEmailChange(user, oldEmail, event) {
@@ -534,7 +536,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     if (entry.emailCode?.sentAt && now() - entry.emailCode.sentAt < MINUTE) fail('A code was just sent. Wait a minute before asking for another.', 'TOO_MANY_ATTEMPTS', 429);
     const code = emailCode();
     entry.emailCode = { hash: tokenHash('email:' + code), expiresAt: now() + EMAIL_CODE_MINUTES * MINUTE, sentAt: now() };
-    if (!(await sendMail('Sign-in code', user, user.email, messages.code({ name: user.displayName || user.username, code, minutes: EMAIL_CODE_MINUTES }))).sent) fail("The code couldn't be sent. Use another method or try again later.", 'EMAIL_FAILED', 502);
+    if (!(await sendMail('Sign-in code', user, user.email, mailMessages(siteName()).code({ name: user.displayName || user.username, code, minutes: EMAIL_CODE_MINUTES }))).sent) fail("The code couldn't be sent. Use another method or try again later.", 'EMAIL_FAILED', 502);
     return { sent: true };
   }
 
@@ -621,7 +623,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     if (oidc && current.session.method === 'oidc' && current.session.oidc?.idToken) {
       let idToken;
       try { idToken = openSecret(current.session.oidc.idToken, config.key).toString('utf8'); } catch { idToken = undefined; }
-      logoutUrl = await oidc.logoutUrl(idToken, new URL('/__studio/auth/sign-in?signedOut=1', config.origin).href);
+      logoutUrl = await oidc.logoutUrl(idToken, new URL('/studio/auth/sign-in?signedOut=1', config.origin).href);
     }
     return { ok: true, logoutUrl };
   }
@@ -694,7 +696,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     const entry = takePending(body?.token, 'enroll', { keep: true });
     const secret = randomBytes(20);
     entry.totp = { secret, confirmed: false };
-    return { secret: base32Encode(secret), uri: totpUri({ secret, account: entry.username, issuer: config.rpName }) };
+    return { secret: base32Encode(secret), uri: totpUri({ secret, account: entry.username, issuer: siteName() }) };
   }
   async function enrollTotpConfirm(body) {
     const entry = takePending(body?.token, 'enroll', { keep: true });
@@ -790,8 +792,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         draft.invites = draft.invites.filter(item => !(item.userId === user.id && item.purpose === 'recover'));
         draft.invites.push({ tokenHash: tokenHash(token), userId: user.id, purpose: 'recover', expiresAt: now() + RECOVERY_MINUTES * MINUTE, createdAt: now() });
       });
-      const link = new URL(`/__studio/auth/recover#${token}`, config.origin).href;
-      await sendMail('Password reset', user, user.email, messages.recovery({ name: user.displayName || user.username, link, minutes: RECOVERY_MINUTES }));
+      const link = new URL(`/studio/auth/recover#${token}`, config.origin).href;
+      await sendMail('Password reset', user, user.email, mailMessages(siteName()).recovery({ name: user.displayName || user.username, link, minutes: RECOVERY_MINUTES }));
       await audit('recovery-requested', { userId: user.id, ip });
     })().catch(error => console.error('Recovery request failed:', error.code || error.name)).finally(() => background.delete(work));
     background.add(work);
@@ -941,7 +943,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       requireFresh(current);
       const secret = randomBytes(20);
       const token = putPending({ kind: 'account-totp', userId: current.user.id, secret });
-      return { token, secret: base32Encode(secret), uri: totpUri({ secret, account: current.user.username, issuer: config.rpName }) };
+      return { token, secret: base32Encode(secret), uri: totpUri({ secret, account: current.user.username, issuer: siteName() }) };
     },
     async totpConfirm(current, body) {
       requireFresh(current);
@@ -1043,7 +1045,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   function guardAdmins(data) {
     if (!activeAdmins(data).length) fail('Studio needs at least one active administrator. Make someone else an administrator first.', 'LAST_ADMIN', 409);
   }
-  function inviteLink(token) { return new URL(`/__studio/auth/enroll#${token}`, config.origin).href; }
+  function inviteLink(token) { return new URL(`/studio/auth/enroll#${token}`, config.origin).href; }
   async function issueInvite(data, user, createdBy) {
     const token = randomToken();
     data.invites = data.invites.filter(item => !(item.userId === user.id && item.purpose === 'enroll'));
@@ -1052,7 +1054,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   }
   async function sendInvite(user, link) {
     if (!mailer || !user.email) return { sent: false };
-    return sendMail('Invitation', user, user.email, messages.invite({ name: user.displayName || user.username, link, hours: INVITE_HOURS }));
+    return sendMail('Invitation', user, user.email, mailMessages(siteName()).invite({ name: user.displayName || user.username, link, hours: INVITE_HOURS }));
   }
   function policyFields(body) {
     const minutes = (value, label, min, max) => {
@@ -1086,7 +1088,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         settings: data.settings,
         grants: data.grants,
         dashboards: dashboards.map(entry => ({ id: entry.id, name: entry.name, slug: entry.slug, archived: entry.archived })),
-        oidc: oidc ? { name: oidc.name, redirectUri: oidc.redirectUri, backchannelLogoutUri: new URL('/__studio/auth/oidc/backchannel-logout', config.origin).href, refreshMinutes: oidc.refreshMinutes, lastSignIn: lastProviderSignIn } : null,
+        oidc: oidc ? { name: oidc.name, redirectUri: oidc.redirectUri, backchannelLogoutUri: new URL('/studio/auth/oidc/backchannel-logout', config.origin).href, refreshMinutes: oidc.refreshMinutes, lastSignIn: lastProviderSignIn } : null,
+        deploymentNameDefault: config.deploymentName,
         email: Boolean(mailer), keyConfigured: Boolean(config.key), fresh: current.fresh(), currentUserId: current.user.id,
         canDisableLocal: canDisableLocal(data, current),
         deployment: { adminGroups: Boolean(deploymentGroups('adminGroups')), allowedGroups: Boolean(deploymentGroups('allowedGroups')), adminSeed: Boolean(config.adminSeed) },
@@ -1220,6 +1223,13 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
           data.groups.push({ id: randomUUID(), kind: 'local', name, policyId: null });
           return;
         }
+        if (body?.action === 'reorder') {
+          // The whole order at once, as dragged in Administration → Groups.
+          const ids = body.ids;
+          if (!Array.isArray(ids) || ids.length !== data.groups.length || new Set(ids).size !== ids.length || ids.some(id => !data.groups.some(group => group.id === id))) fail('The group list changed. Reload it and try again.', 'GROUPS_CHANGED', 409);
+          data.groups = ids.map(id => data.groups.find(group => group.id === id));
+          return;
+        }
         const group = data.groups.find(item => item.id === body?.id);
         if (!group) fail('That group no longer exists.', 'NOT_FOUND', 404);
         if (body.action === 'update') {
@@ -1269,6 +1279,12 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       await store.mutate(data => {
         const next = structuredClone(data.settings);
         if (body?.emailCode !== undefined) next.emailCode = body.emailCode === true;
+        // An empty name goes back to the deployment's (STUDIO_DEPLOYMENT_NAME).
+        if (body?.deploymentName !== undefined) {
+          const name = typeof body.deploymentName === 'string' ? body.deploymentName.trim() : null;
+          if (name && (name.length > 60 || /[\u0000-\u001f\u007f<>]/.test(name))) fail('Use a plain name of up to 60 characters, without < or >.', 'INVALID_SETTINGS');
+          next.deploymentName = name || null;
+        }
         if (body?.oidc !== undefined) {
           const names = (value, label) => {
             if (!Array.isArray(value) || value.length > 50 || value.some(name => typeof name !== 'string' || !name.trim() || name.length > 200)) fail(`List ${label} as group names.`, 'INVALID_SETTINGS');
@@ -1313,6 +1329,19 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     if (!oidc || current.session.method !== 'oidc') return false;
     const user = findUser(data, current.user.id);
     return Boolean(user && data.settings.oidc.adminGroups.some(name => (user.oidcGroups ?? []).includes(name)));
+  }
+
+  // Who besides administrators can open a dashboard, for its card on the
+  // Dashboards page: group and people names from its access list.
+  function audience(dashboardId) {
+    const data = store.read();
+    const groups = [], people = [];
+    for (const grant of data.grants[dashboardId] ?? []) {
+      const [kind, id] = grant.subject.split(':');
+      if (kind === 'group') { const group = data.groups.find(item => item.id === id); if (group) groups.push(group.name); }
+      else { const user = data.users.find(item => item.id === id && !item.disabled); if (user) people.push(user.displayName || user.username); }
+    }
+    return { groups: groups.sort(), people: people.sort() };
   }
 
   // Copies the access list when a dashboard is duplicated with "copy access".
@@ -1368,7 +1397,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       });
       pending.delete('claim:' + current.session.id);
       await audit('link-provider-verified', { userId: plan.localUserId, by: current.user.id, merge: plan.mergeUserId }, req);
-      return '/__studio/account?link=confirm';
+      return '/studio/account?link=confirm';
     }
     let user = findLinked(data);
     // Owner decision (23 Oct 2026): a new account is created only for someone
@@ -1548,7 +1577,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   function safeNext(next) {
     const value = typeof next === 'string' ? next : '/';
     // Same-origin paths only: no scheme, no protocol-relative or backslash tricks.
-    if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\') || /[\u0000-\u001f]/.test(value) || value.startsWith('/__studio/auth/')) return '/';
+    if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\') || /[\u0000-\u001f]/.test(value) || value.startsWith('/studio/auth/')) return '/';
     return value.slice(0, 2000);
   }
 
@@ -1576,7 +1605,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     settled: () => Promise.all([...background]),
     startSetup, resumeSetup, inviteDetails, startInvite, enrollTotpStart, enrollTotpConfirm, enrollPasskeyOptions, enrollPasskeyVerify, finishEnrollment,
     requestRecovery, recoveryDetails, finishRecovery, redeemRecovery,
-    account, admin, copyGrants, oidcStart, oidcCallback, backchannelLogout,
+    account, admin, copyGrants, audience, siteName, oidcStart, oidcCallback, backchannelLogout,
     dashboardLevel: (current, id) => current ? current.level(id) : 'none',
     hasOidc: Boolean(oidc), hasMail: Boolean(mailer),
   };

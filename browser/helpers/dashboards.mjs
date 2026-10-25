@@ -7,22 +7,22 @@ export const fixtureId = () => randomUUID().slice(0, 8);
 export const dashboardPath = (dashboard, route = '') => `${dashboard.slug ? `/${dashboard.slug}` : ''}${route || '/'}`;
 
 export async function registryMutation(request, action, fields) {
-  const registry = await studioApi(request, '/__studio/api/dashboards');
-  return studioApi(request, '/__studio/api/dashboards', { action, revision: registry.revision, ...fields });
+  const registry = await studioApi(request, '/studio/api/dashboards');
+  return studioApi(request, '/studio/api/dashboards', { action, revision: registry.revision, ...fields });
 }
 
 export async function dashboardSave(request, dashboard, changes) {
-  const state = await studioApi(request, dashboardPath(dashboard, '/__studio/api/state'));
-  const saved = await studioApi(request, dashboardPath(dashboard, '/__studio/api/save'), { revision: state.revision, ...changes });
+  const state = await studioApi(request, dashboardPath(dashboard, '/studio/api/state'));
+  const saved = await studioApi(request, dashboardPath(dashboard, '/studio/api/save'), { revision: state.revision, ...changes });
   await studioApi(request, dashboardPath(dashboard, '/api/revalidate'));
   return saved;
 }
 
 export async function archiveFixtures(request, ids) {
   for (const id of ids) {
-    const registry = await studioApi(request, '/__studio/api/dashboards');
+    const registry = await studioApi(request, '/studio/api/dashboards');
     if (registry.dashboards.some(entry => entry.id === id && !entry.archived))
-      await studioApi(request, '/__studio/api/dashboards', { action: 'archive', id, confirmed: true, revision: registry.revision });
+      await studioApi(request, '/studio/api/dashboards', { action: 'archive', id, confirmed: true, revision: registry.revision });
   }
 }
 

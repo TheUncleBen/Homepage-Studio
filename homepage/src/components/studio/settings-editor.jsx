@@ -80,6 +80,9 @@ export function downloadFile(name, text, type = "application/json") {
 
 export default function SettingsEditor({
   state,
+  platform = null,
+  logo = null,
+  onLogoChange,
   onSaved,
   onClose,
   onOpenFiles,
@@ -100,7 +103,7 @@ export default function SettingsEditor({
     setPending(true);
     try {
       await onSaved(
-        await studioRequest("/__studio/api/settings", {
+        await studioRequest("/studio/api/settings", {
           revision: state.revision,
           config: patchFromDraft(original, draft),
         }),
@@ -127,7 +130,29 @@ export default function SettingsEditor({
             </button>
           </div>
           <fieldset disabled={!valid} style={editorFieldsetStyle}>
-            <AppearanceEditor settings={draft} onChange={setDraft} onValidity={setAppearanceValid} />
+            <AppearanceEditor
+              settings={draft}
+              platform={platform}
+              logo={logo}
+              onLogoChange={onLogoChange}
+              onChange={setDraft}
+              onValidity={setAppearanceValid}
+            />
+            <label className="studio-checkbox-field">
+              <input
+                type="checkbox"
+                checked={draft.studioTheme?.platformCss !== false}
+                onChange={(event) => {
+                  const studioTheme = { ...(draft.studioTheme && typeof draft.studioTheme === "object" ? draft.studioTheme : {}) };
+                  if (event.target.checked) delete studioTheme.platformCss;
+                  else studioTheme.platformCss = false;
+                  const next = { ...draft, studioTheme };
+                  if (!Object.keys(studioTheme).length) delete next.studioTheme;
+                  setDraft(next);
+                }}
+              />
+              <span>Load the platform CSS (Administration → Appearance) before this dashboard&apos;s custom.css</span>
+            </label>
           </fieldset>
           <h3 className="studio-settings-heading">Homepage settings</h3>
           <ConfigForm
@@ -184,7 +209,7 @@ export function FilesEditor({ state, onSaved, onClose, onReload }) {
     setPending(true);
     try {
       await onSaved(
-        await studioRequest("/__studio/api/save", {
+        await studioRequest("/studio/api/save", {
           revision: state.revision,
           ...Object.fromEntries(changed.map(([, key]) => [key, draft[key]])),
         }),
@@ -229,7 +254,7 @@ export function FilesEditor({ state, onSaved, onClose, onReload }) {
                 try {
                   downloadFile(
                     "homepage-studio-configuration.json",
-                    JSON.stringify(await studioRequest("/__studio/api/export"), null, 2),
+                    JSON.stringify(await studioRequest("/studio/api/export"), null, 2),
                   );
                 } catch (err) {
                   setError(err);
@@ -373,7 +398,7 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
     setPending(true);
     setError(null);
     try {
-      const restored = await studioRequest(archive ? "/__studio/api/import" : "/__studio/api/restore", {
+      const restored = await studioRequest(archive ? "/studio/api/import" : "/studio/api/restore", {
         revision: state.revision,
         ...(archive ? { archive: archive.content } : { backupId: chosen }),
       });
@@ -486,7 +511,7 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
             try {
               downloadFile(
                 `homepage-studio-snapshot-${chosen}.json`,
-                JSON.stringify(await studioRequest(`/__studio/api/backups/${encodeURIComponent(chosen)}`), null, 2),
+                JSON.stringify(await studioRequest(`/studio/api/backups/${encodeURIComponent(chosen)}`), null, 2),
               );
             } catch (err) {
               setError(err);

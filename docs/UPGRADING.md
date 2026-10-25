@@ -9,78 +9,9 @@ new template.
 your environment values, your Docker secrets and network, your proxy. **What you take new each time:** the
 bundle's `portainer-swarm.yml` or `portainer-compose.yml`, used unchanged.
 
-## Updating to the version with the Dashboards page
-
-Nothing to do before you update. What changes:
-
-- **The main dashboard moves to `/home`** (or `/home-2` if `home` is taken)
-  the first time the new version starts. Its widgets, layout and snapshots
-  stay; update any bookmarks that pointed at the bare address and expected
-  the main dashboard.
-- **The bare address** opens the person's default dashboard, their group's,
-  or the new **Dashboards** page ([USING.md](USING.md#the-dashboards-page)).
-  Administrators get the Dashboards page unless they choose a default.
-- **Editing and settings** have their own addresses,
-  `/<slug>/__studio/edit` and `/<slug>/__studio/settings`. The live dashboard
-  no longer has edit controls, and holding a panel no longer starts editing.
-- **The single sign-on button** now says **Single sign-on** unless
-  `STUDIO_OIDC_NAME` is set. To keep the old label, set
-  `STUDIO_OIDC_NAME=Authentik` (or your provider's name).
-- **Email** has a separate sender address and name,
-  `STUDIO_SMTP_FROM_ADDRESS` and `STUDIO_SMTP_FROM_NAME`
-  ([AUTHENTICATION.md](AUTHENTICATION.md#email)). The older `STUDIO_SMTP_FROM`
-  still works.
-
-## Updating to the version with Docker secrets and no published port
-
-From this version the templates read Studio's keys and passwords from Docker
-secrets, publish no port, and join a network shared with your reverse proxy.
-A stack deployed from an earlier bundle needs these one-time steps before you
-paste the new template. Your volumes, dashboards and accounts stay.
-
-1. **The network.** Create it and attach your proxy, as in
-   [DEPLOY.md step 2](DEPLOY.md#2-shared-proxy-network-once). If your proxy
-   already shares a network with other services, you can use that one: set
-   `STUDIO_NETWORK_NAME` to its exact name.
-2. **The secrets.** Create `studio_auth_key`, `studio_oidc_client_secret`,
-   `studio_smtp_password` and `studio_admin_password` as in
-   [DEPLOY.md step 5](DEPLOY.md#5-docker-secrets),
-   with one difference: **if you had set `STUDIO_AUTH_KEY`, put that same
-   value in `studio_auth_key`**. A new key means everyone sets up their
-   authenticator app again and single sign-on sessions end. Likewise, use your
-   current single sign-on client secret and mail password, or `off`. Your
-   accounts already exist, so `studio_admin_password` is never read: put
-   `off` in it.
-3. **The variables.** In the stack's environment variables, remove
-   `STUDIO_AUTH_KEY`, `STUDIO_AUTH_KEY_FILE`, `STUDIO_OIDC_CLIENT_SECRET`,
-   `STUDIO_OIDC_CLIENT_SECRET_FILE`, `STUDIO_SMTP_PASSWORD`,
-   `STUDIO_SMTP_PASSWORD_FILE` and `STUDIO_PORT`. The new template doesn't read
-   them, so leaving them only leaves the values on display. Set
-   `STUDIO_TRUSTED_PROXIES` to the network's subnet.
-4. **The update.** Paste the new template as in the update steps below.
-5. **The proxy.** Point the proxy host at `homepage_studio:3000` (your stack
-   name, underscore, `studio`) instead of the node's address and port
-   ([DEPLOY.md step 8](DEPLOY.md#8-reverse-proxy)). Studio is
-   unreachable through the proxy between steps 4 and 5.
-
-If the new task doesn't start, `docker service ps --no-trunc homepage_studio`
-names what's missing: usually a secret or the network.
-
-## Updating to the version with sign-in
-
-Studio sign-in is **on by default** from this version
-([AUTHENTICATION.md](AUTHENTICATION.md)). Before you update:
-
-- **It needs HTTPS.** If people reach Studio at an `http://` address other
-  than localhost, either move it behind an HTTPS proxy and change
-  `STUDIO_PUBLIC_ORIGIN` to the `https://` address, or add `STUDIO_AUTH=off`
-  to keep the old behavior (access controlled by your proxy). On plain HTTP
-  with sign-in on, Studio starts but shows only a page explaining this.
-- **Open it straight after the update.** Every dashboard is locked until the
-  first visitor creates the administrator account. Do that yourself before
-  anyone else can.
-- Set `STUDIO_TRUSTED_PROXIES` (real client addresses behind your proxy).
-  The encryption key comes from the `studio_auth_key` Docker secret (above).
+Until version 1.0.0, each candidate is installed fresh: delete the volumes and
+follow [DEPLOY.md](DEPLOY.md) from the start. From 1.0.0 on, the steps below
+update an existing deployment in place.
 
 ## Before you update
 
@@ -127,9 +58,9 @@ docker compose --project-name homepage --file portainer-compose.yml up -d
 ## After updating
 
 ```bash
-curl -s https://homepage.example.test/__studio/application-ready
+curl -s https://homepage.example.test/studio/application-ready
 # "buildRevision" is the new bundle's source commit
-curl -s https://homepage.example.test/__studio/ready
+curl -s https://homepage.example.test/studio/ready
 ```
 
 Then open each dashboard you use. The settings dialog shows the build it's

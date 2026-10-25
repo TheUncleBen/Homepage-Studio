@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createDashboardRegistry, resolveDashboardRoute } from './dashboards.mjs';
-import { DASHBOARD_REGISTRY_FILE, DASHBOARD_REGISTRY_MARKER, validateDashboardManifest, dashboardConfigDir } from './dashboard-paths.mjs';
+import { DASHBOARD_REGISTRY_FILE, DASHBOARD_REGISTRY_MARKER, validateDashboardManifest, dashboardConfigDir, suggestedDashboardSlug } from './dashboard-paths.mjs';
 
 async function fixture(t, prepare, cleanup) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-dashboard-registry-'));
@@ -22,14 +22,14 @@ async function fixture(t, prepare, cleanup) {
 const rejectsCode = (promise, code) => assert.rejects(promise, error => error.code === code);
 const create = async (registry, slug, sourceId) => registry.mutate({ action: 'create', revision: (await registry.read()).revision, name: slug || 'Valid dashboard name', slug, ...(sourceId ? { sourceId } : {}) });
 
-test('adopts existing root bytes and retains stable identity across restart', async t => {
+test('a new main dashboard has no address, never overwrites files already there, and keeps its identity across restart', async t => {
   const f = await fixture(t);
   await fs.mkdir(f.configRoot);
   const file = path.join(f.configRoot, 'services.yaml');
   const bytes = '# Native user configuration\ncustom: &shared [one, two]\n';
   await fs.writeFile(file, bytes);
   const manifest = await f.registry.initialize();
-  assert.deepEqual(manifest.dashboards, [{ id: 'default', name: 'Main dashboard', slug: 'home', archived: false }]);
+  assert.deepEqual(manifest.dashboards, [{ id: 'default', name: 'Main dashboard', slug: '', archived: false }]);
   assert.equal(await fs.readFile(file, 'utf8'), bytes);
   const second = createDashboardRegistry({ configRoot: f.configRoot, prepareDashboard: () => assert.fail('No reseeding') });
   assert.deepEqual(await second.initialize(), manifest);
@@ -37,20 +37,29 @@ test('adopts existing root bytes and retains stable identity across restart', as
   assert.equal((await second.read()).dashboards[0].name, 'Main dashboard');
 });
 
-test('a main dashboard from before the Dashboards page moves from the bare address to home, or home-2 when taken', async t => {
-  for (const [others, expected] of [[[], 'home'], [['home'], 'home-2'], [['home', 'home-2'], 'home-3']]) {
-    const f = await fixture(t);
-    await fs.mkdir(f.configRoot);
-    const dashboards = [{ id: 'default', slug: '', name: 'Main dashboard', archived: false }, ...others.map(slug => ({ id: randomUUID(), slug, name: slug, archived: false }))];
-    await fs.writeFile(path.join(f.configRoot, 'studio-dashboards.json'), JSON.stringify({ version: 1, revision: randomUUID(), dashboards }));
-    await fs.writeFile(path.join(f.configRoot, 'studio-dashboards.initialized'), '1\n');
-    const manifest = await f.registry.initialize();
-    assert.equal(manifest.dashboards[0].slug, expected);
-    const stored = JSON.parse(await fs.readFile(path.join(f.configRoot, 'studio-dashboards.json'), 'utf8'));
-    assert.equal(stored.dashboards[0].slug, expected);
-    assert.equal(stored.revision, manifest.revision);
-    assert.deepEqual(stored.dashboards.slice(1), dashboards.slice(1));
-  }
+test('the main dashboard gets an address once and keeps one; it is not served before that', async t => {
+  const f = await fixture(t);
+  const initial = await f.registry.initialize();
+  assert.throws(() => resolveDashboardRoute(initial, '/'), error => error.code === 'DASHBOARD_NOT_FOUND');
+  assert.throws(() => resolveDashboardRoute(initial, '/studio/edit'), error => error.code === 'DASHBOARD_NOT_FOUND');
+  assert.throws(() => resolveDashboardRoute(initial, '/api/services'), error => error.code === 'DASHBOARD_NOT_FOUND');
+  const update = async slug => f.registry.mutate({ action: 'update', revision: (await f.registry.read()).revision, id: 'default', name: 'Main dashboard', slug });
+  await rejectsCode(update(''), 'INVALID_DASHBOARD_SLUG');
+  await rejectsCode(update('studio'), 'INVALID_DASHBOARD_SLUG');
+  const { registry } = await update('dashboard');
+  assert.equal(resolveDashboardRoute(registry, '/').redirect, '/dashboard');
+  assert.equal(resolveDashboardRoute(registry, '/dashboard/studio/edit').path, '/studio/edit');
+  await rejectsCode(update(''), 'INVALID_DASHBOARD_SLUG');
+  await rejectsCode(create(f.registry, ''), 'INVALID_DASHBOARD_SLUG');
+});
+
+test('the suggested address is the lowest free of dashboard, dashboard-2, …, archived ones included', () => {
+  const list = slugs => slugs.map(slug => ({ slug }));
+  assert.equal(suggestedDashboardSlug(list([''])), 'dashboard');
+  assert.equal(suggestedDashboardSlug(list(['dashboard'])), 'dashboard-2');
+  assert.equal(suggestedDashboardSlug(list(['dashboard', 'dashboard-2', 'dashboard-4'])), 'dashboard-3');
+  // A renamed dashboard-2 frees the address for the next one.
+  assert.equal(suggestedDashboardSlug(list(['dashboard', 'kitchen', 'dashboard-3'])), 'dashboard-2');
 });
 
 test('creation publishes only after initialization and failed preparation does not reserve a slug', async t => {
@@ -187,7 +196,7 @@ test('default can move to a slug with root redirect while named paths keep queri
 test('invalid slugs, unknown fields and ambiguous encoded paths fail closed', async t => {
   const { registry } = await fixture(t);
   await registry.initialize();
-  for (const slug of ['', 'API', 'api', '__studio', 'config', '../escape', 'space here', '-bad', 'bad-', 'a'.repeat(65)]) await rejectsCode(create(registry, slug), 'INVALID_DASHBOARD_SLUG');
+  for (const slug of ['', 'API', 'api', 'studio', 'config', '../escape', 'space here', '-bad', 'bad-', 'a'.repeat(65)]) await rejectsCode(create(registry, slug), 'INVALID_DASHBOARD_SLUG');
   const manifest = (await create(registry, 'family')).registry;
   for (const target of ['//family', '/family/../api', '/family/%2e%2e/api', '/family/%2Fapi', '/family/%5capi', '/family/%00', '/family/%XX', '/family\\api']) assert.throws(() => resolveDashboardRoute(manifest, target), error => error.code === 'INVALID_DASHBOARD_PATH');
   await rejectsCode(registry.mutate({ action: '__proto__', revision: manifest.revision }), 'INVALID_DASHBOARD_ACTION');

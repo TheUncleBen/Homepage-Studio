@@ -40,7 +40,7 @@ This comes from Studio's sign-in code (`server/auth/oidc.mjs`,
 | Need | What Studio does | Where it's set in Authentik |
 | --- | --- | --- |
 | Discovery | Loads `<STUDIO_OIDC_ISSUER>/.well-known/openid-configuration` the first time someone signs in with Authentik | The provider's **OpenID Configuration Issuer**, `https://authentik.example.test/application/o/homepage-studio/`. The slug in it is the **application's** slug |
-| Sign-in flow | Authorization code with PKCE (`S256`), state and nonce. The redirect URI is `STUDIO_PUBLIC_ORIGIN` + `/__studio/auth/oidc/callback` | Provider → **Redirect URIs**: `https://homepage.example.test/__studio/auth/oidc/callback`, matching mode **Strict** |
+| Sign-in flow | Authorization code with PKCE (`S256`), state and nonce. The redirect URI is `STUDIO_PUBLIC_ORIGIN` + `/studio/auth/oidc/callback` | Provider → **Redirect URIs**: `https://homepage.example.test/studio/auth/oidc/callback`, matching mode **Strict** |
 | Client authentication | Sends the client ID and secret with HTTP Basic authentication to the token endpoint (`client_secret_basic`) | Provider → **Client type: Confidential**. Copy the **Client ID** and **Client Secret** |
 | Scopes | Asks for `openid profile email offline_access` (`STUDIO_OIDC_SCOPES`) | Provider → **Scopes**: the built-in mappings for `openid`, `email`, `profile` and `offline_access` |
 | Signed ID token | Requires an ID token and verifies its signature against the provider's published keys | Provider → **Signing Key**: a certificate, for example `authentik Self-signed Certificate` |
@@ -49,7 +49,7 @@ This comes from Studio's sign-in code (`server/auth/oidc.mjs`,
 | Email | Uses the `email` claim only when `email_verified` is `true`: as the address of an Authentik account, and as the address of a local account linked to it | An `email` scope mapping that marks addresses verified ([Email addresses](#email-addresses)). The built-in mapping says `false` since Authentik 2025.10, and Studio then leaves the email alone |
 | Fresh sign-in for linking | When someone links accounts, asks Authentik to sign them in again (`prompt=login`, `max_age=300`) and checks the ID token's `auth_time` | Nothing to set |
 | Staying in sync | Every 15 minutes (`STUDIO_OIDC_REFRESH_MINUTES`) uses the refresh token to check the person's groups again. Someone taken out of the groups is signed out at the next check | The `offline_access` scope mapping. Without it Authentik issues no refresh token, and Authentik sessions in Studio end at the first check |
-| Signing out | **Sign out** in Studio ends the Studio session and, when Authentik publishes an end-session endpoint, sends the browser there to end the Authentik session too, asking it to return to `https://homepage.example.test/__studio/auth/sign-in?signedOut=1` | Nothing required. Optional: the back-channel logout URI (section 4), so signing out of Authentik also ends Studio sessions |
+| Signing out | **Sign out** in Studio ends the Studio session and, when Authentik publishes an end-session endpoint, sends the browser there to end the Authentik session too, asking it to return to `https://homepage.example.test/studio/auth/sign-in?signedOut=1` | Nothing required. Optional: the back-channel logout URI (section 4), so signing out of Authentik also ends Studio sessions |
 
 ## 2. Before you start
 
@@ -96,7 +96,7 @@ have to match.
 | Grant types (if your Authentik shows them) | at least **Authorization Code** and **Refresh token** | Studio uses only these two. Authentik refuses a grant the provider doesn't list |
 | Client ID | keep the generated value | Goes in `STUDIO_OIDC_CLIENT_ID`. It isn't a secret |
 | Client Secret | keep the generated value | Goes into the Docker secret `studio_oidc_client_secret` and nowhere else |
-| Redirect URIs | one entry, matching mode **Strict**, URL `https://homepage.example.test/__studio/auth/oidc/callback` | Exactly `STUDIO_PUBLIC_ORIGIN` plus that path, no trailing slash. **Administration → Sign-in settings** in Studio shows the exact value to copy once single sign-on is configured |
+| Redirect URIs | one entry, matching mode **Strict**, URL `https://homepage.example.test/studio/auth/oidc/callback` | Exactly `STUDIO_PUBLIC_ORIGIN` plus that path, no trailing slash. **Administration → Sign-in settings** in Studio shows the exact value to copy once single sign-on is configured |
 | Signing Key | `authentik Self-signed Certificate`, or any certificate you manage | Studio needs a signed ID token it can verify. If the list is empty, make one under **System → Certificates → Generate** |
 | Encryption Key | none | Studio doesn't decrypt tokens |
 | Advanced protocol settings → Scopes | `authentik default OAuth Mapping: OpenID 'openid'`, `… 'email'`, `… 'profile'` and `… 'offline_access'` | `openid` gives the ID token, `email` and `profile` the name, email and `groups`, and `offline_access` the refresh token. **Don't skip `offline_access`**: Authentik says nothing, but people signed in through Authentik are signed out of Studio after 15 minutes |
@@ -107,7 +107,7 @@ have to match.
 
 Optional: **back-channel logout**. If your Authentik version offers a
 back-channel logout URI on the provider, set it to
-`https://homepage.example.test/__studio/auth/oidc/backchannel-logout`, so
+`https://homepage.example.test/studio/auth/oidc/backchannel-logout`, so
 signing out of Authentik also ends Studio sessions. Studio shows this URI in
 **Sign-in settings** too.
 

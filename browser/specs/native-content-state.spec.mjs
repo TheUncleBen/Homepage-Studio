@@ -38,7 +38,7 @@ test('native calendar, chart and process list fit their minima at desktop and na
   const fixture = await installDenseResponses(page);
   const seeded = await seedDenseContent(request);
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
-  await page.goto('/home');
+  await page.goto('/dashboard');
   const calendarSource = seeded.board.panels.find(panel => panel.nativeLocator.type === 'calendar');
   const chartSource = seeded.board.panels.find(panel => panel.nativeLocator.type === 'glances' && panel.nativeLocator.sourceIndex === 0);
   const listSource = seeded.board.panels.find(panel => panel.nativeLocator.type === 'glances' && panel.nativeLocator.sourceIndex === 1);
@@ -66,7 +66,7 @@ test('native calendar, chart and process list fit their minima at desktop and na
   await finishArrangement(page);
   // A fresh page needs the clock running to render the calendar.
   await page.clock.resume();
-  await page.goto('/home');
+  await page.goto('/dashboard');
   await expect(calendar.getByRole('button', { name: 'October 2026', exact: true })).toBeVisible();
   await calendar.getByRole('button', { name: '>', exact: true }).click();
   await expect(calendar.getByRole('button', { name: 'November 2026', exact: true })).toBeVisible();
@@ -91,7 +91,7 @@ test('native calendar, chart and process list fit their minima at desktop and na
     await calendar.getByRole('button', { name: '>', exact: true }).click();
     await expect(calendar.getByRole('button', { name: 'November 2026', exact: true })).toBeVisible();
   }
-  const saved = await studioApi(request, '/home/__studio/api/board');
+  const saved = await studioApi(request, '/dashboard/studio/api/board');
   expect(saved.board.panels.map(panel => panel.id).sort()).toEqual(seeded.board.panels.map(panel => panel.id).sort());
   expect(fixture.calls).toEqual(expect.arrayContaining([
     expect.objectContaining({ endpoint: 'Fixture calendar' }),
@@ -150,7 +150,7 @@ test('an actual native iframe keeps its document and controls through move, resi
   // state through stack navigation.
   await stackBoth();
   await finishArrangement(page);
-  await page.goto('/home');
+  await page.goto('/dashboard');
   if (await activePanel(page).getAttribute('data-panel-id') !== source.id) await carousel(page).press('ArrowRight');
   await content.getByRole('textbox', { name: 'Embedded note', exact: true }).fill('Live document survives');
   // The fixture reports iframe-local pixels; its parent must finish the slide
@@ -175,7 +175,7 @@ test('typing in a native embedded page suspends playback until focus returns to 
   const seeded = await seedEmbeddedContent(request, true);
   const source = seeded.board.panels.find(panel => panel.kind === 'serviceWidget');
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
-  await page.goto('/home');
+  await page.goto('/dashboard');
   const content = page.locator(`[data-panel-id="${source.id}"] iframe`).contentFrame();
   await expect(content.getByRole('textbox', { name: 'Embedded note', exact: true })).toBeVisible();
   await page.clock.pauseAt(new Date('2026-10-20T13:00:00Z'));

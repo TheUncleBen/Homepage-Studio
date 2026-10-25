@@ -4,7 +4,7 @@
 // other than the single-use link or code they exist to deliver.
 import nodemailer from 'nodemailer';
 
-export function createMailer(smtp) {
+export function createMailer(smtp, siteName) {
   if (!smtp) return null;
   const transport = smtp.transport ?? nodemailer.createTransport({
     host: smtp.host, port: smtp.port, secure: smtp.secure,
@@ -15,7 +15,7 @@ export function createMailer(smtp) {
   });
   return {
     async send({ to, subject, text }) {
-      await transport.sendMail({ from: smtp.from, to, subject, text });
+      await transport.sendMail({ from: { name: smtp.from.name ?? siteName(), address: smtp.from.address }, to, subject, text });
     },
   };
 }
@@ -29,22 +29,22 @@ export function describeMailError(error) {
   return [parts, answer].filter(Boolean).join(': ') || 'unknown error';
 }
 
-const sign = 'Homepage Studio';
-export const messages = {
+// Messages name the deployment (STUDIO_DEPLOYMENT_NAME) and are signed with it.
+export const mailMessages = site => ({
   invite: ({ name, link, hours }) => ({
-    subject: 'You have been invited to Homepage Studio',
-    text: `Hello ${name},\n\nAn administrator created a Homepage Studio account for you. Open this link to choose your password and set up a second sign-in step:\n\n${link}\n\nThe link works once and expires in ${hours} hours. If you weren't expecting this, you can ignore it.\n\n${sign}\n`,
+    subject: `You have been invited to ${site}`,
+    text: `Hello ${name},\n\nAn administrator created a ${site} account for you. Open this link to choose your password and set up a second sign-in step:\n\n${link}\n\nThe link works once and expires in ${hours} hours. If you weren't expecting this, you can ignore it.\n\n${site}\n`,
   }),
   recovery: ({ name, link, minutes }) => ({
-    subject: 'Reset your Homepage Studio password',
-    text: `Hello ${name},\n\nSomeone asked to reset the password for your Homepage Studio account. Open this link to choose a new one:\n\n${link}\n\nYou will still need your authenticator app, passkey or a backup code. The link works once and expires in ${minutes} minutes. If this wasn't you, ignore this email; your password has not changed.\n\n${sign}\n`,
+    subject: `Reset your ${site} password`,
+    text: `Hello ${name},\n\nSomeone asked to reset the password for your ${site} account. Open this link to choose a new one:\n\n${link}\n\nYou will still need your authenticator app, passkey or a backup code. The link works once and expires in ${minutes} minutes. If this wasn't you, ignore this email; your password has not changed.\n\n${site}\n`,
   }),
   code: ({ name, code, minutes }) => ({
-    subject: `Your Homepage Studio sign-in code: ${code}`,
-    text: `Hello ${name},\n\nYour sign-in code is ${code}. It expires in ${minutes} minutes.\n\nIf you didn't just try to sign in, change your password.\n\n${sign}\n`,
+    subject: `Your ${site} sign-in code: ${code}`,
+    text: `Hello ${name},\n\nYour sign-in code is ${code}. It expires in ${minutes} minutes.\n\nIf you didn't just try to sign in, change your password.\n\n${site}\n`,
   }),
   alert: ({ name, event }) => ({
-    subject: 'Security change on your Homepage Studio account',
-    text: `Hello ${name},\n\n${event}\n\nIf this wasn't you, contact your Homepage Studio administrator straight away.\n\n${sign}\n`,
+    subject: `Security change on your ${site} account`,
+    text: `Hello ${name},\n\n${event}\n\nIf this wasn't you, contact your ${site} administrator straight away.\n\n${site}\n`,
   }),
-};
+});

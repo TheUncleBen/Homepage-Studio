@@ -73,8 +73,8 @@ describe("pages/site.webmanifest", () => {
     // Default icon set is used when pwa.icons is not set.
     expect(manifest.icons).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ src: expect.stringContaining("android-chrome-192x192") }),
-        expect.objectContaining({ src: expect.stringContaining("android-chrome-512x512") }),
+        expect.objectContaining({ src: expect.stringContaining("/studio/brand/icon-192.png") }),
+        expect.objectContaining({ src: expect.stringContaining("/studio/brand/icon-512.png") }),
       ]),
     );
   });
@@ -112,10 +112,10 @@ describe("pages/site.webmanifest", () => {
     const res = createMockRes();
     await getServerSideProps({ res });
     const manifest = JSON.parse(res.write.mock.calls[0][0]);
-    expect(manifest.id).toBe(`/__studio/install/${id}`);
+    expect(manifest.id).toBe(`/studio/install/${id}`);
     expect(manifest.scope).toBe("/family/");
     expect(manifest.start_url).toBe("/family/");
-    expect(manifest.icons[0].src).toBe("/android-chrome-192x192.png?v=2");
+    expect(manifest.icons[0].src).toBe("/studio/brand/icon-192.png");
     expect(manifest.shortcuts.map(({ url }) => url)).toEqual(["/family/", "/family/weather"]);
     expect(res.setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
 

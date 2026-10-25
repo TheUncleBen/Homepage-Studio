@@ -62,6 +62,8 @@ appears.
    **authenticator app**, or both. Until you add one, the password gets you no
    further than that page.
 3. Save the ten **backup codes**.
+4. Studio asks for the **main dashboard's address** (suggested: `dashboard`).
+   Until it's saved, no dashboard has an address.
 
 Studio uses the seed **once**. As soon as any account exists, it ignores
 `STUDIO_ADMIN_USERNAME`, `STUDIO_ADMIN_EMAIL` and the secret on every start
@@ -78,8 +80,7 @@ in when the provider is down.
 ### Created in the browser
 
 Without a seed (`studio_admin_password` says `off`), the first person to open
-a fresh deployment (or one updated from a version without sign-in) is asked
-to create the administrator. Every address leads to the setup page until
+a fresh deployment is asked to create the administrator. Every address leads to the setup page until
 that's done.
 
 1. Open the dashboard's address. You land on **Create the administrator**.
@@ -88,6 +89,8 @@ that's done.
    **authenticator app**, or both.
 4. Save the ten **backup codes**. Each signs you in once if you lose your
    passkey or phone. They aren't shown again.
+5. Choose the **main dashboard's address** when Studio asks (suggested:
+   `dashboard`).
 
 **Do this straight after deploying.** Whoever completes the setup page first
 becomes the administrator, and there is no setup code. While one browser is
@@ -98,7 +101,7 @@ Studio also cancels a setup that was started but not finished.
 ## Inviting people and sharing dashboards
 
 Open **Administration** (from the account button in the dashboard's top bar,
-then **Administration**, or `/__studio/admin`).
+then **Administration**, or `/studio/admin`).
 
 - **People → Invite a person.** Enter a username, optionally a display name
   and email, and choose Member or Administrator. Studio makes a one-time
@@ -118,7 +121,8 @@ then **Administration**, or `/__studio/admin`).
   Default dashboard**), and an administrator can set one for a person (**People
   → Manage**) or a group (**Groups → Manage**). The bare address opens the
   person's own default, else the first of their groups (in the order on the
-  Groups page, changed with **Move up** and **Move down**) that has a default
+  Groups page, changed by dragging a group by its handle or with **Move up**
+  and **Move down**) that has a default
   they can open, else the Dashboards page. Administrators get the Dashboards
   page unless they choose their own.
 
@@ -142,7 +146,7 @@ from that address and for that account (after five failures, waits double
 up to 15 minutes); they never lock the real owner out for good.
 
 Everyone can manage their own sign-in under **My account**
-(`/__studio/account`): change the password, add or remove passkeys and the
+(`/studio/account`): change the password, add or remove passkeys and the
 authenticator app, make new backup codes, see where they're signed in and sign
 other devices out. Studio insists on keeping a passkey, or a password with an
 authenticator app, so no one locks themselves out by accident.
@@ -180,7 +184,7 @@ with PKCE, checks state and nonce, and verifies the provider's signed tokens.
 ### Setting it up
 
 1. Create a confidential OpenID Connect client at the provider with the
-   redirect URI `https://<your Studio address>/__studio/auth/oidc/callback`,
+   redirect URI `https://<your Studio address>/studio/auth/oidc/callback`,
    and the scopes `openid`, `email`, `profile` and `offline_access`.
    [IDP-OTHERS.md](IDP-OTHERS.md) has the requirements and notes for common
    providers; [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md) is a full worked example
@@ -201,7 +205,7 @@ it. Many providers issue a refresh token only when the client asks for
 2024.2, the `offline_access` scope mapping must be selected). Without a refresh token, Studio can't check groups while someone is
 signed in, so provider sessions end at the first check (15 minutes by default)
 and people sign in again. The optional back-channel logout URI
-(`/__studio/auth/oidc/backchannel-logout`) lets signing out of the provider
+(`/studio/auth/oidc/backchannel-logout`) lets signing out of the provider
 end Studio sessions too.
 
 ### In Studio
@@ -317,7 +321,7 @@ STUDIO_SMTP_HOST=smtp.example.test
 STUDIO_SMTP_PORT=587                  # 465 uses TLS from the start; other ports must offer STARTTLS
 STUDIO_SMTP_USER=studio@example.test
 STUDIO_SMTP_FROM_ADDRESS=studio@example.test   # a sender your mail provider has verified
-STUDIO_SMTP_FROM_NAME=Homepage Studio           # the name people see; this is the default
+STUDIO_SMTP_FROM_NAME=Homepage Studio           # the name people see; default: the deployment name
 ```
 
 The sender's name and address are separate, so mail shows the name rather
@@ -344,6 +348,7 @@ or a backup code, so a mailbox alone can't take over an account.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `STUDIO_AUTH` | `on` | `on` or `off` |
+| `STUDIO_DEPLOYMENT_NAME` | `Homepage Studio` | The deployment's name: next to the logo at the top of Studio's pages, the sign-in page heading, browser tab titles, the email sender name and subject lines, and the name passkey prompts and authenticator apps show. Up to 60 characters, no `<` or `>`. **Administration → Sign-in settings → Deployment name** overrides it; clearing that field goes back to this value |
 | `STUDIO_PUBLIC_ORIGIN` | (required) | Must be `https://` while sign-in is on. `http://localhost:<port>` is accepted for testing. With plain HTTP on any other address Studio starts but shows only a page explaining the fix |
 | `STUDIO_AUTH_KEY_FILE` | `/run/secrets/studio_auth_key` in the templates | The file holding the encryption key: long random text that encrypts authenticator secrets and single sign-on tokens in the state volume. The templates read it from the `studio_auth_key` Docker secret, which must not be empty or `off`. Keep a copy: if it's lost or changed, authenticator apps must be set up again and provider sessions end. Without a key, **Sign-in settings** warns that these are stored unencrypted |
 | `STUDIO_TRUSTED_PROXIES` | (unset) | Comma-separated IP addresses or CIDR ranges of your reverse proxies. Studio then takes the client address from `X-Forwarded-For` for sign-in throttling and the activity log. Without it, every request seems to come from the proxy |
@@ -366,8 +371,7 @@ or a backup code, so a mailbox alone can't take over an account.
 | `STUDIO_SMTP_USER` | (unset) | |
 | `STUDIO_SMTP_PASSWORD_FILE` | `/run/secrets/studio_smtp_password` in the templates | The file holding the mail password, from the `studio_smtp_password` Docker secret. `off` (or an empty file) means no password |
 | `STUDIO_SMTP_FROM_ADDRESS` | (unset) | The sender address, required with `STUDIO_SMTP_HOST`. A plain address, such as `studio@example.test` |
-| `STUDIO_SMTP_FROM_NAME` | `Homepage Studio` | The sender name people see. Needs `STUDIO_SMTP_FROM_ADDRESS` |
-| `STUDIO_SMTP_FROM` | (unset) | The older single setting (an address, or `Name <address>`), still accepted instead of the two above. Not both |
+| `STUDIO_SMTP_FROM_NAME` | the deployment name | The sender name people see. Needs `STUDIO_SMTP_FROM_ADDRESS` |
 
 **Secrets as plain variables (not recommended).** Outside the templates, the
 four secrets can also be given directly as `STUDIO_AUTH_KEY`,
@@ -438,6 +442,8 @@ sensitive.
 
 `STUDIO_AUTH=off` returns to the earlier model: anyone who can reach the page
 can view and change every dashboard, so access control must come from your
-reverse proxy ([REVERSE-PROXY.md](REVERSE-PROXY.md#access-control)). Accounts
+reverse proxy ([REVERSE-PROXY.md](REVERSE-PROXY.md#access-control)). The first
+person to open Studio chooses the main dashboard's address, and
+**Administration** has only **Appearance**, the platform's default look. Accounts
 and sharing are kept in the state volume and come back if you turn sign-in on
 again.

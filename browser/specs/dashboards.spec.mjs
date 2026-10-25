@@ -32,7 +32,7 @@ test('the Dashboards page creates independent dashboards, duplicates complete co
   const copyName = `Admin copy ${suffix}`;
   const ids = [];
   await saveFiles(request, { widgetsYaml: JSON.stringify([{ greeting: { text: `Admin original ${suffix}` } }]), customCss: ':root { --dashboard-fixture: admin; }' });
-  const root = await studioApi(request, '/home/__studio/api/state');
+  const root = await studioApi(request, '/dashboard/studio/api/state');
   try {
     // With sign-in off, the bare address opens the Dashboards page.
     await page.goto('/');
@@ -41,10 +41,10 @@ test('the Dashboards page creates independent dashboards, duplicates complete co
     let dialog = await nameAndAddress(page, 'New dashboard', guestName, `guest-${suffix}`, 'Create dashboard');
     await expect(dialog).toHaveCount(0);
     await expect(card(page, guestName)).toBeVisible();
-    let registry = await studioApi(request, '/__studio/api/dashboards');
+    let registry = await studioApi(request, '/studio/api/dashboards');
     const guest = registry.dashboards.find(entry => entry.name === guestName);
     ids.push(guest.id);
-    expect((await studioApi(request, dashboardPath(guest, '/__studio/api/state'))).board.panels).toEqual([]);
+    expect((await studioApi(request, dashboardPath(guest, '/studio/api/state'))).board.panels).toEqual([]);
     await dashboardSave(request, guest, { widgetsYaml: JSON.stringify([{ greeting: { text: `Guest private ${suffix}` } }]), customCss: ':root { --dashboard-fixture: guest; }', settingsYaml: 'studioTheme:\n  mode: light\n  accent: "#215c95"\n' });
 
     const defaultEntry = registry.dashboards.find(entry => entry.id === 'default');
@@ -52,14 +52,14 @@ test('the Dashboards page creates independent dashboards, duplicates complete co
     dialog = await nameAndAddress(page, `Duplicate ${defaultEntry.name}`, copyName, `copy-${suffix}`, 'Duplicate');
     await expect(dialog).toHaveCount(0);
     await expect(card(page, copyName)).toBeVisible();
-    registry = await studioApi(request, '/__studio/api/dashboards');
+    registry = await studioApi(request, '/studio/api/dashboards');
     const copy = registry.dashboards.find(entry => entry.name === copyName);
     ids.push(copy.id);
-    const copied = await studioApi(request, dashboardPath(copy, '/__studio/api/state'));
+    const copied = await studioApi(request, dashboardPath(copy, '/studio/api/state'));
     expect(nativeFiles(copied)).toEqual(nativeFiles(root));
     expect(copied.board.panels).toEqual(root.board.panels);
     await dashboardSave(request, copy, { widgetsYaml: JSON.stringify([{ greeting: { text: `Copy only ${suffix}` } }]), customCss: ':root { --dashboard-fixture: copy; }' });
-    expect(nativeFiles(await studioApi(request, '/home/__studio/api/state'))).toEqual(nativeFiles(root));
+    expect(nativeFiles(await studioApi(request, '/dashboard/studio/api/state'))).toEqual(nativeFiles(root));
 
     await moreAction(page, guestName, 'Rename or change address');
     dialog = await nameAndAddress(page, `Rename ${guestName}`, renamedName, `shared-${suffix}`, 'Save');
@@ -78,7 +78,7 @@ test('the Dashboards page creates independent dashboards, duplicates complete co
     await expect(page.getByText(`Guest private ${suffix}`, { exact: true })).toBeVisible();
 
     // The main dashboard keeps its original native configuration.
-    await page.goto('/home');
+    await page.goto('/dashboard');
     await expect(page.getByText(`Admin original ${suffix}`, { exact: true })).toBeVisible();
     await page.goto(DASHBOARDS);
     await moreAction(page, renamedName, 'Archive');
@@ -89,8 +89,8 @@ test('the Dashboards page creates independent dashboards, duplicates complete co
     await archivedList.locator('summary').click();
     await expect(archivedList.getByRole('heading', { name: renamedName, exact: true })).toBeVisible();
     expect((await request.get(dashboardPath(renamed))).status()).toBe(404);
-    registry = await studioApi(request, '/__studio/api/dashboards');
-    const reserved = await request.post('/__studio/api/dashboards', {
+    registry = await studioApi(request, '/studio/api/dashboards');
+    const reserved = await request.post('/studio/api/dashboards', {
       headers: { origin: process.env.STUDIO_BROWSER_ORIGIN, 'x-studio-request': '1' },
       data: { action: 'create', revision: registry.revision, name: 'Reserved fixture', slug: renamed.slug },
     });
@@ -99,9 +99,9 @@ test('the Dashboards page creates independent dashboards, duplicates complete co
     await expect(card(page, renamedName).getByRole('link', { name: 'Open', exact: true })).toBeVisible();
     await card(page, renamedName).getByRole('link', { name: 'Open', exact: true }).click();
     await expect(page.getByText(`Guest private ${suffix}`, { exact: true })).toBeVisible();
-    expect(nativeFiles(await studioApi(request, '/home/__studio/api/state'))).toEqual(nativeFiles(root));
+    expect(nativeFiles(await studioApi(request, '/dashboard/studio/api/state'))).toEqual(nativeFiles(root));
   } finally {
-    await page.goto('/home');
+    await page.goto('/dashboard');
     await archiveFixtures(request, ids);
   }
 });
@@ -125,11 +125,11 @@ test('a rename that meets someone else\'s change keeps the draft, shows what is 
     // The list behind the dialog already shows the other change.
     await expect(card(page, `External ${suffix}`)).toHaveCount(1);
     const gate = new Promise(resolve => { release = resolve; });
-    await page.route('**/__studio/api/dashboards', async route => {
+    await page.route('**/studio/api/dashboards', async route => {
       if (route.request().method() === 'POST') await gate;
       await route.continue();
     });
-    const pending = page.waitForRequest(req => req.url().endsWith('/__studio/api/dashboards') && req.method() === 'POST');
+    const pending = page.waitForRequest(req => req.url().endsWith('/studio/api/dashboards') && req.method() === 'POST');
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     await pending;
     await page.keyboard.press('Tab');
@@ -137,11 +137,11 @@ test('a rename that meets someone else\'s change keeps the draft, shows what is 
     release();
     await expect(dialog).toHaveCount(0);
     await expect(card(page, `Retained ${suffix}`)).toBeVisible();
-    expect((await studioApi(request, '/__studio/api/dashboards')).dashboards.find(entry => entry.id === id).name).toBe(`Retained ${suffix}`);
+    expect((await studioApi(request, '/studio/api/dashboards')).dashboards.find(entry => entry.id === id).name).toBe(`Retained ${suffix}`);
   } finally {
     release?.();
     await page.unrouteAll({ behavior: 'wait' });
-    await page.goto('/home');
+    await page.goto('/dashboard');
     await archiveFixtures(request, [id]);
   }
 });
@@ -199,7 +199,7 @@ test('concurrent dashboard tabs isolate identical native proxy locators, private
     expect(errors).toEqual([]);
   } finally {
     await other.close();
-    await page.goto('/home');
+    await page.goto('/dashboard');
     await archiveFixtures(request, ids);
     await upstream.close();
   }

@@ -14,7 +14,7 @@ export async function seedNative(request, files, arrange) {
   if (!arrange) return state;
   const board = structuredClone(state.board);
   arrange(board);
-  return studioApi(request, '/home/__studio/api/board', { revision: state.revision, board });
+  return studioApi(request, '/dashboard/studio/api/board', { revision: state.revision, board });
 }
 
 export function playback(overrides = {}) {

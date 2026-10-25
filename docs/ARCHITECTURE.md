@@ -32,18 +32,20 @@ step; it adds no request-time compression or worker startup dependency.
 ## Dashboard identity and isolation
 
 The versioned registry `studio-dashboards.json` lives in the configuration root.
-The original dashboard has ID `default` and retains existing configuration and
-state paths. New dashboards have immutable UUIDs; configuration lives under
+The original dashboard has ID `default` and uses the root configuration and
+state paths. It has no slug until the first administrator (or, with sign-in
+off, the first visitor) chooses one; until then only Studio's own pages open. New dashboards have immutable UUIDs; configuration lives under
 `config/dashboards/<id>/` and state/history under `state/dashboards/<id>/`.
 Changing a name or slug changes routing without moving identity or files.
 Archiving retains data and reserves the address. Restoration reuses that identity.
-The default dashboard remains present and may be renamed or assigned a slug.
+The default dashboard remains present and may be renamed or given another slug,
+but not left without one once chosen.
 
 Registry writes are serialized, revision checked, validated and atomically
 replaced. The initialization marker prevents a missing registry from silently
 recreating an empty list over existing dashboards. Creates prepare the complete
 dashboard before publication; a failed preparation never exposes a partial page.
-Duplicates copy all nine files and layout identities, then diverge independently.
+Duplicates copy all nine files, layout identities and the dashboard logo, then diverge independently.
 Snapshots and recovery journals belong to their dashboard; a snapshot ID from
 another dashboard cannot be restored through the selected endpoint.
 
@@ -65,10 +67,10 @@ pool, not separate security principals or fully isolated operating systems.
 
 ## Health boundaries
 
-Global `/__studio/application-ready` checks a valid registry, writable shared
+Global `/studio/application-ready` checks a valid registry, writable shared
 storage and packaged standalone runtime files/assets without launching a worker.
-It is the Docker health command. Selected `/[slug]/__studio/config-ready` checks
-that dashboard's files and journal; `/[slug]/__studio/ready` adds its native
+It is the Docker health command. Selected `/[slug]/studio/config-ready` checks
+that dashboard's files and journal; `/[slug]/studio/ready` adds its native
 build/protocol handshake. Root diagnostic paths select the original dashboard.
 A damaged default settings file can make that selected dashboard unavailable
 without restarting the container or blocking healthy named dashboards, shared
@@ -82,7 +84,7 @@ State version 2 has a 12-column board, independently identified panels, and one-
 Newly reconciled panels use the same first-free row-major placement as the
 original allocator. A sparse 12-column occupancy index and cursors per rectangle
 size avoid repeatedly scanning every prior rectangle. Persisted positions,
-legacy layout handling, stack collapse, identity and geometry limits are
+stack collapse, identity and geometry limits are
 unchanged. The index is built only when a new placement is needed; it does not
 allocate a dense grid up to every distant stored coordinate. The existing
 4,096-panel ceiling remains a validation bound, not a device performance promise.
@@ -118,10 +120,10 @@ use transient navigation direction while native hosts stay mounted.
 ## Input handling
 
 Pointer, touch and keyboard input share one arrangement model. Arranging
-happens only on the editor page (`/<slug>/__studio/edit`, served by the
+happens only on the editor page (`/<slug>/studio/edit`, served by the
 dashboard's worker as `/studio-edit`); the live dashboard has no hold,
 context-menu or long-press path into editing, and the settings page
-(`/<slug>/__studio/settings`, `/studio-settings`) opens the settings dialog
+(`/<slug>/studio/settings`, `/studio-settings`) opens the settings dialog
 over the live board. Both pages need the arrange level; below it the
 controller sends the visitor back to the live dashboard. Panel bodies use
 `touch-action: pan-y`, so vertical page and content scrolling stay native,
@@ -156,7 +158,7 @@ retained descriptors and reports unavailability. Refresh itself creates no
 snapshot or background persistent write.
 
 The following paths are relative to the selected dashboard's
-`/__studio/api/` prefix. Freshness is explicit, without a timer or TTL that writes
+`/studio/api/` prefix. Freshness is explicit, without a timer or TTL that writes
 configuration in the background:
 
 | Operation | Discovery policy |
@@ -195,7 +197,7 @@ Every mutation validates the candidate content and generated state before creati
 
 Each snapshot file is JSON with `version` 1, `createdAt`, `revision`, `changedFiles`, `before` (the managed files' previous bytes) and `afterHashes`. Snapshots written since this field was added also carry `action`: a fixed code chosen by the server for the endpoint that made the change (`arrangement-saved`, `settings-saved`, `files-saved`, `snapshot-restored`, `dashboard-imported`, `discovered-panel-hidden`/`-shown`, and `service-`, `service-widget-`, `info-widget-` or `bookmark-` followed by `added`, `edited` or `deleted`). It never contains request text. Older files without it still list (with `action: null`), restore, export and import; the editor shows them as "Saved change". Listing and export drop an unrecognized stored value. Import accepts an optional `action` that is a short lowercase code and ignores it; any other value is rejected as unsupported metadata.
 
-Snapshots default to 25, with configurable retention. Their ordering uses a logical timestamp greater than the last retained snapshot, so saves in the same millisecond, a backward wall-clock change, and process restart do not prune a newer save as if it were older. The displayed creation time remains the actual clock time. A live journal's snapshot is never pruned. Read/export operations and playback do not create snapshots. Legacy four-file recovery material can be restored without erasing newer optional native files.
+Snapshots default to 25, with configurable retention. Their ordering uses a logical timestamp greater than the last retained snapshot, so saves in the same millisecond, a backward wall-clock change, and process restart do not prune a newer save as if it were older. The displayed creation time remains the actual clock time. A live journal's snapshot is never pruned. Read/export operations and playback do not create snapshots.
 
 Complete exports and downloaded full snapshots can be imported into another Studio instance. Import requires all nine files plus state.json, validates the complete archive before any snapshot or write, uses the destination's current revision, and follows the same journaled replacement path. It creates a recovery snapshot of the destination first. Unknown filenames and incomplete archives are rejected. Discovery cache entries from the old destination are discarded; imported external sources remain unavailable until rediscovery. Environment variables, mounted secrets, sockets, and external service prerequisites are deployment inputs and are not included in the archive.
 
@@ -219,14 +221,14 @@ unknown, renamed-away or archived dashboard address receive a small static
 `404` page with no script and no reflected request text; API and fetch callers
 keep the JSON error.
 
-Exact Host checks apply to requests. Both Studio `/__studio/` and native `/api/`
+Exact Host checks apply to requests. Both Studio `/studio/` and native `/api/`
 routes, after selecting the dashboard, reject browser Fetch Metadata contexts of
 `cross-site` or `same-site`; an Origin header must match the configured public
 origin and accepted host. Native actions retain same-origin and direct
 non-browser use without requiring the Studio-only write header. A direct client
 without Origin is not authenticated by these checks.
 
-GET `/__studio/api/board` provides safe panel metadata and geometry. GET `/__studio/api/state` is the trusted editor's full native configuration response and can contain secrets already present in the local files. POST endpoints for board, service, service-widget, info-widget, bookmark, settings, save, restore, import, and discovery-visibility require the current revision and the editor request header. Export and snapshot endpoints remain behind the same private deployment boundary.
+GET `/studio/api/board` provides safe panel metadata and geometry. GET `/studio/api/state` is the trusted editor's full native configuration response and can contain secrets already present in the local files. POST endpoints for board, service, service-widget, info-widget, bookmark, settings, save, restore, import, and discovery-visibility require the current revision and the editor request header. Export and snapshot endpoints remain behind the same private deployment boundary.
 
 Native `/api/studio/data` supplies sanitized rendering data. The writer and renderer expose the same nine-file configuration fingerprint, excluding layout-only state. The renderer verifies file bytes and local file identities before and after its native reads, returning a retryable private error if a write or rollback crosses that read. The file identity stamps stay server-local. The client renders only a matched board/native-data pair, preserving hidden, inert healthy hosts while refreshed data is unavailable. A saved response is adopted before refreshing widgets; Retry refresh never repeats a committed write. An arrangement draft retains the revision and source data it was created against, so an external edit reaches the existing conflict path instead of silently reinterpreting stale locators.
 
@@ -294,7 +296,7 @@ Studio sign-in ([AUTHENTICATION.md](AUTHENTICATION.md)), enforced in the
 controller in front of every worker: an anonymous request reaches only the
 sign-in pages and immutable build assets; a member reaches only dashboards
 shared with them, at view or arrange level; everything else under
-`/__studio/` needs an administrator (default deny), and raw file saves,
+`/studio/` needs an administrator (default deny), and raw file saves,
 imports, exports, restores and snapshot reads also need a recent sign-in. The
 session cookie is stripped before requests reach a worker, Homepage's own
 authentication stays off, and its MCP endpoint is refused. With

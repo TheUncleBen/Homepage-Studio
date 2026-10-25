@@ -29,7 +29,7 @@ Then anyone who passes the proxy can view and edit every dashboard on the
 host, read the configuration, including secrets written into the files,
 export it, and create or archive dashboards. Dashboard addresses such as
 `/admin` don't change that: they're addresses, not permissions. Protect the
-**whole** origin, not selected paths: the editor API (`/__studio/...`), the
+**whole** origin, not selected paths: the editor API (`/studio/...`), the
 native widget API (`/api/...` and `/<dashboard>/api/...`) and the shared
 assets all live on it.
 
@@ -37,10 +37,10 @@ assets all live on it.
 
 | Requirement | Why |
 | --- | --- |
-| Serve Studio at the **root** of its own hostname (`https://homepage.example.test/`), not under a path | Dashboards are the first path segment, and the shared assets and `/__studio/` endpoints are absolute. `STUDIO_PUBLIC_ORIGIN` can't have a path |
+| Serve Studio at the **root** of its own hostname (`https://homepage.example.test/`), not under a path | Dashboards are the first path segment, and the shared assets and `/studio/` endpoints are absolute. `STUDIO_PUBLIC_ORIGIN` can't have a path |
 | **Pass the original `Host` header**, matching `STUDIO_PUBLIC_ORIGIN` | Studio answers only that exact host (and port). Anything else gets `403` *This dashboard address is not in HOMEPAGE_ALLOWED_HOSTS.* |
 | Pass the full path and query unchanged | Don't strip or rewrite the dashboard segment. Studio picks the dashboard from the path alone, never from cookies, `Referer` or forwarded headers |
-| Route the **entire** hostname to Studio | Including `/_next/static/`, `/__studio/` and the icons and images at the root |
+| Route the **entire** hostname to Studio | Including `/_next/static/`, `/studio/` and the icons and images at the root |
 | Allow request bodies of at least **40 MiB** if you'll import dashboards | See [request limits](#request-limits). Everyday saves need far less |
 | Don't compress what's already compressed | Studio serves pre-compressed Brotli/gzip build files with `Vary: Accept-Encoding`. Respect `Content-Encoding` and `Vary`; don't add a second encoding |
 | A valid certificate | Your choice; Studio doesn't care, but browsers do |
@@ -256,7 +256,7 @@ curl -sI https://homepage.example.test/ | grep -i -E 'frame|nosniff|referrer'
 # x-content-type-options: nosniff
 # referrer-policy: same-origin
 
-curl -s https://homepage.example.test/__studio/application-ready
+curl -s https://homepage.example.test/studio/application-ready
 # {"status":"ready"}
 ```
 
