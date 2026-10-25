@@ -731,7 +731,7 @@
         h('option', { value: '', text: admin ? 'None: open the Dashboards page' : 'None: use my group’s default' }),
         shared.map(entry => h('option', { value: entry.id, text: entry.name, selected: entry.id === user.defaultDashboardId })));
       const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
-      return section('Default dashboard', admin ? 'The bare address opens the Dashboards page unless you choose a dashboard here.' : 'The dashboard the bare address opens for you. Without a choice, your group’s default opens, or the Dashboards page.',
+      return section('Default dashboard', admin ? 'This site’s address opens the Dashboards page unless you choose a dashboard here.' : 'The dashboard this site’s address opens for you. Without a choice, your group’s default opens, or the Dashboards page.',
         h('form', { class: 'stack', onsubmit: event => { event.preventDefault(); return busy(save, 'Saving…', () => update(() => api('account/default-dashboard', { dashboardId: select.value || null }), box, 'Default dashboard saved.')); } },
           field('Opens at ' + location.host, select), box, h('div', { class: 'actions' }, save)));
     }
@@ -1088,7 +1088,7 @@
           localGroups.length ? h('fieldset', {}, h('legend', { text: 'Groups' }), groupBoxes.map(item => check(item.group.name, item.input))) : null,
           user.oidcGroups.length ? h('p', { class: 'small muted', text: `Provider groups: ${user.oidcGroups.join(', ')}` }) : null,
           field('Session policy', policy, 'A personal policy wins. Otherwise the strictest of their groups’ policies applies, or the default.'),
-          field('Default dashboard', defaultDashboard, 'What the bare address opens for them. They can change it in My account. It only opens if they can see that dashboard.'),
+          field('Default dashboard', defaultDashboard, 'What this site’s address opens for them. They can change it in My account. It only opens if they can see that dashboard.'),
           box,
           h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save),
           h('details', { class: 'more-actions' }, h('summary', { text: 'More actions' }), h('div', { class: 'action-grid' }, actions)));
@@ -1115,7 +1115,7 @@
           await busy(save, 'Saving…', async () => { if (await act(() => api('admin/group', change), box, 'Group saved.')) close(); });
         } },
           field('Name', name, group.kind === 'idp' ? `Named by ${view.oidc?.name ?? 'the identity provider'}.` : undefined),
-          field('Default dashboard', defaultDashboard, 'What the bare address opens for members of this group, if they can see it and haven’t chosen their own.'),
+          field('Default dashboard', defaultDashboard, 'What this site’s address opens for members of this group, if they can see it and haven’t chosen their own.'),
           field('Session policy', policy),
           box,
           h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save),
@@ -1381,7 +1381,7 @@
     }
     async function setDefault(id, button) {
       await busy(button, 'Saving…', async () => {
-        try { await api('account/default-dashboard', { dashboardId: id }); await reload(id ? 'Saved. The bare address now opens it.' : (isAdmin ? 'Saved. The bare address opens this page again.' : 'Saved.')); }
+        try { await api('account/default-dashboard', { dashboardId: id }); await reload(id ? 'Saved. This site’s address now opens it.' : (isAdmin ? 'Saved. This site’s address opens this page again.' : 'Saved.')); }
         catch (error) { failure(message, error); }
       });
     }
@@ -1430,8 +1430,8 @@
       const archived = view.dashboards.filter(entry => entry.archived);
       const landing = view.dashboards.find(entry => entry.id === view.landingId);
       const lede = !view.authEnabled ? 'Every dashboard on this server. Open one, or change it from here.'
-        : isAdmin ? (landing ? `The bare address opens ${landing.name}, your default. Clear it to open this page instead.` : 'The bare address opens this page. You can make a dashboard your default to open it instead.')
-          : landing ? `The bare address opens ${landing.name}.` : 'The bare address opens this page until you choose a default dashboard.';
+        : isAdmin ? (landing ? `This site’s address opens ${landing.name}, your default. Clear it to open this page instead.` : 'This site’s address opens this page. You can make a dashboard your default to open it instead.')
+          : landing ? `This site’s address opens ${landing.name}.` : 'This site’s address opens this page until you choose a default dashboard.';
       const create = isAdmin ? h('button', { type: 'button', class: 'primary', text: 'New dashboard', onclick: () => openDialog('New dashboard', close => nameAndAddress(close)) }) : null;
       const parts = [
         h('div', { class: 'page-title' }, h('div', {}, h('h1', { text: 'Dashboards' }), h('p', { class: 'lede', text: lede })), create),

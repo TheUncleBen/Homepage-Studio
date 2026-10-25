@@ -142,8 +142,10 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .page-title { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 20px; }
 .page-title h1 { margin: 0 0 4px; }
 .page-title .lede { margin: 0; }
-.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); gap: 16px; }
-.dashboard-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 14px; align-content: start; text-align: center; }
+/* Cards keep their own height (an open More actions doesn't stretch its
+   neighbours) and a part-filled row sits centred. */
+.dashboard-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 16px; }
+.dashboard-card { flex: 1 1 19rem; min-width: min(100%, 19rem); max-width: 22.5rem; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 14px; align-content: start; text-align: center; }
 .dashboard-card.archived { opacity: 0.85; }
 .dashboard-card-head h2 { margin: 0 0 2px; font-size: 1.125rem; overflow-wrap: anywhere; }
 .dashboard-card-head p { margin: 0; overflow-wrap: anywhere; }
@@ -263,6 +265,10 @@ dialog::backdrop { background: rgb(0 0 0 / 0.6); }
 .more-actions > summary { cursor: pointer; width: max-content; margin: 0 auto; padding: 6px 10px; border-radius: 8px; color: var(--muted); font-weight: 600; }
 .more-actions > summary:hover { color: var(--text); background: var(--raised); }
 .more-actions[open] > summary { margin-bottom: 12px; }
+/* A card is too narrow for two columns of these labels: one column keeps
+   every button one line and the same height. */
+.dashboard-card .action-grid { grid-template-columns: 1fr; }
+.dashboard-card .action-grid > :last-child:nth-child(odd) { width: 100%; }
 
 @media (max-width: 680px) {
   .top-bar { padding: 0 12px; }

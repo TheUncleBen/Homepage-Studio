@@ -64,8 +64,10 @@ body {
 }
 /* The one top bar on every Studio page; the Studio pages draw the same bar
    (server/auth/ui/app.css, .top-bar). Keep the two in step. It spans the
-   full window width even inside the centred board. */
+   full window width even inside the centred board. It uses the Studio pages'
+   font rather than the dashboard's, so both bars look alike. */
 .studio-topbar {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   height: 56px;
   display: flex;
   align-items: center;
@@ -1634,6 +1636,18 @@ body {
   }
   .studio-topbar {
     padding: 0 12px;
+  }
+  /* The editor's tools pair up on a phone; a lone last tool sits centred
+     at the same width rather than stranded on the left. */
+  .studio-edit-mode .studio-board-toolbar {
+    justify-content: center;
+  }
+  .studio-edit-mode .studio-board-toolbar > .studio-button {
+    flex: 1 1 calc(50% - 4.5px);
+    max-width: calc(50% - 4.5px);
+  }
+  .studio-edit-mode .studio-toolbar-spacer {
+    display: none;
   }
   .studio-wide-only {
     display: none !important;
