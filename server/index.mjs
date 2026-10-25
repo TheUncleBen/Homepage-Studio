@@ -575,7 +575,7 @@ export function createStudioServer(options = {}) {
   const deploymentName = readDeploymentName(options.deploymentName ?? process.env.STUDIO_DEPLOYMENT_NAME);
   const authConfig = readAuthConfig(options);
   let registryForAuth;
-  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards }) : null;
+  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent }) : null;
   // Administration's name for the deployment, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
   const platform = createPlatformStore({ configRoot });

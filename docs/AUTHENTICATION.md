@@ -316,6 +316,11 @@ used) and, if an administrator allows it, sign-in codes. Without it,
 administrators send invitation links themselves and reset accounts from
 **People**.
 
+Each email carries the deployment's name and the Studio logo, a button in the
+platform's accent colour (**Administration → Appearance**) with the link
+written out underneath, and a plain-text copy for mail apps that don't show
+HTML. Security alerts link to **My account**.
+
 ```env
 STUDIO_SMTP_HOST=smtp.example.test
 STUDIO_SMTP_PORT=587                  # 465 uses TLS from the start; other ports must offer STARTTLS

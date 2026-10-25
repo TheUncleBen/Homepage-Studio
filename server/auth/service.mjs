@@ -144,12 +144,13 @@ function activeAdmins(data) {
   return data.users.filter(user => !user.disabled && user.status === 'active' && effectiveRole(data, user, user.source === 'oidc' ? 'oidc' : 'local') === 'admin');
 }
 
-export function createAuthService({ config, stateRoot, now = () => Date.now(), listDashboards = async () => [] }) {
+export function createAuthService({ config, stateRoot, now = () => Date.now(), listDashboards = async () => [], mailAccent }) {
   // The deployment's name: Administration's setting, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (store.ready && store.read().settings.deploymentName) || config.deploymentName;
   const store = createAuthStore({ stateRoot });
   const passkeys = createPasskeys({ ...config, rpName: siteName });
-  const mailer = createMailer(config.smtp, siteName);
+  // Email buttons use the platform's accent colour.
+  const mailer = createMailer(config.smtp, siteName, mailAccent);
   const oidc = createOidc(config.oidc, config);
   const throttle = createThrottle(now);
   const pending = new Map();
@@ -230,14 +231,15 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       return { sent: false, reason };
     }
   }
-  async function notify(user, event, to = user.email) {
+  // A security alert: a short title (the subject and heading) and what happened.
+  async function notify(user, title, event, to = user.email) {
     if (!mailer || !to) return;
-    await sendMail('Security alert', user, to, mailMessages(siteName()).alert({ name: user.displayName || user.username, event }));
+    await sendMail('Security alert', user, to, mailMessages(siteName()).alert({ name: user.displayName || user.username, title, event, link: new URL('/studio/account', config.origin).href }));
   }
   // An email change is announced to the old address as well as the new one.
-  async function notifyEmailChange(user, oldEmail, event) {
-    await notify(user, event);
-    if (oldEmail && oldEmail.toLowerCase() !== (user.email ?? '').toLowerCase()) await notify(user, event, oldEmail);
+  async function notifyEmailChange(user, oldEmail, title, event) {
+    await notify(user, title, event);
+    if (oldEmail && oldEmail.toLowerCase() !== (user.email ?? '').toLowerCase()) await notify(user, title, event, oldEmail);
   }
 
   // ---- Sessions -----------------------------------------------------------
@@ -579,12 +581,12 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       return { ok: true };
     }
     if (entry.intent === 'claim') {
-      if (body.method === 'backup') await notify(store.read().users.find(item => item.id === user.id), 'A backup code was used to confirm your local account for linking. Generate new codes if you are running low.');
+      if (body.method === 'backup') await notify(store.read().users.find(item => item.id === user.id), 'A backup code was used', 'A backup code was used to confirm your local account for linking. Generate new codes if you are running low.');
       return claimed(req, current, user);
     }
     await createSession(req, res, user, { method: 'local', remember: entry.remember });
     await audit('signed-in', { userId: user.id, method: 'password+' + body.method }, req);
-    if (body.method === 'backup') await notify(store.read().users.find(item => item.id === user.id), 'A backup code was used to sign in. Generate new codes if you are running low.');
+    if (body.method === 'backup') await notify(store.read().users.find(item => item.id === user.id), 'A backup code was used', 'A backup code was used to sign in. Generate new codes if you are running low.');
     return { ok: true, backupCodesLeft: findUser(store.read(), user.id).backupCodes.filter(code => !code.used).length };
   }
 
@@ -853,7 +855,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     throttle.success(keys);
     await createSession(req, res, findUser(store.read(), user.id), { method: 'local' });
     await audit('password-reset', { userId: user.id, via: 'email' }, req);
-    await notify(user, 'Your password was reset using an emailed link. Other signed-in devices were signed out.');
+    await notify(user, 'Your password was reset', 'Your password was reset using an emailed link. Other signed-in devices were signed out.');
     return { ok: true };
   }
 
@@ -884,7 +886,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     });
     await createSession(req, res, user, { method: 'local', recovery: true, remember: false });
     await audit('recovery-used', { userId: user.id, promoted: Boolean(request.promote) }, req);
-    await notify(user, 'Someone used the command-line recovery link to sign in to your account.');
+    await notify(user, 'A recovery link was used', 'Someone used the command-line recovery link to sign in to your account.');
     return { ok: true };
   }
 
@@ -953,7 +955,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         if (renaming) user.username = username;
       });
       await audit('profile-changed', { userId: current.user.id, ...(renaming ? { username: { from: before, to: username } } : {}) });
-      if (renaming) await notify({ ...current.user, username }, `Your Studio username was changed from "${before}" to "${username}". Use the new one to sign in.`);
+      if (renaming) await notify({ ...current.user, username }, 'Your username was changed', `Your Studio username was changed from "${before}" to "${username}". Use the new one to sign in.`);
       return accountView(await refreshed(current));
     },
     async password(current, body) {
@@ -963,7 +965,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       const hash = await hashPassword(body.password);
       await changeUser(current, user => { user.password = hash; }, 'password-changed');
       await store.sessions.remove(item => item.userId === current.user.id && item.id !== current.session.id);
-      await notify(current.user, 'Your password was changed. Other signed-in devices were signed out.');
+      await notify(current.user, 'Your password was changed', 'Your password was changed. Other signed-in devices were signed out.');
       return { ok: true };
     },
     async totpStart(current) {
@@ -980,13 +982,13 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       if (step === null) fail("That code didn't match. Check the time on your phone and try the newest code.", 'TOTP_INVALID');
       pending.delete(tokenHash(body.token));
       await changeUser(current, user => { user.totp = { secret: sealSecret(entry.secret, config.key), lastStep: step, createdAt: now() }; }, 'totp-added');
-      await notify(current.user, 'An authenticator app was set up for your account.');
+      await notify(current.user, 'Authenticator app added', 'An authenticator app was set up for your account.');
       return accountView(await refreshed(current));
     },
     async totpRemove(current) {
       requireFresh(current);
       await changeUser(current, user => { user.totp = null; }, 'totp-removed');
-      await notify(current.user, 'The authenticator app was removed from your account.');
+      await notify(current.user, 'Authenticator app removed', 'The authenticator app was removed from your account.');
       return accountView(await refreshed(current));
     },
     async passkeyOptions(current) {
@@ -1009,7 +1011,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         if ((user.passkeys ?? []).length >= 20) fail('You can register up to 20 passkeys.', 'PASSKEY_LIMIT');
         user.passkeys = [...(user.passkeys ?? []), { ...credential, name, createdAt: now(), lastUsedAt: null }];
       }, 'passkey-added');
-      await notify(current.user, `A passkey named "${name}" was added to your account.`);
+      await notify(current.user, 'Passkey added', `A passkey named "${name}" was added to your account.`);
       return accountView(await refreshed(current));
     },
     async passkeyRename(current, body) {
@@ -1024,14 +1026,14 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         user.passkeys = (user.passkeys ?? []).filter(item => item.id !== body?.id);
         if (user.passkeys.length === before) fail('That passkey no longer exists.', 'NOT_FOUND', 404);
       }, 'passkey-removed');
-      await notify(current.user, 'A passkey was removed from your account.');
+      await notify(current.user, 'Passkey removed', 'A passkey was removed from your account.');
       return accountView(await refreshed(current));
     },
     async backupCodes(current) {
       requireFresh(current);
       const backup = newBackupCodes();
       await changeUser(current, user => { user.backupCodes = backup.stored; }, 'backup-codes-regenerated');
-      await notify(current.user, 'New backup codes were generated. The old ones no longer work.');
+      await notify(current.user, 'New backup codes', 'New backup codes were generated. The old ones no longer work.');
       return { backupCodes: backup.codes };
     },
     async unlink(current) {
@@ -1040,7 +1042,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       await store.mutate(data => { Object.assign(findUser(data, current.user.id), { oidc: null, oidcGroups: [], providerAdmin: false, emailFromProvider: false, displayNameFromProvider: false }); });
       await store.sessions.remove(item => item.userId === current.user.id && item.method === 'oidc' && item.id !== current.session.id);
       await audit('identity-unlinked', { userId: current.user.id });
-      await notify(current.user, `Your ${oidc?.name ?? 'single sign-on'} account was unlinked. It can no longer sign in to Studio as you.`);
+      await notify(current.user, 'Single sign-on unlinked', `Your ${oidc?.name ?? 'single sign-on'} account was unlinked. It can no longer sign in to Studio as you.`);
       if (current.session.method === 'oidc') await store.sessions.remove(item => item.id === current.session.id);
       return accountView({ ...current, session: { ...current.session, method: 'local' }, user: findUser(store.read(), current.user.id) });
     },
@@ -1215,7 +1217,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       });
       await store.sessions.remove(item => item.userId === user.id && item.method === 'oidc' && item.id !== current.session.id);
       await audit('identity-unlinked', { userId: user.id, by: current.user.id });
-      await notify(user, `An administrator unlinked your ${oidc?.name ?? 'single sign-on'} account. It can no longer sign in to Studio as you.`);
+      await notify(user, 'Single sign-on unlinked', `An administrator unlinked your ${oidc?.name ?? 'single sign-on'} account. It can no longer sign in to Studio as you.`);
       return admin.overview(current);
     },
     async remove(current, body) {
@@ -1480,7 +1482,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       return target;
     });
     lastProviderSignIn = { at: now(), refreshToken: Boolean(result.refreshToken), emailUnverified: Boolean(result.emailUnverified) };
-    if (emailChange && user.source === 'local') await notifyEmailChange(user, emailChange.from, `Your email address in Studio was updated to match your ${oidc.name} account.`);
+    if (emailChange && user.source === 'local') await notifyEmailChange(user, emailChange.from, 'Your email address was updated', `Your email address in Studio was updated to match your ${oidc.name} account.`);
     const oidcState = providerSessionState(result);
     if (flow.intent === 'reauth') {
       await refreshSession(res, current.session, { method: 'oidc', oidc: oidcState });
@@ -1592,7 +1594,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     }
     await audit('identity-linked', { userId: local.id, by: current.user.id, merged: merged?.id ?? null, emailChanged: Boolean(entry.email && entry.email !== oldEmail) }, req);
     const who = entry.providerUsername ? ` (${entry.providerUsername})` : '';
-    await notifyEmailChange(local, oldEmail, `Your ${oidc.name} account${who} was linked to your Studio account "${local.username}". It can now sign in to Studio as you.${merged ? ` Its separate Studio account "${merged.username}" was merged into yours.` : ''} Other signed-in devices were signed out.`);
+    await notifyEmailChange(local, oldEmail, 'Single sign-on linked', `Your ${oidc.name} account${who} was linked to your Studio account "${local.username}". It can now sign in to Studio as you.${merged ? ` Its separate Studio account "${merged.username}" was merged into yours.` : ''} Other signed-in devices were signed out.`);
     return { ok: true };
   }
 
