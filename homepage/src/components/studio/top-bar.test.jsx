@@ -36,6 +36,10 @@ describe("top bar", () => {
     // Sign-in off: everyone is an administrator and there is no account menu.
     expect(screen.getByRole("link", { name: "Administration" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Account:/ })).not.toBeInTheDocument();
+    // On a phone the links fold into a menu of their own.
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    expect(screen.getByRole("menuitem", { name: "Dashboards" })).toHaveAttribute("href", "/studio/dashboards");
+    expect(screen.getByRole("menuitem", { name: "Administration" })).toHaveAttribute("href", "/studio/admin");
   });
 
   it("says when the list can't load and hides Administration from members", async () => {
@@ -51,5 +55,6 @@ describe("top bar", () => {
     expect(await screen.findByText("The list could not load. Use All dashboards.")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Administration" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Account: Sam" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
   });
 });

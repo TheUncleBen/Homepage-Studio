@@ -240,7 +240,8 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.studio-menu-narrow {
+.studio-menu-narrow,
+.studio-narrow-only {
   display: none !important;
 }
 .studio-board-toolbar[hidden] {
@@ -1726,6 +1727,9 @@ body {
     display: none !important;
   }
   .studio-menu-narrow {
+    display: block !important;
+  }
+  .studio-narrow-only {
     display: block !important;
   }
   .studio-top-actions {

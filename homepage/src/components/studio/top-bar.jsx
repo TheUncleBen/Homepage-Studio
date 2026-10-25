@@ -132,13 +132,40 @@ export default function StudioTopBar({ title, dashboardId, logo, access, onSearc
             <StudioIcon name="search" size={17} />
           </button>
         )}
-        <a className={`studio-top-link${user ? " studio-wide-only" : ""}`} href={DASHBOARDS_PAGE}>
+        <a className="studio-top-link studio-wide-only" href={DASHBOARDS_PAGE}>
           Dashboards
         </a>
         {isAdmin && (
-          <a className={`studio-top-link${user ? " studio-wide-only" : ""}`} href={ADMIN_PAGE}>
+          <a className="studio-top-link studio-wide-only" href={ADMIN_PAGE}>
             Administration
           </a>
+        )}
+        {/* On a phone the links fold into the account menu; with sign-in
+            off, into a menu of their own. */}
+        {!user && (
+          <div className="studio-account-menu studio-narrow-only" ref={menu}>
+            <button
+              type="button"
+              className="studio-icon-button"
+              aria-haspopup="menu"
+              aria-expanded={open}
+              aria-label="Menu"
+              title="Menu"
+              onClick={() => setOpen((value) => !value)}
+            >
+              <StudioIcon name="menu" size={17} />
+            </button>
+            {open && (
+              <div className="studio-account-popover" role="menu">
+                <a role="menuitem" href={DASHBOARDS_PAGE}>
+                  Dashboards
+                </a>
+                <a role="menuitem" href={ADMIN_PAGE}>
+                  Administration
+                </a>
+              </div>
+            )}
+          </div>
         )}
         {user && (
           <div className="studio-account-menu" ref={menu}>

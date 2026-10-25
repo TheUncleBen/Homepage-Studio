@@ -600,6 +600,7 @@
     user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0',
     down: 'm6 9 6 6 6-6',
     grip: 'M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01',
+    menu: 'M4 7h16M4 12h16M4 17h16',
   };
   function icon(name, size = 17) {
     const ns = 'http://www.w3.org/2000/svg';
@@ -642,29 +643,34 @@
     popovers = [];
     const links = [['/studio/dashboards', 'Dashboards'], ...(isAdmin ? [['/studio/admin', 'Administration']] : [])];
     const linkNode = ([href, label], extra = {}) => h('a', { href, 'aria-current': href === current ? 'page' : undefined, text: label, ...extra });
-    let menu = null;
+    // On a phone the links fold into the account menu; with sign-in off,
+    // into a menu of their own.
+    let items, button;
     if (user) {
       const name = user.displayName || user.username;
       const out = h('button', { type: 'button', role: 'menuitem', text: 'Sign out' });
       out.addEventListener('click', () => signOut(out));
-      const popover = h('div', { class: 'account-popover', role: 'menu', hidden: true },
-        h('p', { class: 'account-name', text: name }),
+      items = [h('p', { class: 'account-name', text: name }),
         links.map(link => linkNode(link, { role: 'menuitem', class: 'narrow-only' })),
-        linkNode(['/studio/account', 'My account'], { role: 'menuitem' }), out);
-      const button = h('button', { type: 'button', class: 'icon-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': 'Account: ' + name, title: name }, icon('user'));
-      const close = () => { popover.hidden = true; button.setAttribute('aria-expanded', 'false'); };
-      button.addEventListener('click', () => {
-        const opening = popover.hidden;
-        popover.hidden = !opening;
-        button.setAttribute('aria-expanded', String(opening));
-      });
-      menu = h('div', { class: 'account-menu' }, button, popover);
-      popovers.push({ holder: menu, button, popover, close });
+        linkNode(['/studio/account', 'My account'], { role: 'menuitem' }), out];
+      button = h('button', { type: 'button', class: 'icon-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': 'Account: ' + name, title: name }, icon('user'));
+    } else {
+      items = links.map(link => linkNode(link, { role: 'menuitem' }));
+      button = h('button', { type: 'button', class: 'icon-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': 'Menu', title: 'Menu' }, icon('menu'));
     }
+    const popover = h('div', { class: 'account-popover', role: 'menu', hidden: true }, ...items);
+    const close = () => { popover.hidden = true; button.setAttribute('aria-expanded', 'false'); };
+    button.addEventListener('click', () => {
+      const opening = popover.hidden;
+      popover.hidden = !opening;
+      button.setAttribute('aria-expanded', String(opening));
+    });
+    const menu = h('div', { class: 'account-menu' + (user ? '' : ' narrow-only') }, button, popover);
+    popovers.push({ holder: menu, button, popover, close });
     return h('header', { class: 'top-bar' },
       h('a', { class: 'top-brand', href: '/studio/dashboards', 'aria-label': 'All dashboards' }, logo(30)),
       switcher(deploymentName),
-      h('nav', { class: 'top-actions', 'aria-label': 'Studio' }, links.map(link => linkNode(link, { class: 'top-link' + (user ? ' wide-only' : '') })), menu));
+      h('nav', { class: 'top-actions', 'aria-label': 'Studio' }, links.map(link => linkNode(link, { class: 'top-link wide-only' })), menu));
   }
   // Pages redraw their chrome, so one pair of listeners serves the latest menu.
   let popovers = [];
