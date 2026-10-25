@@ -55,7 +55,7 @@ test('first administrator sets up with a passkey, signs out and signs back in wi
   await expect(page).toHaveURL(/\/studio\/admin$/);
   await expect(page.getByRole('heading', { name: 'Administration' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'People' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('cell', { name: /Studio Admin/ })).toBeVisible();
+  await expect(page.locator('.nav-row', { hasText: 'Studio Admin' })).toBeVisible();
 
   // An administrator without a default dashboard lands on the Dashboards
   // page. The live dashboard shows the account menu and no editing controls;
@@ -92,13 +92,15 @@ test('first administrator sets up with a passkey, signs out and signs back in wi
   // Groups reorder by dragging a row by its handle, and the order is saved.
   await page.goto('/studio/admin');
   await page.getByRole('tab', { name: 'Groups' }).click();
-  const rows = page.locator('ul.list > li.draggable');
+  const rows = page.locator('ul.reorder-list > li.draggable');
   for (const name of ['Alpha', 'Beta', 'Gamma']) {
-    await page.getByLabel('New group name').fill(name);
-    await page.getByRole('button', { name: 'Create group' }).click();
+    await page.getByRole('button', { name: 'New group' }).click();
+    const dialog = page.getByRole('dialog', { name: 'New group' });
+    await dialog.getByLabel('Name').fill(name);
+    await dialog.getByRole('button', { name: 'Create group' }).click();
     await expect(rows.filter({ hasText: name })).toHaveCount(1);
   }
-  const order = () => rows.evaluateAll(items => items.map(item => item.querySelector('strong').firstChild.textContent.replace(/^\d+\. /, '').trim()));
+  const order = () => rows.evaluateAll(items => items.map(item => item.querySelector('.nav-title > span').textContent.trim()));
   await expect.poll(order).toEqual(['Alpha', 'Beta', 'Gamma']);
   const handle = rows.nth(2).locator('.drag-handle');
   const from = await handle.boundingBox();

@@ -1485,7 +1485,20 @@ body {
 .studio-file-toolbar select {
   width: auto;
   min-width: 180px;
+  min-height: 36px;
   margin-right: auto;
+  padding: 0 34px 0 14px;
+  border: 0;
+  border-radius: 999px;
+  appearance: none;
+  background: var(--studio-raised)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 9 5-5 5 5M7 15l5 5 5-5'/%3E%3C/svg%3E")
+    right 14px center / 12px no-repeat;
+  font-weight: 550;
+  cursor: pointer;
+}
+.studio-file-toolbar {
+  gap: 8px;
 }
 .studio-snapshot {
   display: flex;
@@ -1844,14 +1857,21 @@ body {
   padding: 0 14px;
   border: 0;
   border-radius: 999px;
-  background: var(--studio-surface);
+  background: var(--studio-raised);
   color: var(--studio-text);
   font-size: 14px;
   font-weight: 550;
   white-space: nowrap;
 }
-.studio-pill-accent {
+.studio-group-body .studio-pill-button {
+  background: var(--studio-surface);
+}
+.studio-pill-accent,
+.studio-group-body .studio-pill-accent {
   background: var(--studio-accent-soft);
+}
+.studio-pill-button:disabled {
+  opacity: 0.5;
 }
 .studio-pill-button:hover:not(:disabled) {
   background: var(--studio-accent-soft);
@@ -2077,7 +2097,7 @@ body {
 .studio-config-form > .studio-segmented > button {
   flex: 1;
 }
-.studio-row-control > .studio-segmented {
+.studio-row-control > :is(.studio-segmented, .studio-switch) {
   justify-self: end;
 }
 .studio-row-stacked .studio-row-control > .studio-segmented {

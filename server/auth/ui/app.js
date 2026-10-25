@@ -54,6 +54,8 @@
     return h('div', { class: 'field' }, labelNode, input, hintNode);
   }
   function check(label, input, hint) {
+    // A checkbox is drawn as a switch (app.css, .check).
+    if (input.type === 'checkbox') input.setAttribute('role', 'switch');
     if (!hint) return h('label', { class: 'check' }, input, h('span', { text: label }));
     const id = 'h' + Math.random().toString(36).slice(2);
     input.setAttribute('aria-describedby', id);
@@ -80,11 +82,11 @@
   // Busy state for a button while a request runs, so a double click can't
   // send twice.
   async function busy(button, label, work) {
-    const original = button.textContent;
+    const original = [...button.childNodes];
     button.disabled = true;
     if (label) button.textContent = label;
     try { return await work(); }
-    finally { button.disabled = false; button.textContent = original; }
+    finally { button.disabled = false; button.replaceChildren(...original); }
   }
 
   // ---- Server calls ---------------------------------------------------------
@@ -604,6 +606,15 @@
     settings: 'M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4',
     check: 'm5 12 4 4L19 6',
     info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 11v6M12 7.5h.01',
+    chevron: 'm9 6 6 6-6 6',
+    plus: 'M12 5v14M5 12h14',
+    close: 'M6 6l12 12M18 6 6 18',
+    copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+    up: 'm18 15-6-6-6 6',
+    people: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14.5a6.5 6.5 0 0 1 3.5 5.5',
+    signOut: 'M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H3',
+    key: 'M15.5 8.5a3.5 3.5 0 1 1-3.5-3.5M12 8.5 4 16.5V20h3.5v-2H10v-2.5h2l2-2',
+    trash: 'M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3',
   };
   function icon(name, size = 17) {
     const ns = 'http://www.w3.org/2000/svg';
@@ -687,21 +698,141 @@
     for (const item of popovers) if (!item.popover.hidden) { item.close(); item.button.focus(); }
   });
   function pageChrome(current, user, ...body) {
-    return [topBar(current, user), h('div', { class: 'page-body' }, ...body)];
+    return [topBar(current, user), h('div', { class: 'page-body' + (current === '/studio/dashboards' ? '' : ' narrow') }, ...body)];
   }
   function section(title, description, ...children) {
     return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('div', {}, h('h2', { text: title }), description ? h('p', { class: 'small muted', text: description }) : null)), ...children);
   }
-  // Errors that need fresh confirmation offer a direct link to it.
+  // ---- Grouped lists ------------------------------------------------------------
+
+  // Studio's pages share the grouped-list look of the dashboard dialogs
+  // (homepage/src/components/studio/ui.jsx), modelled on iOS settings: a
+  // small title over a rounded group of rows. Anything that needs explaining
+  // sits behind an info button instead of on the page.
+  let uid = 0;
+  const nextId = prefix => `${prefix}-${++uid}`;
+  const ensureId = element => element.id || (element.id = nextId('f'));
+  function infoToggle(label, text) {
+    if (!text) return [null, null];
+    const id = nextId('info');
+    const callout = h('div', { class: 'info-callout', id, role: 'note', hidden: true }, text);
+    const button = h('button', { type: 'button', class: 'info-button', 'aria-label': 'About ' + label, 'aria-expanded': 'false', 'aria-controls': id }, icon('info', 16));
+    button.addEventListener('click', () => { callout.hidden = !callout.hidden; button.setAttribute('aria-expanded', String(!callout.hidden)); });
+    return [button, callout];
+  }
+  function group({ title, info, aside, body, className = '' } = {}, ...rows) {
+    const [infoButton, callout] = infoToggle(title || 'this', info);
+    const head = title || infoButton || aside ? h('header', { class: 'group-head' }, title ? h('h2', { text: title }) : null, infoButton, aside ? h('div', { class: 'group-aside' }, aside) : null) : null;
+    const content = body ?? h('div', { class: 'group-body' });
+    content.classList.add('group-body');
+    content.append(...rows.flat(Infinity).filter(Boolean));
+    return h('section', { class: ('group ' + className).trim() }, head, callout, content);
+  }
+  const FORM_CONTROL = /^(INPUT|SELECT|TEXTAREA)$/;
+  // A labelled row. Long controls (lists, editors) stack under the label.
+  function row(label, control, { info, detail, stacked = false, className = '' } = {}) {
+    const [infoButton, callout] = infoToggle(label, info);
+    const text = control && FORM_CONTROL.test(control.tagName) ? h('label', { for: ensureId(control), text: label }) : h('span', { text: label });
+    return h('div', { class: ['row-item', stacked ? 'stacked' : '', className].filter(Boolean).join(' ') },
+      h('div', { class: 'row-main' },
+        h('div', { class: 'row-label' }, h('span', { class: 'row-title' }, text, infoButton), detail ? h('small', { class: 'row-detail', text: detail }) : null),
+        control ? h('div', { class: 'row-control' }, control) : null),
+      callout);
+  }
+  // A read-only value on the right of a row.
+  const value = (text, mono = false) => h('span', { class: 'row-value' + (mono ? ' mono' : ''), text });
+  function toggle({ checked, label, disabled, onChange }) {
+    const button = h('button', { type: 'button', role: 'switch', class: 'switch', 'aria-checked': String(Boolean(checked)), 'aria-label': label, disabled }, h('span', { 'aria-hidden': 'true' }));
+    Object.defineProperty(button, 'checked', { get: () => button.getAttribute('aria-checked') === 'true', set: on => button.setAttribute('aria-checked', String(Boolean(on))) });
+    button.addEventListener('click', () => { button.checked = !button.checked; onChange?.(button.checked, button); });
+    return button;
+  }
+  // One choice from a few, as a radio group. Options are [value, text].
+  function segmented({ value: initial, options, label, disabled, onChange }) {
+    let current = initial;
+    const holder = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': label });
+    const buttons = options.map(([option, text]) => h('button', { type: 'button', role: 'radio', text, disabled, onclick: () => pick(option) }));
+    function sync() {
+      const index = Math.max(0, options.findIndex(([option]) => option === current));
+      buttons.forEach((button, position) => { button.setAttribute('aria-checked', String(options[position][0] === current)); button.tabIndex = position === index ? 0 : -1; });
+    }
+    function pick(option, focus) {
+      if (option === current) return;
+      current = option; sync();
+      if (focus) buttons[options.findIndex(([item]) => item === option)].focus();
+      onChange?.(option);
+    }
+    holder.addEventListener('keydown', event => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+      if (!step || disabled) return;
+      event.preventDefault();
+      const index = Math.max(0, options.findIndex(([option]) => option === current));
+      pick(options[(index + step + options.length) % options.length][0], true);
+    });
+    holder.append(...buttons);
+    sync();
+    Object.defineProperty(holder, 'value', { get: () => current });
+    return holder;
+  }
+  // A tappable row: opens a person, a policy, a passkey, ….
+  function navRow({ title, detail, badges, leading, trailing, onClick, href }) {
+    const body = [leading, h('span', { class: 'nav-text' }, h('span', { class: 'nav-title' }, h('span', { text: title }), badges), detail ? h('small', { text: detail }) : null), trailing, icon('chevron', 15)];
+    return href ? h('a', { class: 'nav-row', href }, body) : h('button', { type: 'button', class: 'nav-row', onclick: onClick }, body);
+  }
+  // An action inside a group: Add a passkey, Reset sign-in, Delete, ….
+  function actionRow(text, { iconName, danger, disabled, onClick, href } = {}) {
+    const body = [iconName ? icon(iconName, 17) : null, h('span', { text })];
+    const attrs = { class: 'action-row' + (danger ? ' danger' : '') };
+    return href ? h('a', { ...attrs, href }, body) : h('button', { ...attrs, type: 'button', disabled, onclick: onClick }, body);
+  }
+  function pill(text, { primary, iconName, ...attrs } = {}) {
+    return h('button', { type: 'button', class: 'pill' + (primary ? ' accent' : ''), ...attrs }, iconName ? icon(iconName, 16) : null, h('span', { text }));
+  }
+  const badge = (text, kind = '') => h('span', { class: ('badge ' + kind).trim(), text });
+  function avatar(name, kind = 'person') {
+    if (kind === 'group') return h('span', { class: 'avatar group-avatar', 'aria-hidden': 'true' }, icon('people', 17));
+    const letters = String(name || '?').trim().split(/\s+/).slice(0, 2).map(word => [...word][0] ?? '').join('').toUpperCase();
+    return h('span', { class: 'avatar', 'aria-hidden': 'true', text: letters || '?' });
+  }
+  // A tab's own actions, above its groups.
+  const toolbar = (...items) => h('div', { class: 'toolbar' }, ...items);
+  // A list of names (provider groups) as chips; editable unless locked.
+  function chipsEditor({ values, locked, label, placeholder = 'Add a group', onChange }) {
+    let list = [...values];
+    const holder = h('div', { class: 'chips' + (locked ? ' locked' : '') });
+    const input = locked ? null : h('input', { type: 'text', maxlength: 200, placeholder, 'aria-label': label, autocapitalize: 'none', spellcheck: 'false' });
+    function draw() {
+      put(holder, list.map((name, index) => h('span', { class: 'chip' }, h('span', { text: name }),
+        locked ? null : h('button', { type: 'button', class: 'chip-remove', 'aria-label': `Remove ${name}`, onclick: () => { list.splice(index, 1); draw(); onChange?.(); input.focus(); } }, icon('close', 13)))), input,
+      locked && !list.length ? h('span', { class: 'muted small', text: 'None' }) : null);
+    }
+    function add() {
+      const names = input.value.split(',').map(item => item.trim()).filter(Boolean).filter(item => !list.includes(item));
+      input.value = '';
+      if (!names.length) return;
+      list.push(...names); draw(); onChange?.(); input.focus();
+    }
+    input?.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); add(); }
+      else if (event.key === 'Backspace' && !input.value && list.length) { list.pop(); draw(); onChange?.(); input.focus(); }
+    });
+    input?.addEventListener('blur', add);
+    draw();
+    return { node: holder, values: () => { if (input?.value.trim()) add(); return [...list]; } };
+  }
+  // The buttons that end a dialog, kept in view while it scrolls.
+  const dialogActions = (...buttons) => h('div', { class: 'actions dialog-actions' }, ...buttons);
+
+  // Errors that need fresh confirmation offer a direct way to it.
   function failure(box, error) {
     if (error?.code === 'REAUTH_REQUIRED') {
-      box.className = 'notice warn'; box.setAttribute('role', 'alert');
-      put(box, 'Confirm it’s you before making this change. ', h('a', { href: reauthLink(), text: 'Confirm now' }));
+      box.className = 'notice warn with-action'; box.setAttribute('role', 'alert');
+      put(box, h('span', { text: 'Confirm it’s you before making this change.' }), h('a', { class: 'pill', href: reauthLink(), text: 'Confirm' }));
     } else say(box, error?.message ?? 'Something went wrong.');
   }
   function freshBanner(fresh) {
     if (fresh) return null;
-    return h('div', { class: 'notice warn', role: 'status' }, 'Security changes need a recent confirmation. ', h('a', { href: reauthLink(), text: 'Confirm it’s you' }), ' first, and you will not be asked again for a while.');
+    return h('div', { class: 'notice warn with-action', role: 'status' }, h('span', { text: 'Security changes need a recent confirmation.' }), h('a', { class: 'pill', href: reauthLink(), text: 'Confirm it’s you' }));
   }
   function openDialog(title, build) {
     const dialog = h('dialog', { 'aria-label': title });
@@ -741,16 +872,19 @@
       const user = view.user;
       const factors = user.factors;
       const local = user.source === 'local';
-      const parts = [h('h1', { text: 'My account' }), message];
+      const name = user.displayName || user.username;
+      const parts = [
+        h('h1', { text: 'My account' }),
+        h('div', { class: 'identity' }, avatar(name), h('div', {}, h('strong', { class: 'identity-name', text: name }), h('p', { class: 'muted', text: [name !== user.username ? user.username : null, user.role === 'admin' ? 'Administrator' : 'Member'].filter(Boolean).join(' · ') }))),
+        message,
+      ];
       if (view.pendingLink) parts.push(linkConfirmSection(view.pendingLink));
       if (view.recovery) parts.push(h('div', { class: 'notice warn', text: 'You signed in with a command-line recovery link. This session ends when you close the browser. Add a passkey or authenticator app now if you lost yours.' }));
       if (local) parts.push(freshBanner(view.fresh));
-      parts.push(profileSection(user));
-      parts.push(defaultDashboardSection(user));
-      if (local) parts.push(securitySection(user, factors));
+      parts.push(profileSection(user), defaultDashboardSection(user));
+      if (local) parts.push(securitySection(user, factors), passkeySection(factors));
       if (view.oidc) parts.push(linkSection(user));
-      parts.push(sessionsSection());
-      parts.push(policySection());
+      parts.push(sessionsSection(), policySection());
       render(...pageChrome('/studio/account', user, ...parts));
     }
     async function update(work, box, success) {
@@ -762,30 +896,31 @@
       const name = h('input', { type: 'text', autocomplete: 'name', maxlength: 100, value: user.displayName ?? '' });
       const managed = user.source !== 'local' || user.emailFromProvider;
       const email = h('input', { type: 'email', autocomplete: 'email', maxlength: 254, value: user.email ?? '', disabled: managed });
-      const save = h('button', { type: 'submit', class: 'primary', text: 'Save profile' });
-      return section('Profile', user.source === 'local' ? 'Your name and the address used for resets and security alerts.' : `Managed by ${view.oidc?.name ?? 'your identity provider'}; changes there appear at your next sign-in.`,
-        h('dl', { class: 'facts small' }, h('dt', { class: 'muted', text: 'Username' }), h('dd', { class: 'mono', text: user.username }), h('dt', { class: 'muted', text: 'Role' }), h('dd', { text: user.role === 'admin' ? 'Administrator' : 'Member' })),
-        h('form', { class: 'stack', onsubmit: event => { event.preventDefault(); return busy(save, 'Saving…', () => update(() => api('account/profile', { displayName: name.value, ...(managed ? {} : { email: email.value }) }), box, 'Profile saved.')); } },
-          field('Display name', name), field('Email', email, user.emailFromProvider ? `Follows your ${view.oidc?.name ?? 'single sign-on'} account. Change it there; Studio picks it up at your next sign-in with it.` : view.email ? 'Changing it needs a recent confirmation.' : 'Email is not set up on this server, so nothing is sent yet.'), box, h('div', { class: 'actions' }, save)));
+      const save = pill('Save', { primary: true, type: 'submit', hidden: true });
+      const changed = () => { save.hidden = name.value === (user.displayName ?? '') && (managed || email.value === (user.email ?? '')); };
+      name.addEventListener('input', changed); email.addEventListener('input', changed);
+      const provider = view.oidc?.name ?? 'your identity provider';
+      return h('form', { onsubmit: event => { event.preventDefault(); return busy(save, 'Saving…', () => update(() => api('account/profile', { displayName: name.value, ...(managed ? {} : { email: email.value }) }), box, 'Profile saved.')); } },
+        group({ title: 'Profile', aside: save, info: user.source === 'local' ? 'Your email is where password resets and security alerts go.' : `Managed by ${provider}. Changes there appear at your next sign-in.` },
+          row('Name', name),
+          row('Email', email, { info: user.emailFromProvider ? `Follows your ${view.oidc?.name ?? 'single sign-on'} account. Change it there; Studio picks it up at your next sign-in with it.` : view.email ? 'Changing it needs a recent confirmation.' : 'Email is not set up on this server, so nothing is sent yet.' })),
+        box);
     }
-    // The dashboard the bare address opens for this person.
+    // The dashboard the bare address opens for this person. It saves as soon
+    // as it changes.
     function defaultDashboardSection(user) {
       const box = notice();
       const admin = user.role === 'admin';
       const select = h('select', {},
-        h('option', { value: '', text: admin ? 'None: open the Dashboards page' : 'None: use my group’s default' }),
+        h('option', { value: '', text: admin ? 'Dashboards page' : 'My group’s default' }),
         shared.map(entry => h('option', { value: entry.id, text: entry.name, selected: entry.id === user.defaultDashboardId })));
-      const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
-      return section('Default dashboard', admin ? 'This site’s address opens the Dashboards page unless you choose a dashboard here.' : 'The dashboard this site’s address opens for you. Without a choice, your group’s default opens, or the Dashboards page.',
-        h('form', { class: 'stack', onsubmit: event => { event.preventDefault(); return busy(save, 'Saving…', () => update(() => api('account/default-dashboard', { dashboardId: select.value || null }), box, 'Default dashboard saved.')); } },
-          field('Opens at ' + location.host, select), box, h('div', { class: 'actions' }, save)));
+      select.addEventListener('change', () => update(() => api('account/default-dashboard', { dashboardId: select.value || null }), box, 'Default dashboard saved.'));
+      return [group({ title: 'Default dashboard', info: admin ? 'This site’s address opens the Dashboards page unless you choose a dashboard.' : 'The dashboard this site’s address opens for you. Without a choice, your group’s default opens, or the Dashboards page.' },
+        row('Opens at ' + location.host, select)), box];
     }
     function securitySection(user, factors) {
       const box = notice();
-      const items = [];
-      // Password
-      const passwordButton = h('button', { type: 'button', class: 'small-button', text: factors.password ? 'Change' : 'Set a password' });
-      passwordButton.addEventListener('click', () => openDialog(factors.password ? 'Change password' : 'Set a password', close => {
+      const changePassword = () => openDialog(factors.password ? 'Change password' : 'Set a password', close => {
         const passwords = passwordFields();
         const local = notice();
         const submit = h('button', { type: 'submit', class: 'primary', text: 'Save password' });
@@ -797,48 +932,39 @@
             try { await api('account/password', { password: passwords.password.value }); close(); view = await api('account'); draw(); say(message, 'Password saved. Other devices were signed out.', 'ok'); }
             catch (error) { failure(local, error); }
           });
-        } }, h('input', { type: 'text', autocomplete: 'username', value: user.username, hidden: true, readonly: true, tabindex: '-1', 'aria-hidden': 'true' }), ...passwords.nodes, local, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), submit));
+        } }, h('input', { type: 'text', autocomplete: 'username', value: user.username, hidden: true, readonly: true, tabindex: '-1', 'aria-hidden': 'true' }), ...passwords.nodes, local, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), submit));
+      });
+      const totpButton = factors.totp
+        ? pill('Remove', { onclick: () => confirmDialog('Remove authenticator app?', 'Codes from the app will stop working. You need a passkey to keep signing in.', 'Remove', async () => { view = await api('account/totp/remove', {}); draw(); say(message, 'Authenticator app removed.', 'ok'); }) })
+        : pill('Set up', { primary: true });
+      if (!factors.totp) totpButton.addEventListener('click', () => busy(totpButton, 'Preparing…', async () => {
+        try {
+          const setup = await api('account/totp/start', {});
+          openDialog('Set up an authenticator app', close => totpConfirm(setup, async code => { view = await api('account/totp/confirm', { token: setup.token, code }); close(); draw(); say(message, 'Authenticator app set up.', 'ok'); }));
+        } catch (error) { failure(box, error); }
       }));
-      items.push(h('li', { class: 'list-item' }, h('div', {}, h('strong', { text: 'Password' }), h('span', { class: 'small muted', text: factors.password ? 'Set. Used together with an authenticator app or another step.' : 'Not set. You sign in with a passkey.' })), passwordButton));
-      // Authenticator app
-      const totpActions = h('div', { class: 'row' });
-      if (factors.totp) {
-        const remove = h('button', { type: 'button', class: 'small-button', text: 'Remove' });
-        remove.addEventListener('click', () => confirmDialog('Remove authenticator app?', 'Codes from the app will stop working. You need a passkey to keep signing in.', 'Remove', async () => { view = await api('account/totp/remove', {}); draw(); say(message, 'Authenticator app removed.', 'ok'); }));
-        totpActions.append(remove);
-      } else {
-        const add = h('button', { type: 'button', class: 'small-button', text: 'Set up' });
-        add.addEventListener('click', () => busy(add, 'Preparing…', async () => {
-          try {
-            const setup = await api('account/totp/start', {});
-            openDialog('Set up an authenticator app', close => totpConfirm(setup, async code => { view = await api('account/totp/confirm', { token: setup.token, code }); close(); draw(); say(message, 'Authenticator app set up.', 'ok'); }));
-          } catch (error) { failure(box, error); }
-        }));
-        totpActions.append(add);
-      }
-      items.push(h('li', { class: 'list-item' }, h('div', {}, h('strong', { text: 'Authenticator app' }), h('span', { class: 'small muted', text: factors.totp ? 'Set up.' : 'Not set up.' })), totpActions));
-      // Backup codes
-      const regenerate = h('button', { type: 'button', class: 'small-button', text: 'Create new codes' });
-      regenerate.addEventListener('click', () => confirmDialog('Create new backup codes?', 'Your current backup codes will stop working.', 'Create new codes', async () => {
+      const regenerate = pill('New codes', { onclick: () => confirmDialog('Create new backup codes?', 'Your current backup codes will stop working.', 'Create new codes', async () => {
         const { backupCodes } = await api('account/backup-codes', {});
         openDialog('New backup codes', close => backupCodesView(backupCodes, { onDone: async () => { close(); view = await api('account'); draw(); }, doneLabel: 'Done' }));
-      }, { danger: false }));
-      items.push(h('li', { class: 'list-item' }, h('div', {}, h('strong', { text: 'Backup codes' }), h('span', { class: 'small ' + (factors.backupCodesLeft <= 3 ? '' : 'muted'), text: `${factors.backupCodesLeft} of 10 left.` })), regenerate));
-      // Passkeys
-      const passkeyList = h('ul', { class: 'list' }, factors.passkeys.map(passkey => {
-        const rename = h('button', { type: 'button', class: 'small-button', text: 'Rename' });
-        rename.addEventListener('click', () => openDialog('Rename passkey', close => {
-          const name = h('input', { type: 'text', maxlength: 60, value: passkey.name, required: true });
-          const local = notice();
-          const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
-          return h('form', { class: 'stack', onsubmit: async event => { event.preventDefault(); await busy(save, 'Saving…', async () => { try { view = await api('account/passkey/rename', { id: passkey.id, name: name.value }); close(); draw(); } catch (error) { failure(local, error); } }); } }, field('Name', name), local, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
-        }));
-        const remove = h('button', { type: 'button', class: 'small-button', text: 'Remove' });
-        remove.addEventListener('click', () => confirmDialog(`Remove “${passkey.name}”?`, 'This passkey will no longer sign you in. Remove it from the device or password manager as well.', 'Remove', async () => { view = await api('account/passkey/remove', { id: passkey.id }); draw(); say(message, 'Passkey removed.', 'ok'); }));
-        return h('li', { class: 'list-item' }, h('div', {}, h('strong', { text: passkey.name }), h('span', { class: 'small muted', text: `Added ${when(passkey.createdAt)} · ${passkey.lastUsedAt ? 'last used ' + ago(passkey.lastUsedAt) : 'not used to sign in yet'}` })), h('div', { class: 'row' }, rename, remove));
-      }));
-      const addPasskey = h('button', { type: 'button', class: 'primary', text: 'Add a passkey', disabled: !passkeysSupported() });
-      addPasskey.addEventListener('click', () => busy(addPasskey, 'Waiting for passkey…', async () => {
+      }, { danger: false }) });
+      return [group({ title: 'Sign-in methods', info: 'Keep at least a passkey, or a password with an authenticator app.' },
+        row('Password', pill(factors.password ? 'Change' : 'Set', { onclick: changePassword }), { detail: factors.password ? 'Set' : 'Not set: you sign in with a passkey' }),
+        row('Authenticator app', totpButton, { detail: factors.totp ? 'On' : 'Off' }),
+        row('Backup codes', regenerate, { detail: `${factors.backupCodesLeft} of 10 left`, className: factors.backupCodesLeft <= 3 ? 'attention' : '' })), box];
+    }
+    function passkeySection(factors) {
+      const box = notice();
+      const manage = passkey => openDialog(passkey.name, close => {
+        const name = h('input', { type: 'text', maxlength: 60, value: passkey.name, required: true });
+        const local = notice();
+        const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
+        const remove = actionRow('Remove passkey', { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog(`Remove “${passkey.name}”?`, 'This passkey will no longer sign you in. Remove it from the device or password manager as well.', 'Remove', async () => { view = await api('account/passkey/remove', { id: passkey.id }); draw(); say(message, 'Passkey removed.', 'ok'); }); } });
+        return h('form', { class: 'stack', onsubmit: async event => { event.preventDefault(); await busy(save, 'Saving…', async () => { try { view = await api('account/passkey/rename', { id: passkey.id, name: name.value }); close(); draw(); } catch (error) { failure(local, error); } }); } },
+          group({}, row('Name', name), row('Added', value(when(passkey.createdAt))), row('Last used', value(passkey.lastUsedAt ? ago(passkey.lastUsedAt) : 'Not yet'))),
+          group({}, remove), local, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
+      });
+      const add = actionRow('Add a passkey', { iconName: 'plus', disabled: !passkeysSupported() });
+      add.addEventListener('click', () => busy(add, 'Waiting for passkey…', async () => {
         say(box, '');
         try {
           const { token, options } = await api('account/passkey/options', {});
@@ -847,10 +973,9 @@
           draw(); say(message, 'Passkey added. You can rename it below.', 'ok');
         } catch (error) { if (error instanceof RequestError) failure(box, error); else say(box, passkeyError(error)); }
       }));
-      return section('Sign-in methods', 'Keep at least a passkey, or a password with an authenticator app.',
-        h('ul', { class: 'list' }, items), h('h3', { text: 'Passkeys' }),
-        factors.passkeys.length ? passkeyList : h('p', { class: 'small muted', text: 'No passkeys yet. A passkey is the quickest and safest way to sign in.' }),
-        box, passkeysSupported() ? null : h('p', { class: 'small muted center', text: 'This browser does not support passkeys.' }), h('div', { class: 'actions' }, addPasskey));
+      return [group({ title: 'Passkeys', info: passkeysSupported() ? 'A passkey is the quickest and safest way to sign in. It lives on your device or in your password manager.' : 'This browser does not support passkeys.' },
+        factors.passkeys.map(passkey => navRow({ leading: icon('key', 18), title: passkey.name, detail: passkey.lastUsedAt ? 'Last used ' + ago(passkey.lastUsedAt) : 'Not used to sign in yet', onClick: () => manage(passkey) })),
+        add), box];
     }
     // Shown after the provider step of a link, before anything changes.
     function linkConfirmSection(link) {
@@ -916,30 +1041,26 @@
       parts.push(form, exitLink('/studio/account', 'Cancel'));
       render(card(false, ...parts));
     }
+    function chips(names) {
+      return h('div', { class: 'chips locked' }, names.map(name => h('span', { class: 'chip', text: name })));
+    }
     function linkSection(user) {
       const name = view.oidc.name;
       if (user.source === 'oidc') {
-        const claim = h('button', { type: 'button', text: 'Link a local account' });
-        claim.addEventListener('click', claimPage);
-        return section(name, `You sign in with ${name}. Your role and groups come from it.`,
-          user.oidcGroups.length ? h('p', { class: 'small' }, 'Provider groups: ', user.oidcGroups.join(', ')) : null,
-          view.localSignIn ? h('p', { class: 'small muted', text: `If you also have a local Studio account, link it so you can still sign in when ${name} is down. This account's dashboards and groups move to it.` }) : null,
-          view.localSignIn && !view.pendingLink ? h('div', { class: 'actions' }, claim) : null);
+        return group({ title: name, info: `You sign in with ${name}. Your role and groups come from it.${view.localSignIn ? ` If you also have a local Studio account, link it so you can still sign in when ${name} is down. This account's dashboards and groups move to it.` : ''}` },
+          row('Signed in with', value(name)),
+          user.oidcGroups.length ? row('Groups', chips(user.oidcGroups), { stacked: true }) : null,
+          view.localSignIn && !view.pendingLink ? actionRow('Link a local account', { iconName: 'plus', onClick: claimPage }) : null);
       }
       const box = notice();
-      const action = h('button', { type: 'button', text: user.linked ? `Unlink ${name} account` : `Link ${name} account` });
-      action.addEventListener('click', () => {
-        if (user.linked) {
-          confirmDialog(`Unlink your ${name} account?`, `You will no longer be able to sign in to Studio with ${name}. Your passkeys, password and authenticator app keep working.`, 'Unlink', async () => { view = await api('account/unlink', {}); draw(); say(message, `Your ${name} account is unlinked.`, 'ok'); });
-          return;
-        }
-        busy(action, 'Opening…', async () => {
-          try { go((await api('oidc/begin', { intent: 'link', next: '/studio/account' })).url); } catch (error) { failure(box, error); }
-        });
-      });
-      const adminNote = user.providerAdmin ? h('p', { class: 'small muted', text: `While you sign in with ${name}, its groups also make you an administrator.` }) : null;
-      return section(name, user.linked ? `Your account is linked. You can sign in with ${name} as well as your local methods.` : `Link your ${name} account to sign in with it as well. You sign in to ${name} again to prove it's yours, and your email then follows it. Whoever controls that ${name} account can sign in as you.`,
-        adminNote, box, h('div', { class: 'actions' }, action));
+      const action = user.linked
+        ? actionRow(`Unlink ${name} account`, { danger: true, onClick: () => confirmDialog(`Unlink your ${name} account?`, `You will no longer be able to sign in to Studio with ${name}. Your passkeys, password and authenticator app keep working.`, 'Unlink', async () => { view = await api('account/unlink', {}); draw(); say(message, `Your ${name} account is unlinked.`, 'ok'); }) })
+        : actionRow(`Link ${name} account`, { iconName: 'plus' });
+      if (!user.linked) action.addEventListener('click', () => busy(action, 'Opening…', async () => {
+        try { go((await api('oidc/begin', { intent: 'link', next: '/studio/account' })).url); } catch (error) { failure(box, error); }
+      }));
+      return [group({ title: name, info: [user.linked ? `You can sign in with ${name} as well as your local methods.` : `Link your ${name} account to sign in with it as well. You sign in to ${name} again to prove it's yours, and your email then follows it. Whoever controls that ${name} account can sign in as you.`, user.providerAdmin ? ` While you sign in with ${name}, its groups also make you an administrator.` : ''].join('') },
+        row('Status', value(user.linked ? 'Linked' : 'Not linked')), action), box];
     }
     function sessionsSection() {
       const box = notice();
@@ -949,28 +1070,26 @@
         const system = /iPhone|iPad/.test(agent) ? 'iOS' : /Android/.test(agent) ? 'Android' : /Mac OS X|Macintosh/.test(agent) ? 'macOS' : /Windows/.test(agent) ? 'Windows' : /Linux/.test(agent) ? 'Linux' : '';
         return system ? `${browser} on ${system}` : browser;
       };
-      const signOutOthers = h('button', { type: 'button', text: 'Sign out other devices', disabled: !others.length });
+      const rows = view.sessions.sort((a, b) => b.lastSeenAt - a.lastSeenAt).map(item => {
+        const device = describe(item.userAgent);
+        const end = item.current ? null : h('button', { type: 'button', class: 'icon-button', 'aria-label': `Sign out ${device}`, title: 'Sign out' }, icon('signOut', 17));
+        end?.addEventListener('click', () => busy(end, null, () => update(() => api('account/sessions/revoke', { id: item.id }), box)));
+        return h('div', { class: 'item-row' }, h('span', { class: 'nav-text' },
+          h('span', { class: 'nav-title' }, h('span', { text: device }), item.current ? badge('This device', 'accent') : null),
+          h('small', { text: `${item.method === 'oidc' ? (view.oidc?.name ?? 'Single sign-on') : 'Local sign-in'} · ${item.ip || 'unknown address'} · active ${ago(item.lastSeenAt)}`, title: 'Since ' + when(item.createdAt) })), end);
+      });
+      const signOutOthers = actionRow('Sign out other devices', { danger: true, disabled: !others.length });
       signOutOthers.addEventListener('click', () => busy(signOutOthers, 'Signing out…', () => update(() => api('account/sessions/revoke', { id: 'others' }), box, 'Other devices were signed out.')));
-      return section('Where you’re signed in', null,
-        h('ul', { class: 'list' }, view.sessions.sort((a, b) => b.lastSeenAt - a.lastSeenAt).map(item => {
-          const end = h('button', { type: 'button', class: 'small-button', text: 'Sign out' });
-          end.addEventListener('click', () => busy(end, '…', () => update(() => api('account/sessions/revoke', { id: item.id }), box)));
-          return h('li', { class: 'list-item' }, h('div', {},
-            h('strong', {}, describe(item.userAgent), item.current ? h('span', { class: 'badge accent', text: 'This device' }) : null),
-            h('span', { class: 'small muted', text: `${item.method === 'oidc' ? (view.oidc?.name ?? 'Single sign-on') : 'Local sign-in'} · ${item.ip || 'unknown address'} · active ${ago(item.lastSeenAt)} · since ${when(item.createdAt)}` })),
-            item.current ? null : end);
-        })),
-        box, h('div', { class: 'actions' }, signOutOthers));
+      return [group({ title: 'Devices' }, rows, signOutOthers), box];
     }
     function policySection() {
       const policy = view.policy;
-      return section('Sign-in policy', 'Set by an administrator.',
-        h('ul', { class: 'small stack' },
-          h('li', { text: `Signed out after ${duration(policy.idleMinutes)} without activity.` }),
-          h('li', { text: policy.absoluteMinutes ? `Sign in again at least every ${duration(policy.absoluteMinutes)}.` : 'No maximum session length.' }),
-          h('li', { text: policy.persistent ? 'You can stay signed in after closing the browser.' : 'Closing the browser signs you out.' }),
-          h('li', { text: `Security changes ask you to confirm it’s you if you signed in more than ${duration(policy.stepUpMinutes)} ago.` }),
-          h('li', { text: policy.maxSessions ? `Up to ${policy.maxSessions} devices at once.` : 'No limit on devices.' })));
+      return group({ title: 'Sign-in policy', info: 'Set by an administrator.' },
+        row('Signed out when idle for', value(duration(policy.idleMinutes))),
+        row('Sign in again every', value(policy.absoluteMinutes ? duration(policy.absoluteMinutes) : 'No limit')),
+        row('After closing the browser', value(policy.persistent ? 'Stay signed in' : 'Signed out')),
+        row('Confirm it’s you after', value(duration(policy.stepUpMinutes)), { info: 'Security changes ask you to confirm it’s you when you signed in longer ago than this.' }),
+        row('Devices at once', value(policy.maxSessions ? String(policy.maxSessions) : 'No limit')));
     }
     draw();
   }
@@ -978,7 +1097,8 @@
   // ---- Administration ------------------------------------------------------------
 
   // The platform default look every dashboard follows, setting by setting,
-  // until it sets its own (dashboard settings → Appearance).
+  // until it sets its own (dashboard settings → Appearance). The swatches
+  // match the dashboard's own picker (homepage/src/components/studio/appearance.mjs).
   const ACCENT_PRESETS = [['Eggplant', '#b299be'], ['Graphite', '#a5a5aa'], ['Ocean', '#81a8c8'], ['Sage', '#91b09e']];
   async function platformAppearance() {
     let platform = await call('/studio/api/platform');
@@ -986,38 +1106,54 @@
     function draw(success) {
       const box = notice();
       if (success) say(box, success, 'ok');
-      const mode = h('select', {}, [['dark', 'Dark'], ['light', 'Light'], ['system', 'Follow device']].map(([value, label]) => h('option', { value, text: label, selected: platform.mode === value })));
-      const picker = h('input', { type: 'color', value: platform.accent, 'aria-label': 'Choose accent color' });
-      const accent = h('input', { type: 'text', maxlength: 7, value: platform.accent, spellcheck: 'false', autocomplete: 'off' });
-      const sync = value => { accent.value = value; picker.value = value; };
-      picker.addEventListener('input', () => sync(picker.value));
-      accent.addEventListener('input', () => { if (/^#[\da-f]{6}$/i.test(accent.value.trim())) picker.value = accent.value.trim().toLowerCase(); });
-      const presets = h('div', { class: 'row center' }, ACCENT_PRESETS.map(([name, color]) => {
-        const swatch = h('span', { class: 'swatch', 'aria-hidden': 'true' });
-        swatch.style.background = color;
-        return h('button', { type: 'button', class: 'small-button', onclick: () => sync(color) }, swatch, name);
-      }));
+      let accent = platform.accent;
+      const mode = segmented({ value: platform.mode, label: 'Display mode', options: [['dark', 'Dark'], ['light', 'Light'], ['system', 'Auto']] });
+      const picker = h('input', { type: 'color', class: 'color-well', tabindex: '-1', 'aria-hidden': 'true', value: platform.accent });
+      const hex = h('input', { type: 'text', maxlength: 7, value: platform.accent, spellcheck: 'false', autocomplete: 'off', 'aria-label': 'Accent color' });
+      const hexRow = row('Hex', hex);
+      const isPreset = color => ACCENT_PRESETS.some(([, preset]) => preset === color);
+      const swatch = (label, color, extra = '') => {
+        const button = h('button', { type: 'button', class: ('swatch ' + extra).trim(), 'aria-label': label, title: label }, h('span', { 'aria-hidden': 'true' }));
+        button.style.setProperty('--swatch', color);
+        return button;
+      };
+      const presets = ACCENT_PRESETS.map(([name, color]) => { const button = swatch(name, color); button.addEventListener('click', () => pick(color)); return button; });
+      const custom = swatch('Custom', 'transparent', 'swatch-custom');
+      custom.addEventListener('click', () => picker.click());
+      picker.addEventListener('input', () => pick(picker.value));
+      hex.addEventListener('input', () => { const color = hex.value.trim().toLowerCase(); if (/^#[\da-f]{6}$/.test(color)) pick(color, true); });
+      function pick(color, typed = false) {
+        accent = color;
+        if (!typed) hex.value = color;
+        picker.value = color;
+        presets.forEach((button, index) => button.setAttribute('aria-pressed', String(ACCENT_PRESETS[index][1] === color)));
+        custom.setAttribute('aria-pressed', String(!isPreset(color)));
+        custom.style.setProperty('--swatch', isPreset(color) ? 'transparent' : color);
+        hexRow.hidden = isPreset(color) && !typed;
+      }
+      pick(platform.accent);
       const backgroundImage = typeof platform.background === 'string' ? platform.background : platform.background?.image ?? '';
       const background = h('input', { type: 'url', maxlength: 2048, value: backgroundImage, placeholder: 'https://… or /images/…', spellcheck: 'false' });
-      const css = h('textarea', { rows: 12, class: 'mono', spellcheck: 'false', text: platform.css });
+      const css = h('textarea', { rows: 10, class: 'mono code', spellcheck: 'false', 'aria-label': 'Platform CSS', placeholder: '/* Loaded on every dashboard */', text: platform.css });
       const save = h('button', { type: 'submit', class: 'primary', text: 'Save default look' });
       const form = h('form', { class: 'stack' },
-        field('Display mode', mode),
-        h('div', { class: 'field' }, h('label', { for: 'platform-accent', text: 'Accent color' }), h('div', { class: 'row' }, picker, accent)),
-        presets,
-        field('Background image', background, 'Optional. An image address; dashboards without a background of their own use it.'),
-        field('Platform CSS', css, 'Loaded on every dashboard before its own custom.css, which can override it. An administrator can switch it off for one dashboard in its settings.'),
+        group({ title: 'Default look', info: 'Each dashboard follows each of these settings until it sets its own in its settings. A saved change reaches every dashboard that hasn’t, and these pages, at once.' },
+          row('Mode', mode),
+          row('Accent', h('div', { class: 'swatches', role: 'group', 'aria-label': 'Accent' }, presets, custom, picker), { stacked: true }),
+          hexRow,
+          row('Background', background, { info: 'Optional. An image address; dashboards without a background of their own use it.' })),
+        group({ title: 'Platform CSS', info: 'Loaded on every dashboard before its own custom.css, which can override it. An administrator can switch it off for one dashboard in its settings.' },
+          h('div', { class: 'code-row' }, css)),
         box, h('div', { class: 'actions' }, save));
-      accent.id = 'platform-accent';
       form.addEventListener('submit', event => {
         event.preventDefault();
         busy(save, 'Saving…', async () => {
-          const value = accent.value.trim().toLowerCase();
-          if (!/^#[\da-f]{6}$/.test(value)) return say(box, 'Use a hex color such as #b299be.');
+          const color = String(accent).trim().toLowerCase();
+          if (!/^#[\da-f]{6}$/.test(color)) return say(box, 'Use a hex color such as #b299be.');
           const image = background.value.trim();
           const keepFilters = platform.background && typeof platform.background === 'object' ? platform.background : {};
           try {
-            platform = await call('/studio/api/platform', { revision: platform.revision, mode: mode.value, accent: value, background: image ? (Object.keys(keepFilters).length ? { ...keepFilters, image } : image) : null, css: css.value });
+            platform = await call('/studio/api/platform', { revision: platform.revision, mode: mode.value, accent: color, background: image ? (Object.keys(keepFilters).length ? { ...keepFilters, image } : image) : null, css: css.value });
             // This page, other Studio pages and open dashboards in this browser
             // update at once.
             refreshTheme(platform.revision);
@@ -1033,7 +1169,7 @@
           }
         });
       });
-      put(holder, section('Default look for dashboards', 'Each dashboard follows each of these settings until it sets its own in its settings. A change here reaches every dashboard that hasn’t.', form));
+      put(holder, form);
     }
     draw();
     return holder;
@@ -1057,6 +1193,7 @@
     function drawTabs() {
       put(tabList, ...tabs.map(([key, label]) => h('button', { type: 'button', role: 'tab', id: 'tab-' + key, 'aria-controls': 'admin-panel', 'aria-selected': String(key === tab), tabindex: key === tab ? '0' : '-1', onclick: () => select(key), text: label })));
       panel.setAttribute('aria-labelledby', 'tab-' + tab);
+      tabList.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     }
     tabList.addEventListener('keydown', event => {
       const index = tabs.findIndex(([key]) => key === tab);
@@ -1078,9 +1215,9 @@
       try { const next = await work(); if (next?.users) view = next; else view = await api('admin/overview'); drawPanel(); if (success) say(message, success, 'ok'); return true; }
       catch (error) { failure(box ?? message, error); return false; }
     }
-    const policyName = id => id === null || id === undefined ? 'Default' : view.policies.find(item => item.id === id)?.name ?? 'Default';
     const groupName = id => view.groups.find(item => item.id === id)?.name ?? 'Removed group';
     const userName = id => { const user = view.users.find(item => item.id === id); return user ? (user.displayName || user.username) : 'Removed person'; };
+    const provider = () => view.oidc?.name ?? 'Single sign-on';
 
     function drawPanel() {
       say(message, '');
@@ -1089,24 +1226,17 @@
     }
 
     // People
+    const signInKind = user => user.source === 'oidc' ? provider() : user.linked ? `Local and ${provider()}` : 'Local';
     function peopleTab() {
-      const invite = h('button', { type: 'button', class: 'primary', text: 'Invite a person' });
-      invite.addEventListener('click', inviteDialog);
-      const rows = view.users.slice().sort((a, b) => (a.displayName || a.username).localeCompare(b.displayName || b.username)).map(user => {
-        const status = user.disabled ? h('span', { class: 'badge danger', text: 'Disabled' }) : user.status === 'invited' ? h('span', { class: 'badge warn', text: user.invitePending ? 'Invited' : 'Invite expired' }) : h('span', { class: 'badge', text: 'Active' });
-        const edit = h('button', { type: 'button', class: 'small-button', text: 'Manage' });
-        edit.addEventListener('click', () => userDialog(user));
-        return h('tr', {},
-          h('td', {}, h('strong', { text: user.displayName || user.username }), user.displayName && user.displayName !== user.username ? h('div', { class: 'small muted mono', text: user.username }) : null, user.id === view.currentUserId ? h('span', { class: 'badge accent', text: 'You' }) : null),
-          h('td', { text: user.role === 'admin' ? 'Administrator' : 'Member' }),
-          h('td', { class: 'hide-narrow', text: user.source === 'oidc' ? (view.oidc?.name ?? 'Single sign-on') : user.linked ? `Local + ${view.oidc?.name ?? 'SSO'}` : 'Local' }),
-          h('td', {}, status),
-          h('td', { class: 'hide-narrow small', text: user.lastSeenAt ? ago(user.lastSeenAt) : '—' }),
-          h('td', {}, edit));
+      const people = view.users.slice().sort((a, b) => (a.displayName || a.username).localeCompare(b.displayName || b.username));
+      const rows = people.map(user => {
+        const name = user.displayName || user.username;
+        const status = user.disabled ? badge('Disabled', 'danger') : user.status === 'invited' ? badge(user.invitePending ? 'Invited' : 'Invite expired', 'warn') : null;
+        const detail = [name !== user.username ? user.username : null, user.role === 'admin' ? 'Administrator' : 'Member', signInKind(user), user.lastSeenAt ? 'active ' + ago(user.lastSeenAt) : null].filter(Boolean).join(' · ');
+        return navRow({ leading: avatar(name), title: name, badges: [user.id === view.currentUserId ? badge('You', 'accent') : null, status], detail, onClick: () => userDialog(user) });
       });
-      return section('People', 'Administrators can open every dashboard and change everything. Members see only the dashboards shared with them.',
-        h('div', { class: 'actions' }, invite),
-        h('div', { class: 'table-wrap' }, h('table', { class: 'people-table' }, h('thead', {}, h('tr', {}, ['Name', 'Role', 'Sign-in', 'Status', 'Last active', 'Actions'].map((label, index) => h('th', { class: index === 2 || index === 4 ? 'hide-narrow' : undefined, scope: 'col', text: label })))), h('tbody', {}, rows))));
+      return [toolbar(pill('Invite a person', { primary: true, iconName: 'plus', onclick: inviteDialog })),
+        group({ title: 'People', aside: String(people.length), info: 'Administrators can open every dashboard and change everything. Members see only the dashboards shared with them.' }, rows)];
     }
     function linkResult(result, close, intro) {
       const box = notice();
@@ -1115,18 +1245,18 @@
         h('p', { text: intro }),
         result.emailed ? h('div', { class: 'notice ok', text: 'The link was emailed as well.' }) : null,
         result.emailError ? h('div', { class: 'notice warn', role: 'alert', text: `The email couldn't be sent, so share the link yourself. The mail server said: ${result.emailError}. Administration → Activity keeps the details.` }) : null,
-        field('One-time link', linkInput, `Works once and expires in ${result.expiresInHours} hours. Send it privately; anyone with the link can claim the account.`),
+        group({}, row('One-time link', linkInput, { stacked: true, info: `Works once and expires in ${result.expiresInHours} hours. Send it privately; anyone with the link can claim the account.` })),
         box,
-        h('div', { class: 'actions' }, h('button', { type: 'button', onclick: () => copyText(result.link, box), text: 'Copy link' }), h('button', { type: 'button', class: 'primary', onclick: close, text: 'Done' })));
+        dialogActions(h('button', { type: 'button', onclick: () => copyText(result.link, box) }, icon('copy', 16), 'Copy link'), h('button', { type: 'button', class: 'primary', onclick: close, text: 'Done' })));
     }
     function inviteDialog() {
       openDialog('Invite a person', close => {
         const box = notice();
-        const username = h('input', { type: 'text', autocapitalize: 'none', spellcheck: 'false', required: true, maxlength: 64 });
-        const displayName = h('input', { type: 'text', maxlength: 100 });
-        const email = h('input', { type: 'email', maxlength: 254 });
-        const role = h('select', {}, h('option', { value: 'member', text: 'Member' }), h('option', { value: 'admin', text: 'Administrator' }));
-        const sendEmail = h('input', { type: 'checkbox', checked: view.email, disabled: !view.email });
+        const username = h('input', { type: 'text', autocapitalize: 'none', spellcheck: 'false', required: true, maxlength: 64, placeholder: 'Required' });
+        const displayName = h('input', { type: 'text', maxlength: 100, placeholder: 'Optional' });
+        const email = h('input', { type: 'email', maxlength: 254, placeholder: 'Optional' });
+        const role = segmented({ value: 'member', label: 'Role', options: [['member', 'Member'], ['admin', 'Administrator']] });
+        const sendEmail = toggle({ checked: view.email, disabled: !view.email, label: 'Email the invitation' });
         const submit = h('button', { type: 'submit', class: 'primary', text: 'Create invitation' });
         const form = h('form', { class: 'stack', onsubmit: async event => {
           event.preventDefault(); say(box, '');
@@ -1138,73 +1268,71 @@
             } catch (error) { failure(box, error); }
           });
         } },
-          field('Username', username, 'What they type to sign in. Lowercase letters, numbers, dots, hyphens, underscores or @.'),
-          field('Display name', displayName), field('Email', email, 'Optional. Needed for emailed invitations, resets and alerts.'),
-          field('Role', role, 'Administrators can see every dashboard, change integrations and manage people.'),
-          check('Email the invitation', sendEmail, view.email ? undefined : 'Email is not set up on this server.'),
-          box, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), submit));
+          group({},
+            row('Username', username, { info: 'What they type to sign in. Lowercase letters, numbers, dots, hyphens, underscores or @.' }),
+            row('Name', displayName),
+            row('Email', email, { info: 'Needed for emailed invitations, resets and alerts.' })),
+          group({},
+            row('Role', role, { info: 'Administrators can see every dashboard, change integrations and manage people.' }),
+            row('Email the invitation', sendEmail, { info: view.email ? null : 'Email is not set up on this server.' })),
+          box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), submit));
         return form;
       });
     }
     function userDialog(user) {
-      openDialog(user.displayName || user.username, close => {
+      const name = user.displayName || user.username;
+      openDialog(name, close => {
         const box = notice();
         const self = user.id === view.currentUserId;
         const roleFromProvider = user.source === 'oidc' && view.settings.oidc.adminGroups.length > 0;
         const displayName = h('input', { type: 'text', maxlength: 100, value: user.displayName ?? '' });
         const email = h('input', { type: 'email', maxlength: 254, value: user.email ?? '', disabled: user.source === 'oidc' });
-        const role = h('select', { disabled: roleFromProvider }, h('option', { value: 'member', text: 'Member', selected: user.manualRole !== 'admin' }), h('option', { value: 'admin', text: 'Administrator', selected: user.manualRole === 'admin' }));
-        const policy = h('select', {}, h('option', { value: '', text: 'From groups, or the default' }), view.policies.map(item => h('option', { value: item.id, text: item.name, selected: user.policyId === item.id })));
-        const defaultDashboard = dashboardSelect(user.defaultDashboardId, user.role === 'admin' ? 'None: the Dashboards page' : 'None: their group’s default');
+        const role = segmented({ value: user.manualRole === 'admin' ? 'admin' : 'member', label: 'Role', disabled: roleFromProvider, options: [['member', 'Member'], ['admin', 'Administrator']] });
+        const policy = h('select', {}, h('option', { value: '', text: 'From groups' }), view.policies.map(item => h('option', { value: item.id, text: item.name, selected: user.policyId === item.id })));
+        const defaultDashboard = dashboardSelect(user.defaultDashboardId, user.role === 'admin' ? 'Dashboards page' : 'Their group’s default');
         const localGroups = view.groups.filter(group => group.kind === 'local');
-        const groupBoxes = localGroups.map(group => ({ group, input: h('input', { type: 'checkbox', checked: user.groupIds.includes(group.id) }) }));
+        const groupToggles = localGroups.map(item => ({ group: item, input: toggle({ checked: user.groupIds.includes(item.id), label: item.name }) }));
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
-        const actions = [];
-        const toggle = h('button', { type: 'button', class: user.disabled ? '' : 'danger', text: user.disabled ? 'Enable account' : 'Disable account', disabled: self });
-        toggle.addEventListener('click', () => busy(toggle, 'Saving…', async () => { if (await act(() => api('admin/update', { id: user.id, disabled: !user.disabled }), box, user.disabled ? 'Account enabled.' : 'Account disabled and signed out.')) close(); }));
-        const sessionsButton = h('button', { type: 'button', text: `Sign out everywhere (${user.sessionCount})`, disabled: !user.sessionCount });
-        sessionsButton.addEventListener('click', () => busy(sessionsButton, 'Signing out…', async () => { if (await act(() => api('admin/sessions/revoke', { userId: user.id }), box, 'Signed out of other sessions.')) close(); }));
-        actions.push(sessionsButton);
+        const accountActions = [];
         if (user.source === 'local') {
-          const reset = h('button', { type: 'button', text: user.status === 'invited' ? 'New invitation link' : 'Reset sign-in' });
-          reset.addEventListener('click', () => {
+          const invited = user.status === 'invited';
+          accountActions.push(actionRow(invited ? 'New invitation link' : 'Reset sign-in', { iconName: 'key', onClick: () => {
             close();
-            confirmDialog(user.status === 'invited' ? 'Create a new invitation link?' : `Reset sign-in for ${user.displayName || user.username}?`, user.status === 'invited' ? 'The previous link stops working.' : 'Their password, authenticator app, passkeys and backup codes are removed and they are signed out. They set up new ones with a one-time link.', user.status === 'invited' ? 'Create link' : 'Reset sign-in', async () => {
+            confirmDialog(invited ? 'Create a new invitation link?' : `Reset sign-in for ${name}?`, invited ? 'The previous link stops working.' : 'Their password, authenticator app, passkeys and backup codes are removed and they are signed out. They set up new ones with a one-time link.', invited ? 'Create link' : 'Reset sign-in', async () => {
               const result = await api('admin/reset', { id: user.id, sendEmail: view.email && Boolean(user.email) });
               view = await api('admin/overview'); drawPanel();
-              openDialog('Share the link', done => linkResult(result, done, `Send this link to ${user.displayName || user.username}.`));
-            }, { danger: user.status !== 'invited' });
-          });
-          actions.push(reset);
-          if (user.linked) {
-            const unlink = h('button', { type: 'button', text: `Unlink ${view.oidc?.name ?? 'single sign-on'}` });
-            unlink.addEventListener('click', () => { close(); confirmDialog(`Unlink ${view.oidc?.name ?? 'single sign-on'} from ${user.displayName || user.username}?`, 'That provider account can no longer sign in as them, and its sign-ins are ended. They keep their local sign-in methods.', 'Unlink', () => act(() => api('admin/unlink', { id: user.id }), null, 'Unlinked.'), { danger: true }); });
-            actions.push(unlink);
-          }
+              openDialog('Share the link', done => linkResult(result, done, `Send this link to ${name}.`));
+            }, { danger: !invited });
+          } }));
+          if (user.linked) accountActions.push(actionRow(`Unlink ${provider()}`, { onClick: () => { close(); confirmDialog(`Unlink ${provider()} from ${name}?`, 'That provider account can no longer sign in as them, and its sign-ins are ended. They keep their local sign-in methods.', 'Unlink', () => act(() => api('admin/unlink', { id: user.id }), null, 'Unlinked.'), { danger: true }); } }));
         }
-        actions.push(toggle);
-        const remove = h('button', { type: 'button', class: 'danger', text: 'Delete', disabled: self });
-        remove.addEventListener('click', () => { close(); confirmDialog(`Delete ${user.displayName || user.username}?`, 'Their account, sessions and dashboard access are removed. This cannot be undone.', 'Delete', () => act(() => api('admin/delete', { id: user.id }), null, 'Person deleted.')); });
-        actions.push(remove);
+        const sessions = actionRow(`Sign out everywhere (${user.sessionCount})`, { iconName: 'signOut', disabled: !user.sessionCount });
+        sessions.addEventListener('click', () => busy(sessions, 'Signing out…', async () => { if (await act(() => api('admin/sessions/revoke', { userId: user.id }), box, 'Signed out of other sessions.')) close(); }));
+        accountActions.push(sessions);
+        const toggleAccount = actionRow(user.disabled ? 'Enable account' : 'Disable account', { danger: !user.disabled, disabled: self });
+        toggleAccount.addEventListener('click', () => busy(toggleAccount, 'Saving…', async () => { if (await act(() => api('admin/update', { id: user.id, disabled: !user.disabled }), box, user.disabled ? 'Account enabled.' : 'Account disabled and signed out.')) close(); }));
+        const remove = actionRow('Delete', { danger: true, iconName: 'trash', disabled: self, onClick: () => { close(); confirmDialog(`Delete ${name}?`, 'Their account, sessions and dashboard access are removed. This cannot be undone.', 'Delete', () => act(() => api('admin/delete', { id: user.id }), null, 'Person deleted.')); } });
+        const methods = user.source === 'local' ? [user.factors.password && 'Password', user.factors.totp && 'Authenticator app', user.factors.passkeys.length && `${user.factors.passkeys.length} passkey${user.factors.passkeys.length === 1 ? '' : 's'}`].filter(Boolean).join(', ') || 'None yet' : null;
+        const roleInfo = roleFromProvider ? `Set by ${provider()} groups.` : [self ? 'Studio always keeps at least one active administrator.' : '', user.source === 'local' && user.providerAdmin && view.settings.oidc.adminGroups.length ? `Their ${provider()} groups also make them an administrator while they sign in with it.` : ''].filter(Boolean).join(' ') || null;
         return h('form', { class: 'stack', onsubmit: async event => {
           event.preventDefault(); say(box, '');
-          const change = { id: user.id, displayName: displayName.value, policyId: policy.value || null, defaultDashboardId: defaultDashboard.value || null, groupIds: groupBoxes.filter(item => item.input.checked).map(item => item.group.id) };
+          const change = { id: user.id, displayName: displayName.value, policyId: policy.value || null, defaultDashboardId: defaultDashboard.value || null, groupIds: groupToggles.filter(item => item.input.checked).map(item => item.group.id) };
           if (user.source !== 'oidc') change.email = email.value || null;
           if (!roleFromProvider) change.role = role.value;
           await busy(save, 'Saving…', async () => { if (await act(() => api('admin/update', change), box, 'Saved.')) close(); });
         } },
-          h('p', { class: 'small muted' }, h('span', { class: 'mono', text: user.username }), ` · ${user.source === 'oidc' ? (view.oidc?.name ?? 'Single sign-on') : 'Local account'} · created ${when(user.createdAt)}`),
-          user.source === 'local' ? h('p', { class: 'small', text: `Sign-in methods: ${[user.factors.password && 'password', user.factors.totp && 'authenticator app', user.factors.passkeys.length && `${user.factors.passkeys.length} passkey${user.factors.passkeys.length === 1 ? '' : 's'}`].filter(Boolean).join(', ') || 'none yet'}; ${user.factors.backupCodesLeft} backup codes left.` }) : null,
-          field('Display name', displayName),
-          field('Email', email),
-          field('Role', role, roleFromProvider ? `Set by ${view.oidc?.name ?? 'the identity provider'} groups.` : [self ? 'Studio always keeps at least one active administrator.' : '', user.source === 'local' && user.providerAdmin && view.settings.oidc.adminGroups.length ? `Their ${view.oidc?.name ?? 'provider'} groups also make them an administrator while they sign in with it.` : ''].filter(Boolean).join(' ') || undefined),
-          localGroups.length ? h('fieldset', {}, h('legend', { text: 'Groups' }), groupBoxes.map(item => check(item.group.name, item.input))) : null,
-          user.oidcGroups.length ? h('p', { class: 'small muted', text: `Provider groups: ${user.oidcGroups.join(', ')}` }) : null,
-          field('Session policy', policy, 'A personal policy wins. Otherwise the strictest of their groups’ policies applies, or the default.'),
-          field('Default dashboard', defaultDashboard, 'What this site’s address opens for them. They can change it in My account. It only opens if they can see that dashboard.'),
+          h('div', { class: 'identity small-identity' }, avatar(name), h('div', {}, h('strong', { class: 'mono', text: user.username }), h('p', { class: 'small muted', text: `${signInKind(user)} · created ${new Date(user.createdAt).toLocaleDateString()}` }))),
+          group({}, row('Name', displayName), row('Email', email, { info: user.source === 'oidc' ? `Comes from ${provider()}.` : null })),
+          group({ title: 'Access' },
+            row('Role', role, { info: roleInfo }),
+            row('Session policy', policy, { info: 'A personal policy wins. Otherwise the strictest of their groups’ policies applies, or the default.' }),
+            row('Default dashboard', defaultDashboard, { info: 'What this site’s address opens for them. They can change it in My account. It only opens if they can see that dashboard.' })),
+          localGroups.length ? group({ title: 'Groups' }, groupToggles.map(item => row(item.group.name, item.input))) : null,
+          user.oidcGroups.length ? group({ title: `${provider()} groups` }, h('div', { class: 'chips locked padded' }, user.oidcGroups.map(item => h('span', { class: 'chip', text: item })))) : null,
+          group({ title: 'Sign-in' }, methods ? row('Methods', value(methods)) : null, methods ? row('Backup codes left', value(String(user.factors.backupCodesLeft))) : null, accountActions),
+          group({}, toggleAccount, remove),
           box,
-          h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save),
-          h('details', { class: 'more-actions' }, h('summary', { text: 'More actions' }), h('div', { class: 'action-grid' }, actions)));
+          dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
       });
     }
 
@@ -1213,95 +1341,100 @@
       return h('select', {}, h('option', { value: '', text: noneLabel }),
         view.dashboards.filter(entry => !entry.archived).map(entry => h('option', { value: entry.id, text: entry.name, selected: entry.id === selected })));
     }
-    function groupDialog(group) {
-      openDialog(group.name, close => {
+    function newGroupDialog() {
+      openDialog('New group', close => {
         const box = notice();
-        const name = h('input', { type: 'text', maxlength: 60, value: group.name, required: true, disabled: group.kind === 'idp' });
-        const policy = h('select', {}, h('option', { value: '', text: 'No group policy' }), view.policies.map(item => h('option', { value: item.id, text: item.name, selected: group.policyId === item.id })));
-        const defaultDashboard = dashboardSelect(group.defaultDashboardId, 'None');
+        const kind = view.oidc ? segmented({ value: 'local', label: 'Kind', options: [['local', 'Studio'], ['idp', view.oidc.name]] }) : null;
+        const name = h('input', { type: 'text', maxlength: 200, required: true, placeholder: 'For example: Family', autocapitalize: 'none', spellcheck: 'false' });
+        const create = h('button', { type: 'submit', class: 'primary', text: 'Create group' });
+        return h('form', { class: 'stack', onsubmit: async event => {
+          event.preventDefault();
+          const idp = kind?.value === 'idp';
+          await busy(create, 'Creating…', async () => { if (await act(() => api('admin/group', { action: 'create', ...(idp ? { kind: 'idp' } : {}), name: name.value }), box, idp ? `${view.oidc.name} group added.` : 'Group created.')) close(); });
+        } },
+          group({},
+            kind ? row('Kind', kind, { info: `A ${view.oidc.name} group is matched by its exact name, so dashboards can be shared with it before anyone in it signs in.` }) : null,
+            row('Name', name)),
+          box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), create));
+      });
+    }
+    function groupDialog(item) {
+      openDialog(item.name, close => {
+        const box = notice();
+        const name = h('input', { type: 'text', maxlength: 60, value: item.name, required: true, disabled: item.kind === 'idp' });
+        const policy = h('select', {}, h('option', { value: '', text: 'None' }), view.policies.map(entry => h('option', { value: entry.id, text: entry.name, selected: item.policyId === entry.id })));
+        const defaultDashboard = dashboardSelect(item.defaultDashboardId, 'None');
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
-        const remove = h('button', { type: 'button', class: 'danger', text: 'Delete group' });
-        remove.addEventListener('click', () => { close(); confirmDialog(`Delete ${group.name}?`, group.kind === 'idp' ? 'It is added again if someone signs in with this provider group or it is listed in Sign-in settings. Dashboard access given to it is removed.' : 'Members leave the group and dashboard access given to it is removed.', 'Delete', () => act(() => api('admin/group', { action: 'delete', id: group.id }), null, 'Group deleted.')); });
+        const remove = actionRow('Delete group', { danger: true, iconName: 'trash', onClick: () => { close(); confirmDialog(`Delete ${item.name}?`, item.kind === 'idp' ? 'It is added again if someone signs in with this provider group or it is listed in Sign-in settings. Dashboard access given to it is removed.' : 'Members leave the group and dashboard access given to it is removed.', 'Delete', () => act(() => api('admin/group', { action: 'delete', id: item.id }), null, 'Group deleted.')); } });
         return h('form', { class: 'stack', onsubmit: async event => {
           event.preventDefault(); say(box, '');
-          const change = { action: 'update', id: group.id, policyId: policy.value || null, defaultDashboardId: defaultDashboard.value || null, ...(group.kind === 'local' ? { name: name.value } : {}) };
+          const change = { action: 'update', id: item.id, policyId: policy.value || null, defaultDashboardId: defaultDashboard.value || null, ...(item.kind === 'local' ? { name: name.value } : {}) };
           await busy(save, 'Saving…', async () => { if (await act(() => api('admin/group', change), box, 'Group saved.')) close(); });
         } },
-          field('Name', name, group.kind === 'idp' ? `Named by ${view.oidc?.name ?? 'the identity provider'}.` : undefined),
-          field('Default dashboard', defaultDashboard, 'What this site’s address opens for members of this group, if they can see it and haven’t chosen their own.'),
-          field('Session policy', policy),
-          box,
-          h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save),
-          h('details', { class: 'more-actions' }, h('summary', { text: 'More actions' }), h('div', { class: 'action-grid' }, remove)));
+          group({},
+            row('Name', name, { info: item.kind === 'idp' ? `Named by ${provider()}.` : null }),
+            row('Default dashboard', defaultDashboard, { info: 'What this site’s address opens for members of this group, if they can see it and haven’t chosen their own.' }),
+            row('Session policy', policy)),
+          group({}, remove),
+          box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
       });
     }
     function groupsTab() {
       const box = notice();
-      const name = h('input', { type: 'text', maxlength: 60, required: true, placeholder: 'For example: Family' });
-      const add = h('button', { type: 'submit', class: 'primary', text: 'Create group' });
       // Listed in their order: for someone in several groups, the first group
       // with a default dashboard decides where the bare address opens.
-      const list = view.groups.map((group, index) => {
-        const dashboard = view.dashboards.find(entry => entry.id === group.defaultDashboardId && !entry.archived);
-        const policyName = view.policies.find(item => item.id === group.policyId)?.name;
+      const items = view.groups.map((item, index) => {
+        const dashboard = view.dashboards.find(entry => entry.id === item.defaultDashboardId && !entry.archived);
+        const policyName = view.policies.find(entry => entry.id === item.policyId)?.name;
         const move = (direction, label) => {
-          const button = h('button', { type: 'button', class: 'small-button', text: label, 'aria-label': `${label}: ${group.name}`, disabled: direction === 'up' ? index === 0 : index === view.groups.length - 1 });
-          button.addEventListener('click', () => act(() => api('admin/group', { action: 'move', id: group.id, direction }), box, 'Group order saved.'));
+          const button = h('button', { type: 'button', class: 'icon-button', 'aria-label': `${label}: ${item.name}`, title: label, disabled: direction === 'up' ? index === 0 : index === view.groups.length - 1 }, icon(direction === 'up' ? 'up' : 'down', 16));
+          button.addEventListener('click', () => act(() => api('admin/group', { action: 'move', id: item.id, direction }), box, 'Group order saved.'));
           return button;
         };
-        const manage = h('button', { type: 'button', class: 'small-button', text: 'Manage' });
-        manage.addEventListener('click', () => groupDialog(group));
         const grip = h('span', { class: 'drag-handle', title: 'Drag to reorder', 'aria-hidden': 'true' }, icon('grip', 18));
-        return h('li', { class: 'list-item draggable', 'data-group-id': group.id }, grip,
-          h('div', { class: 'grow' }, h('strong', {}, `${index + 1}. ${group.name}`, ' ', h('span', { class: 'badge', text: group.kind === 'idp' ? (view.oidc?.name ?? 'Provider') : 'Local' })),
-            h('span', { class: 'small muted', text: [`${group.memberCount} ${group.memberCount === 1 ? 'person' : 'people'}`, `default dashboard: ${dashboard?.name ?? 'none'}`, policyName ? `policy: ${policyName}` : null].filter(Boolean).join(' · ') })),
-          h('div', { class: 'row' }, move('up', 'Move up'), move('down', 'Move down'), manage));
+        return h('li', { class: 'reorder-row draggable', 'data-group-id': item.id }, grip,
+          navRow({ leading: avatar(item.name, 'group'), title: item.name, badges: item.kind === 'idp' ? badge(provider()) : null,
+            detail: [`${item.memberCount} ${item.memberCount === 1 ? 'person' : 'people'}`, dashboard ? `opens ${dashboard.name}` : null, policyName ? `policy ${policyName}` : null].filter(Boolean).join(' · '),
+            onClick: () => groupDialog(item) }),
+          h('span', { class: 'reorder-buttons' }, move('up', 'Move up'), move('down', 'Move down')));
       });
-      // A provider group can be added by its exact name, so dashboards can be
-      // shared with it before anyone in it signs in.
-      let providerForm = null;
-      if (view.oidc) {
-        const providerName = h('input', { type: 'text', maxlength: 200, required: true, placeholder: 'For example: studio-family', autocapitalize: 'none', spellcheck: 'false' });
-        const providerAdd = h('button', { type: 'submit', text: `Add ${view.oidc.name} group` });
-        providerForm = h('form', { class: 'row', onsubmit: async event => { event.preventDefault(); await busy(providerAdd, 'Adding…', async () => { if (await act(() => api('admin/group', { action: 'create', kind: 'idp', name: providerName.value }), box, `${view.oidc.name} group added.`)) providerName.value = ''; }); } },
-          h('label', { class: 'visually-hidden', for: 'new-provider-group', text: `${view.oidc.name} group name, exactly as ${view.oidc.name} sends it` }), Object.assign(providerName, { id: 'new-provider-group', className: 'narrow-input' }), providerAdd);
-      }
-      return section('Groups', `Share dashboards, set a default dashboard and set session policies for several people at once. Someone in several groups gets the default dashboard of the first one listed that has one, unless they choose their own. ${view.oidc ? `${view.oidc.name} groups appear here when someone in them signs in, and groups listed in Sign-in settings are added for you. To share a dashboard before anyone in a ${view.oidc.name} group has signed in, add the group by its exact name.` : ''}`,
-        h('form', { class: 'row', onsubmit: async event => { event.preventDefault(); await busy(add, 'Creating…', async () => { if (await act(() => api('admin/group', { action: 'create', name: name.value }), box, 'Group created.')) name.value = ''; }); } }, h('label', { class: 'visually-hidden', for: 'new-group', text: 'New group name' }), Object.assign(name, { id: 'new-group', className: 'narrow-input' }), add),
-        providerForm,
-        box, list.length ? dragOrder(h('ul', { class: 'list' }, list), ids => act(() => api('admin/group', { action: 'reorder', ids }), box, 'Group order saved.')) : h('p', { class: 'muted', text: 'No groups yet.' }));
+      const info = `Share dashboards and set a default dashboard and session policy for several people at once. Someone in several groups gets the default dashboard of the first one listed that has one, unless they choose their own; drag to change the order.${view.oidc ? ` ${view.oidc.name} groups appear here when someone in them signs in, and groups listed in Sign-in settings are added for you.` : ''}`;
+      return [toolbar(pill('New group', { primary: true, iconName: 'plus', onclick: newGroupDialog })), box,
+        items.length
+          ? group({ title: 'Groups', aside: String(items.length), info, body: dragOrder(h('ul', { class: 'reorder-list' }), ids => act(() => api('admin/group', { action: 'reorder', ids }), box, 'Group order saved.')) }, items)
+          : group({ title: 'Groups', info }, h('p', { class: 'empty-row', text: 'No groups yet.' }))];
     }
     // Drag a row by its handle to reorder the list; Move up and Move down do
     // the same from the keyboard. Pointer events work with mouse and touch.
     function dragOrder(list, onOrder) {
       list.addEventListener('pointerdown', event => {
         const handle = event.target.closest('.drag-handle');
-        const row = handle?.closest('li');
-        if (!row || event.button > 0) return;
+        const item = handle?.closest('li');
+        if (!item || event.button > 0) return;
         event.preventDefault();
-        const before = [...list.children].map(item => item.dataset.groupId);
-        row.classList.add('dragging');
+        const before = [...list.children].map(child => child.dataset.groupId);
+        item.classList.add('dragging');
         // Moving the row in the list drops any pointer capture, so the
         // window follows this pointer until it is released.
         const mine = pointerEvent => pointerEvent.pointerId === event.pointerId;
         const move = moveEvent => {
           if (!mine(moveEvent)) return;
           moveEvent.preventDefault();
-          const over = [...list.children].find(item => item !== row && moveEvent.clientY >= item.getBoundingClientRect().top && moveEvent.clientY <= item.getBoundingClientRect().bottom);
+          const over = [...list.children].find(child => child !== item && moveEvent.clientY >= child.getBoundingClientRect().top && moveEvent.clientY <= child.getBoundingClientRect().bottom);
           if (!over) return;
           const rect = over.getBoundingClientRect();
           const target = moveEvent.clientY < rect.top + rect.height / 2 ? over : over.nextSibling;
-          if (target !== row && target !== row.nextSibling) list.insertBefore(row, target);
+          if (target !== item && target !== item.nextSibling) list.insertBefore(item, target);
         };
         const end = endEvent => {
           if (!mine(endEvent)) return;
           window.removeEventListener('pointermove', move);
           window.removeEventListener('pointerup', end);
           window.removeEventListener('pointercancel', end);
-          row.classList.remove('dragging');
-          const after = [...list.children].map(item => item.dataset.groupId);
+          item.classList.remove('dragging');
+          const after = [...list.children].map(child => child.dataset.groupId);
           if (endEvent.type === 'pointercancel') {
-            for (const id of before) list.append([...list.children].find(item => item.dataset.groupId === id));
+            for (const id of before) list.append([...list.children].find(child => child.dataset.groupId === id));
           } else if (after.join() !== before.join()) onOrder(after);
         };
         window.addEventListener('pointermove', move, { passive: false });
@@ -1311,97 +1444,102 @@
       return list;
     }
 
-    // Dashboard access
+    // Dashboard access: one group per dashboard, one row per person or group
+    // with its level, and a row to add someone.
     function accessTab() {
       unsavedAccess.clear();
       const subjects = [
-        ...view.users.filter(user => user.role !== 'admin').map(user => ({ value: 'user:' + user.id, label: `${user.displayName || user.username} (${user.username})` })),
-        ...view.groups.map(group => ({ value: 'group:' + group.id, label: `Group: ${group.name}` })),
+        ...view.users.filter(user => user.role !== 'admin').map(user => ({ value: 'user:' + user.id, label: user.displayName || user.username, detail: user.username })),
+        ...view.groups.map(item => ({ value: 'group:' + item.id, label: item.name, group: true })),
       ];
-      const label = subject => subject.startsWith('user:') ? userName(subject.slice(5)) : 'Group: ' + groupName(subject.slice(6));
-      const cards = view.dashboards.filter(entry => !entry.archived).map(entry => {
+      const describe = subject => subject.startsWith('user:') ? { label: userName(subject.slice(5)), group: false } : { label: groupName(subject.slice(6)), group: true };
+      const [infoButton, callout] = infoToggle('access levels', [h('p', {}, h('strong', { text: 'View' }), ': open the dashboard and use its widgets.'), h('p', {}, h('strong', { text: 'Arrange' }), ': also move tiles, hide discovered services and change the theme.'), h('p', { text: 'Administrators can always open every dashboard. Only they change integration settings, raw files, custom CSS and JavaScript, imports and access.' })]);
+      const groups = view.dashboards.filter(entry => !entry.archived).map(entry => {
         let grants = (view.grants[entry.id] ?? []).map(grant => ({ ...grant }));
         const box = notice();
-        const body = h('div', { class: 'stack' });
-        const save = h('button', { type: 'button', class: 'primary', text: 'Save access' });
-        const unsaved = h('span', { class: 'badge warn', text: 'Unsaved changes' });
-        const saveRow = h('div', { class: 'actions' }, save);
+        const save = pill('Save', { primary: true, hidden: true });
+        const unsaved = badge('Unsaved', 'warn');
+        unsaved.hidden = true;
+        const body = h('div', {});
         const snapshot = list => JSON.stringify(list.map(grant => [grant.subject, grant.level]));
-        // Marks the card when its list differs from what was last saved.
+        // Marks the group when its list differs from what was last saved.
         function mark() {
           const dirty = snapshot(grants) !== snapshot(view.grants[entry.id] ?? []);
           if (dirty) unsavedAccess.add(entry.id); else unsavedAccess.delete(entry.id);
           unsaved.hidden = !dirty;
-          save.disabled = !dirty;
-          saveRow.hidden = !grants.length && !subjects.length && !dirty;
+          save.hidden = !dirty;
         }
-        function draw() {
+        function draw(focusLast = false) {
           const used = new Set(grants.map(grant => grant.subject));
-          const pick = h('select', { 'aria-label': `Add a person or group to ${entry.name}` }, h('option', { value: '', text: 'Add a person or group…' }), subjects.filter(item => !used.has(item.value)).map(item => h('option', { value: item.value, text: item.label })));
-          pick.addEventListener('change', () => { if (pick.value) { grants.push({ subject: pick.value, level: 'view' }); draw(); body.querySelector('select[data-new]')?.focus(); } });
-          put(body, 
-            grants.length ? h('ul', { class: 'list' }, grants.map((grant, index) => {
-              const level = h('select', { 'aria-label': `Access for ${label(grant.subject)}`, 'data-new': index === grants.length - 1 ? '' : undefined }, h('option', { value: 'view', text: 'Can view', selected: grant.level === 'view' }), h('option', { value: 'arrange', text: 'Can arrange', selected: grant.level === 'arrange' }));
-              level.addEventListener('change', () => { grant.level = level.value; mark(); });
-              return h('li', { class: 'list-item' }, h('div', {}, h('strong', { text: label(grant.subject) })), h('div', { class: 'row' }, level, h('button', { type: 'button', class: 'small-button', onclick: () => { grants.splice(index, 1); draw(); }, text: 'Remove', 'aria-label': `Remove ${label(grant.subject)}` })));
-            })) : h('p', { class: 'small muted', text: 'Only administrators can open this dashboard.' }),
-            subjects.length ? pick : h('p', { class: 'small muted', text: 'Invite people or create groups to share this dashboard.' }));
+          const free = subjects.filter(item => !used.has(item.value));
+          const rows = grants.map((grant, index) => {
+            const who = describe(grant.subject);
+            const level = segmented({ value: grant.level, label: `Access for ${who.label}`, options: [['view', 'View'], ['arrange', 'Arrange']], onChange: option => { grant.level = option; mark(); } });
+            const remove = h('button', { type: 'button', class: 'icon-button', 'aria-label': `Remove ${who.label}`, title: 'Remove', onclick: () => { grants.splice(index, 1); draw(); } }, icon('close', 16));
+            return h('div', { class: 'grant-row' }, avatar(who.label, who.group ? 'group' : 'person'), h('span', { class: 'grant-name', text: who.label }), level, remove);
+          });
+          const add = free.length ? h('label', { class: 'add-row' }, icon('plus', 17),
+            h('select', { 'aria-label': `Add a person or group to ${entry.name}`, onchange: event => { if (event.target.value) { grants.push({ subject: event.target.value, level: 'view' }); draw(true); } } },
+              h('option', { value: '', text: 'Add a person or group' }),
+              free.map(item => h('option', { value: item.value, text: item.group ? `${item.label} (group)` : `${item.label} (${item.detail})` })))) : null;
+          put(body, rows.length ? rows : h('p', { class: 'empty-row', text: 'Only administrators' }), add,
+            !subjects.length ? h('p', { class: 'empty-row', text: 'Invite people or create groups to share it.' }) : null);
           mark();
+          if (focusLast) body.querySelectorAll('.grant-row [role="radio"][tabindex="0"]').item(rows.length - 1)?.focus();
         }
         save.addEventListener('click', () => busy(save, 'Saving…', async () => {
           try { const result = await api('admin/grants', { dashboardId: entry.id, grants }); view.grants[entry.id] = result.grants; grants = result.grants.map(grant => ({ ...grant })); draw(); say(box, 'Access saved.', 'ok'); }
           catch (error) { failure(box, error); }
         }));
         draw();
-        return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('div', {}, h('h3', { text: entry.name }), h('span', { class: 'small muted mono', text: '/' + (entry.slug ?? '') })), unsaved), body, box, saveRow);
+        return [group({ title: entry.name, aside: [unsaved, save, h('span', { class: 'mono', text: '/' + (entry.slug ?? '') })] }, body), box];
       });
-      return [section('Dashboard access', 'Can view: open the dashboard and use its widgets. Can arrange: also move tiles, hide discovered services and change the theme. Only administrators change integration settings, raw files, custom CSS and JavaScript, imports and access.'), ...cards];
+      return [toolbar(h('span', { class: 'toolbar-info' }, infoButton, h('span', { text: 'Access levels' }))), callout, ...groups];
     }
 
     // Session policies
-    function policiesTab() {
-      const add = h('button', { type: 'button', class: 'primary', text: 'Create policy' });
-      add.addEventListener('click', () => policyDialog(null));
-      const items = view.policies.map(policy => {
-        const edit = h('button', { type: 'button', class: 'small-button', text: 'Edit' });
-        edit.addEventListener('click', () => policyDialog(policy));
-        const remove = policy.id === 'default' ? null : h('button', { type: 'button', class: 'small-button', text: 'Delete', onclick: () => confirmDialog(`Delete ${policy.name}?`, 'People and groups using it fall back to their other policies or the default.', 'Delete', () => act(() => api('admin/policy', { action: 'delete', id: policy.id }), null, 'Policy deleted.')) });
-        return h('li', { class: 'list-item' }, h('div', {}, h('strong', {}, policy.name, policy.id === 'default' ? h('span', { class: 'badge', text: 'Default' }) : null),
-          h('span', { class: 'small muted', text: `Idle ${duration(policy.idleMinutes)} · max ${duration(policy.absoluteMinutes)} · ${policy.persistent ? 'stays signed in' : 'ends with the browser'} · confirm after ${duration(policy.stepUpMinutes)} · ${policy.maxSessions ? `${policy.maxSessions} devices` : 'any number of devices'}` })),
-          h('div', { class: 'row' }, edit, remove));
-      });
-      return section('Session policies', 'How long people stay signed in. A personal policy wins; otherwise the strictest policy among a person’s groups applies; otherwise the default.', h('div', { class: 'actions' }, add), h('ul', { class: 'list' }, items));
+    function policySummary(policy) {
+      return [`idle ${duration(policy.idleMinutes)}`, policy.absoluteMinutes ? `at most ${duration(policy.absoluteMinutes)}` : null, policy.persistent ? null : 'ends with the browser', policy.maxSessions ? `${policy.maxSessions} devices` : null].filter(Boolean).join(' · ');
     }
-    function durationInput(label, minutes, { allowNever, hint }) {
+    function policiesTab() {
+      return [toolbar(pill('New policy', { primary: true, iconName: 'plus', onclick: () => policyDialog(null) })),
+        group({ title: 'Session policies', info: 'How long people stay signed in. A personal policy wins; otherwise the strictest policy among a person’s groups applies; otherwise the default.' },
+          view.policies.map(policy => navRow({ title: policy.name, badges: policy.id === 'default' ? badge('Default') : null, detail: policySummary(policy), onClick: () => policyDialog(policy) })))];
+    }
+    function durationInput(label, minutes, { allowNever }) {
       const units = [['1', 'minutes'], ['60', 'hours'], ['1440', 'days']];
-      const pickUnit = value => value === null || value === undefined ? '1440' : value % 1440 === 0 ? '1440' : value % 60 === 0 ? '60' : '1';
-      const unit = h('select', { 'aria-label': label + ' unit' }, units.map(([value, text]) => h('option', { value, text, selected: value === pickUnit(minutes) })));
-      const amount = h('input', { type: 'number', min: '1', step: '1', value: minutes === null || minutes === undefined ? '' : String(minutes / Number(pickUnit(minutes))), placeholder: allowNever ? 'Never' : '' });
-      const node = h('div', { class: 'label' }, h('span', { text: label }), h('div', { class: 'inline-fields' }, amount, unit), hint ? h('span', { class: 'hint', text: hint }) : null);
-      amount.setAttribute('aria-label', label);
-      return { node, value: () => amount.value === '' ? null : Math.round(Number(amount.value) * Number(unit.value)) };
+      const pickUnit = amount => amount === null || amount === undefined ? '1440' : amount % 1440 === 0 ? '1440' : amount % 60 === 0 ? '60' : '1';
+      const unit = h('select', { 'aria-label': label + ' unit' }, units.map(([option, text]) => h('option', { value: option, text, selected: option === pickUnit(minutes) })));
+      const amount = h('input', { type: 'number', min: '1', step: '1', 'aria-label': label, value: minutes === null || minutes === undefined ? '' : String(minutes / Number(pickUnit(minutes))), placeholder: allowNever ? 'Never' : '' });
+      return { node: h('div', { class: 'duration' }, amount, unit), value: () => amount.value === '' ? null : Math.round(Number(amount.value) * Number(unit.value)) };
     }
     function policyDialog(policy) {
       const base = policy ?? { name: '', idleMinutes: 7 * 1440, absoluteMinutes: 30 * 1440, persistent: true, stepUpMinutes: 15, maxSessions: null };
-      openDialog(policy ? `Edit ${policy.name}` : 'Create policy', close => {
+      openDialog(policy ? policy.name : 'New policy', close => {
         const box = notice();
-        const name = h('input', { type: 'text', maxlength: 60, value: base.name, required: true });
-        const idle = durationInput('Sign out after inactivity', base.idleMinutes, { allowNever: true, hint: '5 minutes to 90 days. Leave empty for never.' });
-        const absolute = durationInput('Maximum session length', base.absoluteMinutes, { allowNever: true, hint: '1 hour to 365 days. Leave empty for no limit.' });
-        const persistent = h('input', { type: 'checkbox', checked: base.persistent });
+        const name = h('input', { type: 'text', maxlength: 60, value: base.name, required: true, placeholder: 'Required' });
+        const idle = durationInput('Idle sign-out', base.idleMinutes, { allowNever: true });
+        const absolute = durationInput('Maximum session', base.absoluteMinutes, { allowNever: true });
+        const persistent = toggle({ checked: base.persistent, label: 'Stay signed in after closing the browser' });
         const stepUp = h('input', { type: 'number', min: '5', max: '60', step: '1', value: String(base.stepUpMinutes), required: true });
-        const maxSessions = h('input', { type: 'number', min: '1', max: '50', step: '1', value: base.maxSessions ? String(base.maxSessions) : '', placeholder: 'Unlimited' });
+        const maxSessions = h('input', { type: 'number', min: '1', max: '50', step: '1', value: base.maxSessions ? String(base.maxSessions) : '', placeholder: 'No limit' });
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save policy' });
+        const remove = policy && policy.id !== 'default' ? actionRow('Delete policy', { danger: true, iconName: 'trash', onClick: () => { close(); confirmDialog(`Delete ${policy.name}?`, 'People and groups using it fall back to their other policies or the default.', 'Delete', () => act(() => api('admin/policy', { action: 'delete', id: policy.id }), null, 'Policy deleted.')); } }) : null;
         return h('form', { class: 'stack', onsubmit: async event => {
           event.preventDefault(); say(box, '');
           const body = { action: policy ? 'update' : 'create', id: policy?.id, name: name.value, idleMinutes: idle.value(), absoluteMinutes: absolute.value(), persistent: persistent.checked, stepUpMinutes: Number(stepUp.value), maxSessions: maxSessions.value === '' ? null : Number(maxSessions.value) };
           await busy(save, 'Saving…', async () => { if (await act(() => api('admin/policy', body), box, 'Policy saved.')) close(); });
         } },
-          field('Name', name), idle.node, absolute.node,
-          check('Allow staying signed in after the browser closes', persistent, 'Applies when people tick “Keep me signed in”.'),
-          field('Confirm it’s you after (minutes)', stepUp, 'Security changes, saves to raw files, imports and restores ask again after this long. 5 to 60.'),
-          field('Devices at once', maxSessions, 'Signing in on one more device ends the oldest session. Leave empty for unlimited.'),
-          box, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
+          group({}, row('Name', name)),
+          group({ title: 'Staying signed in' },
+            row('Idle sign-out', idle.node, { info: 'Signed out after this long without activity. 5 minutes to 90 days; leave it empty for never.' }),
+            row('Maximum session', absolute.node, { info: 'Sign in again at least this often. 1 hour to 365 days; leave it empty for no limit.' }),
+            row('After the browser closes', persistent, { info: 'Lets people stay signed in when they choose “Keep me signed in”.' })),
+          group({ title: 'Security' },
+            row('Confirm it’s you after', h('div', { class: 'duration' }, stepUp, h('span', { class: 'muted', text: 'minutes' })), { info: 'Security changes, saves to raw files, imports and restores ask again after this long. 5 to 60 minutes.' }),
+            row('Devices at once', maxSessions, { info: 'Signing in on one more device ends the oldest session.' })),
+          remove ? group({}, remove) : null,
+          box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
       });
     }
 
@@ -1410,60 +1548,52 @@
       const parts = [];
       const box = notice();
       const siteInput = h('input', { type: 'text', maxlength: 60, value: view.settings.deploymentName ?? '', placeholder: view.deploymentNameDefault });
-      const saveSite = h('button', { type: 'submit', class: 'primary', text: 'Save name' });
-      parts.push(section('Deployment name', 'Shown with the Studio logo on the Dashboards page, Administration and My account, on the sign-in page, in email and in passkey prompts. Each dashboard shows its own name instead.',
-        h('form', { class: 'stack', onsubmit: async event => {
-          event.preventDefault();
-          await busy(saveSite, 'Saving…', async () => {
-            if (!(await act(() => api('admin/settings', { deploymentName: siteInput.value }), box, 'Name saved.'))) return;
-            deploymentName = view.settings.deploymentName || view.deploymentNameDefault;
-            document.title = deploymentName;
-            for (const node of document.querySelectorAll('.switcher-name')) node.textContent = deploymentName;
-            document.querySelector('.switcher-button')?.setAttribute('aria-label', deploymentName + '. Open the menu');
-          });
-        } },
-          field('Name', siteInput, `Leave it empty to use the deployment’s name, “${view.deploymentNameDefault}” (STUDIO_DEPLOYMENT_NAME).`),
-          h('div', { class: 'actions' }, saveSite))));
+      const saveSite = pill('Save', { primary: true, type: 'submit', hidden: true });
+      siteInput.addEventListener('input', () => { saveSite.hidden = siteInput.value === (view.settings.deploymentName ?? ''); });
+      parts.push(h('form', { onsubmit: async event => {
+        event.preventDefault();
+        await busy(saveSite, 'Saving…', async () => {
+          if (!(await act(() => api('admin/settings', { deploymentName: siteInput.value }), box, 'Name saved.'))) return;
+          deploymentName = view.settings.deploymentName || view.deploymentNameDefault;
+          document.title = deploymentName;
+          for (const node of document.querySelectorAll('.switcher-name')) node.textContent = deploymentName;
+          document.querySelector('.switcher-button')?.setAttribute('aria-label', deploymentName + '. Open the menu');
+        });
+      } }, group({ title: 'Deployment', aside: saveSite },
+        row('Name', siteInput, { info: `Shown with the Studio logo on the Dashboards page, Administration and My account, on the sign-in page, in email and in passkey prompts. Each dashboard shows its own name instead. Leave it empty to use “${view.deploymentNameDefault}” from STUDIO_DEPLOYMENT_NAME.` }))));
       if (!view.keyConfigured) parts.push(h('div', { class: 'notice warn', text: 'STUDIO_AUTH_KEY is not set, so authenticator secrets and single sign-on tokens are stored unencrypted in the state volume. Set it from a Docker secret; see docs/AUTHENTICATION.md.' }));
-      const localToggle = h('input', { type: 'checkbox', checked: view.settings.localSignIn, disabled: view.settings.localSignIn && !view.canDisableLocal });
-      localToggle.addEventListener('change', () => {
-        const turningOff = !localToggle.checked;
-        localToggle.checked = !turningOff;
-        if (turningOff) confirmDialog('Turn off local sign-in?', `Passwords, passkeys and authenticator codes stop working and local sessions end. Everyone signs in with ${view.oidc?.name ?? 'single sign-on'}. The command-line recovery link still works.`, 'Turn off', () => act(() => api('admin/settings', { localSignIn: false }), box, 'Local sign-in turned off.'));
+      const localToggle = toggle({ checked: view.settings.localSignIn, label: 'Local sign-in', disabled: view.settings.localSignIn && !view.canDisableLocal, onChange: on => {
+        localToggle.checked = !on;
+        if (!on) confirmDialog('Turn off local sign-in?', `Passwords, passkeys and authenticator codes stop working and local sessions end. Everyone signs in with ${provider()}. The command-line recovery link still works.`, 'Turn off', () => act(() => api('admin/settings', { localSignIn: false }), box, 'Local sign-in turned off.'));
         else act(() => api('admin/settings', { localSignIn: true }), box, 'Local sign-in turned on.');
-      });
-      parts.push(section('Local accounts', null,
-        check('Allow local sign-in', localToggle, 'Passwords, passkeys, authenticator apps and backup codes.'),
-        view.settings.localSignIn && !view.canDisableLocal ? h('p', { class: 'small muted', text: view.oidc ? `To turn this off, sign in through ${view.oidc.name} as someone in a mapped administrator group. That proves single sign-on works before local access goes away.` : 'Set up single sign-on before turning local sign-in off.' }) : null));
-      const emailToggle = h('input', { type: 'checkbox', checked: view.settings.emailCode, disabled: !view.email });
-      emailToggle.addEventListener('change', () => act(() => api('admin/settings', { emailCode: emailToggle.checked }), box, 'Saved.'));
-      parts.push(section('Email', view.email ? 'Email is set up: invitations, password resets and security alerts can be sent.' : 'Email is not set up. Set STUDIO_SMTP_HOST and related settings to send invitations, resets and alerts.',
-        check('Allow emailed sign-in codes as a second step', emailToggle, 'Weaker than a passkey or authenticator app: anyone who can read the mailbox can use them.')));
+      } });
+      const emailToggle = toggle({ checked: view.settings.emailCode, label: 'Emailed sign-in codes', disabled: !view.email, onChange: on => act(() => api('admin/settings', { emailCode: on }), box, 'Saved.') });
+      parts.push(group({ title: 'Sign-in methods' },
+        row('Local sign-in', localToggle, { info: ['Passwords, passkeys, authenticator apps and backup codes.', view.settings.localSignIn && !view.canDisableLocal ? (view.oidc ? ` To turn this off, sign in through ${view.oidc.name} as someone in a mapped administrator group. That proves single sign-on works before local access goes away.` : ' Set up single sign-on before turning local sign-in off.') : ''].join('') }),
+        row('Email', value(view.email ? 'Set up' : 'Not set up'), { info: view.email ? 'Invitations, password resets and security alerts can be sent.' : 'Set STUDIO_SMTP_HOST and the related settings to send invitations, resets and alerts.' }),
+        row('Emailed codes as a second step', emailToggle, { info: 'Weaker than a passkey or authenticator app: anyone who can read the mailbox can use them.' })));
       if (view.oidc) {
-        const toList = text => text.split(/[\n,]/).map(item => item.trim()).filter(Boolean);
+        const name = view.oidc.name;
         const locked = view.deployment ?? {};
-        const adminGroups = h('textarea', { rows: 3, text: view.settings.oidc.adminGroups.join('\n'), readonly: locked.adminGroups });
-        const allowedGroups = h('textarea', { rows: 3, text: view.settings.oidc.allowedGroups.join('\n'), readonly: locked.allowedGroups });
+        const save = pill('Save', { primary: true, hidden: true });
+        const markDirty = () => { save.hidden = false; };
+        const adminGroups = chipsEditor({ values: view.settings.oidc.adminGroups, locked: locked.adminGroups, label: 'Add an administrator group', onChange: markDirty });
+        const allowedGroups = chipsEditor({ values: view.settings.oidc.allowedGroups, locked: locked.allowedGroups, label: 'Add an allowed group', onChange: markDirty });
+        const autoCreate = toggle({ checked: view.settings.oidc.autoCreate, label: 'Create accounts at first sign-in', onChange: markDirty });
         const fromDeployment = variable => ` Set by ${variable} in the deployment, so it can only be changed there.`;
-        const autoCreate = h('input', { type: 'checkbox', checked: view.settings.oidc.autoCreate });
-        const save = h('button', { type: 'submit', class: 'primary', text: 'Save single sign-on settings' });
         const copyBox = notice();
-        const copyRow = (labelText, value) => h('div', { class: 'label' }, h('span', { text: labelText }), h('div', { class: 'row' }, h('code', { class: 'secret', text: value }), h('button', { type: 'button', class: 'small-button', onclick: () => copyText(value, copyBox), text: 'Copy' })));
-        parts.push(section(view.oidc.name, 'Single sign-on through OpenID Connect.',
-          copyRow('Redirect URI (set this in the provider)', view.oidc.redirectUri),
-          copyRow('Back-channel logout URI (optional)', view.oidc.backchannelLogoutUri),
-          copyBox,
-          view.oidc.lastSignIn && !view.oidc.lastSignIn.refreshToken ? h('p', { class: 'notice warn', role: 'status', text: `The last ${view.oidc.name} sign-in didn't return a refresh token, so those sessions end after ${view.oidc.refreshMinutes} minutes. Request the offline_access scope and allow it in the provider (in Authentik, for example, add the offline_access scope mapping to the provider's selected scopes).` }) : null,
-          view.oidc.lastSignIn?.emailUnverified ? h('p', { class: 'notice warn', role: 'status', text: `The last ${view.oidc.name} sign-in sent an email address that isn't marked as verified, so Studio didn't use it. Have the provider mark verified addresses with email_verified (in Authentik, an email scope mapping that sets it to true); see docs/AUTHENTICATION.md.` }) : null,
-          h('form', { class: 'stack', onsubmit: async event => {
-            event.preventDefault();
-            await busy(save, 'Saving…', () => act(() => api('admin/settings', { oidc: { adminGroups: toList(adminGroups.value), allowedGroups: toList(allowedGroups.value), autoCreate: autoCreate.checked } }), box, 'Single sign-on settings saved.'));
-          } },
-            field('Administrator groups', adminGroups, `One per line. People in these ${view.oidc.name} groups become administrators; provider accounts outside them are members.${locked.adminGroups ? fromDeployment('STUDIO_OIDC_ADMIN_GROUPS') : ''}`, locked.adminGroups ? 'Set by the deployment' : null),
-            field('Allowed groups', allowedGroups, `One per line. Leave empty to allow everyone the provider signs in. Administrator groups are always allowed.${locked.allowedGroups ? fromDeployment('STUDIO_OIDC_ALLOWED_GROUPS') : ''}`, locked.allowedGroups ? 'Set by the deployment' : null),
-            check(`Create a Studio account the first time someone signs in with ${view.oidc.name}`, autoCreate, `Only for people in an allowed or administrator group. While both lists are empty, nobody new is created. Others need an invitation, then link their ${view.oidc.name} account from their account page.`),
-            h('div', { class: 'actions' }, save))));
-      } else parts.push(section('Single sign-on', 'Not configured. Set STUDIO_OIDC_ISSUER, STUDIO_OIDC_CLIENT_ID and STUDIO_OIDC_CLIENT_SECRET_FILE to sign in with any OpenID Connect provider. See docs/AUTHENTICATION.md.'));
+        const copyRow = (label, text) => row(label, h('div', { class: 'copy-value' }, h('code', { text }), h('button', { type: 'button', class: 'icon-button', 'aria-label': 'Copy ' + label, title: 'Copy', onclick: () => copyText(text, copyBox) }, icon('copy', 16))), { stacked: true });
+        save.addEventListener('click', () => busy(save, 'Saving…', () => act(() => api('admin/settings', { oidc: { adminGroups: adminGroups.values(), allowedGroups: allowedGroups.values(), autoCreate: autoCreate.checked } }), box, 'Single sign-on settings saved.')));
+        if (view.oidc.lastSignIn && !view.oidc.lastSignIn.refreshToken) parts.push(h('p', { class: 'notice warn', role: 'status', text: `The last ${name} sign-in didn't return a refresh token, so those sessions end after ${view.oidc.refreshMinutes} minutes. Request the offline_access scope and allow it in the provider (in Authentik, for example, add the offline_access scope mapping to the provider's selected scopes).` }));
+        if (view.oidc.lastSignIn?.emailUnverified) parts.push(h('p', { class: 'notice warn', role: 'status', text: `The last ${name} sign-in sent an email address that isn't marked as verified, so Studio didn't use it. Have the provider mark verified addresses with email_verified (in Authentik, an email scope mapping that sets it to true); see docs/AUTHENTICATION.md.` }));
+        parts.push(group({ title: name, info: 'Single sign-on through OpenID Connect. Set these addresses in the provider.' },
+          copyRow('Redirect URI', view.oidc.redirectUri),
+          copyRow('Back-channel logout URI (optional)', view.oidc.backchannelLogoutUri)), copyBox);
+        parts.push(group({ title: `${name} groups`, aside: save },
+          row('Administrator groups', adminGroups.node, { stacked: true, detail: locked.adminGroups ? 'Set by the deployment' : null, info: `People in these ${name} groups become administrators; provider accounts outside them are members.${locked.adminGroups ? fromDeployment('STUDIO_OIDC_ADMIN_GROUPS') : ''}` }),
+          row('Allowed groups', allowedGroups.node, { stacked: true, detail: locked.allowedGroups ? 'Set by the deployment' : null, info: `Leave it empty to allow everyone the provider signs in. Administrator groups are always allowed. Only these groups and the administrator groups come over to Studio.${locked.allowedGroups ? fromDeployment('STUDIO_OIDC_ALLOWED_GROUPS') : ''}` }),
+          row('Create accounts at first sign-in', autoCreate, { info: `Only for people in an allowed or administrator group. While both lists are empty, nobody new is created. Others need an invitation, then link their ${name} account from their account page.` })));
+      } else parts.push(group({ title: 'Single sign-on' }, row('OpenID Connect', value('Not set up'), { info: 'Set STUDIO_OIDC_ISSUER, STUDIO_OIDC_CLIENT_ID and STUDIO_OIDC_CLIENT_SECRET_FILE to sign in with any OpenID Connect provider. See docs/AUTHENTICATION.md.' })));
       return [box, ...parts];
     }
 
@@ -1480,18 +1610,20 @@
         const { events } = await api('admin/audit');
         const describe = event => {
           const who = event.userId ? userName(event.userId) : event.username ? event.username : '';
-          const by = event.by && event.by !== event.userId ? ` by ${userName(event.by)}` : '';
-          return [event.type.replace(/-/g, ' '), who ? ` · ${who}` : '', by, event.method ? ` · ${event.method}` : '', event.step ? ` · ${event.step}` : '', event.reason ? ` · ${event.reason}` : ''].join('');
+          const by = event.by && event.by !== event.userId ? `by ${userName(event.by)}` : '';
+          return [who, by, event.method, event.step, event.reason, event.ip].filter(Boolean).join(' · ');
         };
+        const title = type => { const text = type.replace(/-/g, ' '); return text.charAt(0).toUpperCase() + text.slice(1); };
         const sorted = events.slice().sort((a, b) => String(b.at).localeCompare(String(a.at)));
-        put(holder, sorted.length ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['When', 'Event', 'Address'].map(label => h('th', { scope: 'col', text: label })))),
-          h('tbody', {}, sorted.map(event => h('tr', {}, h('td', { class: 'small', text: when(Date.parse(event.at)) }), h('td', { class: event.type.includes('failed') ? '' : undefined }, event.type.includes('failed') ? h('span', { class: 'badge danger', text: 'failed' }) : null, ' ', describe(event)), h('td', { class: 'small mono', text: event.ip ?? '' })))))) : h('p', { class: 'muted', text: 'No activity yet.' }));
+        put(holder, sorted.length ? sorted.map(event => h('div', { class: 'item-row' },
+          h('span', { class: 'nav-text' }, h('span', { class: 'nav-title' }, h('span', { text: title(event.type) }), event.type.includes('failed') ? badge('Failed', 'danger') : null), h('small', { class: 'mono-detail', text: describe(event) })),
+          h('time', { class: 'row-value small', datetime: event.at, title: when(Date.parse(event.at)), text: ago(Date.parse(event.at)) }))) : h('p', { class: 'empty-row', text: 'No activity yet.' }));
       } catch (error) { put(holder, h('div', { class: 'notice error', text: error.message })); }
     }
     function activityTab() {
-      const holder = h('div', {}, h('p', { class: 'muted', text: 'Loading…' }));
+      const holder = h('div', {}, h('p', { class: 'empty-row', text: 'Loading…' }));
       loadActivity(holder);
-      return section('Activity', 'The latest 500 sign-in and administration events. They are also written to the container log for tools such as fail2ban or CrowdSec.', holder);
+      return group({ title: 'Activity', info: 'The latest 500 sign-in and administration events. They are also written to the container log for tools such as fail2ban or CrowdSec.' }, holder);
     }
 
     drawTabs();
