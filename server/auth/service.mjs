@@ -1409,7 +1409,9 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   async function oidcStart(res, { intent = 'signin', next = '/', current } = {}) {
     if (!oidc) fail('Single sign-on is not configured.', 'OIDC_NOT_CONFIGURED', 404);
     const localUserId = intent === 'link' ? linkTarget(current) : undefined;
-    const flow = await oidc.start({ fresh: intent === 'link' });
+    // Linking and confirming it's you both need a sign-in that just happened
+    // at the provider, not one remembered from an earlier browser session.
+    const flow = await oidc.start({ fresh: intent === 'link' || intent === 'reauth' });
     const id = randomToken();
     pending.set('oidc:' + tokenHash(id), { kind: 'oidc', ...flow, intent, next: safeNext(next), sessionId: current?.session.id, userId: current?.user.id, localUserId, createdAt: now(), expiresAt: now() + PENDING_TTL });
     appendCookie(res, cookie(config.flowCookieName, id, { maxAge: 600 }));

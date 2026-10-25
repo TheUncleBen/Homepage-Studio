@@ -34,7 +34,8 @@ export function createOidc(settings, { origin }) {
     redirectUri,
     refreshMinutes: settings.refreshMinutes,
     // fresh: asks the provider to sign the person in again (prompt=login)
-    // and to report when they did (max_age), for linking accounts.
+    // and to report when they did (max_age), for linking accounts and for
+    // confirming it's you.
     async start({ fresh = false } = {}) {
       const verifier = client.randomPKCECodeVerifier();
       const state = client.randomState();

@@ -749,3 +749,23 @@ test('people can change their own username after a recent sign-in, and names sta
   assert.equal((await ctx.post('/studio/auth/admin/update', { id: member.id, username: 'ben' }, { cookie: admin.cookie })).json.code, 'USERNAME_TAKEN');
   assert.equal((await ctx.post('/studio/auth/admin/update', { id: member.id, username: 'kid' }, { cookie: admin.cookie })).status, 200);
 });
+
+test('confirming it is you through the provider needs a sign-in that just happened there', async t => {
+  const ctx = await setup(t);
+  const admin = await createAdmin(ctx);
+  await ctx.post('/studio/auth/admin/settings', { oidc: { adminGroups: ['studio-admins'], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
+  ctx.provider.state.user.groups = ['studio-users'];
+  const sso = await oidcSignIn(ctx);
+  assert.ok(sso.cookie, sso.response.text);
+  // A provider session remembered from earlier doesn't count.
+  ctx.provider.state.authTime = Math.floor(Date.now() / 1000) - 600;
+  const stale = await oidcSignIn(ctx, { intent: 'reauth', cookie: sso.cookie });
+  assert.equal(ctx.provider.state.lastPrompt, 'login');
+  assert.equal(ctx.provider.state.lastMaxAge, '300');
+  assert.match(stale.response.headers.location, /error=OIDC_FAILED/);
+  ctx.provider.state.authTime = undefined;
+  const fresh = await oidcSignIn(ctx, { intent: 'reauth', cookie: sso.cookie });
+  assert.equal(fresh.response.headers.location, '/studio/account');
+  const { events } = (await ctx.request('/studio/auth/admin/audit', { cookie: admin.cookie })).json;
+  assert.ok(events.some(event => event.type === 'reauthenticated' && event.method === 'oidc'));
+});

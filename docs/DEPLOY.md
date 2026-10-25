@@ -234,6 +234,8 @@ fails are in [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md). For other providers, see
      ([IDP-AUTHENTIK.md section 4](IDP-AUTHENTIK.md#email-addresses)). Since
      Authentik 2025.10 the built-in mapping says they aren't, and Studio then
      ignores them.
+   - Token validity: keep Authentik's defaults. Studio's own **Session
+     policies** decide how long people stay signed in.
    - Note the **Client ID**.
 3. **Applications → Applications → Create**: name `Homepage Studio`, slug
    `homepage-studio`, provider `Homepage Studio`, launch URL
@@ -243,6 +245,10 @@ fails are in [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md). For other providers, see
 4. Open the provider again and copy the **OpenID Configuration Issuer**. With
    slug `homepage-studio` it's
    `https://idp.example.test/application/o/homepage-studio/`.
+5. Require a second factor in the authentication flow people use to reach
+   Studio: Studio doesn't ask for its own after an Authentik sign-in. What to
+   set, and why the token lifetimes can stay as they are, is in
+   [Sign-in policy and token lifetimes](IDP-AUTHENTIK.md#sign-in-policy-and-token-lifetimes).
 
 ## 5. Docker secrets
 

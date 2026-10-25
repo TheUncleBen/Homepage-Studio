@@ -156,6 +156,8 @@ administrator actions such as raw file saves, imports, exports and restores
 ask you to **confirm it's you** if you signed in more than a short while ago
 (15 minutes by default). In the dashboard editor, the confirmation opens in a
 new tab so unsaved changes stay put; confirm there, come back and save again.
+People signed in through an identity provider confirm by signing in there
+again; a sign-in the provider remembers from earlier doesn't count.
 
 Dashboards shown inside another site's frame (`STUDIO_FRAME_ANCESTORS`) need
 the viewer signed in. That only carries into the frame when both sites share a
