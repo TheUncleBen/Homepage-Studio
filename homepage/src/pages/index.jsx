@@ -167,7 +167,7 @@ function StudioDashboard({
           data-studio-appearance
           dangerouslySetInnerHTML={{ __html: appearanceStyles(settings) }}
         />
-        <title>{settings.title || "Homepage Studio"}</title>
+        <title>{settings.title || "Dashboard"}</title>
         <meta name="description" content={settings.description || "Your personal Homepage dashboard"} />
         <link rel="icon" href={settings.favicon || dashboardPath("/studio/logo", studioDashboard.basePath)} />
         <link rel="apple-touch-icon" href="/studio/brand/apple-touch-icon.png" />

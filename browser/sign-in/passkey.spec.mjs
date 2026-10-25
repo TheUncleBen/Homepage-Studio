@@ -69,9 +69,9 @@ test('first administrator sets up with a passkey, signs out and signs back in wi
   if (native) {
     await page.goto('/dashboard');
     await expect(page.getByRole('button', { name: 'Account: Studio Admin' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Widgets' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Widgets', exact: true })).toHaveCount(0);
     await page.goto('/dashboard/studio/edit');
-    await expect(page.getByRole('button', { name: 'Widgets' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Widgets', exact: true })).toBeVisible();
   }
 
   await page.goto('/studio/account');
@@ -88,6 +88,32 @@ test('first administrator sets up with a passkey, signs out and signs back in wi
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
   await expect(page).toHaveURL(/\/studio\/dashboards$/);
   await expect(page.getByRole('button', { name: 'Account: Studio Admin' })).toBeVisible();
+
+  // Groups reorder by dragging a row by its handle, and the order is saved.
+  await page.goto('/studio/admin');
+  await page.getByRole('tab', { name: 'Groups' }).click();
+  const rows = page.locator('ul.list > li.draggable');
+  for (const name of ['Alpha', 'Beta', 'Gamma']) {
+    await page.getByLabel('New group name').fill(name);
+    await page.getByRole('button', { name: 'Create group' }).click();
+    await expect(rows.filter({ hasText: name })).toHaveCount(1);
+  }
+  const order = () => rows.evaluateAll(items => items.map(item => item.querySelector('strong').firstChild.textContent.replace(/^\d+\. /, '').trim()));
+  await expect.poll(order).toEqual(['Alpha', 'Beta', 'Gamma']);
+  const handle = rows.nth(2).locator('.drag-handle');
+  const from = await handle.boundingBox();
+  const to = await rows.nth(0).boundingBox();
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2, to.y + to.height / 2, { steps: 4 });
+  await page.mouse.move(from.x + from.width / 2, to.y + 4, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.getByText('Group order saved.')).toBeVisible();
+  await expect.poll(order).toEqual(['Gamma', 'Alpha', 'Beta']);
+  await expect(page.locator('li.dragging')).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('tab', { name: 'Groups' }).click();
+  await expect.poll(order).toEqual(['Gamma', 'Alpha', 'Beta']);
 
   expect(policyErrors).toEqual([]);
 });

@@ -46,6 +46,7 @@ export default function AppearanceOnlyEditor({ appearance, logo, onLogoChange, o
             onLogoChange={onLogoChange}
             onChange={setDraft}
             onValidity={setValid}
+            saveLabel="Save appearance"
           />
         </fieldset>
         <p className="studio-note">

@@ -30,7 +30,7 @@ export const MAX_IMPORT_BYTES = MAX_BACKUP_BYTES;
 export const DEFAULT_BACKUP_RETENTION = 25;
 // Fixed codes naming the API operation that created a pre-change snapshot.
 // They are chosen by the server per endpoint and never contain request text.
-// Snapshots written before this field existed have no action.
+// Every snapshot names one.
 const CONTENT_ACTIONS = { add: 'added', update: 'edited', delete: 'deleted' };
 export const SNAPSHOT_ACTIONS = Object.freeze([
   'arrangement-saved', 'settings-saved', 'files-saved', 'snapshot-restored', 'dashboard-imported',
@@ -569,7 +569,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     let backup;
     try { backup = JSON.parse(text); } catch { fail('Backup metadata is invalid.', 'INVALID_BACKUP', 500); }
     const managedFiles = object(backup.before) ? Object.keys(backup.before) : [];
-    if (backup.version !== 1 || !object(backup.before) || !object(backup.afterHashes) || ALL_FILES.some((name) => !managedFiles.includes(name)) || managedFiles.some((name) => !ALL_FILES.includes(name) || !(backup.before[name] === null || typeof backup.before[name] === 'string') || typeof backup.afterHashes[name] !== 'string')) {
+    if (backup.version !== 1 || !object(backup.before) || !object(backup.afterHashes) || ALL_FILES.some((name) => !managedFiles.includes(name)) || managedFiles.some((name) => !ALL_FILES.includes(name) || !(backup.before[name] === null || typeof backup.before[name] === 'string') || typeof backup.afterHashes[name] !== 'string') || !snapshotAction(backup.action)) {
       fail('Backup metadata is incomplete.', 'INVALID_BACKUP', 500);
     }
     return { ...backup, managedFiles };
@@ -686,6 +686,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
   async function commit(current, desired, action) {
     // Validate the exact bytes that will be persisted, including generated
     // identity/layout state, before creating a backup or transaction journal.
+    if (!snapshotAction(action)) throw new Error(`Unknown snapshot action: ${action}`);
     validateSnapshotBytes(desired);
     parseSnapshot(desired);
     const changedFiles = ALL_FILES.filter((name) => desired[name] !== current.raw[name]);
@@ -693,7 +694,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const backupId = await nextBackupId();
     const backup = {
       version: 1, createdAt: new Date().toISOString(), revision: current.revision, changedFiles,
-      ...(snapshotAction(action) ? { action } : {}),
+      action,
       before: current.raw,
       afterHashes: Object.fromEntries(ALL_FILES.map((name) => [name, fileHash(desired[name])])),
     };
@@ -1059,15 +1060,14 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       for (const name of names) {
         const id = name.slice(0, -5);
         const backup = await readBackup(id);
-        metadata.push({ id, createdAt: backup.createdAt, revision: backup.revision, changedFiles: backup.changedFiles, action: snapshotAction(backup.action) });
+        metadata.push({ id, createdAt: backup.createdAt, revision: backup.revision, changedFiles: backup.changedFiles, action: backup.action });
       }
       return metadata;
     }),
     exportBackup: (id) => serialized(async () => {
       await ready();
-      const { managedFiles, action, ...backup } = await readBackup(id);
-      // Older snapshots have no action; an unrecognized value is not exported.
-      return snapshotAction(action) ? { ...backup, action } : backup;
+      const { managedFiles, ...backup } = await readBackup(id);
+      return backup;
     }),
     exportCurrent: () => serialized(async () => {
       const current = await readCurrent();

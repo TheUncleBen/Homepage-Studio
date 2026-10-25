@@ -1,3 +1,4 @@
+import Head from "next/head";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 
@@ -159,11 +160,7 @@ export default function StudioBoard({
   // Until the answer arrives every control shows but stays disabled; a failed
   // or unexpected answer leaves only viewing. With sign-in off Studio answers admin.
   const accessLoading = !access && !accessError;
-  const level = ["view", "arrange", "admin"].includes(access?.level)
-    ? access.level
-    : accessLoading
-      ? "admin"
-      : "view";
+  const level = ["view", "arrange", "admin"].includes(access?.level) ? access.level : accessLoading ? "admin" : "view";
   const isAdmin = level === "admin";
   const canArrange = isAdmin || level === "arrange";
   const [draft, setDraft] = useState(null);
@@ -296,10 +293,7 @@ export default function StudioBoard({
   // Tab follows the projected layout (row, then column) without reordering
   // native hosts in the DOM.
   const readingOrder = useMemo(
-    () =>
-      [...projection.units]
-        .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)
-        .map((unit) => unit.id),
+    () => [...projection.units].sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x).map((unit) => unit.id),
     [projection],
   );
   useBoardFocusOrder(canvas, readingOrder);
@@ -886,6 +880,13 @@ export default function StudioBoard({
 
   return (
     <main className={`studio-app${editing ? " studio-edit-mode" : ""}`} aria-busy={saving || refreshing || undefined}>
+      {/* Without a title of its own in settings.yaml, the browser tab shows the
+          dashboard's name, as the top bar does. */}
+      {!settings?.title && access?.dashboard?.name && (
+        <Head>
+          <title>{access.dashboard.name}</title>
+        </Head>
+      )}
       <StudioTopBar
         title={access?.dashboard?.name || settings?.title || "Dashboard"}
         dashboardId={access?.dashboard?.id}
@@ -899,7 +900,9 @@ export default function StudioBoard({
           <div>
             <p className="studio-eyebrow">Editing</p>
             <h1>{access?.dashboard?.name || settings?.title || "Dashboard"}</h1>
-            <p className="studio-subtitle">Move, resize and stack widgets. Done saves and takes you back to Dashboards.</p>
+            <p className="studio-subtitle">
+              Move, resize and stack widgets. Done saves and takes you back to Dashboards.
+            </p>
           </div>
           <div className="studio-header-actions">
             <button
@@ -1133,7 +1136,7 @@ export default function StudioBoard({
               onEdit={editStack}
               onManipulate={manipulate}
               onUnitKey={unitKey}
-                  onStackDrag={(offset) => onStackDrag(stack.id, offset)}
+              onStackDrag={(offset) => onStackDrag(stack.id, offset)}
             />
           ))}
         </div>
@@ -1196,8 +1199,8 @@ export default function StudioBoard({
                 <div className="studio-dialog-body">
                   <h3>Discard unsaved changes?</h3>
                   <p className="studio-note">
-                    This arrangement has moves, sizes or stacks that have not been saved. Keep editing to preserve
-                    them, or discard them to leave edit mode.
+                    This arrangement has moves, sizes or stacks that have not been saved. Keep editing to preserve them,
+                    or discard them to leave edit mode.
                   </p>
                   <div className="studio-inline-actions">
                     <button

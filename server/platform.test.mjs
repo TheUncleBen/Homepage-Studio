@@ -28,10 +28,18 @@ test('logos are recognized by their bytes, and SVGs with scripts or outside refe
   assert.equal(logoType(Buffer.from([0xff, 0xd8, 0xff, 0xe0])), 'image/jpeg');
   assert.equal(logoType(Buffer.from('RIFF\0\0\0\0WEBPVP8 ')), 'image/webp');
   assert.equal(logoType(Buffer.from('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(#g)"/></svg>')), 'image/svg+xml');
+  // Editor metadata under other prefixes (Inkscape, Sodipodi) stays allowed.
+  assert.equal(logoType(Buffer.from('<svg xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"><inkscape:grid/><rect inkscape:label="tile"/></svg>')), 'image/svg+xml');
   assert.equal(logoType(Buffer.from('GIF89a')), null);
   assert.equal(logoType(Buffer.from('<html><svg></svg></html>')), null);
   assert.equal(logoType(Buffer.from('<!DOCTYPE svg [<!ENTITY x "y">]><svg/>')), null);
-  for (const svg of ['<svg><script>alert(1)</script></svg>', '<svg onload="x()"></svg>', '<svg><image href="https://evil.test/x.png"/></svg>', '<svg><foreignObject/></svg>', '<svg><rect style="fill:url(https://evil.test/a)"/></svg>']) {
+  for (const svg of ['<svg><script>alert(1)</script></svg>', '<svg onload="x()"></svg>', '<svg><image href="https://evil.test/x.png"/></svg>', '<svg><foreignObject/></svg>', '<svg><rect style="fill:url(https://evil.test/a)"/></svg>',
+    // Namespace prefixes, XHTML content and stylesheet imports.
+    '<svg xmlns:s="http://www.w3.org/2000/svg"><s:script>x()</s:script></svg>',
+    '<svg xmlns:s="http://www.w3.org/2000/svg"><s:foreignObject width="1" height="1"/></svg>',
+    '<svg><g xmlns:h="http://www.w3.org/1999/xhtml"><h:p>x</h:p></g></svg>',
+    '<svg><rect s:onclick="x()"/></svg>',
+    '<svg><style>@import "https://evil.test/x.css";</style><rect/></svg>']) {
     assert.throws(() => logoType(Buffer.from(svg)), { name: 'LogoError' }, svg);
   }
 });

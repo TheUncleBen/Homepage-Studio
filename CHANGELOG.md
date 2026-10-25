@@ -30,7 +30,11 @@ in older entries below are history only.
   Studio's pages, the sign-in page, tab titles, email and passkey prompts.
 - **Logo and favicon.** Studio has a logo, also its favicon and app icon. Anyone
   who may arrange a dashboard can upload that dashboard's own logo; it shows
-  in the top bar and as the dashboard's tab icon. Duplicates keep it.
+  in the top bar and as the dashboard's tab icon. Duplicates keep it. An SVG
+  logo with scripts, embedded HTML, event handlers or outside references
+  (including stylesheet imports) is refused.
+- **Tab titles.** A dashboard without its own title in `settings.yaml` shows
+  its name in the browser tab.
 - **Top bar.** The name opens a dashboard switcher; Dashboards,
   Administration and the account menu fold into the menu on phones.
 - **Platform default look.** **Administration → Appearance** sets the display
@@ -38,6 +42,8 @@ in older entries below are history only.
   dashboard follows each setting until it sets its own; platform CSS loads
   before a dashboard's `custom.css` and can be switched off per dashboard by an
   administrator. With sign-in off, Administration shows this page.
+  Saving it asks for a recent sign-in, like other sensitive administration
+  changes.
 - **Groups** can be reordered by dragging, as well as with the buttons.
 - **Environment example and stack files** list the required settings first
   and the optional ones below.

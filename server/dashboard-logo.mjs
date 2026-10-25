@@ -27,8 +27,10 @@ export function logoType(bytes) {
     // Browsers never run an SVG's scripts in an <img> or tab icon, and the
     // file is served under a CSP without scripts. Refuse active content and
     // outside references anyway, so the file is plainly a picture.
-    if (/<script|<foreignObject|<iframe|<embed|<object|\son[a-z]+\s*=|javascript:|data:text\/html|<!ENTITY|<!DOCTYPE/i.test(text)) throw new LogoError('That SVG contains scripts or embedded pages. Use a plain SVG, PNG, JPEG or WebP image.');
-    if (/(?:href|src)\s*=\s*["']\s*(?!#)/i.test(text) || /url\(\s*["']?\s*(?!#)/i.test(text)) throw new LogoError('That SVG loads other files. Use an SVG without links to other files, or a PNG, JPEG or WebP image.');
+    // Element and attribute names are matched with or without a namespace
+    // prefix (<s:script>), and XHTML content is refused wherever it appears.
+    if (/<(?:[\w.-]+:)?(?:script|foreignObject|iframe|embed|object|handler|listener)\b|\s(?:[\w.-]+:)?on[a-z]+\s*=|javascript:|data:text\/html|<!ENTITY|<!DOCTYPE|w3\.org\/1999\/xhtml/i.test(text)) throw new LogoError('That SVG contains scripts or embedded pages. Use a plain SVG, PNG, JPEG or WebP image.');
+    if (/(?:href|src)\s*=\s*["']\s*(?!#)/i.test(text) || /url\(\s*["']?\s*(?!#)/i.test(text) || /@import/i.test(text)) throw new LogoError('That SVG loads other files. Use an SVG without links to other files, or a PNG, JPEG or WebP image.');
     return 'image/svg+xml';
   }
   return null;

@@ -557,3 +557,17 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   const accent = await post('/home/studio/api/appearance', { revision: appearance.revision, config: { studioTheme: { accent: '#81a8c8' } } }, { cookie: member.cookie });
   assert.equal(accent.status, 200, accent.text);
 });
+
+test('saving the platform look needs a recent sign-in, as a dashboard custom.css does', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const context = await setup(t);
+  const { request, post } = context;
+  const admin = await createAdmin(context);
+  t.mock.timers.tick(30 * 60000);
+  const platform = await request('/studio/api/platform', { cookie: admin.cookie });
+  assert.equal(platform.status, 200, 'reading it needs no confirmation');
+  const stale = await post('/studio/api/platform', { revision: platform.json.revision, mode: 'light', accent: '#91b09e', background: null, css: '' }, { cookie: admin.cookie });
+  assert.equal(stale.status, 401);
+  assert.equal(stale.json.code, 'REAUTH_REQUIRED');
+  assert.equal((await request('/studio/api/platform', { cookie: admin.cookie })).json.revision, platform.json.revision, 'nothing was saved');
+});

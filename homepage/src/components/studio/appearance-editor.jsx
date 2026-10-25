@@ -15,7 +15,15 @@ const MODE_LABELS = { dark: "Dark", light: "Light", system: "Follow device" };
 
 // Each setting either follows the platform default from Administration →
 // Appearance or is this dashboard's own; changing one doesn't touch others.
-export default function AppearanceEditor({ settings, platform, logo, onLogoChange, onChange, onValidity }) {
+export default function AppearanceEditor({
+  settings,
+  platform,
+  logo,
+  onLogoChange,
+  onChange,
+  onValidity,
+  saveLabel = "Save settings",
+}) {
   const own = ownAppearance(settings);
   const effective = applyPlatformDefaults(settings, platform);
   const appearance = appearanceConfig(effective);
@@ -35,10 +43,7 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
 
   const change = (next) => {
     const current = settings.studioTheme;
-    const original =
-      current && typeof current === "object" && !Array.isArray(current)
-        ? current
-        : {};
+    const original = current && typeof current === "object" && !Array.isArray(current) ? current : {};
     const studioTheme = { ...original, ...next };
     for (const [key, value] of Object.entries(next)) if (value === undefined) delete studioTheme[key];
     const updated = { ...settings, studioTheme };
@@ -58,21 +63,13 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
   };
   const preview = appearanceTokens(effective, systemDark);
   const previewStyle = Object.fromEntries(
-    Object.entries(preview.tokens).map(([key, value]) => [
-      `--studio-${key}`,
-      value,
-    ]),
+    Object.entries(preview.tokens).map(([key, value]) => [`--studio-${key}`, value]),
   );
 
   return (
-    <section
-      className="studio-appearance"
-      aria-labelledby="studio-appearance-heading"
-    >
+    <section className="studio-appearance" aria-labelledby="studio-appearance-heading">
       <h3 id="studio-appearance-heading">Appearance</h3>
-      <p className="studio-note">
-        Choose a look for this dashboard. Changes apply when you save settings.
-      </p>
+      <p className="studio-note">Choose a look for this dashboard. Changes apply when you choose {saveLabel}.</p>
       <div className="studio-appearance-layout">
         <div className="studio-appearance-controls">
           <div className="studio-field">
@@ -80,9 +77,7 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
             <select
               id="studio-display-mode"
               value={own.mode ? appearance.mode : "platform"}
-              onChange={(event) =>
-                change({ mode: event.target.value === "platform" ? undefined : event.target.value })
-              }
+              onChange={(event) => change({ mode: event.target.value === "platform" ? undefined : event.target.value })}
             >
               <option value="platform">Platform default ({platformMode})</option>
               <option value="dark">Dark</option>
@@ -150,16 +145,10 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
             ))}
           </div>
         </div>
-        <div
-          className="studio-appearance-preview"
-          style={previewStyle}
-          aria-label="Appearance preview"
-        >
+        <div className="studio-appearance-preview" style={previewStyle} aria-label="Appearance preview">
           <span className="studio-eyebrow">Your dashboard</span>
           <strong>Homepage Studio</strong>
-          <span className="studio-appearance-preview-note">
-            Your links, widgets and services.
-          </span>
+          <span className="studio-appearance-preview-note">Your links, widgets and services.</span>
           <div aria-hidden="true" className="studio-appearance-preview-panels">
             <span>
               <i />
@@ -176,9 +165,7 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
       </div>
       {onLogoChange && <LogoEditor logo={logo} onChange={onLogoChange} />}
       <p className="studio-note">
-        {platform?.background
-          ? "Without a background of its own, this dashboard uses the platform background. "
-          : ""}
+        {platform?.background ? "Without a background of its own, this dashboard uses the platform background. " : ""}
         Background images and native widget colors are in this dashboard&apos;s settings. For finer control, an
         administrator can edit custom.css in Configuration files.
       </p>

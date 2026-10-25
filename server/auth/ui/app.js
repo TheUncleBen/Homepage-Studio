@@ -1270,24 +1270,32 @@
         event.preventDefault();
         const before = [...list.children].map(item => item.dataset.groupId);
         row.classList.add('dragging');
-        handle.setPointerCapture(event.pointerId);
+        // Moving the row in the list drops any pointer capture, so the
+        // window follows this pointer until it is released.
+        const mine = pointerEvent => pointerEvent.pointerId === event.pointerId;
         const move = moveEvent => {
+          if (!mine(moveEvent)) return;
+          moveEvent.preventDefault();
           const over = [...list.children].find(item => item !== row && moveEvent.clientY >= item.getBoundingClientRect().top && moveEvent.clientY <= item.getBoundingClientRect().bottom);
           if (!over) return;
           const rect = over.getBoundingClientRect();
-          list.insertBefore(row, moveEvent.clientY < rect.top + rect.height / 2 ? over : over.nextSibling);
+          const target = moveEvent.clientY < rect.top + rect.height / 2 ? over : over.nextSibling;
+          if (target !== row && target !== row.nextSibling) list.insertBefore(row, target);
         };
-        const end = () => {
-          handle.removeEventListener('pointermove', move);
-          handle.removeEventListener('pointerup', end);
-          handle.removeEventListener('pointercancel', end);
+        const end = endEvent => {
+          if (!mine(endEvent)) return;
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', end);
+          window.removeEventListener('pointercancel', end);
           row.classList.remove('dragging');
           const after = [...list.children].map(item => item.dataset.groupId);
-          if (after.join() !== before.join()) onOrder(after);
+          if (endEvent.type === 'pointercancel') {
+            for (const id of before) list.append([...list.children].find(item => item.dataset.groupId === id));
+          } else if (after.join() !== before.join()) onOrder(after);
         };
-        handle.addEventListener('pointermove', move);
-        handle.addEventListener('pointerup', end);
-        handle.addEventListener('pointercancel', end);
+        window.addEventListener('pointermove', move, { passive: false });
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
       });
       return list;
     }
@@ -1497,7 +1505,7 @@
   const changedText = time => {
     if (!time) return 'Not changed yet';
     const date = new Date(time);
-    return 'Changed ' + date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   };
   async function dashboardsPage() {
     let view = await call('/studio/api/overview');
@@ -1605,7 +1613,9 @@
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save address' });
         const form = h('form', { class: 'stack' },
           h('p', { text: `${main.name} needs an address before anyone can open it. You can change it later from its card.` }),
-          field('Address', slug, '…'), box, h('div', { class: 'actions' }, save));
+          field('Address', slug, '…'), box, h('div', { class: 'actions' },
+            // The dialog stays open until an address is saved, so it carries its own way out.
+            view.authEnabled ? h('button', { type: 'button', text: 'Sign out', onclick: event => signOut(event.currentTarget) }) : null, save));
         const hint = form.querySelector('.hint');
         const showAddress = () => { hint.textContent = `${location.origin}/${slug.value || '…'} · lowercase letters, numbers and hyphens.`; };
         slug.addEventListener('input', showAddress); showAddress();

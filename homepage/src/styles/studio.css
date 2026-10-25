@@ -67,7 +67,12 @@ body {
    full window width even inside the centred board. It uses the Studio pages'
    font rather than the dashboard's, so both bars look alike. */
 .studio-topbar {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   height: 56px;
   display: flex;
   align-items: center;
@@ -1257,6 +1262,7 @@ body {
   gap: 6px;
 }
 .studio-field-choices input {
+  appearance: auto;
   accent-color: var(--studio-accent);
 }
 .studio-note {
@@ -1277,6 +1283,7 @@ body {
   min-height: 35px;
 }
 .studio-checkbox-field input {
+  appearance: auto;
   accent-color: var(--studio-accent);
   width: 16px;
   height: 16px;
@@ -1610,6 +1617,7 @@ body {
 .studio-accent-presets {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
 }
 .studio-accent-presets button {

@@ -824,6 +824,9 @@ export function createStudioServer(options = {}) {
         if (!isAdmin) return forbidden(res, 'Only administrators can change the platform appearance.');
         if (req.method === 'GET') return json(res, 200, await platform.read());
         if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST for the platform appearance.' });
+        // Platform CSS reaches every dashboard, so saving it needs a recent
+        // sign-in, as a dashboard's own custom.css does.
+        if (auth && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
         return json(res, 200, await platform.update(await readBody(req)));
       }
       if (!auth && ['/studio/dashboards', '/studio/admin'].includes(path) && ['GET', 'HEAD'].includes(req.method)) return sendStudioPage(res, path.slice('/studio/'.length), siteName());

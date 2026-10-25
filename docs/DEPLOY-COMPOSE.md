@@ -83,7 +83,7 @@ cp portainer.env.example .env
 | Variable | What to put |
 | --- | --- |
 | `STUDIO_PUBLIC_ORIGIN` | The address people type, `https://homepage.example.test` |
-| `STUDIO_SECRETS_DIR` | The folder from step 3, `/srv/homepage-studio/secrets`. Remove the `# ` in front of the line |
+| `STUDIO_SECRETS_DIR` | The folder from step 3, `/srv/homepage-studio/secrets` |
 | `STUDIO_DEPLOYMENT_NAME` | Optional: the deployment's name on Studio's pages (default `Homepage Studio`) |
 | `STUDIO_TRUSTED_PROXIES` | Recommended: the subnet from step 2 |
 | `STUDIO_NETWORK_NAME` | Only if your network isn't called `homepage-studio` |

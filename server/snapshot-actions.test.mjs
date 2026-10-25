@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Snapshot action metadata: new snapshots name their operation, while snapshot
-// files written before the field existed still list, restore, export and import.
+// Snapshot action metadata: every snapshot names the operation that made it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -15,15 +14,6 @@ async function fixture(t) {
   const store = createConfigStore(options);
   await store.initialize();
   return { store, ...options };
-}
-
-// Rewrites a snapshot file exactly as releases before the action field wrote it.
-async function makeLegacy(stateDir, id) {
-  const file = path.join(stateDir, 'backups', `${id}.json`);
-  const { action, ...legacy } = JSON.parse(await fs.readFile(file, 'utf8'));
-  assert.ok(action, 'the fixture starts from a new snapshot');
-  assert.deepEqual(Object.keys(legacy), ['version', 'createdAt', 'revision', 'changedFiles', 'before', 'afterHashes']);
-  await fs.writeFile(file, `${JSON.stringify(legacy, null, 2)}\n`);
 }
 
 test('the action codes are short fixed identifiers', () => {
@@ -53,28 +43,7 @@ test('a new snapshot records its action, exports it, restores and imports into a
   assert.equal(restoreSnapshot.action, 'snapshot-restored');
 });
 
-test('a snapshot written before actions existed lists without one and still restores, exports and imports', async (t) => {
-  const source = await fixture(t), target = await fixture(t);
-  const before = await source.store.load();
-  const saved = await source.store.save({ revision: before.revision, customCss: '/* changed */\n' });
-  const [snapshot] = await source.store.listBackups();
-  await makeLegacy(source.stateDir, snapshot.id);
-
-  const [listed] = await source.store.listBackups();
-  assert.deepEqual(listed, { id: snapshot.id, createdAt: snapshot.createdAt, revision: snapshot.revision, changedFiles: snapshot.changedFiles, action: null });
-
-  const exported = await source.store.exportBackup(snapshot.id);
-  assert.equal(Object.hasOwn(exported, 'action'), false);
-  const imported = await target.store.importArchive({ revision: (await target.store.load()).revision, archive: JSON.parse(JSON.stringify(exported)) });
-  assert.equal(imported.customCss, before.customCss);
-
-  const restored = await source.store.restoreBackup({ revision: saved.revision, backupId: snapshot.id });
-  assert.equal(restored.customCss, before.customCss);
-  const listing = await source.store.listBackups();
-  assert.deepEqual(listing.map((entry) => entry.action), ['snapshot-restored', null]);
-});
-
-test('import accepts an action code but rejects other action values; unknown stored codes are neither listed nor exported', async (t) => {
+test('import accepts an action code but rejects other action values; a stored snapshot without a known code is refused', async (t) => {
   const source = await fixture(t), target = await fixture(t);
   const before = await source.store.load();
   await source.store.save({ revision: before.revision, customJs: 'window.changed = true;\n' });
@@ -89,7 +58,9 @@ test('import accepts an action code but rejects other action values; unknown sto
 
   const file = path.join(source.stateDir, 'backups', `${snapshot.id}.json`);
   const stored = JSON.parse(await fs.readFile(file, 'utf8'));
-  await fs.writeFile(file, JSON.stringify({ ...stored, action: 'Not a known code' }));
-  assert.equal((await source.store.listBackups())[0].action, null);
-  assert.equal(Object.hasOwn(await source.store.exportBackup(snapshot.id), 'action'), false);
+  for (const action of ['Not a known code', undefined]) {
+    await fs.writeFile(file, JSON.stringify({ ...stored, action }));
+    await assert.rejects(source.store.listBackups(), { code: 'INVALID_BACKUP' });
+    await assert.rejects(source.store.exportBackup(snapshot.id), { code: 'INVALID_BACKUP' });
+  }
 });
