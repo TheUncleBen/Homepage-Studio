@@ -11,7 +11,7 @@ import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from '../index.m
 import { base32Decode, hotp, totpStep } from './primitives.mjs';
 // The main dashboard lives at /home. Its own addresses (native API, editor
 // API, native data) move with it; Studio-wide addresses stay at the root.
-const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview|platform)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
 
 
 const HOST = 'localhost:3001';
@@ -260,6 +260,13 @@ test('the bare address, the Dashboards page and the editor pages follow each per
   assert.equal(await landing(member.cookie), '/home');
   assert.equal((await post('/studio/auth/admin/group', { action: 'move', id: movies.id, direction: 'up' }, { cookie: admin.cookie })).status, 200);
   assert.equal(await landing(member.cookie), '/media');
+  // Dragging sends the whole order; a stale or partial order is refused.
+  assert.equal((await post('/studio/auth/admin/group', { action: 'reorder', ids: [family.id, movies.id] }, { cookie: admin.cookie })).status, 200);
+  assert.equal(await landing(member.cookie), '/home');
+  assert.equal((await post('/studio/auth/admin/group', { action: 'reorder', ids: [movies.id] }, { cookie: admin.cookie })).status, 409);
+  assert.equal((await post('/studio/auth/admin/group', { action: 'reorder', ids: [movies.id, movies.id] }, { cookie: admin.cookie })).status, 409);
+  assert.equal((await post('/studio/auth/admin/group', { action: 'reorder', ids: [movies.id, family.id] }, { cookie: admin.cookie })).status, 200);
+  assert.equal(await landing(member.cookie), '/media');
   // Their own choice wins over their groups', and must be a dashboard they can open.
   assert.equal((await post('/studio/auth/account/default-dashboard', { dashboardId: 'default' }, { cookie: member.cookie })).status, 200);
   assert.equal(await landing(member.cookie), '/home');
@@ -502,4 +509,45 @@ test('until the main dashboard has an address, administrators are sent to choose
   assert.deepEqual(memberView.json.dashboards, []);
   const landing = await request('/', { cookie: member.cookie, headers: html });
   assert.equal(landing.headers.location, '/studio/dashboards');
+});
+
+test('a dashboard logo can be changed by anyone who can arrange it, and only administrators set the platform look', async t => {
+  const context = await setup(t);
+  const { request, post } = context;
+  const admin = await createAdmin(context);
+  const member = await inviteMember(context, admin.cookie);
+  const share = level => post('/studio/auth/admin/grants', { dashboardId: 'default', grants: [{ subject: 'user:' + member.invited.id, level }] }, { cookie: admin.cookie });
+  assert.equal((await share('view')).status, 200);
+  // Without its own logo a dashboard shows the Studio logo.
+  const fallback = await request('/home/studio/logo', { cookie: member.cookie });
+  assert.equal(fallback.status, 200);
+  assert.equal(fallback.headers['content-type'], 'image/svg+xml');
+  const png = 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]).toString('base64');
+  assert.equal((await post('/home/studio/api/logo', { image: png }, { cookie: member.cookie })).status, 403, 'viewers cannot change it');
+  assert.equal((await share('arrange')).status, 200);
+  const saved = await post('/home/studio/api/logo', { image: png }, { cookie: member.cookie });
+  assert.equal(saved.status, 200, saved.text);
+  assert.equal(saved.json.logo.type, 'image/png');
+  const own = await request('/home/studio/logo', { cookie: member.cookie });
+  assert.equal(own.headers['content-type'], 'image/png');
+  assert.match(String(own.headers['content-security-policy']), /sandbox/);
+  assert.deepEqual((await request('/home/studio/api/access', { cookie: member.cookie })).json.dashboard.logo, saved.json.logo);
+  assert.equal((await post('/home/studio/api/logo', { image: 'data:text/html;base64,' + Buffer.from('<script>1</script>').toString('base64') }, { cookie: member.cookie })).status, 400);
+  assert.equal((await post('/home/studio/api/logo', { reset: true }, { cookie: member.cookie })).status, 200);
+  assert.equal((await request('/home/studio/logo', { cookie: member.cookie })).headers['content-type'], 'image/svg+xml');
+  // The platform look is for administrators; its CSS reaches every viewer.
+  assert.equal((await request('/studio/api/platform', { cookie: member.cookie })).status, 403);
+  const platform = await request('/studio/api/platform', { cookie: admin.cookie });
+  const changed = await post('/studio/api/platform', { revision: platform.json.revision, mode: 'light', accent: '#91b09e', background: null, css: 'body { --platform: 1; }' }, { cookie: admin.cookie });
+  assert.equal(changed.status, 200, changed.text);
+  const css = await request('/studio/platform.css', { cookie: member.cookie });
+  assert.equal(css.text, 'body { --platform: 1; }');
+  assert.equal((await request('/studio/platform.css')).status === 200, false, 'signed-out visitors get nothing');
+  assert.deepEqual((await request('/home/studio/api/appearance', { cookie: member.cookie })).json.platform, { mode: 'light', accent: '#91b09e', background: null });
+  // Switching the platform CSS off for one dashboard is an administrator's call.
+  const appearance = (await request('/home/studio/api/appearance', { cookie: member.cookie })).json;
+  const refused = await post('/home/studio/api/appearance', { revision: appearance.revision, config: { studioTheme: { platformCss: false } } }, { cookie: member.cookie });
+  assert.equal(refused.status, 403);
+  const accent = await post('/home/studio/api/appearance', { revision: appearance.revision, config: { studioTheme: { accent: '#81a8c8' } } }, { cookie: member.cookie });
+  assert.equal(accent.status, 200, accent.text);
 });

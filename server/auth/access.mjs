@@ -74,8 +74,8 @@ export function landingDashboard(data, user, dashboards) {
 
 // Required level for a dashboard-relative request. Anything under
 // /studio/ that is not listed needs an administrator (default deny).
-const VIEW_GET = new Set(['/studio/api/board', '/studio/api/access', '/studio/catalog.json']);
-const ARRANGE_POST = new Set(['/studio/api/board', '/studio/api/discovery-visibility', '/studio/api/appearance']);
+const VIEW_GET = new Set(['/studio/api/board', '/studio/api/access', '/studio/catalog.json', '/studio/logo']);
+const ARRANGE_POST = new Set(['/studio/api/board', '/studio/api/discovery-visibility', '/studio/api/appearance', '/studio/api/logo']);
 // The editor and settings pages are opened from the Dashboards page.
 const ARRANGE_GET = new Set(['/studio/api/appearance', '/studio/edit', '/studio/settings']);
 // Admin operations that also need a recent sign-in.

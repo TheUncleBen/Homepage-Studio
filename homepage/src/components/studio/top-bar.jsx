@@ -135,8 +135,8 @@ export default function StudioTopBar({ title, dashboardId, logo, access, onSearc
         <a className={`studio-top-link${user ? " studio-wide-only" : ""}`} href={DASHBOARDS_PAGE}>
           Dashboards
         </a>
-        {user && isAdmin && (
-          <a className="studio-top-link studio-wide-only" href={ADMIN_PAGE}>
+        {isAdmin && (
+          <a className={`studio-top-link${user ? " studio-wide-only" : ""}`} href={ADMIN_PAGE}>
             Administration
           </a>
         )}

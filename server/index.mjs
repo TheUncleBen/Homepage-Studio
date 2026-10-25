@@ -17,6 +17,8 @@ import { checkApplicationReadiness } from './application-health.mjs';
 import { renderRobotsPolicy } from './indexing-policy.mjs';
 import { readAuthConfig } from './auth/config.mjs';
 import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
+import { createLogoStore } from './dashboard-logo.mjs';
+import { createPlatformStore, PlatformError } from './platform.mjs';
 import { createAuthService } from './auth/service.mjs';
 import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendStudioAsset, sendStudioPage } from './auth/routes.mjs';
 import { atLeast, requiredLevel } from './auth/access.mjs';
@@ -298,6 +300,7 @@ function createDashboardHandlers(options = {}) {
     }
   }
   const backupRetention = options.backupRetention ?? (process.env.STUDIO_BACKUP_RETENTION === undefined ? undefined : Number(process.env.STUDIO_BACKUP_RETENTION));
+  const logo = createLogoStore({ stateDir });
   const store = createConfigStore({ configDir, stateDir, backupRetention, discoveryReader: async (host, dashboard) => {
     const lease = await acquireNative(host, dashboard);
     try { return await createDiscoveryClient({ upstream: lease.origin.href }).read(host); }
@@ -501,7 +504,9 @@ function createDashboardHandlers(options = {}) {
       if (path === '/studio/api/appearance' && req.method === 'GET') {
         const current = await store.load();
         const settings = current.settingsConfig || {};
-        return json(res, 200, { revision: current.revision, settings: Object.fromEntries(APPEARANCE_KEYS.filter(key => Object.hasOwn(settings, key)).map(key => [key, settings[key]])) });
+        // The platform defaults show what each "use platform default" means.
+        const defaults = await options.platform?.read().catch(() => null);
+        return json(res, 200, { revision: current.revision, settings: Object.fromEntries(APPEARANCE_KEYS.filter(key => Object.hasOwn(settings, key)).map(key => [key, settings[key]])), platform: defaults ? { mode: defaults.mode, accent: defaults.accent, background: defaults.background } : null });
       }
       if (path === '/studio/api/appearance' && req.method === 'POST') {
         const change = await readBody(req);
@@ -511,7 +516,24 @@ function createDashboardHandlers(options = {}) {
         if (!config || typeof config !== 'object' || Array.isArray(config) || Object.keys(config).some(key => !APPEARANCE_KEYS.includes(key)) || (Object.hasOwn(config, 'theme') && !validTheme(config.theme)) || (Object.hasOwn(config, 'studioTheme') && !validStudio(config.studioTheme))) {
           throw Object.assign(new Error('Only the display mode and Studio appearance can be changed here.'), { status: 400, code: 'APPEARANCE_ONLY' });
         }
+        // Switching off the platform CSS is a CSS change, for administrators only.
+        if (Object.hasOwn(config, 'studioTheme')) {
+          const current = (await store.load()).settingsConfig?.studioTheme;
+          if (config.studioTheme?.platformCss !== (current && typeof current === 'object' ? current.platformCss : undefined)) throw Object.assign(new Error('Only an administrator can switch the platform CSS off or on.'), { status: 403, code: 'APPEARANCE_ONLY' });
+        }
         return json(res, 200, boardView(await store.mutateSettings({ revision: change.revision, config })));
+      }
+      // The dashboard's logo (or the Studio logo), for its top bar and tab.
+      if (path === '/studio/logo' && ['GET', 'HEAD'].includes(req.method)) {
+        const own = await logo.read();
+        if (!own) return await sendBrandFile(req, res, 'logo.svg');
+        res.writeHead(200, { 'content-type': own.type, 'content-length': own.bytes.length, 'cache-control': 'no-cache', etag: '"' + own.version + '"', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" });
+        return res.end(req.method === 'HEAD' ? undefined : own.bytes);
+      }
+      if (path === '/studio/api/logo' && req.method === 'POST') {
+        const change = await readBody(req, 512 * 1024);
+        if (Object.keys(change).some(key => !['image', 'reset'].includes(key)) || (change.reset === true) === (change.image !== undefined)) throw Object.assign(new Error('Send an image or reset the logo.'), { status: 400, code: 'INVALID_LOGO' });
+        return json(res, 200, { logo: change.reset ? await logo.remove() : await logo.save(change.image) });
       }
       if (path.startsWith('/studio/')) return json(res, 404, { error: 'This editor endpoint does not exist.' });
       await proxy(req, res, dashboard);
@@ -528,7 +550,7 @@ function createDashboardHandlers(options = {}) {
     }
   }
 
-  return { handle, checkRequest, store, initialization };
+  return { handle, checkRequest, store, logo, initialization };
 }
 
 export function createStudioServer(options = {}) {
@@ -555,6 +577,7 @@ export function createStudioServer(options = {}) {
   const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards }) : null;
   // Administration's name for the deployment, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
+  const platform = createPlatformStore({ configRoot });
   const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards }) : null;
   const privateCookies = auth ? [authConfig.cookieName, authConfig.flowCookieName, authConfig.setupCookieName] : [];
   const handlers = new Map();
@@ -564,7 +587,7 @@ export function createStudioServer(options = {}) {
   function forDashboard(entry) {
     let handler = handlers.get(entry.id);
     if (!handler) {
-      handler = createDashboardHandlers({ ...options, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
+      handler = createDashboardHandlers({ ...options, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
       handlers.set(entry.id, handler);
     }
     // Only immutable-id storage is retained. Each request carries its own
@@ -787,7 +810,20 @@ export function createStudioServer(options = {}) {
           }))),
         });
       }
-      if (!auth && path === '/studio/dashboards' && ['GET', 'HEAD'].includes(req.method)) return sendStudioPage(res, 'dashboards', siteName());
+      // The platform default look: administrators change it in Administration
+      // → Appearance; every dashboard page loads its CSS.
+      if (path === '/studio/platform.css' && ['GET', 'HEAD'].includes(req.method)) {
+        const css = await platform.readCss();
+        res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'content-length': Buffer.byteLength(css), 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
+        return res.end(req.method === 'HEAD' ? undefined : css);
+      }
+      if (path === '/studio/api/platform') {
+        if (!isAdmin) return forbidden(res, 'Only administrators can change the platform appearance.');
+        if (req.method === 'GET') return json(res, 200, await platform.read());
+        if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST for the platform appearance.' });
+        return json(res, 200, await platform.update(await readBody(req)));
+      }
+      if (!auth && ['/studio/dashboards', '/studio/admin'].includes(path) && ['GET', 'HEAD'].includes(req.method)) return sendStudioPage(res, path.slice('/studio/'.length), siteName());
       if (!auth && req.method === 'GET' && path.startsWith('/studio/auth/assets/')) return await sendStudioAsset(res, path);
       // The bare address: the person's landing dashboard, or the Dashboards page.
       if (path === '/' && ['GET', 'HEAD'].includes(req.method)) {
@@ -811,7 +847,7 @@ export function createStudioServer(options = {}) {
       // A dashboard you can't open looks exactly like one that doesn't exist.
       if (level === 'none') throw new DashboardError('That dashboard is unavailable. Its address may have changed or it may be archived.', 'DASHBOARD_NOT_FOUND', 404);
       if (local === '/studio/api/access' && req.method === 'GET') {
-        return json(res, 200, { authEnabled: Boolean(auth), deploymentName: siteName(), level, dashboard: { id: route.dashboard.id, name: route.dashboard.name }, user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role } : null });
+        return json(res, 200, { authEnabled: Boolean(auth), deploymentName: siteName(), level, dashboard: { id: route.dashboard.id, name: route.dashboard.name, logo: await forDashboard(route.dashboard).logo.info() }, user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role } : null });
       }
       // The editor and settings pages open from the Dashboards page. They are
       // native pages behind Studio addresses; their native addresses stay closed
@@ -835,7 +871,7 @@ export function createStudioServer(options = {}) {
       // Editor API requests for any dashboard keep their diagnostic status.
       const diagnostic = /^\/(?:[^/]+\/)?studio\/api\//.test(req.url.split('?')[0]);
       const status = error instanceof ConfigError && !diagnostic ? 503 : Number(error.status || error.statusCode) || 500;
-      json(res, status, { error: error instanceof DashboardError || error instanceof ConfigError || status < 500 ? error.message : 'The dashboard could not be opened. Check the application logs and persistent storage.', code: error.code || 'DASHBOARD_ERROR' });
+      json(res, status, { error: error instanceof DashboardError || error instanceof ConfigError || error instanceof PlatformError || status < 500 ? error.message : 'The dashboard could not be opened. Check the application logs and persistent storage.', code: error.code || 'DASHBOARD_ERROR' });
     }
   }
   const server = http.createServer(handleRequest);

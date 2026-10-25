@@ -4,12 +4,21 @@ import {
   ACCENT_PRESETS,
   appearanceConfig,
   appearanceTokens,
+  applyPlatformDefaults,
   hexColor,
+  ownAppearance,
 } from "./appearance.mjs";
+import LogoEditor from "./logo-editor";
 import useSystemTheme from "./use-system-theme";
 
-export default function AppearanceEditor({ settings, onChange, onValidity }) {
-  const appearance = appearanceConfig(settings);
+const MODE_LABELS = { dark: "Dark", light: "Light", system: "Follow device" };
+
+// Each setting either follows the platform default from Administration →
+// Appearance or is this dashboard's own; changing one doesn't touch others.
+export default function AppearanceEditor({ settings, platform, logo, onLogoChange, onChange, onValidity }) {
+  const own = ownAppearance(settings);
+  const effective = applyPlatformDefaults(settings, platform);
+  const appearance = appearanceConfig(effective);
   const [accentText, setAccentText] = useState(appearance.accent);
   const lastTheme = useRef(settings.studioTheme);
   const systemDark = useSystemTheme();
@@ -30,17 +39,24 @@ export default function AppearanceEditor({ settings, onChange, onValidity }) {
       current && typeof current === "object" && !Array.isArray(current)
         ? current
         : {};
-    const updated = { ...settings, studioTheme: { ...original, ...next } };
-    if (next.mode === "system") delete updated.theme;
-    else if (next.mode) updated.theme = next.mode;
+    const studioTheme = { ...original, ...next };
+    for (const [key, value] of Object.entries(next)) if (value === undefined) delete studioTheme[key];
+    const updated = { ...settings, studioTheme };
+    if (Object.hasOwn(next, "mode")) {
+      if (next.mode === "system" || next.mode === undefined) delete updated.theme;
+      else updated.theme = next.mode;
+    }
+    if (!Object.keys(studioTheme).length) delete updated.studioTheme;
     lastTheme.current = updated.studioTheme;
     onChange(updated);
   };
+  const platformMode = MODE_LABELS[platform?.mode] || "Dark";
+  const platformAccent = hexColor(platform?.accent) || "#b299be";
   const pickAccent = (color) => {
     setAccentText(color);
     change({ accent: color });
   };
-  const preview = appearanceTokens(settings, systemDark);
+  const preview = appearanceTokens(effective, systemDark);
   const previewStyle = Object.fromEntries(
     Object.entries(preview.tokens).map(([key, value]) => [
       `--studio-${key}`,
@@ -63,14 +79,30 @@ export default function AppearanceEditor({ settings, onChange, onValidity }) {
             <label htmlFor="studio-display-mode">Display mode</label>
             <select
               id="studio-display-mode"
-              value={appearance.mode}
-              onChange={(event) => change({ mode: event.target.value })}
+              value={own.mode ? appearance.mode : "platform"}
+              onChange={(event) =>
+                change({ mode: event.target.value === "platform" ? undefined : event.target.value })
+              }
             >
+              <option value="platform">Platform default ({platformMode})</option>
               <option value="dark">Dark</option>
               <option value="light">Light</option>
               <option value="system">Follow device</option>
             </select>
           </div>
+          <label className="studio-checkbox-field">
+            <input
+              type="checkbox"
+              checked={!own.accent}
+              onChange={(event) => {
+                if (event.target.checked) {
+                  setAccentText(platformAccent);
+                  change({ accent: undefined });
+                } else pickAccent(appearance.accent);
+              }}
+            />
+            <span>Use the platform accent color ({platformAccent})</span>
+          </label>
           <div className="studio-field">
             <label htmlFor="studio-accent-text">Accent color</label>
             <div className="studio-color-input">
@@ -78,10 +110,12 @@ export default function AppearanceEditor({ settings, onChange, onValidity }) {
                 type="color"
                 aria-label="Choose accent color"
                 value={appearance.accent}
+                disabled={!own.accent}
                 onChange={(event) => pickAccent(event.target.value)}
               />
               <input
                 id="studio-accent-text"
+                disabled={!own.accent}
                 value={accentText}
                 maxLength={7}
                 autoComplete="off"
@@ -106,7 +140,8 @@ export default function AppearanceEditor({ settings, onChange, onValidity }) {
               <button
                 key={preset.name}
                 type="button"
-                aria-pressed={appearance.accent === preset.color}
+                disabled={!own.accent}
+                aria-pressed={own.accent && appearance.accent === preset.color}
                 onClick={() => pickAccent(preset.color)}
               >
                 <span aria-hidden="true" style={{ background: preset.color }} />
@@ -139,9 +174,13 @@ export default function AppearanceEditor({ settings, onChange, onValidity }) {
           <span className="studio-appearance-preview-action">Add a widget</span>
         </div>
       </div>
+      {onLogoChange && <LogoEditor logo={logo} onChange={onLogoChange} />}
       <p className="studio-note">
-        Background images and native widget colors are available below. For
-        finer control, edit custom.css in Configuration files.
+        {platform?.background
+          ? "Without a background of its own, this dashboard uses the platform background. "
+          : ""}
+        Background images and native widget colors are in this dashboard&apos;s settings. For finer control, an
+        administrator can edit custom.css in Configuration files.
       </p>
     </section>
   );

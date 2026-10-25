@@ -599,11 +599,12 @@
     layout: 'M4 4h6v7H4zM14 4h6v11h-6zM4 15h6v5H4zM14 19h6v1h-6z',
     user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0',
     down: 'm6 9 6 6 6-6',
+    grip: 'M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01',
   };
   function icon(name, size = 17) {
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
-    for (const [key, value] of Object.entries({ width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) svg.setAttribute(key, String(value));
+    for (const [key, value] of Object.entries({ width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': name === 'grip' ? 3.5 : 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) svg.setAttribute(key, String(value));
     const path = document.createElementNS(ns, 'path');
     path.setAttribute('d', ICONS[name]);
     svg.append(path);
@@ -639,7 +640,7 @@
   function topBar(current, user) {
     const isAdmin = !user || user.role === 'admin';
     popovers = [];
-    const links = [['/studio/dashboards', 'Dashboards'], ...(user && isAdmin ? [['/studio/admin', 'Administration']] : [])];
+    const links = [['/studio/dashboards', 'Dashboards'], ...(isAdmin ? [['/studio/admin', 'Administration']] : [])];
     const linkNode = ([href, label], extra = {}) => h('a', { href, 'aria-current': href === current ? 'page' : undefined, text: label, ...extra });
     let menu = null;
     if (user) {
@@ -963,12 +964,76 @@
 
   // ---- Administration ------------------------------------------------------------
 
+  // The platform default look every dashboard follows, setting by setting,
+  // until it sets its own (dashboard settings → Appearance).
+  const ACCENT_PRESETS = [['Eggplant', '#b299be'], ['Graphite', '#a5a5aa'], ['Ocean', '#81a8c8'], ['Sage', '#91b09e']];
+  async function platformAppearance() {
+    let platform = await call('/studio/api/platform');
+    const holder = h('div', { class: 'stack' });
+    function draw(success) {
+      const box = notice();
+      if (success) say(box, success, 'ok');
+      const mode = h('select', {}, [['dark', 'Dark'], ['light', 'Light'], ['system', 'Follow device']].map(([value, label]) => h('option', { value, text: label, selected: platform.mode === value })));
+      const picker = h('input', { type: 'color', value: platform.accent, 'aria-label': 'Choose accent color' });
+      const accent = h('input', { type: 'text', maxlength: 7, value: platform.accent, spellcheck: 'false', autocomplete: 'off' });
+      const sync = value => { accent.value = value; picker.value = value; };
+      picker.addEventListener('input', () => sync(picker.value));
+      accent.addEventListener('input', () => { if (/^#[\da-f]{6}$/i.test(accent.value.trim())) picker.value = accent.value.trim().toLowerCase(); });
+      const presets = h('div', { class: 'row center' }, ACCENT_PRESETS.map(([name, color]) => {
+        const swatch = h('span', { class: 'swatch', 'aria-hidden': 'true' });
+        swatch.style.background = color;
+        return h('button', { type: 'button', class: 'small-button', onclick: () => sync(color) }, swatch, name);
+      }));
+      const backgroundImage = typeof platform.background === 'string' ? platform.background : platform.background?.image ?? '';
+      const background = h('input', { type: 'url', maxlength: 2048, value: backgroundImage, placeholder: 'https://… or /images/…', spellcheck: 'false' });
+      const css = h('textarea', { rows: 12, class: 'mono', spellcheck: 'false', text: platform.css });
+      const save = h('button', { type: 'submit', class: 'primary', text: 'Save default look' });
+      const form = h('form', { class: 'stack' },
+        field('Display mode', mode),
+        h('div', { class: 'field' }, h('label', { for: 'platform-accent', text: 'Accent color' }), h('div', { class: 'row' }, picker, accent)),
+        presets,
+        field('Background image', background, 'Optional. An image address; dashboards without a background of their own use it.'),
+        field('Platform CSS', css, 'Loaded on every dashboard before its own custom.css, which can override it. An administrator can switch it off for one dashboard in its settings.'),
+        box, h('div', { class: 'actions' }, save));
+      accent.id = 'platform-accent';
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        busy(save, 'Saving…', async () => {
+          const value = accent.value.trim().toLowerCase();
+          if (!/^#[\da-f]{6}$/.test(value)) return say(box, 'Use a hex color such as #b299be.');
+          const image = background.value.trim();
+          const keepFilters = platform.background && typeof platform.background === 'object' ? platform.background : {};
+          try {
+            platform = await call('/studio/api/platform', { revision: platform.revision, mode: mode.value, accent: value, background: image ? (Object.keys(keepFilters).length ? { ...keepFilters, image } : image) : null, css: css.value });
+            draw('Saved. Dashboards that follow the platform default use it from their next load.');
+          } catch (error) {
+            if (error?.code === 'PLATFORM_REVISION_CONFLICT') {
+              const latest = await call('/studio/api/platform').catch(() => null);
+              if (latest) platform = { ...latest, revision: latest.revision };
+              return say(box, 'Someone else changed the default look. Your draft is still here; Save again to replace their change.');
+            }
+            failure(box, error);
+          }
+        });
+      });
+      put(holder, section('Default look for dashboards', 'Each dashboard follows each of these settings until it sets its own in its settings. A change here reaches every dashboard that hasn’t.', form));
+    }
+    draw();
+    return holder;
+  }
+
   async function adminPage() {
+    // With sign-in off, Administration only holds the dashboards' default look.
+    const overview = await call('/studio/api/overview');
+    if (!overview.authEnabled) {
+      render(...pageChrome('/studio/admin', null, h('h1', { text: 'Administration' }), await platformAppearance()));
+      return;
+    }
     let view = await api('admin/overview');
     const state = await api('state');
     const me = state.user;
     const message = notice();
-    const tabs = [['people', 'People'], ['groups', 'Groups'], ['access', 'Dashboard access'], ['policies', 'Session policies'], ['sign-in', 'Sign-in settings'], ['activity', 'Activity']];
+    const tabs = [['people', 'People'], ['groups', 'Groups'], ['access', 'Dashboard access'], ['policies', 'Session policies'], ['sign-in', 'Sign-in settings'], ['appearance', 'Appearance'], ['activity', 'Activity']];
     let tab = tabs.some(([key]) => key === location.hash.slice(1)) ? location.hash.slice(1) : 'people';
     const panel = h('div', { class: 'stack', role: 'tabpanel', id: 'admin-panel' });
     const tabList = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Administration sections' });
@@ -1002,7 +1067,7 @@
 
     function drawPanel() {
       say(message, '');
-      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, activity: activityTab };
+      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, appearance: appearanceTab, activity: activityTab };
       put(panel, ...[].concat(builders[tab]()));
     }
 
@@ -1169,8 +1234,9 @@
         };
         const manage = h('button', { type: 'button', class: 'small-button', text: 'Manage' });
         manage.addEventListener('click', () => groupDialog(group));
-        return h('li', { class: 'list-item' },
-          h('div', {}, h('strong', {}, `${index + 1}. ${group.name}`, ' ', h('span', { class: 'badge', text: group.kind === 'idp' ? (view.oidc?.name ?? 'Provider') : 'Local' })),
+        const grip = h('span', { class: 'drag-handle', title: 'Drag to reorder', 'aria-hidden': 'true' }, icon('grip', 18));
+        return h('li', { class: 'list-item draggable', 'data-group-id': group.id }, grip,
+          h('div', { class: 'grow' }, h('strong', {}, `${index + 1}. ${group.name}`, ' ', h('span', { class: 'badge', text: group.kind === 'idp' ? (view.oidc?.name ?? 'Provider') : 'Local' })),
             h('span', { class: 'small muted', text: [`${group.memberCount} ${group.memberCount === 1 ? 'person' : 'people'}`, `default dashboard: ${dashboard?.name ?? 'none'}`, policyName ? `policy: ${policyName}` : null].filter(Boolean).join(' · ') })),
           h('div', { class: 'row' }, move('up', 'Move up'), move('down', 'Move down'), manage));
       });
@@ -1186,7 +1252,38 @@
       return section('Groups', `Share dashboards, set a default dashboard and set session policies for several people at once. Someone in several groups gets the default dashboard of the first one listed that has one, unless they choose their own. ${view.oidc ? `${view.oidc.name} groups appear here when someone in them signs in, and groups listed in Sign-in settings are added for you. To share a dashboard before anyone in a ${view.oidc.name} group has signed in, add the group by its exact name.` : ''}`,
         h('form', { class: 'row', onsubmit: async event => { event.preventDefault(); await busy(add, 'Creating…', async () => { if (await act(() => api('admin/group', { action: 'create', name: name.value }), box, 'Group created.')) name.value = ''; }); } }, h('label', { class: 'visually-hidden', for: 'new-group', text: 'New group name' }), Object.assign(name, { id: 'new-group', className: 'narrow-input' }), add),
         providerForm,
-        box, list.length ? h('ul', { class: 'list' }, list) : h('p', { class: 'muted', text: 'No groups yet.' }));
+        box, list.length ? dragOrder(h('ul', { class: 'list' }, list), ids => act(() => api('admin/group', { action: 'reorder', ids }), box, 'Group order saved.')) : h('p', { class: 'muted', text: 'No groups yet.' }));
+    }
+    // Drag a row by its handle to reorder the list; Move up and Move down do
+    // the same from the keyboard. Pointer events work with mouse and touch.
+    function dragOrder(list, onOrder) {
+      list.addEventListener('pointerdown', event => {
+        const handle = event.target.closest('.drag-handle');
+        const row = handle?.closest('li');
+        if (!row || event.button > 0) return;
+        event.preventDefault();
+        const before = [...list.children].map(item => item.dataset.groupId);
+        row.classList.add('dragging');
+        handle.setPointerCapture(event.pointerId);
+        const move = moveEvent => {
+          const over = [...list.children].find(item => item !== row && moveEvent.clientY >= item.getBoundingClientRect().top && moveEvent.clientY <= item.getBoundingClientRect().bottom);
+          if (!over) return;
+          const rect = over.getBoundingClientRect();
+          list.insertBefore(row, moveEvent.clientY < rect.top + rect.height / 2 ? over : over.nextSibling);
+        };
+        const end = () => {
+          handle.removeEventListener('pointermove', move);
+          handle.removeEventListener('pointerup', end);
+          handle.removeEventListener('pointercancel', end);
+          row.classList.remove('dragging');
+          const after = [...list.children].map(item => item.dataset.groupId);
+          if (after.join() !== before.join()) onOrder(after);
+        };
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', end);
+        handle.addEventListener('pointercancel', end);
+      });
+      return list;
     }
 
     // Dashboard access
@@ -1343,6 +1440,13 @@
             h('div', { class: 'actions' }, save))));
       } else parts.push(section('Single sign-on', 'Not configured. Set STUDIO_OIDC_ISSUER, STUDIO_OIDC_CLIENT_ID and STUDIO_OIDC_CLIENT_SECRET_FILE to sign in with any OpenID Connect provider. See docs/AUTHENTICATION.md.'));
       return [box, ...parts];
+    }
+
+    // Appearance: the dashboards' default look.
+    function appearanceTab() {
+      const holder = h('div', {}, h('p', { class: 'muted', text: 'Loading…' }));
+      platformAppearance().then(node => put(holder, node)).catch(error => put(holder, h('div', { class: 'notice error', role: 'alert', text: error?.message ?? 'The default look could not load.' })));
+      return holder;
     }
 
     // Activity

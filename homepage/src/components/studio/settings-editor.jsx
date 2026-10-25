@@ -80,6 +80,9 @@ export function downloadFile(name, text, type = "application/json") {
 
 export default function SettingsEditor({
   state,
+  platform = null,
+  logo = null,
+  onLogoChange,
   onSaved,
   onClose,
   onOpenFiles,
@@ -127,7 +130,29 @@ export default function SettingsEditor({
             </button>
           </div>
           <fieldset disabled={!valid} style={editorFieldsetStyle}>
-            <AppearanceEditor settings={draft} onChange={setDraft} onValidity={setAppearanceValid} />
+            <AppearanceEditor
+              settings={draft}
+              platform={platform}
+              logo={logo}
+              onLogoChange={onLogoChange}
+              onChange={setDraft}
+              onValidity={setAppearanceValid}
+            />
+            <label className="studio-checkbox-field">
+              <input
+                type="checkbox"
+                checked={draft.studioTheme?.platformCss !== false}
+                onChange={(event) => {
+                  const studioTheme = { ...(draft.studioTheme && typeof draft.studioTheme === "object" ? draft.studioTheme : {}) };
+                  if (event.target.checked) delete studioTheme.platformCss;
+                  else studioTheme.platformCss = false;
+                  const next = { ...draft, studioTheme };
+                  if (!Object.keys(studioTheme).length) delete next.studioTheme;
+                  setDraft(next);
+                }}
+              />
+              <span>Load the platform CSS (Administration → Appearance) before this dashboard&apos;s custom.css</span>
+            </label>
           </fieldset>
           <h3 className="studio-settings-heading">Homepage settings</h3>
           <ConfigForm

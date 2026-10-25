@@ -181,7 +181,7 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 label, .label { display: grid; gap: 6px; font-weight: 550; }
 .field { display: grid; gap: 6px; }
 .hint { font-weight: 400; color: var(--muted); font-size: 0.875rem; }
-input[type="text"], input[type="password"], input[type="email"], input[type="number"], input:not([type]), select, textarea {
+input[type="text"], input[type="password"], input[type="email"], input[type="number"], input[type="url"], input:not([type]), select, textarea {
   width: 100%;
   font: inherit;
   color: var(--text);
@@ -249,7 +249,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 /* Lists and tables */
 .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .list-item { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
-.list-item > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.list-item > div:first-child, .list-item > .grow { display: grid; gap: 2px; min-width: 0; }
+.list-item.draggable > .grow { flex: 1; }
+.drag-handle { display: inline-grid; place-items: center; width: 28px; height: 36px; border-radius: 6px; color: var(--muted); cursor: grab; touch-action: none; flex: none; }
+.drag-handle:hover { background: var(--raised); color: var(--text); }
+.list-item.dragging { opacity: 0.7; border-color: var(--accent); background: var(--accent-soft); }
+.list-item.dragging .drag-handle { cursor: grabbing; }
 /* An item's own controls stay together at its end, on one line where they fit. */
 .list-item > .row { justify-content: flex-end; flex-wrap: nowrap; }
 .list-item > .row select { width: auto; min-width: 12rem; }
@@ -325,3 +330,10 @@ dialog::backdrop { background: rgb(0 0 0 / 0.6); }
 strong .badge, h3 .badge, strong + .badge { margin-left: 8px; vertical-align: 1px; }
 .link-confirm li.warn-text { color: var(--warn-text); font-weight: 600; }
 .center { text-align: center; }
+.row.center { justify-content: center; }
+.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--line); }
+input[type="color"] { width: 44px; min-height: 40px; padding: 2px; border-radius: 8px; flex: none; }
+@media (max-width: 680px) {
+  .list-item.draggable { position: relative; padding-left: 44px; }
+  .list-item.draggable > .drag-handle { position: absolute; left: 8px; top: 10px; }
+}

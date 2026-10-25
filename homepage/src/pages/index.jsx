@@ -169,8 +169,11 @@ function StudioDashboard({
         />
         <title>{settings.title || "Homepage Studio"}</title>
         <meta name="description" content={settings.description || "Your personal Homepage dashboard"} />
-        <link rel="icon" href={settings.favicon || "/studio/brand/logo.svg"} />
+        <link rel="icon" href={settings.favicon || dashboardPath("/studio/logo", studioDashboard.basePath)} />
         <link rel="apple-touch-icon" href="/studio/brand/apple-touch-icon.png" />
+        {/* The platform CSS from Administration loads first; this dashboard's
+            own custom.css adds to it. A dashboard can switch it off. */}
+        {settings.studioTheme?.platformCss !== false && <link rel="stylesheet" href="/studio/platform.css" />}
         <link
           rel="stylesheet"
           href={dashboardPath(`/api/config/custom.css?v=${assetsVersion}`, studioDashboard.basePath)}

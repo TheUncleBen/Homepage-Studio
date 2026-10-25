@@ -1223,6 +1223,13 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
           data.groups.push({ id: randomUUID(), kind: 'local', name, policyId: null });
           return;
         }
+        if (body?.action === 'reorder') {
+          // The whole order at once, as dragged in Administration → Groups.
+          const ids = body.ids;
+          if (!Array.isArray(ids) || ids.length !== data.groups.length || new Set(ids).size !== ids.length || ids.some(id => !data.groups.some(group => group.id === id))) fail('The group list changed. Reload it and try again.', 'GROUPS_CHANGED', 409);
+          data.groups = ids.map(id => data.groups.find(group => group.id === id));
+          return;
+        }
         const group = data.groups.find(item => item.id === body?.id);
         if (!group) fail('That group no longer exists.', 'NOT_FOUND', 404);
         if (body.action === 'update') {

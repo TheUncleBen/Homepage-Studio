@@ -149,7 +149,11 @@ export default function StudioBoard({
   });
   // Studio sign-in decides what this person may change here. The controller
   // enforces the same levels; this only hides controls that would be refused.
-  const { data: access, error: accessError } = useSWR("/studio/api/access", studioRequest, {
+  const {
+    data: access,
+    error: accessError,
+    mutate: mutateAccess,
+  } = useSWR("/studio/api/access", studioRequest, {
     revalidateOnFocus: true,
   });
   // Until the answer arrives every control stays disabled. A server without
@@ -467,12 +471,14 @@ export default function StudioBoard({
       });
     }
     if (type === "appearance") return { appearance: await studioRequest("/studio/api/appearance") };
-    const [state, catalog, backups] = await Promise.all([
+    const [state, catalog, backups, appearance] = await Promise.all([
       studioRequest("/studio/api/state"),
       type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
       type === "backups" ? studioRequest("/studio/api/backups") : Promise.resolve([]),
+      // The platform defaults, for each "use platform default" in settings.
+      type === "settings" ? studioRequest("/studio/api/appearance").catch(() => null) : Promise.resolve(null),
     ]);
-    return { state, catalog, backups };
+    return { state, catalog, backups, platform: appearance?.platform ?? null };
   };
   const openEditor = async (type, detail = {}, reload = false) => {
     if (saveInFlight.current || (!reload && nativeRefreshLock.current)) return;
@@ -883,6 +889,7 @@ export default function StudioBoard({
       <StudioTopBar
         title={access?.dashboard?.name || settings?.title || "Dashboard"}
         dashboardId={access?.dashboard?.id}
+        logo={access?.dashboard?.logo ? dashboardPath(`/studio/logo?v=${access.dashboard.logo.version}`) : undefined}
         access={access}
         onSearch={editing ? undefined : onSearch}
         searchDisabled={controlsDisabled}
@@ -1307,6 +1314,8 @@ export default function StudioBoard({
               ) : modal.type === "appearance" ? (
                 <AppearanceOnlyEditor
                   {...editorData}
+                  logo={access?.dashboard?.logo ?? null}
+                  onLogoChange={() => mutateAccess()}
                   onSaved={savedContent}
                   onClose={closeModal}
                   onReload={reloadEditor}
@@ -1314,6 +1323,8 @@ export default function StudioBoard({
               ) : modal.type === "settings" ? (
                 <SettingsEditor
                   {...editorData}
+                  logo={access?.dashboard?.logo ?? null}
+                  onLogoChange={() => mutateAccess()}
                   onSaved={savedContent}
                   onClose={closeModal}
                   onOpenFiles={() => requestEditorAction(() => setModal({ type: "files" }))}

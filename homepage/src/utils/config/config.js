@@ -4,6 +4,7 @@ import { join } from "path";
 import cache from "memory-cache";
 
 import { resolveEnvironmentVariables } from "utils/config/environment.mjs";
+import { applyPlatformDefaults, readPlatformDefaults } from "utils/config/platform";
 import { loadYaml } from "utils/config/yaml";
 
 const cacheKey = "homepageEnvironmentVariables";
@@ -87,5 +88,5 @@ export function getSettings() {
       });
     }
   }
-  return initialSettings;
+  return applyPlatformDefaults(initialSettings, readPlatformDefaults());
 }

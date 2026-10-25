@@ -145,6 +145,8 @@ export function createRendererPool({
           HOMEPAGE_CONFIG_DIR: record.configDir, HOMEPAGE_ALLOWED_HOSTS: hosts.join(','),
           STUDIO_DASHBOARD_ID: record.id, STUDIO_DASHBOARD_BASE_PATH: record.basePath,
           STUDIO_RENDERER_INSTANCE: record.instance,
+          // The platform default look each dashboard inherits (server/platform.mjs).
+          STUDIO_PLATFORM_FILE: join(resolve(configRoot), 'studio-platform.json'),
           STUDIO_BUILD_REVISION: buildRevision, HOMEPAGE_AUTH_ENABLED: 'false',
           HOMEPAGE_MCP_ALLOW_WRITE: 'false', NEXT_TELEMETRY_DISABLED: '1', LOG_TARGETS: 'stdout',
         },

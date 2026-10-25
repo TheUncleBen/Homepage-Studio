@@ -1860,3 +1860,32 @@ body {
     animation: none !important;
   }
 }
+
+/* A dashboard's own logo, in its appearance settings. */
+.studio-logo-editor {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--studio-line);
+}
+.studio-logo-editor h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+.studio-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.studio-logo-preview {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex: none;
+}
+.studio-logo-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}

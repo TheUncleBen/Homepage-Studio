@@ -153,3 +153,32 @@ export function appearanceStyles(settings = {}) {
     ? `${base}@media(prefers-color-scheme:light){:where(:root){${declarations(settings, false)}}}`
     : base;
 }
+
+// A dashboard follows each platform default (Administration → Appearance)
+// until its own settings.yaml sets it: display mode (studioTheme.mode, or
+// the native theme), accent colour (studioTheme.accent) and background.
+export function ownAppearance(settings = {}) {
+  const raw = settings.studioTheme;
+  const own = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  return {
+    mode: ["dark", "light", "system"].includes(own.mode) || ["dark", "light"].includes(settings.theme),
+    accent: Boolean(hexColor(own.accent)),
+    background: settings.background !== undefined,
+  };
+}
+
+export function applyPlatformDefaults(settings = {}, platform = null) {
+  if (!platform) return settings;
+  const raw = settings.studioTheme;
+  const studioTheme = raw && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
+  const own = ownAppearance(settings);
+  const effective = { ...settings, studioTheme };
+  if (!own.mode && ["dark", "light", "system"].includes(platform.mode)) {
+    studioTheme.mode = platform.mode;
+    if (platform.mode === "system") delete effective.theme;
+    else effective.theme = platform.mode;
+  }
+  if (!own.accent && hexColor(platform.accent)) studioTheme.accent = hexColor(platform.accent);
+  if (!own.background && platform.background) effective.background = platform.background;
+  return effective;
+}
