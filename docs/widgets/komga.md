@@ -28,7 +28,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Visible fields | `fields` | List | Choices: `libraries`, `series`, `books`. The widget shows them in the order you list them. Leave unset for its usual fields. |
-| Version | `version` | Number | Choices: `1`, `2`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Komga API version | `version` | Number | A choice in the dialog: Before v2 (`1`, the default when left out), v2 or later (`2`). Which Komga API version your server offers, so the widget uses the matching API. Homepage can't detect it. |
 
 ## Examples
 

@@ -25,7 +25,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://ip:port`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Version | `version` | Number | Example: `2`. |
+| NetAlertX version | `version` | Number | A choice in the dialog: Before 26.1.17 (`1`, the default when left out), After 26.1.17 (`2`). Which NetAlertX you run, so the widget uses the matching API. Homepage can't detect it. With version 2, the address is the NetAlertX backend port. |
 | Visible fields | `fields` | List | Choices: `total`, `connected`, `new_devices`, `down_alerts`. The widget shows them in the order you list them. Leave unset for its usual fields. |
 
 ## Examples

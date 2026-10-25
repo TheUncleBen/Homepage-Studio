@@ -16,7 +16,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://pulse.host.or.ip:7655`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Version | `version` | Number | Example: `2`. |
+| Pulse version | `version` | Number | A choice in the dialog: Before Pulse 6 (`1`, the default when left out), Pulse 6 (`2`). Which Pulse you run, so the widget uses the matching API. Homepage can't detect it. |
 | Visible fields | `fields` | List | Choices: `nodes`, `vms`, `lxcs`. The widget shows them in the order you list them. Leave unset for its usual fields. |
 
 ## Examples

@@ -34,10 +34,12 @@ function blocksToMarkdown(blocks, quote = '') {
 function settingNotes(field) {
   const notes = [];
   if (field.sensitive) notes.push('Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference.');
-  if (field.choices?.length) notes.push(`Choices: ${field.choices.map(code).join(', ')}. The widget shows them in the order you list them${field.maxItems ? `, up to ${field.maxItems}` : ''}. Leave unset for its usual fields.`);
+  const choiceList = Boolean(field.choiceLabels && field.choices?.length);
+  if (choiceList) notes.push(`A choice in the dialog: ${field.choices.map(choice => `${field.choiceLabels[String(choice)]} (${code(choice)}${choice === field.defaultChoice ? ', the default when left out' : ''})`).join(', ')}.`);
+  else if (field.choices?.length) notes.push(`Choices: ${field.choices.map(code).join(', ')}. The widget shows them in the order you list them${field.maxItems ? `, up to ${field.maxItems}` : ''}. Leave unset for its usual fields.`);
   if (field.optionGroups?.length) notes.push(field.optionGroups.map(group => `${group.context}: ${(group.choices || []).map(code).join(', ')}`).join('. ') + '.');
-  if (field.description && !field.choices?.length) notes.push(field.description);
-  if (field.exampleValue !== null && field.exampleValue !== undefined && !field.sensitive && typeof field.exampleValue !== 'object') notes.push(`Example: ${code(field.exampleValue)}.`);
+  if (field.description && (choiceList || !field.choices?.length)) notes.push(field.description);
+  if (!choiceList && field.exampleValue !== null && field.exampleValue !== undefined && !field.sensitive && typeof field.exampleValue !== 'object') notes.push(`Example: ${code(field.exampleValue)}.`);
   return notes.join(' ');
 }
 

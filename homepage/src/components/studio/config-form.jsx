@@ -171,8 +171,25 @@ function Field({ field, value, onChange, onError }) {
   const structured = shape === "json";
   const placeholder =
     kind === "string" && typeof field.exampleValue === "string" && !field.sensitive ? field.exampleValue : "";
+  // A field with documented choices, such as which release of the app a
+  // widget talks to. Leaving it out means the first, default choice.
+  const choiceList = kind === "number" && field.choiceLabels && field.choices?.length;
+  const fallback = choiceList ? String(field.defaultChoice ?? field.choices[0]) : "";
   let control;
-  if (kind === "boolean")
+  if (choiceList)
+    control = (
+      <Segmented
+        id={id}
+        label={label}
+        value={text || fallback}
+        onChange={(next) => update(next === fallback ? "" : next)}
+        options={[
+          ...field.choices.map((choice) => [String(choice), field.choiceLabels[String(choice)] ?? String(choice)]),
+          ...(text && !field.choices.map(String).includes(text) ? [[text, `Version ${text}`]] : []),
+        ]}
+      />
+    );
+  else if (kind === "boolean")
     control = (
       <Segmented
         id={id}
@@ -247,9 +264,9 @@ function Field({ field, value, onChange, onError }) {
   return (
     <Row
       label={label}
-      htmlFor={kind === "boolean" || flatObject || flatList ? undefined : id}
+      htmlFor={choiceList || kind === "boolean" || flatObject || flatList ? undefined : id}
       info={field.description}
-      stacked={structured || flatObject || flatList || field.valueTypes?.length > 1}
+      stacked={choiceList || structured || flatObject || flatList || field.valueTypes?.length > 1}
       className={error ? "studio-row-invalid" : ""}
     >
       {field.valueTypes?.length > 1 && (

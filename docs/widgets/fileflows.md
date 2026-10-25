@@ -22,7 +22,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://your.fileflows.host:port`. |
-| Version | `version` | Number | Example: `2`. |
+| FileFlows version | `version` | Number | A choice in the dialog: Before 26.10 (`1`, the default when left out), 26.10 or later (`2`). Which FileFlows you run, so the widget uses the matching API. Homepage can't detect it. Version 2 reads the Fenrus Dashboard Endpoint, which must be turned on in FileFlows; use the token it shows as the key. It shows Failed instead of Time. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Visible fields | `fields` | List | Choices: `queue`, `processing`, `processed`, `time`. The widget shows them in the order you list them. Leave unset for its usual fields. |
 

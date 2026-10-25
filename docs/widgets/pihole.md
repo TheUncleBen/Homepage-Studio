@@ -17,7 +17,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://pi.hole.or.ip`. |
-| Version | `version` | Number | Example: `6`. |
+| Pi-hole version | `version` | Number | A choice in the dialog: Pi-hole 5 (`5`, the default when left out), Pi-hole 6 or later (`6`). Which Pi-hole you run, so the widget uses the matching API. Homepage can't detect it. With Pi-hole 6 the key can be your password or an app password. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Visible fields | `fields` | List | Choices: `queries`, `blocked`, `blocked_percent`, `gravity`. The widget shows them in the order you list them. Leave unset for its usual fields. |
 

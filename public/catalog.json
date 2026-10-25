@@ -510,14 +510,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Authentik version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/authentik/"
+          "source": "https://gethomepage.dev/widgets/services/authentik/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before 2025.8.0",
+            "2": "2025.8.0 or later"
+          },
+          "description": "Which Authentik you run, so the widget uses the matching API. Homepage can't detect it. Version 2 also shows authorizations."
         },
         {
           "key": "fields",
@@ -1034,14 +1044,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Beszel version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/beszel/"
+          "source": "https://gethomepage.dev/widgets/services/beszel/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before 0.9.0",
+            "2": "0.9.0 or later"
+          },
+          "description": "Which Beszel you run, so the widget uses the matching API. Homepage can't detect it."
         },
         {
           "key": "fields",
@@ -3292,14 +3312,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "FileFlows version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/fileflows/"
+          "source": "https://gethomepage.dev/widgets/services/fileflows/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before 26.10",
+            "2": "26.10 or later"
+          },
+          "description": "Which FileFlows you run, so the widget uses the matching API. Homepage can't detect it. Version 2 reads the Fenrus Dashboard Endpoint, which must be turned on in FileFlows; use the token it shows as the key. It shows Failed instead of Time."
         },
         {
           "key": "key",
@@ -4209,14 +4239,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Glances version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 4,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/glances/"
+          "source": "https://gethomepage.dev/widgets/services/glances/",
+          "choices": [
+            3,
+            4
+          ],
+          "defaultChoice": 3,
+          "choiceLabels": {
+            "3": "Glances 3",
+            "4": "Glances 4 or later"
+          },
+          "description": "Which Glances you run, so the widget uses the matching API. Homepage can't detect it."
         },
         {
           "key": "metric",
@@ -4396,14 +4436,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Gluetun version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/gluetun/"
+          "source": "https://gethomepage.dev/widgets/services/gluetun/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before 3.40.1",
+            "2": "3.40.1 or later"
+          },
+          "description": "Which Gluetun you run, so the widget uses the matching API. Homepage can't detect it."
         },
         {
           "key": "fields",
@@ -4557,14 +4607,24 @@
       "fields": [
         {
           "key": "version",
-          "label": "Version",
+          "label": "Grafana version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/grafana/"
+          "source": "https://gethomepage.dev/widgets/services/grafana/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "10.4 or earlier",
+            "2": "Later than 10.4"
+          },
+          "description": "Which Grafana you run, so the widget uses the matching API. Homepage can't detect it."
         },
         {
           "key": "alerts",
@@ -5411,14 +5471,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Immich version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/immich/"
+          "source": "https://gethomepage.dev/widgets/services/immich/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before 1.118",
+            "2": "1.118 or later"
+          },
+          "description": "Which Immich you run, so the widget uses the matching API. Homepage can't detect it."
         },
         {
           "key": "fields",
@@ -5667,14 +5737,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Jellyfin version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/jellyfin/"
+          "source": "https://gethomepage.dev/widgets/services/jellyfin/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before 10.12",
+            "2": "10.12 or later"
+          },
+          "description": "Which Jellyfin you run, so the widget uses the matching API. Homepage can't detect it."
         },
         {
           "key": "enableBlocks",
@@ -6149,19 +6229,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Komga API version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": null,
           "sensitive": false,
-          "source": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/src/widgets/komga/proxy.js",
+          "source": "https://gethomepage.dev/widgets/services/komga/",
           "choices": [
             1,
             2
           ],
-          "description": "Native API mode: 1 (omitted default) or numeric 2. Choose for your Komga API version; no server version is detected."
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before v2",
+            "2": "v2 or later"
+          },
+          "description": "Which Komga API version your server offers, so the widget uses the matching API. Homepage can't detect it."
         }
       ],
       "defaults": {
@@ -6930,14 +7015,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Mealie version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/mealie/"
+          "source": "https://gethomepage.dev/widgets/services/mealie/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Mealie 1",
+            "2": "Later than 1"
+          },
+          "description": "Which Mealie you run, so the widget uses the matching API. Homepage can't detect it."
         },
         {
           "key": "fields",
@@ -7619,14 +7714,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "NetAlertX version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/netalertx/"
+          "source": "https://gethomepage.dev/widgets/services/netalertx/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before 26.1.17",
+            "2": "After 26.1.17"
+          },
+          "description": "Which NetAlertX you run, so the widget uses the matching API. Homepage can't detect it. With version 2, the address is the NetAlertX backend port."
         },
         {
           "key": "fields",
@@ -9275,14 +9380,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "pfSense REST API version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/pfsense/"
+          "source": "https://gethomepage.dev/widgets/services/pfsense/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "API v1",
+            "2": "API v2"
+          },
+          "description": "Which version of the pfSense REST API package you run, so the widget uses the matching API. Homepage can't detect it. Version 1 uses an API token and version 2 an API key; see the setup guide."
         },
         {
           "key": "fields",
@@ -9484,14 +9599,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Pi-hole version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 6,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/pihole/"
+          "source": "https://gethomepage.dev/widgets/services/pihole/",
+          "choices": [
+            5,
+            6
+          ],
+          "defaultChoice": 5,
+          "choiceLabels": {
+            "5": "Pi-hole 5",
+            "6": "Pi-hole 6 or later"
+          },
+          "description": "Which Pi-hole you run, so the widget uses the matching API. Homepage can't detect it. With Pi-hole 6 the key can be your password or an app password."
         },
         {
           "key": "key",
@@ -10359,14 +10484,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Pulse version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/pulse/"
+          "source": "https://gethomepage.dev/widgets/services/pulse/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before Pulse 6",
+            "2": "Pulse 6"
+          },
+          "description": "Which Pulse you run, so the widget uses the matching API. Homepage can't detect it."
         },
         {
           "key": "fields",
@@ -11582,14 +11717,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Speedtest Tracker version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 1,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/speedtest-tracker/"
+          "source": "https://gethomepage.dev/widgets/services/speedtest-tracker/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before 1.2.1",
+            "2": "1.2.1 or later"
+          },
+          "description": "Which Speedtest Tracker you run, so the widget uses the matching API. Homepage can't detect it. These are alexjustesen/speedtest-tracker releases. henrywhitaker3/Speedtest-Tracker (1.12.0 or earlier) works only with version 1. Version 2 needs an API key."
         },
         {
           "key": "key",
@@ -13345,14 +13490,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "TrueNAS API version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/truenas/"
+          "source": "https://gethomepage.dev/widgets/services/truenas/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "REST API",
+            "2": "WebSocket API"
+          },
+          "description": "Which of TrueNAS’s APIs the widget uses. Homepage can't detect it. Homepage’s documentation lists version 1 for TrueNAS before 26.04 and version 2 for TrueNAS after 25.04."
         },
         {
           "key": "username",
@@ -14339,14 +14494,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Vikunja version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/vikunja/"
+          "source": "https://gethomepage.dev/widgets/services/vikunja/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before 1.0.0-rc4",
+            "2": "1.0.0-rc4 or later"
+          },
+          "description": "Which Vikunja you run, so the widget uses the matching API. Homepage can't detect it."
         },
         {
           "key": "fields",
@@ -14587,14 +14752,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "wg-easy version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 2,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/wgeasy/"
+          "source": "https://gethomepage.dev/widgets/services/wgeasy/",
+          "choices": [
+            1,
+            2
+          ],
+          "defaultChoice": 1,
+          "choiceLabels": {
+            "1": "Before 15",
+            "2": "15 or later"
+          },
+          "description": "Which wg-easy you run, so the widget uses the matching API. Homepage can't detect it."
         },
         {
           "key": "username",
@@ -15347,14 +15522,24 @@
         },
         {
           "key": "version",
-          "label": "Version",
+          "label": "Glances version",
           "type": "number",
           "valueTypes": [
             "number"
           ],
           "exampleValue": 4,
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/info/glances/"
+          "source": "https://gethomepage.dev/widgets/info/glances/",
+          "choices": [
+            3,
+            4
+          ],
+          "defaultChoice": 3,
+          "choiceLabels": {
+            "3": "Glances 3",
+            "4": "Glances 4 or later"
+          },
+          "description": "Which Glances you run, so the widget uses the matching API. Homepage can't detect it."
         },
         {
           "key": "cpu",

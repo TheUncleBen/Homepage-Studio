@@ -26,7 +26,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://truenas.host.or.ip`. |
-| Version | `version` | Number | Example: `2`. |
+| TrueNAS API version | `version` | Number | A choice in the dialog: REST API (`1`, the default when left out), WebSocket API (`2`). Which of TrueNAS’s APIs the widget uses. Homepage can't detect it. Homepage’s documentation lists version 1 for TrueNAS before 26.04 and version 2 for TrueNAS after 25.04. |
 | Username | `username` | Text | Example: `user`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |

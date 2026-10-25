@@ -25,7 +25,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://jellyfin.host.or.ip:port`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Version | `version` | Number | Example: `2`. |
+| Jellyfin version | `version` | Number | A choice in the dialog: Before 10.12 (`1`, the default when left out), 10.12 or later (`2`). Which Jellyfin you run, so the widget uses the matching API. Homepage can't detect it. |
 | Enable Blocks | `enableBlocks` | On/off | Example: `true`. |
 | Enable Now Playing | `enableNowPlaying` | On/off | Example: `true`. |
 | Enable User | `enableUser` | On/off | Example: `true`. |

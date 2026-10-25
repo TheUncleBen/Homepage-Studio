@@ -21,7 +21,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Service URL | `url` | Text | Example: `http://host.or.ip:port`. |
 | Username | `username` | Text | Example: `user`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Version | `version` | Number | Example: `4`. |
+| Glances version | `version` | Number | A choice in the dialog: Glances 3 (`3`, the default when left out), Glances 4 or later (`4`). Which Glances you run, so the widget uses the matching API. Homepage can't detect it. |
 | Cpu | `cpu` | On/off | Example: `true`. |
 | Mem | `mem` | On/off | Example: `true`. |
 | Cputemp | `cputemp` | On/off | Example: `true`. |

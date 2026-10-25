@@ -30,7 +30,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://authentik.host.or.ip:port`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Version | `version` | Number | Example: `2`. |
+| Authentik version | `version` | Number | A choice in the dialog: Before 2025.8.0 (`1`, the default when left out), 2025.8.0 or later (`2`). Which Authentik you run, so the widget uses the matching API. Homepage can't detect it. Version 2 also shows authorizations. |
 | Visible fields | `fields` | List | Choices: `users`, `loginsLast24H`, `failedLoginsLast24H`, `authorizationsLast24H`. The widget shows them in the order you list them. Leave unset for its usual fields. |
 
 ## Examples

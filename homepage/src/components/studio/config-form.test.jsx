@@ -122,6 +122,32 @@ describe("Coherent native option drafts", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Healthy" }));
     expect(screen.getByTestId("config-value")).toHaveTextContent("{}");
   });
+  it("shows a widget's versions as a choice, with the default chosen and nothing written until another is picked", () => {
+    const versionField = {
+      key: "version",
+      label: "Authentik version",
+      type: "number",
+      valueTypes: ["number"],
+      choices: [1, 2],
+      defaultChoice: 1,
+      choiceLabels: { 1: "Before 2025.8.0", 2: "2025.8.0 or later" },
+    };
+    const { unmount } = render(<Fixture initial={{}} fields={[versionField]} />);
+    const group = screen.getByRole("radiogroup", { name: "Authentik version" });
+    expect(screen.getByRole("radio", { name: "Before 2025.8.0" })).toHaveAttribute("aria-checked", "true");
+    expect(group.querySelectorAll('[role="radio"]')).toHaveLength(2);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "2025.8.0 or later" }));
+    expect(JSON.parse(screen.getByTestId("config-value").textContent)).toEqual({ version: 2 });
+    // Going back to the default leaves the field out again.
+    fireEvent.click(screen.getByRole("radio", { name: "Before 2025.8.0" }));
+    expect(screen.getByTestId("config-value")).toHaveTextContent("{}");
+    unmount();
+    // A value the documentation doesn't list stays visible and chosen.
+    render(<Fixture initial={{ version: 3 }} fields={[versionField]} />);
+    expect(screen.getByRole("radio", { name: "Version 3" })).toHaveAttribute("aria-checked", "true");
+  });
+
   it("does not replace a valid draft with invalid advanced YAML", () => {
     render(<Fixture initial={{ keep: true }} fields={[]} />);
     fireEvent.click(screen.getByRole("radio", { name: "YAML" }));

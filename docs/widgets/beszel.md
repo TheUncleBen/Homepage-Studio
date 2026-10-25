@@ -31,7 +31,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Username | `username` | Text | Example: `username`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | System Id | `systemId` | Text | Example: `systemId`. |
-| Version | `version` | Number | Example: `2`. |
+| Beszel version | `version` | Number | A choice in the dialog: Before 0.9.0 (`1`, the default when left out), 0.9.0 or later (`2`). Which Beszel you run, so the widget uses the matching API. Homepage can't detect it. |
 | Visible fields | `fields` | List | Allowed fields for 'overview' mode: `["systems", "up"]`: `systems`, `up`. Allowed fields for a single system: `["name", "status", "updated", "cpu", "memory", "disk", "network"]`: `name`, `status`, `updated`, `cpu`, `memory`, `disk`, `network`. Allowed fields depend on the native mode or version. Review the contextual lists in the documentation; keep their order. Leave unset for the native default. |
 
 ## Examples

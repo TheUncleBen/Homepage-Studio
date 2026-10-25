@@ -24,7 +24,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://speedtest.host.or.ip`. |
-| Version | `version` | Number | Example: `1`. |
+| Speedtest Tracker version | `version` | Number | A choice in the dialog: Before 1.2.1 (`1`, the default when left out), 1.2.1 or later (`2`). Which Speedtest Tracker you run, so the widget uses the matching API. Homepage can't detect it. These are alexjustesen/speedtest-tracker releases. henrywhitaker3/Speedtest-Tracker (1.12.0 or earlier) works only with version 1. Version 2 needs an API key. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Bitrate Precision | `bitratePrecision` | Number | Example: `3`. |
 | Visible fields | `fields` | List | Choices: `download`, `upload`, `ping`. The widget shows them in the order you list them. Leave unset for its usual fields. |

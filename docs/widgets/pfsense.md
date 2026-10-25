@@ -29,7 +29,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Request headers | `headers` | Settings (name: value) |  |
 | WAN interface | `wan` | Text | Example: `igb0`. |
-| Version | `version` | Number | Example: `2`. |
+| pfSense REST API version | `version` | Number | A choice in the dialog: API v1 (`1`, the default when left out), API v2 (`2`). Which version of the pfSense REST API package you run, so the widget uses the matching API. Homepage can't detect it. Version 1 uses an API token and version 2 an API key; see the setup guide. |
 | Visible fields | `fields` | List | Choices: `load`, `memory`, `temp`, `wanStatus`, `wanIP`, `disk`. The widget shows them in the order you list them. Leave unset for its usual fields. |
 
 ## Examples

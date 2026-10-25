@@ -19,7 +19,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
-| Version | `version` | Number | Example: `2`. |
+| Grafana version | `version` | Number | A choice in the dialog: 10.4 or earlier (`1`, the default when left out), Later than 10.4 (`2`). Which Grafana you run, so the widget uses the matching API. Homepage can't detect it. |
 | Alerts | `alerts` | Text | Example: `alertmanager`. |
 | Service URL | `url` | Text | Example: `http://grafana.host.or.ip:port`. |
 | Username | `username` | Text | Example: `username`. |

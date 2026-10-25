@@ -27,7 +27,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://gluetun.host.or.ip:port`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Version | `version` | Number | Example: `2`. |
+| Gluetun version | `version` | Number | A choice in the dialog: Before 3.40.1 (`1`, the default when left out), 3.40.1 or later (`2`). Which Gluetun you run, so the widget uses the matching API. Homepage can't detect it. |
 | Visible fields | `fields` | List | Choices: `public_ip`, `region`, `country`, `port_forwarded`. The widget shows them in the order you list them. Leave unset for its usual fields. |
 
 ## Examples

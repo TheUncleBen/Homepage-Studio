@@ -24,7 +24,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://wg.easy.or.ip`. |
-| Version | `version` | Number | Example: `2`. |
+| wg-easy version | `version` | Number | A choice in the dialog: Before 15 (`1`, the default when left out), 15 or later (`2`). Which wg-easy you run, so the widget uses the matching API. Homepage can't detect it. |
 | Username | `username` | Text | Example: `yourwgusername`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Threshold | `threshold` | Number | Example: `2`. |

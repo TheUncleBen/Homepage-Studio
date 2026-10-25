@@ -75,6 +75,14 @@ test('reviewed prose-only authentication, volume, locale, and version options ar
   for(const key of ['key','username','password'])assert.ok(field('ntfy',key));
   assert.equal(field('qnap','volume').type,'string');assert.equal(field('datetime','locale','info').type,'string');
   assert.deepEqual(field('komga','version').choices,[1,2]);assert.equal(field('komga','version').type,'number');
+  // Every widget version field is a labelled choice whose first entry is the native default.
+  for (const kind of ['service','info']) for (const item of catalog[kind]) {
+    const version = item.fields.find(entry => entry.key === 'version');
+    if (!version) continue;
+    assert.ok(version.choices?.length >= 2 && version.choices.every(choice => version.choiceLabels[String(choice)]), `${kind} ${item.type}`);
+    assert.equal(version.defaultChoice, version.choices[0], `${kind} ${item.type}`);
+  }
+  assert.deepEqual(field('pihole','version').choices,[5,6]);assert.deepEqual(field('glances','version','info').choices,[3,4]);
   assert.match(widget('komga').setupNotes.join(' '),/takes precedence/);
 });
 
