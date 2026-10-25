@@ -32,18 +32,57 @@ sharing are covered in [AUTHENTICATION.md](AUTHENTICATION.md).
 
 ## Start here
 
-A new dashboard is empty: a short note, *A clean slate*, and an **Add your
-first widget** button. The bar at the top has:
+### The Dashboards page
 
-| Control | What it does |
+**Dashboards** (`/__studio/dashboards`) lists every dashboard you can open,
+each with **Open**, and **Edit** and **Settings** when you may arrange it.
+Administrators and members see the same page, filtered to what each can open.
+**More actions** on a card has **Make my default** and, for administrators,
+**Rename or change address**, **Duplicate**, **Who can open it** and
+**Archive**. Administrators also get **New dashboard** and the archived list.
+
+The bare address (`https://homepage.example.test/`) opens:
+
+- your own **default dashboard**, if you chose one (**My account → Default
+  dashboard**, or **Make my default** on its card);
+- otherwise, for a member, the default dashboard of the first of their groups
+  that has one (administrators set the order under **Administration →
+  Groups**);
+- otherwise the Dashboards page. Administrators get the Dashboards page unless
+  they choose a default of their own.
+
+With sign-in turned off, the bare address always opens the Dashboards page.
+
+### The top bar
+
+Every page, dashboards and administration alike, has the same bar: the Studio
+mark (back to Dashboards), the page or dashboard name, **Quick Launch** on a
+dashboard (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd>, Homepage's own
+search across your services and bookmarks), **Dashboards**,
+**Administration** for administrators, and your account menu (**My account**,
+**Sign out**). On a phone, Dashboards and Administration move into the account
+menu.
+
+### Live, editor and settings pages
+
+A dashboard has three addresses:
+
+| Address | What it is |
 | --- | --- |
-| **Quick Launch** (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd>) | Homepage's own search across your services and bookmarks |
-| Dashboard settings (the sliders icon) | Appearance, native settings, and the shortcuts to **Manage dashboards**, **Configuration files** and **Snapshots & restore** |
-| **Edit dashboard** | Turns on edit mode |
-| **Add widget** | Opens the content picker |
+| `/<slug>` | The **live dashboard**: your widgets only, with no editing controls |
+| `/<slug>/__studio/edit` | The **editor**: add widgets, move, resize and stack them. **Done** saves and goes back to Dashboards |
+| `/<slug>/__studio/settings` | **Dashboard settings**: appearance, Homepage's settings, configuration files and snapshots. Closing it goes back to Dashboards |
 
-Under the header, the group buttons (**All content** and one per native group)
-filter what the board shows while you're not editing.
+**Edit** and **Settings** on the Dashboards page open the last two. People who
+may only view a dashboard are sent back to it from either address.
+
+The main dashboard is at `/home` (an existing deployment's main dashboard
+moves there on upgrade; see [UPGRADING.md](UPGRADING.md)).
+
+A new dashboard is empty. In the editor it shows a short note, *A clean
+slate*, and an **Add your first widget** button. Group buttons (**All
+content** and one per native group) filter the live dashboard when it has at
+least two groups.
 
 The board is a 12-column grid. In a narrower window it shows the same layout
 on 8 columns, and on a phone on 4, keeping the order you see from left to
@@ -57,7 +96,7 @@ desktop too.
 
 ## Adding content
 
-**Add widget** opens *Add to your dashboard*. Search, or pick a category:
+In the editor, **Widgets** opens *Add to your dashboard*. Search, or pick a category:
 
 | Category | What you get |
 | --- | --- |
@@ -76,38 +115,29 @@ Adding a widget further down the list never renames the ones above it.
 
 ## Arranging the board
 
+Arranging happens in the editor (**Edit** on the Dashboards page, or
+`/<slug>/__studio/edit`). The live dashboard never turns into edit mode, so a
+hold, right-click or drag there only does what the widget itself does.
+
 ### Touch
 
-1. **Press and hold** empty space on the board, or any panel, for about half a
-   second. Edit mode turns on. Holding a panel also selects it (holding a
-   stacked widget selects its whole stack).
-2. **Keep the same finger down and drag** to move it. Let go to drop it.
-3. Once you're in edit mode, move a panel by its **move handle** (the grip in
-   its title bar) and resize it from its **corner handle**.
-
-Before the hold completes, the page scrolls as usual: move your finger up or
-down and the hold is cancelled, so scrolling a long dashboard never picks
-anything up by accident. A second finger, or a dialog opening, cancels a
-pending hold or drag and puts the panel back.
+- Move a panel by its **move handle** (the grip in its title bar) and resize
+  it from its **corner handle**.
+- Each panel has a checkbox to select it; **Create stack** and **Position &
+  size** work on the selection.
 
 A touch that **starts on something the widget handles itself** is left to the
 widget. That covers links, buttons and form fields, embedded frames, video and
 audio, charts drawn on a canvas or in SVG, and anything that scrolls sideways
-inside the panel. Hold or swipe on the plain part of the panel instead.
-
-On touch screens the text inside panels isn't selectable (form fields still
-are), so a hold doesn't start a text selection or a context menu. Links keep
-their own long-press menu, such as the link preview on iPhone and iPad.
+inside the panel. A second finger, or a dialog opening, cancels a drag and
+puts the panel back.
 
 ### Mouse and keyboard
 
-- Press and hold a panel's **title bar**, or right-click it, to turn on edit
-  mode with that panel selected. **Edit dashboard** does the same for the
-  whole board.
-- In edit mode each panel has a checkbox to select it, a **move handle**, an
-  **edit** button and a **resize corner**. Drag the move handle or the corner.
-  Each stack has the same checkbox (**Select stack**), so a selected stack can
-  be deselected on its own.
+- Each panel has a checkbox to select it, a **move handle**, an **edit**
+  button and a **resize corner**. Drag the move handle or the corner. Each
+  stack has the same checkbox (**Select stack**), so a selected stack can be
+  deselected on its own.
 - With the move handle focused, the **arrow keys** move the panel one cell and
   **Shift + arrows** resize it. With the resize corner focused, the arrows
   resize. **Escape** cancels a drag in progress.
@@ -121,14 +151,14 @@ panel won't shrink below what its widget needs.
 ### Saving or cancelling
 
 While you edit, the toolbar offers **Save arrangement**, which saves and keeps
-you in edit mode. On wider screens the toolbar also says **Unsaved
+you in the editor. On wider screens the toolbar also says **Unsaved
 arrangement**. In the header:
 
-- **Done** saves and leaves edit mode.
-- **Cancel** leaves edit mode. If you have moves, sizes or stacks that aren't
+- **Done** saves and goes back to the Dashboards page.
+- **Cancel** goes back to the Dashboards page. If you have moves, sizes or stacks that aren't
   saved, it first asks **Discard unsaved changes?** with **Keep editing**
   (selected, and what <kbd>Escape</kbd> does) and **Discard changes**. With
-  nothing unsaved it leaves straight away.
+  nothing unsaved it goes straight away.
 
 If someone else saved the same dashboard while you were arranging it, the save
 is refused rather than overwriting their change. Your arrangement stays on
@@ -194,11 +224,11 @@ closes it.
 The list opens only for a deliberate short tap, click or key press. Swiping
 across the title, dragging, a long press, a right-click or a two-finger touch
 never opens it, and neither does anything you do on the widget body. It isn't
-available in edit mode.
+available in the editor.
 
 ### Slideshow settings
 
-In edit mode, the stack's edit button opens **Edit widget stack**. Besides
+In the editor, the stack's edit button opens **Edit widget stack**. Besides
 moving members earlier or later in the stack, configuring them and **Move
 out**, it has the slideshow settings for that stack:
 
@@ -216,7 +246,7 @@ used after a manual change.
 
 ## Changing what a panel shows
 
-In edit mode, a panel's **edit** button opens it with two tabs:
+In the editor, a panel's **edit** button opens it with two tabs:
 
 - **Options**: a form for the common native options, with a link to
   Homepage's documentation for that widget.
@@ -304,33 +334,36 @@ straight into the files, and so do snapshots; keep the files somewhere safe.
 
 ## More than one dashboard
 
-**Dashboard settings → Manage dashboards** lists every dashboard on this
-deployment.
+Administrators manage dashboards from the **Dashboards** page.
 
 | Action | What happens |
 | --- | --- |
-| **Create dashboard** | Pick a **Dashboard name**, an **Address slug** and a **Starting configuration**: *Empty dashboard*, or a copy of an existing one |
-| **Open** | Goes to that dashboard |
-| **Edit** | Renames it or gives it a new address. Its widgets, layout and snapshots stay with it |
-| **Duplicate** | Makes an independent copy of everything; changing one never changes the other |
-| **Archive** | Takes it off line after you tick *I want to archive this dashboard*. Its files and snapshots are kept and its address stays reserved |
-| **Restore** (under *Archived dashboards*) | Brings an archived dashboard back as it was |
+| **New dashboard** | Pick a **Name** and an **Address**; it starts empty. To start from an existing dashboard, use **Duplicate** |
+| **Open** | Goes to the live dashboard |
+| **Edit** / **Settings** | The editor and the dashboard settings ([Start here](#live-editor-and-settings-pages)) |
+| **More actions → Rename or change address** | Its widgets, layout and snapshots stay with it |
+| **More actions → Duplicate** | Makes an independent copy of everything; changing one never changes the other. **Share it with the same people** copies who can open it |
+| **More actions → Who can open it** | Opens **Administration → Dashboard access** |
+| **More actions → Archive** | Takes it off line after you confirm. Its files and snapshots are kept and its address stays reserved |
+| **Restore** (under *Archived*) | Brings an archived dashboard back as it was |
 
 - An address is one path segment of 1 to 64 lowercase letters, numbers and
   inner hyphens: `https://homepage.example.test/family`. A few names used by
   the application itself can't be taken.
-- The main dashboard can't be archived. It can have an address of its own;
-  then the bare host name sends visitors to it.
+- The main dashboard can't be archived. Its address is `/home` unless you
+  change it.
 - Up to 64 dashboards fit on one deployment, archived ones included.
 - Each dashboard has its own widgets, layout, stacks, appearance, custom CSS,
   custom JavaScript, settings and snapshot history.
 
-An address is not a password. Anyone who can reach the host can open any
-dashboard on it and manage the others.
+An address is not a password, and it doesn't decide who may open a dashboard:
+sharing does ([AUTHENTICATION.md](AUTHENTICATION.md)). With sign-in turned
+off, anyone who can reach the host can open any dashboard and manage the
+others.
 
 If someone opens an address that was renamed, archived or never existed, they
-get a short page, **This dashboard isn't available**, with an **Open the main
-dashboard** button. From there the dashboard list leads to the right one.
+get a short page, **This dashboard isn't available**, with an **Open
+Dashboards** button.
 
 ## Discovered services
 

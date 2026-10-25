@@ -25,7 +25,7 @@ Then find the symptom below. What the health endpoints mean is in
 | Swarm: the deploy or the task fails saying a secret such as `studio_auth_key` is not found | Create all four secrets before deploying, with exactly these names ([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)). One you don't use holds the word `off` |
 | Compose refuses the stack: `Set STUDIO_SECRETS_DIR to the absolute folder that holds the four secret files` | Set `STUDIO_SECRETS_DIR` ([DEPLOY-COMPOSE.md](DEPLOY-COMPOSE.md#3-secret-files)) |
 | Log: `STUDIO_AUTH_KEY_FILE (/run/secrets/studio_auth_key) is empty or says off.` | The encryption key secret can't be `off`. Recreate it with long random text ([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)); if Studio ran with a key before, use that same key |
-| Log: `STUDIO_OIDC_CLIENT_SECRET_FILE ... is empty or says off` | Single sign-on is configured but its secret says `off`. Put the client secret in it ([IDP-AUTHENTIK.md](IDP-AUTHENTIK.md#6-give-studio-the-issuer-client-id-and-client-secret)), or remove `STUDIO_OIDC_ISSUER` and `STUDIO_OIDC_CLIENT_ID` |
+| Log: `STUDIO_OIDC_CLIENT_SECRET_FILE ... is empty or says off` | Single sign-on is configured but its secret says `off`. Put the client secret in it ([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)), or remove `STUDIO_OIDC_ISSUER` and `STUDIO_OIDC_CLIENT_ID` |
 | Log: `... _FILE could not be read. Check the secret mount.` | Compose: a file is missing from `STUDIO_SECRETS_DIR`, or UID 1000 can't read it (`chown 1000:1000` the folder and files) |
 | `no basic auth credentials`, `denied` or `unauthorized` pulling from `ghcr.io` | The package isn't public yet: the bundle's `delivery-receipt.json` says `package-access-pending` ([VERSIONS.md](VERSIONS.md#checking-a-bundle)) |
 | The health check stays `unhealthy` (on Swarm the task keeps being replaced) | `/__studio/application-ready` fails: the dashboard registry is damaged or missing after initialization, a volume isn't writable by UID 1000, or the volumes don't match. The endpoint's JSON answer names the problem. Restore the volumes from a backup if the registry is gone ([OPERATIONS.md](OPERATIONS.md#restoring-the-volumes)) |
@@ -42,7 +42,7 @@ Then find the symptom below. What the health endpoints mean is in
 | A dashboard says it isn't available for one person but works for another | It isn't shared with that person; unshared dashboards look like missing ones on purpose |
 | **Confirm it's you** keeps appearing | Security changes need a sign-in within the policy's confirmation window (15 minutes by default) |
 | Passkey prompt fails with a security error | The browser's address isn't exactly `STUDIO_PUBLIC_ORIGIN`. Passkeys are bound to that host name |
-| Single sign-on says it can't reach the provider | Studio couldn't load `<issuer>/.well-known/openid-configuration`. Check `STUDIO_OIDC_ISSUER` (Authentik: `https://<authentik>/application/o/<slug>/`) and that the container can reach it |
+| Single sign-on says it can't reach the provider | Studio couldn't load `<issuer>/.well-known/openid-configuration`. Check `STUDIO_OIDC_ISSUER` (for example, with Authentik: `https://<authentik>/application/o/<slug>/`) and that the container can reach it |
 | Nobody can sign in at all | Use [command-line recovery](AUTHENTICATION.md#lost-access-command-line-recovery) |
 | Sign-in throttling or the activity log shows only the proxy's address | Set `STUDIO_TRUSTED_PROXIES` to the shared network's subnet ([REVERSE-PROXY.md](REVERSE-PROXY.md#how-the-proxy-reaches-studio)) |
 
@@ -51,9 +51,9 @@ Then find the symptom below. What the health endpoints mean is in
 | What you see | Cause and fix |
 | --- | --- |
 | `403` with `This dashboard address is not in HOMEPAGE_ALLOWED_HOSTS.` | The browser (or proxy) used a different host or port than `STUDIO_PUBLIC_ORIGIN`. Open the exact origin; make the proxy pass the original `Host`; or change the origin and redeploy. Only one host name is accepted |
-| `502` or `504` from the proxy | The proxy can't reach Studio: it isn't on the shared network (exact name, and redeployed after you added it), the forward host isn't `homepage_studio` port `3000` (your stack name, underscore, `studio`), or the container isn't healthy yet (first start can take up to two minutes). [DEPLOY.md step 8](DEPLOY.md#8-nginx-proxy-manager) has a command to test from the proxy |
+| `502` or `504` from the proxy | The proxy can't reach Studio: it isn't on the shared network (exact name, and redeployed after you added it), the forward host isn't `homepage_studio` port `3000` (your stack name, underscore, `studio`), or the container isn't healthy yet (first start can take up to two minutes). [DEPLOY.md step 8](DEPLOY.md#8-reverse-proxy) has a command to test from the proxy |
 | The page loads but has no styles or icons | The proxy isn't routing the whole host to Studio, or it rewrites paths. `/_next/static/` and the root icon files must reach it ([REVERSE-PROXY.md](REVERSE-PROXY.md)) |
-| A page that says **This dashboard isn't available** (`404`) | Nothing is at that address: the dashboard was renamed, archived or never existed. **Open the main dashboard**, then pick it from **Dashboard settings → Manage dashboards**. An archived one can be restored there |
+| A page that says **This dashboard isn't available** (`404`) | Nothing is at that address: the dashboard was renamed, archived or never existed. **Open Dashboards** and pick it there. An administrator can restore an archived one under **Archived** on that page |
 | The bare host name jumps to `/something` | The main dashboard has an address of its own; that redirect is expected |
 | Studio refuses to appear inside another site's frame | Framing is same-origin only by default. Set `STUDIO_FRAME_ANCESTORS` ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) |
 | Studio is under a path (`https://host/studio/`) and nothing works | Not supported. Give it its own host name |

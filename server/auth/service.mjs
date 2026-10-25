@@ -9,9 +9,9 @@ import {
   base32Encode, backupCode, backupCodeHash, emailCode, sealSecret, openSecret,
 } from './primitives.mjs';
 import { createAuthStore, AuthError, DEFAULT_POLICY, MAX_GROUPS } from './store.mjs';
-import { dashboardLevel, effectivePolicy, userGroupIds, validGrantList, rank, GRANT_LEVELS } from './access.mjs';
+import { dashboardLevel, effectivePolicy, landingDashboard, userGroupIds, validGrantList, rank, GRANT_LEVELS } from './access.mjs';
 import { createPasskeys } from './webauthn.mjs';
-import { createMailer, messages } from './mail.mjs';
+import { createMailer, describeMailError, messages } from './mail.mjs';
 import { createOidc } from './oidc.mjs';
 
 const MINUTE = 60000;
@@ -120,7 +120,7 @@ export function publicUser(user, data) {
     id: user.id, username: user.username, displayName: user.displayName, email: user.email ?? null,
     role: effectiveRole(data, user, user.source === 'oidc' ? 'oidc' : 'local'), manualRole: user.role, providerAdmin: Boolean(user.providerAdmin && user.oidc),
     disabled: Boolean(user.disabled), source: user.source, createdAt: user.createdAt,
-    status: user.status, groupIds: user.groupIds ?? [], oidcGroups: user.oidcGroups ?? [], policyId: user.policyId ?? null,
+    status: user.status, groupIds: user.groupIds ?? [], oidcGroups: user.oidcGroups ?? [], policyId: user.policyId ?? null, defaultDashboardId: user.defaultDashboardId ?? null,
     linked: Boolean(user.oidc), emailFromProvider: Boolean(user.emailFromProvider && user.oidc),
     factors: {
       password: Boolean(user.password), totp: Boolean(user.totp),
@@ -216,10 +216,21 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     }
   }
 
+  // Sends one email. A failure is recorded in Activity with the mail
+  // server's answer, so a refused sender or a bad login shows up where an
+  // administrator looks, and the caller decides what the person sees.
+  async function sendMail(kind, user, to, message) {
+    try { await mailer.send({ to, ...message }); return { sent: true }; }
+    catch (error) {
+      const reason = describeMailError(error);
+      console.error(`${kind} email failed:`, reason);
+      await audit('email-failed', { kind, userId: user?.id, reason }).catch(() => {});
+      return { sent: false, reason };
+    }
+  }
   async function notify(user, event, to = user.email) {
     if (!mailer || !to) return;
-    try { await mailer.send({ to, ...messages.alert({ name: user.displayName || user.username, event }) }); }
-    catch (error) { console.error('Security alert email failed:', error.code || error.name); }
+    await sendMail('Security alert', user, to, messages.alert({ name: user.displayName || user.username, event }));
   }
   // An email change is announced to the old address as well as the new one.
   async function notifyEmailChange(user, oldEmail, event) {
@@ -379,6 +390,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     return {
       user, session, policy,
       level: dashboardId => dashboardLevel(data, user, dashboardId),
+      landing: dashboards => landingDashboard(data, user, dashboards),
       fresh: () => time - session.authAt <= policy.stepUpMinutes * MINUTE,
     };
   }
@@ -522,8 +534,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     if (entry.emailCode?.sentAt && now() - entry.emailCode.sentAt < MINUTE) fail('A code was just sent. Wait a minute before asking for another.', 'TOO_MANY_ATTEMPTS', 429);
     const code = emailCode();
     entry.emailCode = { hash: tokenHash('email:' + code), expiresAt: now() + EMAIL_CODE_MINUTES * MINUTE, sentAt: now() };
-    try { await mailer.send({ to: user.email, ...messages.code({ name: user.displayName || user.username, code, minutes: EMAIL_CODE_MINUTES }) }); }
-    catch (error) { console.error('Sign-in code email failed:', error.code || error.name); fail("The code couldn't be sent. Use another method or try again later.", 'EMAIL_FAILED', 502); }
+    if (!(await sendMail('Sign-in code', user, user.email, messages.code({ name: user.displayName || user.username, code, minutes: EMAIL_CODE_MINUTES }))).sent) fail("The code couldn't be sent. Use another method or try again later.", 'EMAIL_FAILED', 502);
     return { sent: true };
   }
 
@@ -780,8 +791,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         draft.invites.push({ tokenHash: tokenHash(token), userId: user.id, purpose: 'recover', expiresAt: now() + RECOVERY_MINUTES * MINUTE, createdAt: now() });
       });
       const link = new URL(`/__studio/auth/recover#${token}`, config.origin).href;
-      try { await mailer.send({ to: user.email, ...messages.recovery({ name: user.displayName || user.username, link, minutes: RECOVERY_MINUTES }) }); }
-      catch (error) { console.error('Recovery email failed:', error.code || error.name); }
+      await sendMail('Password reset', user, user.email, messages.recovery({ name: user.displayName || user.username, link, minutes: RECOVERY_MINUTES }));
       await audit('recovery-requested', { userId: user.id, ip });
     })().catch(error => console.error('Recovery request failed:', error.code || error.name)).finally(() => background.delete(work));
     background.add(work);
@@ -893,8 +903,21 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     });
     if (event) await audit(event, { userId: current.user.id });
   }
+  // A default dashboard is null (none) or the id of a dashboard in the
+  // registry. Archived dashboards can't be chosen.
+  async function checkDefaultDashboard(id, allowed = () => true) {
+    if (id === null) return null;
+    const dashboards = await listDashboards();
+    if (typeof id !== 'string' || !dashboards.some(entry => entry.id === id && !entry.archived) || !allowed(id)) fail('Choose one of the dashboards listed.', 'INVALID_DASHBOARD');
+    return id;
+  }
   const account = {
     view: current => accountView(current),
+    async defaultDashboard(current, body) {
+      const id = await checkDefaultDashboard(body?.dashboardId ?? null, dashboardId => current.level(dashboardId) !== 'none');
+      await changeUser(current, user => { user.defaultDashboardId = id; }, 'default-dashboard-changed');
+      return accountView(await refreshed(current));
+    },
     async profile(current, body) {
       const displayName = cleanText(body?.displayName, 100, 'a display name');
       const email = body?.email === undefined ? undefined : cleanEmail(body.email);
@@ -1028,9 +1051,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     return token;
   }
   async function sendInvite(user, link) {
-    if (!mailer || !user.email) return false;
-    try { await mailer.send({ to: user.email, ...messages.invite({ name: user.displayName || user.username, link, hours: INVITE_HOURS }) }); return true; }
-    catch (error) { console.error('Invitation email failed:', error.code || error.name); return false; }
+    if (!mailer || !user.email) return { sent: false };
+    return sendMail('Invitation', user, user.email, messages.invite({ name: user.displayName || user.username, link, hours: INVITE_HOURS }));
   }
   function policyFields(body) {
     const minutes = (value, label, min, max) => {
@@ -1084,12 +1106,14 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         token = await issueInvite(data, user, current.user.id);
       });
       const link = inviteLink(token);
-      const emailed = body?.sendEmail === true ? await sendInvite(user, link) : false;
+      const mail = body?.sendEmail === true ? await sendInvite(user, link) : null;
+      const emailed = Boolean(mail?.sent), emailError = mail && !mail.sent ? (mail.reason ?? 'not sent') : undefined;
       await audit('user-invited', { userId: user.id, by: current.user.id, role });
-      return { user: publicUser(user), link, emailed, expiresInHours: INVITE_HOURS };
+      return { user: publicUser(user), link, emailed, emailError, expiresInHours: INVITE_HOURS };
     },
     async update(current, body) {
       requireAdmin(current);
+      const defaultDashboardId = body?.defaultDashboardId === undefined ? undefined : await checkDefaultDashboard(body.defaultDashboardId);
       await store.mutate(data => {
         const user = findUser(data, body?.id);
         if (!user) fail('That user no longer exists.', 'NOT_FOUND', 404);
@@ -1114,6 +1138,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
           if (body.policyId !== null && !data.policies.some(policy => policy.id === body.policyId)) fail('Choose an existing policy.', 'INVALID_POLICY');
           user.policyId = body.policyId;
         }
+        if (defaultDashboardId !== undefined) user.defaultDashboardId = defaultDashboardId;
         guardAdmins(data);
       });
       if (body.disabled === true) await store.sessions.remove(item => item.userId === body.id);
@@ -1135,9 +1160,10 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       });
       await store.sessions.remove(item => item.userId === user.id);
       const link = inviteLink(token);
-      const emailed = body?.sendEmail === true ? await sendInvite(user, link) : false;
+      const mail = body?.sendEmail === true ? await sendInvite(user, link) : null;
+      const emailed = Boolean(mail?.sent), emailError = mail && !mail.sent ? (mail.reason ?? 'not sent') : undefined;
       await audit('user-reset', { userId: user.id, by: current.user.id });
-      return { link, emailed, expiresInHours: INVITE_HOURS };
+      return { link, emailed, emailError, expiresInHours: INVITE_HOURS };
     },
     async unlink(current, body) {
       requireAdmin(current);
@@ -1176,6 +1202,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     },
     async group(current, body) {
       requireAdmin(current);
+      const defaultDashboardId = body?.action === 'update' && body.defaultDashboardId !== undefined ? await checkDefaultDashboard(body.defaultDashboardId) : undefined;
       await store.mutate(data => {
         if (body?.action === 'create') {
           if (data.groups.length >= MAX_GROUPS) fail(`Studio holds up to ${MAX_GROUPS} groups.`, 'GROUP_LIMIT', 409);
@@ -1204,6 +1231,13 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
             if (body.policyId !== null && !data.policies.some(policy => policy.id === body.policyId)) fail('Choose an existing policy.', 'INVALID_POLICY');
             group.policyId = body.policyId;
           }
+          if (defaultDashboardId !== undefined) group.defaultDashboardId = defaultDashboardId;
+        } else if (body.action === 'move') {
+          // Group order decides whose default dashboard wins for someone in
+          // several groups: the first group with a default.
+          if (!['up', 'down'].includes(body.direction)) fail('Move the group up or down.', 'INVALID_ACTION');
+          const index = data.groups.indexOf(group), target = index + (body.direction === 'up' ? -1 : 1);
+          if (target >= 0 && target < data.groups.length) [data.groups[index], data.groups[target]] = [data.groups[target], data.groups[index]];
         } else if (body.action === 'delete') {
           data.groups = data.groups.filter(item => item.id !== group.id);
           for (const user of data.users) user.groupIds = (user.groupIds ?? []).filter(id => id !== group.id);

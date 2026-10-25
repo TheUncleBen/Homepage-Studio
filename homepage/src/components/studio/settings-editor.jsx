@@ -84,7 +84,6 @@ export default function SettingsEditor({
   onClose,
   onOpenFiles,
   onOpenBackups,
-  onOpenDashboards,
   onReload,
 }) {
   const original = state.settingsConfig || {};
@@ -118,12 +117,6 @@ export default function SettingsEditor({
         <ErrorMessage error={error} onReload={onReload} />
         <fieldset disabled={pending} style={editorFieldsetStyle}>
           <div className="studio-settings-shortcuts">
-            {onOpenDashboards && (
-              <button type="button" onClick={onOpenDashboards}>
-                <strong>Manage dashboards</strong>
-                <span>Independent dashboards and their addresses</span>
-              </button>
-            )}
             <button type="button" onClick={onOpenFiles}>
               <strong>Configuration files</strong>
               <span>All nine native files, with YAML and code editing</span>
@@ -136,6 +129,7 @@ export default function SettingsEditor({
           <fieldset disabled={!valid} style={editorFieldsetStyle}>
             <AppearanceEditor settings={draft} onChange={setDraft} onValidity={setAppearanceValid} />
           </fieldset>
+          <h3 className="studio-settings-heading">Homepage settings</h3>
           <ConfigForm
             value={draft}
             onChange={setDraft}

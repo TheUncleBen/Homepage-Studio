@@ -52,7 +52,7 @@ export default function StackShell({
       ),
   });
   const press = useLongPress({
-    disabled: editing || busy || pickerOpen || overlayOpen,
+    disabled: editing || busy || pickerOpen || overlayOpen || !onLongPress,
     onLongPress: (pointer) => onLongPress?.(stack.id, pointer),
     accepts: (event) =>
       !event.target.closest("button,input,.studio-select-target") ||
@@ -146,6 +146,7 @@ export default function StackShell({
         press.cancel();
         if (
           busy ||
+          !onLongPress ||
           (event.target.closest("button,input,.studio-select-target") &&
             !event.target.closest("[data-studio-stack-title]"))
         )

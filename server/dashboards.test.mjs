@@ -29,12 +29,28 @@ test('adopts existing root bytes and retains stable identity across restart', as
   const bytes = '# Native user configuration\ncustom: &shared [one, two]\n';
   await fs.writeFile(file, bytes);
   const manifest = await f.registry.initialize();
-  assert.deepEqual(manifest.dashboards, [{ id: 'default', name: 'Main dashboard', slug: '', archived: false }]);
+  assert.deepEqual(manifest.dashboards, [{ id: 'default', name: 'Main dashboard', slug: 'home', archived: false }]);
   assert.equal(await fs.readFile(file, 'utf8'), bytes);
   const second = createDashboardRegistry({ configRoot: f.configRoot, prepareDashboard: () => assert.fail('No reseeding') });
   assert.deepEqual(await second.initialize(), manifest);
   manifest.dashboards[0].name = 'Caller mutation';
   assert.equal((await second.read()).dashboards[0].name, 'Main dashboard');
+});
+
+test('a main dashboard from before the Dashboards page moves from the bare address to home, or home-2 when taken', async t => {
+  for (const [others, expected] of [[[], 'home'], [['home'], 'home-2'], [['home', 'home-2'], 'home-3']]) {
+    const f = await fixture(t);
+    await fs.mkdir(f.configRoot);
+    const dashboards = [{ id: 'default', slug: '', name: 'Main dashboard', archived: false }, ...others.map(slug => ({ id: randomUUID(), slug, name: slug, archived: false }))];
+    await fs.writeFile(path.join(f.configRoot, 'studio-dashboards.json'), JSON.stringify({ version: 1, revision: randomUUID(), dashboards }));
+    await fs.writeFile(path.join(f.configRoot, 'studio-dashboards.initialized'), '1\n');
+    const manifest = await f.registry.initialize();
+    assert.equal(manifest.dashboards[0].slug, expected);
+    const stored = JSON.parse(await fs.readFile(path.join(f.configRoot, 'studio-dashboards.json'), 'utf8'));
+    assert.equal(stored.dashboards[0].slug, expected);
+    assert.equal(stored.revision, manifest.revision);
+    assert.deepEqual(stored.dashboards.slice(1), dashboards.slice(1));
+  }
 });
 
 test('creation publishes only after initialization and failed preparation does not reserve a slug', async t => {

@@ -4,7 +4,6 @@ import useSWR from "swr";
 import { studioRequest } from "./api.mjs";
 import AppearanceOnlyEditor from "./appearance-only-editor";
 import ContentEditor, { ContentPicker } from "./content-editor";
-import DashboardManager from "./dashboard-manager";
 import { dashboardPath } from "./dashboard-path.mjs";
 import StudioDialog, { ErrorMessage } from "./dialog";
 import DiscoveryEditor from "./discovery-editor";
@@ -24,26 +23,18 @@ import {
   unitMinimum,
   unitsForBoard,
 } from "./geometry.mjs";
-import { useLongPress } from "./gestures";
 import StudioIcon from "./icons";
 import PanelHost from "./panel-host";
 import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
 import StackEditor, { PositionEditor } from "./stack-editor";
 import StackShell from "./stack-shell";
+import StudioTopBar, { DASHBOARDS_PAGE } from "./top-bar";
 
 const EMPTY = { version: 2, columns: 12, panels: [], stacks: [] };
 const EMPTY_NATIVE = {};
 const isConfigurationRevision = (revision) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision);
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const uuid = () => globalThis.crypto?.randomUUID?.() || `stack-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const isEmptyBoardSpace = (target, element) =>
-  target === element ||
-  Boolean(
-    element?.contains(target) &&
-    target.closest?.(".studio-empty") &&
-    !target.closest("a,button,input,select,textarea,[contenteditable]"),
-  );
-
 function useReducedMotion() {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
@@ -140,8 +131,14 @@ export default function StudioBoard({
   onSearch,
   onInteractionBlocked,
   overlayOpen = false,
-  onNavigateDashboard = (path) => window.location.assign(path),
+  // "live" shows the dashboard only. "edit" is the editor page opened from the
+  // Dashboards page; "settings" opens this dashboard's settings over it. Both
+  // return to the Dashboards page when finished.
+  mode = "live",
+  onLeave = () => window.location.assign(DASHBOARDS_PAGE),
 }) {
+  const editorPage = mode === "edit";
+  const settingsPage = mode === "settings";
   const {
     data: envelope,
     error: loadError,
@@ -167,7 +164,8 @@ export default function StudioBoard({
   const canArrange = isAdmin || level === "arrange";
   const [draft, setDraft] = useState(null);
   const [draftSource, setDraftSource] = useState(null);
-  const [editing, setEditing] = useState(false);
+  // The editor page is always in editing; it is left by navigating away.
+  const editing = editorPage && canArrange;
   const [selection, setSelection] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -197,6 +195,16 @@ export default function StudioBoard({
   const [stackDrags, setStackDrags] = useState({});
   const canvas = useRef(null);
   const boardRef = useRef(null);
+  // Set once the person has finished on the editor or settings page, so the
+  // unsaved-changes guard doesn't stop the way back to the Dashboards page.
+  const leaving = useRef(false);
+  const leave = useCallback(() => {
+    // One way back: a second navigation would abort the first.
+    if (leaving.current) return;
+    leaving.current = true;
+    onLeave();
+  }, [onLeave]);
+  const opened = useRef(false);
   const operation = useRef(null);
   const generation = useRef(0);
   const controllers = useRef(new Map());
@@ -326,6 +334,7 @@ export default function StudioBoard({
   useEffect(() => {
     if (!dirty && !editorGuard.dirty && !editorGuard.pending && !saving) return undefined;
     const unload = (event) => {
+      if (leaving.current) return;
       if (!dirty && !editorGuardRef.current.dirty && !editorGuardRef.current.pending && !saveInFlight.current) return;
       event.preventDefault();
       event.returnValue = "";
@@ -392,21 +401,10 @@ export default function StudioBoard({
   const cancelEditing = () => {
     setDraft(null);
     setDraftSource(null);
-    setEditing(false);
     setSelection([]);
     setError(null);
   };
-  const beginEditing = () => {
-    if (!canArrange || saveInFlight.current || nativeRefreshLock.current) return;
-    setEditing(true);
-    setFilter("all");
-    setNotice("");
-  };
-  const emptyPress = useLongPress({
-    disabled: !canArrange || editing || interactionBlocked || overlayOpen,
-    accepts: (event) => isEmptyBoardSpace(event.target, canvas.current),
-    onLongPress: beginEditing,
-  });
+
   const select = (id) => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
     setSelection((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
@@ -434,10 +432,7 @@ export default function StudioBoard({
   const saveArrangement = async (finish = false) => {
     if (saveInFlight.current || nativeRefreshLock.current) return false;
     if (!dirty) {
-      if (finish) {
-        setEditing(false);
-        setSelection([]);
-      }
+      if (finish) setSelection([]);
       return true;
     }
     saveInFlight.current = true;
@@ -452,10 +447,7 @@ export default function StudioBoard({
       setDraft(null);
       setDraftSource(null);
       setNotice("Arrangement saved");
-      if (finish) {
-        setEditing(false);
-        setSelection([]);
-      }
+      if (finish) setSelection([]);
       return true;
     } catch (err) {
       setError(err);
@@ -466,6 +458,22 @@ export default function StudioBoard({
     }
   };
 
+  const loadEditorData = async (type) => {
+    if ((type === "picker" || type === "content") && !catalogRequest.current) {
+      const request = studioRequest("/__studio/catalog.json");
+      catalogRequest.current = request;
+      request.catch(() => {
+        if (catalogRequest.current === request) catalogRequest.current = null;
+      });
+    }
+    if (type === "appearance") return { appearance: await studioRequest("/__studio/api/appearance") };
+    const [state, catalog, backups] = await Promise.all([
+      studioRequest("/__studio/api/state"),
+      type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
+      type === "backups" ? studioRequest("/__studio/api/backups") : Promise.resolve([]),
+    ]);
+    return { state, catalog, backups };
+  };
   const openEditor = async (type, detail = {}, reload = false) => {
     if (saveInFlight.current || (!reload && nativeRefreshLock.current)) return;
     if (dirty) {
@@ -476,26 +484,9 @@ export default function StudioBoard({
     setModal({ type, ...detail });
     setEditorError(null);
     setEditorData(null);
-    if (type === "dashboards") return;
     try {
-      if ((type === "picker" || type === "content") && !catalogRequest.current) {
-        const request = studioRequest("/__studio/catalog.json");
-        catalogRequest.current = request;
-        request.catch(() => {
-          if (catalogRequest.current === request) catalogRequest.current = null;
-        });
-      }
-      if (type === "appearance") {
-        const appearance = await studioRequest("/__studio/api/appearance");
-        if (token === generation.current) setEditorData({ appearance });
-        return;
-      }
-      const [state, catalog, backups] = await Promise.all([
-        studioRequest("/__studio/api/state"),
-        type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
-        type === "backups" ? studioRequest("/__studio/api/backups") : Promise.resolve([]),
-      ]);
-      if (token === generation.current) setEditorData({ state, catalog, backups });
+      const loaded = await loadEditorData(type);
+      if (token === generation.current) setEditorData(loaded);
     } catch (err) {
       if (token === generation.current) setEditorError(err);
     }
@@ -832,11 +823,43 @@ export default function StudioBoard({
     }
     changeBoard(moveUnit(board, id, { ...unit.rect, [key]: unit.rect[key] + amount }));
   };
-  const longPress = (id, pointer) => {
-    if (!canArrange || saveInFlight.current || nativeRefreshLock.current) return;
-    beginEditing();
-    setSelection([id]);
-    if (pointer) manipulate(pointer, id, "move");
+  // People who can't arrange this dashboard are sent back from the editor and
+  // settings pages. The settings page opens this dashboard's settings once
+  // the access level and board are known.
+  useEffect(() => {
+    if (opened.current || accessLoading || (!editorPage && !settingsPage)) return;
+    if (!canArrange) {
+      opened.current = true;
+      leave();
+      return;
+    }
+    if (!settingsPage || nativeUnavailable) return;
+    opened.current = true;
+    const type = isAdmin ? "settings" : "appearance";
+    const token = ++generation.current;
+    loadEditorData(type).then(
+      (loaded) => {
+        if (token !== generation.current) return;
+        setModal({ type });
+        setEditorData(loaded);
+      },
+      (err) => {
+        if (token !== generation.current) return;
+        setModal({ type });
+        setEditorError(err);
+      },
+    );
+  });
+  // Closing the settings dialog returns to Dashboards, but only once the
+  // dialog has actually been shown: it loads asynchronously.
+  const settingsShown = useRef(false);
+  useEffect(() => {
+    if (!settingsPage) return;
+    if (modal) settingsShown.current = true;
+    else if (settingsShown.current) leave();
+  }, [settingsPage, modal, leave]);
+  const finishEditing = async () => {
+    if (await saveArrangement(true)) leave();
   };
   const stackedIds = new Set(board.stacks.flatMap((stack) => stack.panelIds));
   const stackableSelection = selection.filter(
@@ -847,7 +870,6 @@ export default function StudioBoard({
     content: modal?.panel ? `Edit ${modal.panel.title}` : modal?.entry?.name || "Configure content",
     settings: "Dashboard settings",
     appearance: "Appearance",
-    dashboards: "Manage dashboards",
     files: "Configuration files",
     backups: "Snapshots & restore",
     stack: "Edit widget stack",
@@ -858,104 +880,39 @@ export default function StudioBoard({
 
   return (
     <main className={`studio-app${editing ? " studio-edit-mode" : ""}`} aria-busy={saving || refreshing || undefined}>
-      <div className="studio-topbar">
-        <a className="studio-brand" href={dashboardPath("/", dashboard.basePath)} aria-label="Homepage Studio home">
-          <span className="studio-brand-mark">
-            <StudioIcon name="layout" size={20} />
-          </span>
-          <span>
-            homepage<span className="studio-brand-sub"> studio</span>
-          </span>
-        </a>
-        <div className="studio-top-actions">
-          <button
-            className="studio-search-button"
-            aria-label="Quick Launch"
-            disabled={controlsDisabled}
-            onClick={onSearch}
-          >
-            <StudioIcon name="search" size={16} />
-            <span>Quick Launch</span>
-            <kbd>Ctrl / ⌘ K</kbd>
-          </button>
-          {canArrange && (
+      <StudioTopBar
+        title={access?.dashboard?.name || settings?.title || "Dashboard"}
+        access={access}
+        onSearch={editing ? undefined : onSearch}
+        searchDisabled={controlsDisabled}
+      />
+      {editorPage && (canArrange || accessLoading) && (
+        <header className="studio-page-header studio-editor-header">
+          <div>
+            <p className="studio-eyebrow">Editing</p>
+            <h1>{access?.dashboard?.name || settings?.title || "Dashboard"}</h1>
+            <p className="studio-subtitle">Move, resize and stack widgets. Done saves and takes you back to Dashboards.</p>
+          </div>
+          <div className="studio-header-actions">
             <button
-              className="studio-icon-button"
-              aria-label={isAdmin ? "Dashboard settings" : "Dashboard appearance"}
-              disabled={controlsDisabled}
-              onClick={() => openEditor(isAdmin ? "settings" : "appearance")}
+              className="studio-button studio-quiet"
+              disabled={saving}
+              onClick={() => {
+                // An unsaved arrangement uses the same explicit discard
+                // confirmation as editor drafts.
+                if (dirty) setModal({ type: "discardArrangement" });
+                else leave();
+              }}
             >
-              <StudioIcon name="settings" />
+              Cancel
             </button>
-          )}
-          {access?.authEnabled && access.user && (
-            <a
-              className="studio-icon-button studio-account-button"
-              href="/__studio/account"
-              aria-label={`Your account: ${access.user.displayName || access.user.username}`}
-              title={access.user.displayName || access.user.username}
-            >
-              <StudioIcon name="user" />
-            </a>
-          )}
-        </div>
-      </div>
-      <header className="studio-page-header">
-        <div>
-          <p className="studio-eyebrow">Your space, arranged your way</p>
-          <h1>{settings?.title || "Your dashboard"}</h1>
-          <p className="studio-subtitle">
-            {editing
-              ? "Move, resize and stack your native widgets."
-              : settings?.description || "Everything you need, within reach."}
-          </p>
-        </div>
-        <div className="studio-header-actions">
-          {editing ? (
-            <>
-              <button
-                className="studio-button studio-quiet"
-                disabled={saving}
-                onClick={() => {
-                  // An unsaved arrangement uses the same explicit discard
-                  // confirmation as editor drafts.
-                  if (dirty) setModal({ type: "discardArrangement" });
-                  else cancelEditing();
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="studio-button studio-primary"
-                disabled={controlsDisabled}
-                onClick={() => saveArrangement(true)}
-              >
-                <StudioIcon name="check" size={16} />
-                {saving ? "Saving…" : "Done"}
-              </button>
-            </>
-          ) : (
-            <>
-              {canArrange && (
-                <button className="studio-button studio-quiet" disabled={controlsDisabled} onClick={beginEditing}>
-                  <StudioIcon name="edit" size={16} />
-                  Edit dashboard
-                </button>
-              )}
-              {isAdmin && (
-                <button
-                  className="studio-button studio-primary"
-                  disabled={controlsDisabled}
-                  onClick={() => openEditor("picker")}
-                >
-                  <StudioIcon name="plus" size={17} />
-                  Add widget
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      </header>
+            <button className="studio-button studio-primary" disabled={controlsDisabled} onClick={finishEditing}>
+              <StudioIcon name="check" size={16} />
+              {saving ? "Saving…" : "Done"}
+            </button>
+          </div>
+        </header>
+      )}
       <ErrorMessage
         arrangement
         error={error || sourceConflict || loadError}
@@ -971,7 +928,7 @@ export default function StudioBoard({
               }
         }
       />
-      <div className="studio-board-toolbar">
+      <div className="studio-board-toolbar" hidden={!editing && groups.length < 2}>
         {editing ? (
           <>
             {isAdmin && (
@@ -1002,7 +959,7 @@ export default function StudioBoard({
             </button>
             <span className="studio-toolbar-spacer" />
             <span className="studio-muted">
-              {dirty ? "Unsaved arrangement" : "Hold a panel · drag to move · resize from the corner"}
+              {dirty ? "Unsaved arrangement" : "Drag a panel by its handle to move it · resize from the corner"}
             </span>
             {dirty && (
               <button
@@ -1035,11 +992,6 @@ export default function StudioBoard({
                 </button>
               ))}
             </nav>
-            <span className="studio-toolbar-spacer" />
-            <small className="studio-muted">
-              {board.panels.length} panel{board.panels.length === 1 ? "" : "s"}
-              {board.stacks.length ? ` · ${board.stacks.length} stack${board.stacks.length === 1 ? "" : "s"}` : ""}
-            </small>
           </>
         )}
       </div>
@@ -1074,17 +1026,6 @@ export default function StudioBoard({
           "--studio-grid-column": `${(width + GAP) / projection.columns}px`,
           "--studio-grid-row": `${ROW_HEIGHT + GAP}px`,
         }}
-        onPointerDown={emptyPress.onPointerDown}
-        onPointerMove={emptyPress.onPointerMove}
-        onPointerUp={emptyPress.onPointerUp}
-        onPointerCancel={emptyPress.onPointerCancel}
-        onContextMenu={(event) => {
-          emptyPress.cancel();
-          if (isEmptyBoardSpace(event.target, canvas.current)) {
-            event.preventDefault();
-            beginEditing();
-          }
-        }}
       >
         {!board.panels.length && (
           <div className="studio-empty">
@@ -1093,7 +1034,7 @@ export default function StudioBoard({
             </span>
             <p className="studio-eyebrow">A clean slate</p>
             <h2>{envelope ? "Make room for what matters." : "Opening your dashboard…"}</h2>
-            {isAdmin ? (
+            {editorPage && isAdmin ? (
               <>
                 <p>
                   Add a service, a clock, a bookmark, or a native integration.
@@ -1110,6 +1051,14 @@ export default function StudioBoard({
                 </button>
                 <small>No sample connections. Start with your own.</small>
               </>
+            ) : canArrange ? (
+              <p>
+                Nothing has been added yet. To add widgets, open{" "}
+                <a className="studio-text-button" href={DASHBOARDS_PAGE}>
+                  Dashboards
+                </a>{" "}
+                and choose Edit for this dashboard.
+              </p>
             ) : (
               <p>An administrator hasn&apos;t added anything to this dashboard yet.</p>
             )}
@@ -1153,7 +1102,6 @@ export default function StudioBoard({
           onSelect={select}
           onManipulate={manipulate}
           onUnitKey={unitKey}
-          onLongPress={longPress}
           overlayOpen={overlayOpen}
         />
         <div className="studio-stack-layer">
@@ -1177,8 +1125,7 @@ export default function StudioBoard({
               onEdit={editStack}
               onManipulate={manipulate}
               onUnitKey={unitKey}
-              onLongPress={longPress}
-              onStackDrag={(offset) => onStackDrag(stack.id, offset)}
+                  onStackDrag={(offset) => onStackDrag(stack.id, offset)}
             />
           ))}
         </div>
@@ -1194,13 +1141,7 @@ export default function StudioBoard({
         <span>
           Homepage Studio <span className="studio-footer-dot">·</span> Powered by Homepage
         </span>
-        <span>
-          {editing
-            ? "Esc cancels a drag · arrow keys move · Shift + arrows resize"
-            : canArrange
-              ? "Hold a panel to make it yours"
-              : null}
-        </span>
+        {editing && <span>Esc cancels a drag · arrow keys move · Shift + arrows resize</span>}
       </footer>
       {modal && (
         <StudioDialog
@@ -1265,25 +1206,13 @@ export default function StudioBoard({
                       onClick={() => {
                         dismissEditor();
                         cancelEditing();
+                        if (editorPage) leave();
                       }}
                     >
                       Discard changes
                     </button>
                   </div>
                 </div>
-              ) : modal.type === "dashboards" ? (
-                <DashboardManager
-                  currentDashboard={dashboard}
-                  authEnabled={Boolean(access?.authEnabled)}
-                  onClose={closeModal}
-                  onNavigate={(path) => {
-                    // Manager navigation follows an explicit Open action or a
-                    // successful registry write. Clear the live guard before
-                    // browser navigation, even before React commits its state.
-                    reportEditorDraft({ dirty: false, pending: false });
-                    onNavigateDashboard(path);
-                  }}
-                />
               ) : modal.type === "discovery" ? (
                 <DiscoveryEditor
                   panel={modal.panel}
@@ -1388,7 +1317,6 @@ export default function StudioBoard({
                   onClose={closeModal}
                   onOpenFiles={() => requestEditorAction(() => setModal({ type: "files" }))}
                   onOpenBackups={() => requestEditorAction(() => openEditor("backups"))}
-                  onOpenDashboards={() => requestEditorAction(() => openEditor("dashboards"))}
                   onReload={reloadEditor}
                 />
               ) : modal.type === "files" ? (

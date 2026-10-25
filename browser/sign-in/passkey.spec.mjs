@@ -48,19 +48,28 @@ test('first administrator sets up with a passkey, signs out and signs back in wi
   await expect(page.getByRole('tab', { name: 'People' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('cell', { name: /Studio Admin/ })).toBeVisible();
 
-  // The dashboard shows the account button and every editing control.
-  // (STUDIO_BROWSER_NO_NATIVE=1 runs against a controller without the native
-  // dashboard, for local checks of the sign-in pages alone.)
+  // An administrator without a default dashboard lands on the Dashboards
+  // page. The live dashboard shows the account menu and no editing controls;
+  // its editor has them. (STUDIO_BROWSER_NO_NATIVE=1 runs against a
+  // controller without the native dashboard, for local checks of the sign-in
+  // pages alone.)
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/__studio\/dashboards$/);
+  await expect(page.getByRole('button', { name: 'Account: Studio Admin' })).toBeVisible();
   const native = process.env.STUDIO_BROWSER_NO_NATIVE !== '1';
   if (native) {
-    await page.goto('/');
-    await expect(page.getByRole('link', { name: 'Your account: Studio Admin' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Add widget' })).toBeVisible();
+    await page.goto('/home');
+    await expect(page.getByRole('button', { name: 'Account: Studio Admin' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Widgets' })).toHaveCount(0);
+    await page.goto('/home/__studio/edit');
+    await expect(page.getByRole('button', { name: 'Widgets' })).toBeVisible();
   }
 
   await page.goto('/__studio/account');
   await expect(page.getByRole('heading', { name: 'My account' })).toBeVisible();
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  // Sign out lives in the account menu of the top bar.
+  await page.getByRole('button', { name: 'Account: Studio Admin' }).click();
+  await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL(/\/__studio\/auth\/sign-in\?signedOut=1$/);
   await expect(page.getByText('You are signed out.')).toBeVisible();
 
@@ -68,8 +77,8 @@ test('first administrator sets up with a passkey, signs out and signs back in wi
   await page.goto('/');
   await expect(page).toHaveURL(/\/__studio\/auth\/sign-in\?next=%2F$/);
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
-  await expect(page).toHaveURL(/\/$/);
-  if (native) await expect(page.getByRole('link', { name: 'Your account: Studio Admin' })).toBeVisible();
+  await expect(page).toHaveURL(/\/__studio\/dashboards$/);
+  await expect(page.getByRole('button', { name: 'Account: Studio Admin' })).toBeVisible();
 
   expect(policyErrors).toEqual([]);
 });

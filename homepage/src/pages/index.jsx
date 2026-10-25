@@ -34,7 +34,12 @@ export default function HomepageStudio(props) {
   );
 }
 
-function StudioDashboard({ initialSettings, fallback, studioDashboard = { id: "default", basePath: "" } }) {
+function StudioDashboard({
+  initialSettings,
+  fallback,
+  studioDashboard = { id: "default", basePath: "" },
+  studioMode = "live",
+}) {
   const { i18n } = useTranslation();
   const { setSettings } = useContext(SettingsContext);
   const { setTheme } = useContext(ThemeContext);
@@ -178,6 +183,7 @@ function StudioDashboard({ initialSettings, fallback, studioDashboard = { id: "d
       )}
       <StudioBoard
         dashboard={studioDashboard}
+        mode={studioMode}
         nativeData={data}
         settings={settings}
         onNativeChange={refresh}

@@ -1,10 +1,10 @@
-import { expect, test } from '../helpers/dashboard.mjs';
+import { DASHBOARDS, expect, openEditor, test } from '../helpers/dashboard.mjs';
 
 const activePanel = page => page.locator('[data-stack-id]:not([aria-hidden="true"])');
 const stack = page => page.locator('[aria-roledescription="carousel"]');
 
 async function choose(page, term) {
-  await page.getByRole('button', { name: 'Add widget', exact: true }).click();
+  await page.getByRole('button', { name: 'Widgets', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('textbox', { name: 'Find a tile or widget' }).fill(term);
   await expect(dialog.locator('.studio-catalog-item')).toHaveCount(1);
@@ -39,7 +39,11 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   };
   capture(page);
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
-  await page.goto('/');
+  // The live dashboard has no editing controls; the editor has them all.
+  await page.goto('/home');
+  await expect(page.getByRole('button', { name: 'Add your first widget' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Widgets', exact: true })).toHaveCount(0);
+  await openEditor(page);
   await expect(page.getByRole('button', { name: 'Add your first widget' })).toBeEnabled();
   await expect(page.locator('[data-panel-id]')).toHaveCount(0);
 
@@ -51,13 +55,11 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   const tile = page.locator('[data-panel-kind="service"][aria-label="Browser fixture tile"]');
   await expect(tile).toBeVisible();
   await expect(tile.getByRole('link').first()).toHaveAttribute('href', 'https://example.test/');
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
   await page.getByRole('button', { name: 'Edit Browser fixture tile', exact: true }).click();
   dialog = page.getByRole('dialog');
   await dialog.getByLabel(/^Description/).fill('Edited through the real dashboard');
   await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(tile).toContainText('Edited through the real dashboard');
-  await page.getByRole('button', { name: 'Done', exact: true }).click();
 
   dialog = await choose(page, 'greeting');
   await dialog.getByRole('button', { name: 'Advanced YAML', exact: true }).click();
@@ -67,7 +69,6 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await expect(greeting).toContainText('Browser fixture greeting');
   await expect(page.locator('[data-panel-id]')).toHaveCount(2);
 
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
   const oldWidth = (await tile.boundingBox()).width;
   await page.getByRole('button', { name: 'Resize Browser fixture tile. Use arrow keys.', exact: true }).press('ArrowRight');
   await expect.poll(async () => (await tile.boundingBox()).width).toBeGreaterThan(oldWidth + 20);
@@ -96,11 +97,10 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await dialog.getByLabel('Transition', { exact: true }).selectOption('fade');
   await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
-  // Done persists asynchronously; wait for successful exit from editing before
-  // reloading so this assertion exercises saved state rather than a race.
-  await expect(page.getByRole('button', { name: 'Edit dashboard', exact: true })).toBeVisible();
-  await expect(stack(page)).toHaveCount(1);
-  await page.reload();
+  // Done saves, then returns to the Dashboards page. Reopening the live
+  // dashboard exercises saved state rather than a race.
+  await page.waitForURL(`**${DASHBOARDS}`);
+  await page.goto('/home');
   await expect(stack(page)).toHaveCount(1);
   await expect(page.locator('[data-panel-id]')).toHaveCount(2);
   await stack(page).scrollIntoViewIfNeeded();
@@ -155,7 +155,7 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   try {
     const mobile = await mobileContext.newPage();
     capture(mobile);
-    await mobile.goto(process.env.STUDIO_BROWSER_ORIGIN);
+    await mobile.goto(new URL('/home', process.env.STUDIO_BROWSER_ORIGIN).href);
     await expect(stack(mobile)).toHaveCount(1);
     await stack(mobile).scrollIntoViewIfNeeded();
     await expect.poll(() => mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -168,7 +168,7 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
     await expect(stack(mobile).locator('.studio-stack-title')).toHaveAttribute('aria-expanded', 'false');
   } finally { await mobileContext.close(); }
 
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await openEditor(page);
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
   await page.getByRole('button', { name: 'Configure Browser fixture tile', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();

@@ -1,9 +1,9 @@
 # Sign-in and access control
 
 Studio has its own sign-in. People get accounts, and each dashboard is shared
-with the people or groups who should see it. Single sign-on through Authentik
-or any other OpenID Connect provider works alongside local accounts or
-replaces them.
+with the people or groups who should see it. Single sign-on through any OpenID
+Connect identity provider (Authentik, Keycloak, Authelia and others) works
+alongside local accounts or replaces them.
 
 Sign-in is **on by default**. It needs an `https://` address. Turn it off
 (`STUDIO_AUTH=off`) only when something in front of Studio already decides
@@ -16,7 +16,7 @@ who may open it, such as forward authentication in your reverse proxy.
 - [Inviting people and sharing dashboards](#inviting-people-and-sharing-dashboards)
 - [Signing in](#signing-in)
 - [Session policies](#session-policies)
-- [Single sign-on with Authentik or another provider](#single-sign-on-with-authentik-or-another-provider)
+- [Single sign-on with an identity provider](#single-sign-on-with-an-identity-provider)
 - [Email](#email)
 - [Settings reference](#settings-reference)
 - [Lost access: command-line recovery](#lost-access-command-line-recovery)
@@ -66,14 +66,14 @@ appears.
 Studio uses the seed **once**. As soon as any account exists, it ignores
 `STUDIO_ADMIN_USERNAME`, `STUDIO_ADMIN_EMAIL` and the secret on every start
 (the log says so), so changing your password or email in Studio, or linking
-the account to Authentik, never clashes with what the deployment says. A
+the account to your identity provider, never clashes with what the deployment says. A
 password that's too short or too common, or a username without a password,
 stops Studio from starting, with the reason in the log.
 
 The intended setup is that this local administrator is then **linked to your
-Authentik administrator account** ([Linking](#linking-a-local-account-and-a-provider-account)):
-day to day you sign in with Authentik, and the local account is the way in
-when Authentik is down.
+administrator account at the identity provider** ([Linking](#linking-a-local-account-and-a-provider-account)):
+day to day you sign in through the provider, and the local account is the way
+in when the provider is down.
 
 ### Created in the browser
 
@@ -111,8 +111,16 @@ then **Administration**, or `/__studio/admin`).
   have access.
 - **Groups** share a dashboard or apply a session policy to several people at
   once. Groups from your identity provider appear automatically.
-- When you duplicate a dashboard (**Dashboard settings → Manage dashboards**),
-  tick **Share it with the same people and groups** to copy its access list.
+- When you duplicate a dashboard (**Dashboards → More actions → Duplicate**),
+  tick **Share it with the same people** to copy its access list (people and
+  groups).
+- **Default dashboards.** Each person can pick their own (**My account →
+  Default dashboard**), and an administrator can set one for a person (**People
+  → Manage**) or a group (**Groups → Manage**). The bare address opens the
+  person's own default, else the first of their groups (in the order on the
+  Groups page, changed with **Move up** and **Move down**) that has a default
+  they can open, else the Dashboards page. Administrators get the Dashboards
+  page unless they choose their own.
 
 Under **People → Manage** you can change someone's role, groups and session
 policy, disable the account (which signs them out at once), sign them out
@@ -164,7 +172,7 @@ domain; see [framing with sign-in on](REVERSE-PROXY.md#framing-with-sign-in-on).
 A policy chosen for a person wins. Otherwise the **strictest** value of each
 setting across their groups' policies applies; otherwise the default policy.
 
-## Single sign-on with Authentik or another provider
+## Single sign-on with an identity provider
 
 Studio is an OpenID Connect relying party. It uses the authorization code flow
 with PKCE, checks state and nonce, and verifies the provider's signed tokens.
@@ -174,22 +182,23 @@ with PKCE, checks state and nonce, and verifies the provider's signed tokens.
 1. Create a confidential OpenID Connect client at the provider with the
    redirect URI `https://<your Studio address>/__studio/auth/oidc/callback`,
    and the scopes `openid`, `email`, `profile` and `offline_access`.
-   [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md) has every Authentik field;
-   [IDP-OTHERS.md](IDP-OTHERS.md) covers other providers.
+   [IDP-OTHERS.md](IDP-OTHERS.md) has the requirements and notes for common
+   providers; [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md) is a full worked example
+   with Authentik.
 2. Put the client secret in the `studio_oidc_client_secret` Docker secret
    ([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)).
 3. Set the issuer and client ID in the stack's environment:
 
 ```env
-STUDIO_OIDC_ISSUER=https://authentik.example.test/application/o/<application-slug>/
+STUDIO_OIDC_ISSUER=https://idp.example.test/<issuer path>/
 STUDIO_OIDC_CLIENT_ID=<client ID>
 ```
 
 Studio reads the provider's settings from
 `<issuer>/.well-known/openid-configuration` when someone first signs in with
-it. Since Authentik 2024.2, the provider issues a refresh token only when the
-client asks for `offline_access` and the provider has that scope mapping
-selected. Without a refresh token, Studio can't check groups while someone is
+it. Many providers issue a refresh token only when the client asks for
+`offline_access` and the provider allows that scope (with Authentik, since
+2024.2, the `offline_access` scope mapping must be selected). Without a refresh token, Studio can't check groups while someone is
 signed in, so provider sessions end at the first check (15 minutes by default)
 and people sign in again. The optional back-channel logout URI
 (`/__studio/auth/oidc/backchannel-logout`) lets signing out of the provider
@@ -230,7 +239,7 @@ on this page; it keeps the last value the deployment gave it.
 **Sharing before anyone signs in.** A provider group appears under
 **Administration → Groups** when someone in it signs in, and every group named
 in the two lists is there from the start. Add any other provider group by its
-exact name with **Add Authentik group**. Share dashboards with these groups
+exact name with **Add <provider> group** (the button uses `STUDIO_OIDC_NAME`). Share dashboards with these groups
 under **Dashboard access**, and people get them at their first sign-in, with
 the role their groups give them.
 
@@ -242,7 +251,7 @@ over a local account, and nothing is ever linked automatically. A person links
 their **own** two accounts, and has to prove both in the same browser within
 5 minutes:
 
-- **Signed in locally:** **My account → Link Authentik account**. If you
+- **Signed in locally:** **My account → Link <provider> account**. If you
   signed in more than 5 minutes ago, confirm it's you first.
 - **Signed in through the provider:** **My account → Link a local account**,
   then sign in to the local account there (its password and second step, or
@@ -258,7 +267,7 @@ what will change; nothing changes until you click **Link accounts**:
   they were.
 - The local email takes the provider's **verified** email, and follows it at
   every provider sign-in; it's read-only in Studio while linked. An email the
-  provider doesn't mark as verified is never used (see
+  provider doesn't mark as verified is never used (with Authentik, see
   [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md#email-addresses)), and **Sign-in
   settings** warns when the last sign-in sent one.
 - If Studio already made a separate account for that provider identity (you
@@ -292,8 +301,8 @@ Any provider that supports OpenID Connect discovery and the authorization code
 flow should work: set `STUDIO_OIDC_NAME` to the name shown on the sign-in
 button. If your provider names the groups claim differently, set
 `STUDIO_OIDC_GROUPS_CLAIM`. [IDP-OTHERS.md](IDP-OTHERS.md) has the checklist
-and notes for Keycloak, Authelia and others; only Authentik's behaviour is
-modelled in Studio's tests.
+and notes for Keycloak, Authelia and others. Studio's tests model Authentik's
+behaviour; no provider is tested live.
 
 ## Email
 
@@ -307,8 +316,17 @@ administrators send invitation links themselves and reset accounts from
 STUDIO_SMTP_HOST=smtp.example.test
 STUDIO_SMTP_PORT=587                  # 465 uses TLS from the start; other ports must offer STARTTLS
 STUDIO_SMTP_USER=studio@example.test
-STUDIO_SMTP_FROM="Homepage Studio <studio@example.test>"
+STUDIO_SMTP_FROM_ADDRESS=studio@example.test   # a sender your mail provider has verified
+STUDIO_SMTP_FROM_NAME=Homepage Studio           # the name people see; this is the default
 ```
+
+The sender's name and address are separate, so mail shows the name rather
+than the bare address. Most mail providers refuse a sender address they
+haven't verified for your account. When a message can't be sent, Studio
+records it in **Administration → Activity** as *email failed*, with the mail
+server's answer (for example *550 Sender address is not verified*), and an
+invitation or reset you started shows the same answer so you can share the
+link yourself.
 
 The password goes in the `studio_smtp_password` Docker secret
 ([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)), or `off` if the mail server
@@ -332,7 +350,7 @@ or a backup code, so a mailbox alone can't take over an account.
 | `STUDIO_OIDC_ISSUER` | (unset) | The provider's issuer URL, `https://` |
 | `STUDIO_OIDC_CLIENT_ID` | (unset) | |
 | `STUDIO_OIDC_CLIENT_SECRET_FILE` | `/run/secrets/studio_oidc_client_secret` in the templates | The file holding the client secret, from the `studio_oidc_client_secret` Docker secret. The word `off` (or an empty file) means unused. Issuer, client ID and client secret go together |
-| `STUDIO_OIDC_NAME` | `Authentik` | The name on the sign-in button |
+| `STUDIO_OIDC_NAME` | `Single sign-on` | The provider's name on the sign-in button and account pages, for example `Authentik` |
 | `STUDIO_OIDC_SCOPES` | `openid profile email offline_access` | Keep `offline_access`, so groups can be checked while people are signed in |
 | `STUDIO_OIDC_GROUPS_CLAIM` | `groups` | |
 | `STUDIO_OIDC_REFRESH_MINUTES` | `15` | How often a signed-in provider account's groups are checked again, 1 to 1440 |
@@ -347,7 +365,9 @@ or a backup code, so a mailbox alone can't take over an account.
 | `STUDIO_SMTP_SECURE` | `true` on port 465, otherwise `false` | `true` for TLS from the start, `false` for STARTTLS. TLS is required either way |
 | `STUDIO_SMTP_USER` | (unset) | |
 | `STUDIO_SMTP_PASSWORD_FILE` | `/run/secrets/studio_smtp_password` in the templates | The file holding the mail password, from the `studio_smtp_password` Docker secret. `off` (or an empty file) means no password |
-| `STUDIO_SMTP_FROM` | (unset) | The sender address, required with `STUDIO_SMTP_HOST` |
+| `STUDIO_SMTP_FROM_ADDRESS` | (unset) | The sender address, required with `STUDIO_SMTP_HOST`. A plain address, such as `studio@example.test` |
+| `STUDIO_SMTP_FROM_NAME` | `Homepage Studio` | The sender name people see. Needs `STUDIO_SMTP_FROM_ADDRESS` |
+| `STUDIO_SMTP_FROM` | (unset) | The older single setting (an address, or `Name <address>`), still accepted instead of the two above. Not both |
 
 **Secrets as plain variables (not recommended).** Outside the templates, the
 four secrets can also be given directly as `STUDIO_AUTH_KEY`,

@@ -7,6 +7,10 @@ import path from 'node:path';
 import { gzipSync, gunzipSync, brotliDecompressSync } from 'node:zlib';
 import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from './index.mjs';
 import { createConfigStore, MAX_IMPORT_BYTES } from './config.mjs';
+// The main dashboard lives at /home. Its own addresses (native API, editor
+// API, native data) move with it; Studio-wide addresses stay at the root.
+const onPrimary = target => (/^\/(?:api\/|__studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+
 
 const HOST = 'dashboard.example.test:3001';
 const ORIGIN = `http://${HOST}`;
@@ -89,7 +93,7 @@ async function setup(t, serverOptions = {}) {
 
   function request(target, { method = 'GET', headers = {}, body } = {}) {
     return new Promise((resolve, reject) => {
-      const req = http.request({ host: '127.0.0.1', port, path: target, method, agent: false, headers: { host: HOST, ...headers } }, (res) => {
+      const req = http.request({ host: '127.0.0.1', port, path: onPrimary(target), method, agent: false, headers: { host: HOST, ...headers } }, (res) => {
         const chunks = [];
         res.on('data', (chunk) => chunks.push(chunk));
         res.on('error', reject);
@@ -387,7 +391,7 @@ test('unknown editor endpoints are local 404s and do not fall through to Homepag
 test('a stopped native upstream produces a useful 502 while editor state remains available', async (t) => {
   const { request, upstream } = await setup(t);
   await close(upstream);
-  const response = await request('/');
+  const response = await request('/home');
   assert.equal(response.status, 502);
   assert.match(response.json.error, /dashboard renderer is temporarily unavailable/);
   assert.equal((await request('/__studio/api/state')).status, 200);

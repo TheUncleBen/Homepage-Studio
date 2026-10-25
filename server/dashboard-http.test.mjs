@@ -10,6 +10,10 @@ import { constants } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from './index.mjs';
 import { dashboardConfigDir, dashboardStateDir, DASHBOARD_REGISTRY_FILE } from './dashboard-paths.mjs';
+// The main dashboard lives at /home. Its own addresses (native API, editor
+// API, native data) move with it; Studio-wide addresses stay at the root.
+const onPrimary = target => (/^\/(?:api\/|__studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+
 
 const HOST = 'dashboards.example.test:3000';
 const ORIGIN = `http://${HOST}`;
@@ -65,7 +69,7 @@ async function fixture(t) {
     await fs.rm(root, { recursive: true, force: true });
   });
   const request = (target, { method = 'GET', body, headers = {} } = {}) => new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, path: target, method, agent: false, headers: { host: HOST, ...headers } }, res => {
+    const req = http.request({ host: '127.0.0.1', port, path: onPrimary(target), method, agent: false, headers: { host: HOST, ...headers } }, res => {
       const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('error', reject);
       res.on('end', () => { const text = Buffer.concat(chunks).toString('utf8'); let json; try { json = JSON.parse(text); } catch {} resolve({ status: res.statusCode, headers: res.headers, text, json }); });
     });
@@ -193,7 +197,8 @@ test('rename, root redirect, archive and restore retain immutable dashboard file
   assert.equal((await f.request('/house/api/config')).json.id, child.id);
   assert.deepEqual(f.drains, [child.id]);
   assert.equal((await f.mutate({ action: 'update', id: 'default', name: 'Admin', slug: 'admin' })).status, 200);
-  const redirect = await f.request('/?view=1'); assert.equal(redirect.status, 307); assert.equal(redirect.headers.location, '/admin?view=1');
+  // With sign-in off the bare address always opens the Dashboards page.
+  const redirect = await f.request('/?view=1'); assert.equal(redirect.status, 307); assert.equal(redirect.headers.location, '/__studio/dashboards');
   assert.equal((await f.request('/api/config')).status, 404);
   assert.equal((await f.request('/admin/api/config')).json.id, 'default');
   const stored = await fs.readFile(path.join(dashboardConfigDir(f.configDir, child.id), 'settings.yaml'));
@@ -280,7 +285,7 @@ test('robots uses each resolved native setting without acquiring renderer worker
   await fs.writeFile(path.join(f.configDir, 'settings.yaml'), 'disableIndexing: true\n');
   await fs.writeFile(path.join(dashboardConfigDir(f.configDir, child.id), 'settings.yaml'), 'disableIndexing: false\n');
   const before = f.acquisitions.length;
-  const robots = await f.request('/robots.txt'); assert.equal(robots.status, 200); assert.match(robots.text, /Disallow: \/\n/); assert.match(robots.text, /Allow: \/family\$/);
+  const robots = await f.request('/robots.txt'); assert.equal(robots.status, 200); assert.match(robots.text, /Disallow: \/home\$\n/); assert.match(robots.text, /Disallow: \/home\/\n/); assert.match(robots.text, /^Allow: \/$/m); assert.doesNotMatch(robots.text, /Disallow: \/family(?:\$|\/\n)/);
   assert.equal(f.acquisitions.length, before);
   const head = await f.request('/robots.txt', { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(head.text, ''); assert.equal(Number(head.headers['content-length']), robots.text.length);
 });
@@ -346,7 +351,7 @@ test('browser navigation to an unavailable dashboard gets an accessible page; AP
     assert.match(page.text, /<html lang="en">/);
     assert.match(page.text, /<h1>This dashboard isn&#39;t available<\/h1>/);
     assert.match(page.text, /Error 404/);
-    assert.match(page.text, /<a href="\/">Open the main dashboard<\/a>/);
+    assert.match(page.text, /<a href="\/__studio\/dashboards">Open Dashboards<\/a>/);
     assert.doesNotMatch(page.text, /<script|family|garage|no-such|alert/i, target);
   }
   const head = await f.request('/garage', { method: 'HEAD', headers: html });

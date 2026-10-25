@@ -1,4 +1,4 @@
-import { expect, saveFiles, studioApi } from './dashboard.mjs';
+import { expect, openSettings, saveFiles, studioApi } from './dashboard.mjs';
 
 export const carousel = page => page.locator('[aria-roledescription="carousel"]');
 export const activePanel = page => page.locator('[data-stack-id]:not([aria-hidden="true"])');
@@ -14,7 +14,7 @@ export async function seedNative(request, files, arrange) {
   if (!arrange) return state;
   const board = structuredClone(state.board);
   arrange(board);
-  return studioApi(request, '/__studio/api/board', { revision: state.revision, board });
+  return studioApi(request, '/home/__studio/api/board', { revision: state.revision, board });
 }
 
 export function playback(overrides = {}) {
@@ -34,9 +34,9 @@ export async function seedPlayback(request, overrides = {}) {
   });
 }
 
-export async function openFiles(page) {
-  await page.getByRole('button', { name: 'Dashboard settings', exact: true }).click();
-  await page.getByRole('button', { name: /Configuration files All nine native files/ }).click();
+export async function openFiles(page, base) {
+  const settings = await openSettings(page, base);
+  await settings.getByRole('button', { name: /Configuration files All nine native files/ }).click();
   return page.getByRole('dialog');
 }
 

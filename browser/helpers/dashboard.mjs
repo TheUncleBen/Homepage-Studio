@@ -2,6 +2,22 @@ import { expect, test as base } from '@playwright/test';
 
 export { expect };
 export const origin = process.env.STUDIO_BROWSER_ORIGIN;
+// The main dashboard's address. Its live page has no editing controls; the
+// editor and the settings dialog have addresses of their own.
+export const HOME = '/home';
+export const DASHBOARDS = '/__studio/dashboards';
+
+export async function openEditor(page, base = HOME) {
+  await page.goto(`${base}/__studio/edit`);
+  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
+}
+
+export async function openSettings(page, base = HOME) {
+  await page.goto(`${base}/__studio/settings`);
+  const dialog = page.getByRole('dialog', { name: 'Dashboard settings', exact: true });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
 
 export async function studioApi(request, route, body) {
   const response = await request.fetch(new URL(route, origin).href, {
@@ -14,12 +30,12 @@ export async function studioApi(request, route, body) {
 }
 
 export async function saveFiles(request, changes) {
-  const current = await studioApi(request, '/__studio/api/state');
-  const saved = await studioApi(request, '/__studio/api/save', {
+  const current = await studioApi(request, '/home/__studio/api/state');
+  const saved = await studioApi(request, '/home/__studio/api/save', {
     revision: current.revision,
     ...changes,
   });
-  await studioApi(request, '/api/revalidate');
+  await studioApi(request, '/home/api/revalidate');
   return saved;
 }
 
@@ -48,7 +64,17 @@ export const test = base.extend({
   }, { auto: true }],
   browserErrors: [async ({ page }, use) => {
     const failures = [];
-    page.on('pageerror', error => failures.push(error.message));
+    // Leaving the editor or settings page navigates while requests may still
+    // be in flight. WebKit reports each request the departing page cancels as
+    // an error ("... due to access control checks."); only those, and only
+    // while a main-frame navigation is under way, are not failures.
+    let departing = false;
+    page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) departing = true; });
+    page.on('framenavigated', frame => { if (frame === page.mainFrame()) departing = false; });
+    page.on('pageerror', error => {
+      if (departing && / due to access control checks\.$/.test(error.message)) return;
+      failures.push(error.message);
+    });
     page.on('response', response => {
       if (response.status() >= 500 && new URL(response.url()).origin === new URL(origin).origin)
         failures.push(`${response.status()} ${new URL(response.url()).pathname}`);
@@ -59,7 +85,7 @@ export const test = base.extend({
 });
 
 export async function chooseContent(page, name, category) {
-  await page.getByRole('button', { name: 'Add widget', exact: true }).click();
+  await page.getByRole('button', { name: 'Widgets', exact: true }).click();
   const dialog = page.getByRole('dialog');
   if (category) await dialog.getByRole('button', { name: category, exact: true }).click();
   await dialog.getByRole('textbox', { name: 'Find a tile or widget' }).fill(name);
@@ -90,7 +116,7 @@ export async function addBookmark(page, name = 'Browser bookmark') {
 
 export async function finishArrangement(page) {
   await page.getByRole('button', { name: 'Done', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Edit dashboard', exact: true })).toBeVisible();
+  await page.waitForURL(`**${DASHBOARDS}`);
 }
 
 export async function setPanelSize(page, title, width, height) {
@@ -111,7 +137,7 @@ export async function seedServicePanels(request, items) {
   });
   const board = state.board;
   for (const item of items) board.panels.find(panel => panel.title === item.name).rect = item.rect;
-  return studioApi(request, '/__studio/api/board', { revision: state.revision, board });
+  return studioApi(request, '/home/__studio/api/board', { revision: state.revision, board });
 }
 
 export async function panelPixels(panel) {

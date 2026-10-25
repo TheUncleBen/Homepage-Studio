@@ -58,6 +58,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Component display rules (.badge, .row) must never un-hide an element. */
+[hidden] { display: none !important; }
 html, body { min-height: 100%; }
 body {
   margin: 0;
@@ -98,6 +100,15 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .stack { display: grid; gap: 14px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .row.end { justify-content: flex-end; }
+/* A row of actions (form submits, dialog buttons, a section's main action)
+   is centred under what it acts on, and its buttons are all as wide as the
+   widest one. When they wrap, they wrap in pairs and an odd last button is
+   centred, so no row is lopsided. */
+.actions, .action-grid { display: grid; gap: 10px; }
+.actions { grid-auto-flow: column; grid-auto-columns: 1fr; width: fit-content; max-width: 100%; margin-inline: auto; }
+.actions > button, .actions > .button { min-width: 10rem; }
+.action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.action-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; justify-self: center; width: calc(50% - 5px); }
 .spread { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
 .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.875rem; }
 .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
@@ -109,12 +120,41 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .steps li.done { border-color: var(--accent-solid); }
 
 /* Page shell for account and administration */
-.page-header { border-bottom: 1px solid var(--line); background: var(--surface); }
-.page-header-inner { max-width: 1100px; margin: 0 auto; padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
-.page-nav { display: flex; flex-wrap: wrap; gap: 4px; }
-.page-nav a { padding: 8px 12px; border-radius: 8px; color: var(--muted); text-decoration: none; font-weight: 550; }
-.page-nav a:hover { background: var(--raised); color: var(--text); }
-.page-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--text); }
+/* The one top bar on every Studio page; dashboards draw the same bar
+   (homepage/src/styles/studio.css, .studio-topbar). Keep the two in step. */
+.top-bar { height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.top-brand { display: grid; place-items: center; text-decoration: none; border-radius: 8px; }
+.top-brand .brand-mark { width: 30px; height: 30px; }
+.top-title { flex: 1; min-width: 0; font-weight: 650; font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-actions { display: flex; align-items: center; gap: 4px; }
+.top-link { padding: 6px 10px; border-radius: 8px; color: var(--muted); text-decoration: none; font-weight: 550; font-size: 0.875rem; white-space: nowrap; }
+.top-link:hover { background: var(--raised); color: var(--text); }
+.top-link[aria-current="page"] { background: var(--accent-soft); color: var(--text); }
+.icon-button { width: 34px; height: 34px; min-height: 34px; padding: 0; display: inline-grid; place-items: center; border-radius: 8px; border-color: transparent; background: transparent; color: var(--muted); }
+.icon-button:hover { background: var(--raised); color: var(--text); border-color: var(--line); }
+.account-menu { position: relative; }
+.account-popover { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 13rem; padding: 6px; display: grid; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px #0006; }
+.account-popover > a, .account-popover > button { display: block; width: 100%; min-height: 36px; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: left; text-decoration: none; font: inherit; font-size: 0.875rem; font-weight: 550; }
+.account-popover > a:hover, .account-popover > button:hover, .account-popover > a[aria-current="page"] { background: var(--raised); }
+.account-name { margin: 0; padding: 6px 10px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; color: var(--muted); font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.narrow-only { display: none !important; }
+/* Dashboards page */
+.page-title { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 20px; }
+.page-title h1 { margin: 0 0 4px; }
+.page-title .lede { margin: 0; }
+/* Cards keep their own height (an open More actions doesn't stretch its
+   neighbours) and a part-filled row sits centred. */
+.dashboard-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 16px; }
+.dashboard-card { flex: 1 1 19rem; min-width: min(100%, 19rem); max-width: 22.5rem; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 14px; align-content: start; text-align: center; }
+.dashboard-card.archived { opacity: 0.85; }
+.dashboard-card-head h2 { margin: 0 0 2px; font-size: 1.125rem; overflow-wrap: anywhere; }
+.dashboard-card-head p { margin: 0; overflow-wrap: anywhere; }
+.badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 8px; }
+.badges:empty { display: none; }
+.dashboard-card .actions { width: 100%; }
+.dashboard-card .actions > .button, .dashboard-card .actions > button { min-width: 0; }
+.archived-list > summary { cursor: pointer; font-weight: 600; }
+.archived-list[open] > summary { margin-bottom: 14px; }
 .page-body { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 20px; }
 .section { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 14px; min-width: 0; }
 .section.link-confirm { border-color: var(--accent); background: var(--accent-soft); }
@@ -176,6 +216,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .primary:hover { filter: brightness(1.1); }
 .danger { background: var(--danger-solid); border-color: var(--danger-solid); color: var(--danger-contrast); }
 .quiet { background: transparent; }
+.quiet:hover { background: var(--raised); }
+/* Inline links inside a sentence (a notice, a hint) stay links, in the text colour. */
+.notice a { color: inherit; font-weight: 600; }
 .link-button { background: none; border: 0; padding: 0; min-height: 0; color: var(--accent); font-weight: 500; text-decoration: underline; }
 .block { width: 100%; }
 .small-button { min-height: 36px; padding: 6px 12px; font-size: 0.875rem; }
@@ -195,6 +238,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .list-item { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
 .list-item > div:first-child { display: grid; gap: 2px; min-width: 0; }
+/* An item's own controls stay together at its end, on one line where they fit. */
+.list-item > .row { justify-content: flex-end; flex-wrap: nowrap; }
+.list-item > .row select { width: auto; min-width: 12rem; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -214,17 +260,42 @@ tr:last-child td { border-bottom: 0; }
 dialog { border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); color: var(--text); padding: 0; width: min(36rem, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
 dialog::backdrop { background: rgb(0 0 0 / 0.6); }
 .dialog-body { padding: 22px 20px; display: grid; gap: 16px; }
+.dialog-body > h2 { text-align: center; }
+.more-actions { border-top: 1px solid var(--line); padding-top: 14px; }
+.more-actions > summary { cursor: pointer; width: max-content; margin: 0 auto; padding: 6px 10px; border-radius: 8px; color: var(--muted); font-weight: 600; }
+.more-actions > summary:hover { color: var(--text); background: var(--raised); }
+.more-actions[open] > summary { margin-bottom: 12px; }
+/* A card is too narrow for two columns of these labels: one column keeps
+   every button one line and the same height. */
+.dashboard-card .action-grid { grid-template-columns: 1fr; }
+.dashboard-card .action-grid > :last-child:nth-child(odd) { width: 100%; }
 
+@media (max-width: 680px) {
+  .top-bar { padding: 0 12px; }
+  .wide-only { display: none !important; }
+  .narrow-only { display: block !important; }
+}
+@media (max-width: 420px) {
+  .action-grid { grid-template-columns: 1fr; }
+  .action-grid > :last-child:nth-child(odd) { width: 100%; }
+}
 @media (max-width: 560px) {
   .auth-card { padding: 22px 16px; }
   .section { padding: 16px 14px; }
   .codes { grid-template-columns: 1fr; }
   .inline-fields { grid-template-columns: 1fr; }
+  .actions { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .actions > button, .actions > .button { min-width: 0; }
+  .actions > :only-child { grid-column: 1 / -1; justify-self: center; width: auto; min-width: 60%; }
+  .actions > :last-child:nth-child(odd):not(:only-child) { grid-column: 1 / -1; justify-self: center; width: calc(50% - 5px); }
+  .list-item { flex-direction: column; align-items: stretch; }
+  form.row { justify-content: center; }
+  form.row > input, form.row > select { flex: 1 1 100%; max-width: none; }
+  form.row > button { min-width: 60%; }
+  .list-item > .row { flex-wrap: wrap; justify-content: center; width: 100%; }
+  .list-item > button, .list-item > .button { align-self: center; }
+  .list-item > .row select { flex: 1 1 100%; }
   .hide-narrow { display: none; }
-  /* Two rows on phones: brand and Sign out, then the navigation. */
-  .page-header-inner { padding: 10px 16px; row-gap: 6px; }
-  .page-nav { order: 3; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; margin: 0 -8px; scrollbar-width: none; }
-  .page-nav a { padding: 6px 8px; white-space: nowrap; }
   /* People become stacked rows instead of a wide table. */
   .people-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .people-table tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 12px; border-bottom: 1px solid var(--line); }
@@ -241,3 +312,4 @@ dialog::backdrop { background: rgb(0 0 0 / 0.6); }
 .facts dd { margin: 0; }
 strong .badge, h3 .badge, strong + .badge { margin-left: 8px; vertical-align: 1px; }
 .link-confirm li.warn-text { color: var(--warn-text); font-weight: 600; }
+.center { text-align: center; }

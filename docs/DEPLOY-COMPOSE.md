@@ -18,9 +18,10 @@ Placeholders used below:
 
 - Docker with the Compose plugin (`docker compose version`), or Portainer
   managing a standalone Docker host.
-- A reverse proxy that runs in Docker on the same machine, for HTTPS. The
-  examples assume Nginx Proxy Manager; others are in
-  [REVERSE-PROXY.md](REVERSE-PROXY.md).
+- A reverse proxy that runs in Docker on the same machine, for HTTPS. Any proxy
+  works; [DEPLOY.md step 8](DEPLOY.md#8-reverse-proxy) lists what it must do,
+  with Nginx Proxy Manager as the example, and
+  [REVERSE-PROXY.md](REVERSE-PROXY.md) has others.
 
 ## 1. Get the bundle
 
@@ -50,7 +51,7 @@ inside the container; the folder is mounted there read-only.
 | File | What goes in it |
 | --- | --- |
 | `studio_auth_key` | Long random text that encrypts authenticator-app secrets and single sign-on tokens. **Keep a copy**: if it's lost or changed, everyone sets up their authenticator app again |
-| `studio_oidc_client_secret` | The Authentik Client Secret ([IDP-AUTHENTIK.md](IDP-AUTHENTIK.md)), or the word `off` |
+| `studio_oidc_client_secret` | Your identity provider's client secret ([IDP-OTHERS.md](IDP-OTHERS.md), or [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md) for Authentik), or the word `off` |
 | `studio_smtp_password` | The mail server password, or the word `off` |
 | `studio_admin_password` | The first administrator's password (with `STUDIO_ADMIN_USERNAME` in step 4), or the word `off` to create the administrator in the browser. Read once, on the first start ([AUTHENTICATION.md](AUTHENTICATION.md#first-start-the-administrator)) |
 
@@ -63,7 +64,7 @@ sudo chown -R 1000:1000 /srv/homepage-studio/secrets
 sudo chmod 700 /srv/homepage-studio/secrets && sudo chmod 400 /srv/homepage-studio/secrets/*
 ```
 
-To put a real value in later (for example the Authentik Client Secret), write
+To put a real value in later (for example the identity provider's client secret), write
 it without echoing it to the screen, then restart Studio:
 
 ```bash
@@ -134,14 +135,15 @@ read-only root filesystem isn't tested yet, so it isn't set.
 ## 6. Proxy, first sign-in and integrations
 
 - **Proxy.** Point the proxy at `http://homepage_studio:3000`: the Compose file
-  gives Studio that name on the shared network. For NPM, the fields are as in
-  [DEPLOY.md step 8](DEPLOY.md#8-nginx-proxy-manager). The Compose file sets
+  gives Studio that name on the shared network. The proxy requirements and an
+  Nginx Proxy Manager example are in [DEPLOY.md step 8](DEPLOY.md#8-reverse-proxy). The Compose file sets
   that name as a fixed alias, so don't run two Studios on the same network.
 - **First sign-in.** Open Studio straight away and create the administrator
   ([DEPLOY.md step 9](DEPLOY.md#9-first-sign-in-and-checks)). The log is
   `docker compose --project-name homepage --file portainer-compose.yml logs --tail 100 studio`.
-- **Authentik.** [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md); the client secret goes
-  in the `studio_oidc_client_secret` file.
+- **Single sign-on.** [IDP-OTHERS.md](IDP-OTHERS.md) for any provider, with
+  [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md) as a worked example; the client secret
+  goes in the `studio_oidc_client_secret` file.
 - **Widget API keys.** Put each in its own file, mount it, and point a
   `HOMEPAGE_FILE_*` variable at it in your copy of the Compose file
   ([DEPLOY.md](DEPLOY.md#widget-api-keys-as-docker-secrets) explains the

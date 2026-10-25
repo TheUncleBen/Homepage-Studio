@@ -1,4 +1,4 @@
-# Single sign-on with another provider
+# Single sign-on with any identity provider
 
 Studio works with any OpenID Connect provider that supports discovery and the
 authorization code flow. [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md) is the full,

@@ -17,7 +17,7 @@ import { checkApplicationReadiness } from './application-health.mjs';
 import { renderRobotsPolicy } from './indexing-policy.mjs';
 import { readAuthConfig } from './auth/config.mjs';
 import { createAuthService } from './auth/service.mjs';
-import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation } from './auth/routes.mjs';
+import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendStudioAsset, sendStudioPage } from './auth/routes.mjs';
 import { atLeast, requiredLevel } from './auth/access.mjs';
 
 const base = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -121,8 +121,8 @@ a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
 <main>
 <p class="status">Error ${code}</p>
 <h1>This dashboard isn&#39;t available</h1>
-<p>Its address may have changed, or it may have been archived. Open the main dashboard, then choose the dashboard you need from its dashboard list.</p>
-<a href="/">Open the main dashboard</a>
+<p>Its address may have changed, or it may have been archived. Choose the dashboard you need on the Dashboards page.</p>
+<a href="/__studio/dashboards">Open Dashboards</a>
 </main>
 </body>
 </html>
@@ -636,7 +636,7 @@ export function createStudioServer(options = {}) {
   // ---- Sign-in gate ---------------------------------------------------------
   function wantsNavigation(req) {
     return ['GET', 'HEAD'].includes(req.method) && String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html')
-      && !/^\/(?:[^/]+\/)?(?:api|__studio)\//.test(String(req.url).split('?')[0]);
+      && (!/^\/(?:[^/]+\/)?(?:api|__studio)\//.test(String(req.url).split('?')[0]) || /^\/(?:[^/]+\/)?__studio\/(?:edit|settings)$/.test(String(req.url).split('?')[0]));
   }
   // The sign-in pages refuse to be framed, so a signed-out dashboard inside
   // another site (for example a Home Assistant panel) gets this page instead
@@ -659,12 +659,6 @@ export function createStudioServer(options = {}) {
     }
     return json(res, status, { error: code === 'SETUP_REQUIRED' ? 'Studio needs its first administrator. Open Studio in a browser to set it up.' : 'Sign in to continue.', code });
   }
-  const NOTHING_SHARED = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>No dashboards yet</title><style>:root{color-scheme:dark}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:#111115;color:#eeecf1;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}main{max-width:30rem;padding:28px 24px;background:#1b1a20;border:1px solid #34303b;border-radius:12px}h1{margin:0 0 12px;font-size:1.375rem;font-weight:600}p{margin:0 0 20px;color:#b4aebc}a{display:inline-block;margin-right:8px;padding:10px 16px;border-radius:8px;background:#685870;color:#fff;text-decoration:none;font-weight:600}a.quiet{background:transparent;border:1px solid #4a4452}a:focus-visible{outline:3px solid #b299be;outline-offset:3px}</style></head><body><main><h1>No dashboards have been shared with you yet</h1><p>Ask an administrator to share a dashboard with your account.</p><a href="/__studio/account">Your account and sign out</a></main></body></html>`;
-  function nothingShared(res) {
-    const policy = res.getHeader('content-security-policy');
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-length': Buffer.byteLength(NOTHING_SHARED), 'content-security-policy': [].concat(policy ?? [], UNAVAILABLE_PAGE_POLICY) });
-    res.end(NOTHING_SHARED);
-  }
   const isLoopback = address => /^(?:127\.|::1$|::ffff:127\.)/.test(String(address ?? ''));
   function authBlocked(req, res) {
     if (pathOf(req) === '/__studio/application-ready' && req.method === 'GET') return json(res, 200, { status: 'ready' });
@@ -677,6 +671,8 @@ export function createStudioServer(options = {}) {
     return json(res, 503, { error: authConfig.blocked, code: 'HTTPS_REQUIRED' });
   }
   const pathOf = req => String(req.url).split('?')[0];
+  const STUDIO_PAGES = new Map([['/__studio/edit', '/studio-edit'], ['/__studio/settings', '/studio-settings']]);
+  const NATIVE_STUDIO_PAGE = /^\/(?:studio-(?:edit|settings)(?:\/|$)|_next\/data\/[^/]+\/studio-(?:edit|settings)\.json$)/;
   function forbidden(res, message = 'Your account does not have access to this.') {
     return json(res, 403, { error: message, code: 'FORBIDDEN' });
   }
@@ -761,12 +757,28 @@ export function createStudioServer(options = {}) {
         const primary = manifest.dashboards.find(entry => entry.id === 'default');
         return await forDashboard(primary).handle(req, res, primary);
       }
-      if (auth && path === '/' && current.level('default') === 'none') {
-        // The main dashboard isn't shared with this person: open the first one that is.
-        const first = manifest.dashboards.find(entry => !entry.archived && entry.id !== 'default' && current.level(entry.id) !== 'none');
-        if (first) { res.writeHead(307, { location: dashboardBasePath(first) + req.url.slice(1), 'cache-control': 'no-store' }); return res.end(); }
-        if (wantsNavigation(req)) return nothingShared(res);
-        return forbidden(res, 'No dashboards have been shared with your account yet.');
+      // The Dashboards page lists what this person can open, with the actions
+      // their level allows. It works with sign-in on or off.
+      if (path === '/__studio/api/overview') {
+        if (req.method !== 'GET') return json(res, 405, { error: 'Use GET for the dashboard list.' });
+        const level = entry => (auth ? current.level(entry.id) : 'admin');
+        const listed = manifest.dashboards.filter(entry => (isAdmin || !entry.archived) && level(entry) !== 'none');
+        return json(res, 200, {
+          authEnabled: Boolean(auth),
+          user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role, defaultDashboardId: current.user.defaultDashboardId ?? null } : null,
+          landingId: auth ? current.landing(manifest.dashboards) : null,
+          revision: isAdmin ? manifest.revision : undefined,
+          dashboards: listed.map(entry => ({ id: entry.id, name: entry.name, slug: entry.slug, path: dashboardBasePath(entry) || '/', archived: entry.archived, level: level(entry) })),
+        });
+      }
+      if (!auth && path === '/__studio/dashboards' && ['GET', 'HEAD'].includes(req.method)) return sendStudioPage(res, 'dashboards');
+      if (!auth && req.method === 'GET' && path.startsWith('/__studio/auth/assets/')) return await sendStudioAsset(res, path);
+      // The bare address: the person's landing dashboard, or the Dashboards page.
+      if (path === '/' && ['GET', 'HEAD'].includes(req.method)) {
+        const landing = auth ? manifest.dashboards.find(entry => entry.id === current.landing(manifest.dashboards)) : null;
+        const target = landing && dashboardBasePath(landing) ? dashboardBasePath(landing) + req.url.slice(1) : '/__studio/dashboards';
+        res.writeHead(307, { location: target, 'cache-control': 'no-store', 'content-length': 0 });
+        return res.end();
       }
       const route = resolveDashboardRoute(manifest, req.url);
       if (route.redirect) { res.writeHead(307, { location: route.redirect, 'cache-control': 'no-store' }); return res.end(); }
@@ -777,8 +789,18 @@ export function createStudioServer(options = {}) {
       // A dashboard you can't open looks exactly like one that doesn't exist.
       if (level === 'none') throw new DashboardError('That dashboard is unavailable. Its address may have changed or it may be archived.', 'DASHBOARD_NOT_FOUND', 404);
       if (local === '/__studio/api/access' && req.method === 'GET') {
-        return json(res, 200, { authEnabled: Boolean(auth), level, user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role } : null });
+        return json(res, 200, { authEnabled: Boolean(auth), level, dashboard: { id: route.dashboard.id, name: route.dashboard.name }, user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role } : null });
       }
+      // The editor and settings pages open from the Dashboards page. They are
+      // native pages behind Studio addresses; their native addresses stay closed
+      // so the live dashboard is the only page at a dashboard's own address.
+      if (STUDIO_PAGES.has(local)) {
+        if (!['GET', 'HEAD'].includes(req.method)) return json(res, 405, { error: 'Use GET to open this page.' });
+        if (!atLeast(level, requiredLevel('GET', local).level)) { res.writeHead(303, { location: dashboardBasePath(route.dashboard) || '/', 'cache-control': 'no-store', 'content-length': 0 }); return res.end(); }
+        req.url = STUDIO_PAGES.get(local) + route.path.slice(local.length);
+        return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
+      }
+      if (NATIVE_STUDIO_PAGE.test(local)) throw new DashboardError('That dashboard is unavailable. Its address may have changed or it may be archived.', 'DASHBOARD_NOT_FOUND', 404);
       if (auth) {
         const required = requiredLevel(req.method, local);
         if (required.level === 'blocked') return forbidden(res, 'This endpoint is turned off while Studio sign-in is on.');
@@ -788,7 +810,8 @@ export function createStudioServer(options = {}) {
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
       if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);
-      const diagnostic = req.url.split('?')[0].startsWith('/__studio/api/');
+      // Editor API requests for any dashboard keep their diagnostic status.
+      const diagnostic = /^\/(?:[^/]+\/)?__studio\/api\//.test(req.url.split('?')[0]);
       const status = error instanceof ConfigError && !diagnostic ? 503 : Number(error.status || error.statusCode) || 500;
       json(res, status, { error: error instanceof DashboardError || error instanceof ConfigError || status < 500 ? error.message : 'The dashboard could not be opened. Check the application logs and persistent storage.', code: error.code || 'DASHBOARD_ERROR' });
     }

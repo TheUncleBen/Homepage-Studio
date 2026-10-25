@@ -1,4 +1,4 @@
-import { expect, finishArrangement, mouseDrag, test, touchSession } from '../helpers/dashboard.mjs';
+import { expect, mouseDrag, test, touchSession } from '../helpers/dashboard.mjs';
 import { activePanel, carousel, seedPlayback } from '../helpers/engineering.mjs';
 
 const title = page => carousel(page).getByRole('button', { name: /^Choose widget in stack:/ });
@@ -9,7 +9,7 @@ test('intentional stack title picker preserves native state, keyboard focus and 
   const searchId = seeded.board.panels.find(panel => panel.nativeLocator.type === 'search').id;
   const greetingId = seeded.board.panels.find(panel => panel.nativeLocator.type === 'greeting').id;
   await page.clock.install({ time: new Date('2026-10-21T12:00:00Z') });
-  await page.goto('/');
+  await page.goto('/home');
   const input = page.locator(`[data-panel-id="${searchId}"]`).getByRole('combobox', { includeHidden: true });
   await input.fill('Picker keeps this native input');
   const original = await input.elementHandle();
@@ -48,19 +48,18 @@ test('intentional stack title picker preserves native state, keyboard focus and 
   await page.clock.fastForward(500);
   await mouseDrag(page, title(page), -10, 0);
   await expect(menu(page)).toHaveCount(0);
+  // The live dashboard has no editing: a right-click or a hold on the title
+  // neither starts editing nor opens the picker.
   await title(page).click({ button: 'right' });
-  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
   await expect(menu(page)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(title(page)).toHaveAttribute('aria-expanded', 'false');
   const bounds = await title(page).boundingBox();
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();
   await page.clock.fastForward(420);
   await page.mouse.up();
-  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
   await expect(menu(page)).toHaveCount(0);
-  await finishArrangement(page);
+  await expect(page.getByRole('button', { name: 'Done', exact: true })).toHaveCount(0);
   await expect(title(page)).toHaveAttribute('aria-expanded', 'false');
   await title(page).press('Enter');
   await page.keyboard.press('Escape');
@@ -71,9 +70,9 @@ test('intentional stack title picker preserves native state, keyboard focus and 
 
 test.describe('mobile title picker', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-  test('short title taps open intentionally while touch swipes and held touch keep their existing actions', async ({ page, request }) => {
+  test('short title taps open intentionally, touch swipes still navigate, and a held touch does nothing', async ({ page, request }) => {
     await seedPlayback(request);
-    await page.goto('/');
+    await page.goto('/home');
     await title(page).tap();
     await expect(menu(page)).toBeVisible();
     await menu(page).getByRole('menuitemradio', { name: 'Greeting 2 of 2', exact: true }).tap();
@@ -102,10 +101,11 @@ test.describe('mobile title picker', () => {
       bounds = await title(page).boundingBox();
       point = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
       await touch.start(point.x, point.y);
-      await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+      // Well past the old 420ms hold deadline.
+      await page.waitForTimeout(900);
       await touch.end();
       await expect(menu(page)).toHaveCount(0);
-      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Done', exact: true })).toHaveCount(0);
       await expect(title(page)).toHaveAttribute('aria-expanded', 'false');
     } finally { await touch.detach(); }
   });

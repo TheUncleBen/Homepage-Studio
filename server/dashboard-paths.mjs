@@ -20,7 +20,6 @@ export function validateDashboardName(name) {
   return name.trim();
 }
 export function validateDashboardSlug(slug, id) {
-  if (slug === '' && id === 'default') return slug;
   if (typeof slug !== 'string' || slug.length > 64 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(slug) || reserved.has(slug)) throw new DashboardError('Use a unique address of 1 to 64 lowercase letters, numbers or internal hyphens, without a reserved application path.', 'INVALID_DASHBOARD_SLUG');
   return slug;
 }
@@ -38,6 +37,20 @@ export function validateDashboardManifest(value) {
     }
   } catch { invalid(); }
   if (!ids.has('default')) invalid();
+  return value;
+}
+// Before Dashboards had its own page the main dashboard lived at the bare
+// address with an empty slug. It now gets "home" (or "home-2", … when that
+// is taken); the bare address leads to each person's landing page instead.
+export const migratedManifests = new WeakSet();
+export function migrateDashboardManifest(value) {
+  const primary = Array.isArray(value?.dashboards) ? value.dashboards.find(entry => entry?.id === 'default') : null;
+  if (!primary || primary.slug !== '') return value;
+  const taken = new Set(value.dashboards.map(entry => entry?.slug));
+  let slug = 'home';
+  for (let n = 2; taken.has(slug); n++) slug = 'home-' + n;
+  primary.slug = slug;
+  migratedManifests.add(value);
   return value;
 }
 export const dashboardBasePath = entry => entry.slug ? '/' + validateDashboardSlug(entry.slug, entry.id) : '';

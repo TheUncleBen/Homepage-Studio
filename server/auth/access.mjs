@@ -56,11 +56,28 @@ export function effectivePolicy(data, user) {
   };
 }
 
+// Where the bare address takes someone. An administrator goes to the
+// Dashboards page unless they chose a dashboard of their own. A member goes
+// to their own default, else the default of the first of their groups (in
+// the order set under Administration → Groups) that has one. Only
+// dashboards the person can open count; null means the Dashboards page.
+export function landingDashboard(data, user, dashboards) {
+  const usable = id => typeof id === 'string' && dashboards.some(entry => entry.id === id && !entry.archived) && dashboardLevel(data, user, id) !== 'none';
+  if (usable(user.defaultDashboardId)) return user.defaultDashboardId;
+  if (user.role === 'admin') return null;
+  const mine = new Set(userGroupIds(data, user));
+  for (const group of data.groups) {
+    if (mine.has(group.id) && usable(group.defaultDashboardId)) return group.defaultDashboardId;
+  }
+  return null;
+}
+
 // Required level for a dashboard-relative request. Anything under
 // /__studio/ that is not listed needs an administrator (default deny).
 const VIEW_GET = new Set(['/__studio/api/board', '/__studio/api/access', '/__studio/catalog.json']);
 const ARRANGE_POST = new Set(['/__studio/api/board', '/__studio/api/discovery-visibility', '/__studio/api/appearance']);
-const ARRANGE_GET = new Set(['/__studio/api/appearance']);
+// The editor and settings pages are opened from the Dashboards page.
+const ARRANGE_GET = new Set(['/__studio/api/appearance', '/__studio/edit', '/__studio/settings']);
 // Admin operations that also need a recent sign-in.
 const STEP_UP = new Set(['POST /__studio/api/save', 'POST /__studio/api/import', 'POST /__studio/api/restore', 'GET /__studio/api/export']);
 
