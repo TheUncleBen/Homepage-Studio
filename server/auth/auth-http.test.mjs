@@ -557,7 +557,11 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.match(theme.text, /^:root\{color-scheme:light;/);
   assert.match(theme.text, /--focus:#[0-9a-f]{6};/);
   assert.doesNotMatch(theme.text, /--platform|@media/);
-  assert.match((await request('/studio/dashboards', { cookie: member.cookie })).text, /<link rel="stylesheet" href="\/studio\/theme.css" id="studio-theme">/);
+  const dashboardsPage = await request('/studio/dashboards', { cookie: member.cookie });
+  assert.match(dashboardsPage.text, /<link rel="stylesheet" href="\/studio\/theme.css" id="studio-theme">/);
+  // The Dashboards page frames each dashboard as its preview, from this
+  // origin only, and can't be framed itself.
+  assert.match(String(dashboardsPage.headers['content-security-policy']), /frame-src 'self'; frame-ancestors 'none'/);
   assert.deepEqual((await request('/home/studio/api/appearance', { cookie: member.cookie })).json.platform, { mode: 'light', accent: '#91b09e', background: null });
   // Switching the platform CSS off for one dashboard is an administrator's call.
   const appearance = (await request('/home/studio/api/appearance', { cookie: member.cookie })).json;

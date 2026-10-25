@@ -615,11 +615,12 @@
     signOut: 'M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H3',
     key: 'M15.5 8.5a3.5 3.5 0 1 1-3.5-3.5M12 8.5 4 16.5V20h3.5v-2H10v-2.5h2l2-2',
     trash: 'M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3',
+    more: 'M5 12h.01M12 12h.01M19 12h.01',
   };
   function icon(name, size = 17) {
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
-    for (const [key, value] of Object.entries({ width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': name === 'grip' ? 3.5 : 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) svg.setAttribute(key, String(value));
+    for (const [key, value] of Object.entries({ width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': name === 'grip' || name === 'more' ? 3.5 : 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) svg.setAttribute(key, String(value));
     const path = document.createElementNS(ns, 'path');
     path.setAttribute('d', ICONS[name]);
     svg.append(path);
@@ -1702,48 +1703,109 @@
         catch (error) { failure(message, error); }
       });
     }
+    // One row per dashboard, all the same height: a live preview, its name
+    // and address, who can open it, and its actions. Less common actions sit
+    // in the row's More menu.
     function card(entry) {
       const mine = view.user?.defaultDashboardId === entry.id;
       const landing = view.landingId === entry.id;
       const canEdit = entry.level === 'arrange' || entry.level === 'admin';
       const badges = [
-        landing ? h('span', { class: 'badge accent', text: mine ? 'Your default' : 'Default from your group' }) : null,
-        entry.archived ? h('span', { class: 'badge warn', text: 'Archived' }) : null,
-        !isAdmin && entry.level !== 'admin' ? h('span', { class: 'badge', text: LEVEL_LABELS[entry.level] }) : null,
+        landing ? badge(mine ? 'Your default' : 'Default from your group', 'accent') : null,
+        entry.archived ? badge('Archived', 'warn') : null,
+        !isAdmin && entry.level !== 'admin' ? badge(LEVEL_LABELS[entry.level]) : null,
       ];
       const actions = [];
       if (!entry.archived && entry.path) {
-        actions.push(h('a', { class: 'button primary', href: entry.path, text: 'Open' }));
-        if (canEdit) actions.push(h('a', { class: 'button', href: pagePath(entry.path, 'edit'), text: 'Edit' }));
-        if (canEdit) actions.push(h('a', { class: 'button', href: pagePath(entry.path, 'settings'), text: 'Settings' }));
+        actions.push(h('a', { class: 'pill accent', href: entry.path, text: 'Open' }));
+        if (canEdit) actions.push(h('a', { class: 'pill', href: pagePath(entry.path, 'edit'), text: 'Edit' }));
+        if (canEdit) actions.push(h('a', { class: 'pill', href: pagePath(entry.path, 'settings'), text: 'Settings' }));
       }
       const more = [];
       if (view.authEnabled && !entry.archived && entry.path) {
-        const button = h('button', { type: 'button', text: mine ? 'Stop using as my default' : 'Make my default' });
+        const button = h('button', { type: 'button', role: 'menuitem', text: mine ? 'Stop using as my default' : 'Make my default' });
         button.addEventListener('click', () => setDefault(mine ? null : entry.id, button));
         more.push(button);
       }
       if (isAdmin && !entry.archived) {
-        more.push(h('button', { type: 'button', text: 'Rename or change address', onclick: () => openDialog(`Rename ${entry.name}`, close => nameAndAddress(close, { entry })) }));
-        more.push(h('button', { type: 'button', text: 'Duplicate', onclick: () => openDialog(`Duplicate ${entry.name}`, close => nameAndAddress(close, { source: entry })) }));
-        if (view.authEnabled) more.push(h('a', { class: 'button', href: '/studio/admin#access', text: 'Who can open it' }));
-        if (entry.id !== 'default') more.push(h('button', { type: 'button', class: 'danger', text: 'Archive', onclick: () => confirmDialog(`Archive ${entry.name}?`, 'Its address stops working and it leaves everyone’s list. Its files and snapshots are kept, and you can restore it here.', 'Archive', async () => { await registry({ action: 'archive', id: entry.id, confirmed: true }); await reload(`${entry.name} is archived.`); }) }));
+        more.push(h('button', { type: 'button', role: 'menuitem', text: 'Rename or change address', onclick: () => openDialog(`Rename ${entry.name}`, close => nameAndAddress(close, { entry })) }));
+        more.push(h('button', { type: 'button', role: 'menuitem', text: 'Duplicate', onclick: () => openDialog(`Duplicate ${entry.name}`, close => nameAndAddress(close, { source: entry })) }));
+        if (view.authEnabled) more.push(h('a', { role: 'menuitem', href: '/studio/admin#access', text: 'Who can open it' }));
+        if (entry.id !== 'default') more.push(h('button', { type: 'button', role: 'menuitem', class: 'danger-item', text: 'Archive', onclick: () => confirmDialog(`Archive ${entry.name}?`, 'Its address stops working and it leaves everyone’s list. Its files and snapshots are kept, and you can restore it here.', 'Archive', async () => { await registry({ action: 'archive', id: entry.id, confirmed: true }); await reload(`${entry.name} is archived.`); }) }));
       }
       if (isAdmin && entry.archived) {
-        const restore = h('button', { type: 'button', class: 'primary', text: 'Restore' });
+        const restore = h('button', { type: 'button', class: 'pill accent', text: 'Restore' });
         restore.addEventListener('click', () => busy(restore, 'Restoring…', async () => { try { await registry({ action: 'restore', id: entry.id }); await reload(`${entry.name} is back.`); } catch (error) { failure(message, error); } }));
         actions.push(restore);
       }
-      return h('article', { class: 'dashboard-card' + (entry.archived ? ' archived' : '') },
-        h('div', { class: 'dashboard-card-head' },
-          h('h2', { text: entry.name }),
-          h('p', { class: 'small muted mono', text: entry.path ? location.host + entry.path : 'No address yet' }),
-          h('div', { class: 'badges' }, badges)),
-        h('dl', { class: 'card-facts small' },
-          isAdmin ? [h('dt', { text: 'Who can open it' }), h('dd', { text: audienceText(entry.audience) })] : null,
-          h('dt', { text: 'Last changed' }), h('dd', { text: changedText(entry.lastChanged) })),
-        actions.length ? h('div', { class: 'actions' }, actions) : null,
-        more.length ? h('details', { class: 'more-actions' }, h('summary', { text: 'More actions' }), h('div', { class: 'action-grid' }, more)) : null);
+      return h('article', { class: 'dashboard-row' + (entry.archived ? ' archived' : '') },
+        preview(entry),
+        h('div', { class: 'dashboard-info' },
+          h('div', { class: 'dashboard-head' },
+            h('div', { class: 'dashboard-title' }, h('h2', { text: entry.name }), h('div', { class: 'badges' }, badges)),
+            more.length ? moreMenu(entry.name, more) : null),
+          h('p', { class: 'small muted mono address', text: entry.path ? location.host + entry.path : 'No address yet' }),
+          h('p', { class: 'small muted facts-line' }, [isAdmin ? audienceText(entry.audience) : null, 'Changed ' + changedText(entry.lastChanged).replace(/^Not changed yet$/, 'never')].filter(Boolean).join(' · ')),
+          actions.length ? h('div', { class: 'dashboard-actions' }, actions) : null));
+    }
+    // The row's More menu, closed by a click outside or Escape.
+    function moreMenu(name, items) {
+      const list = h('div', { class: 'more-popover', role: 'menu', hidden: true }, items);
+      const button = h('button', { type: 'button', class: 'icon-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': `More for ${name}`, title: 'More' }, icon('more', 18));
+      const holder = h('div', { class: 'more-menu' }, button, list);
+      const close = () => { list.hidden = true; button.setAttribute('aria-expanded', 'false'); };
+      const entry = { holder, button, popover: list, close };
+      button.addEventListener('click', () => {
+        const opening = list.hidden;
+        for (const item of popovers) item.close();
+        // The page's chrome resets the list of menus when it draws, so a
+        // row's menu joins it when first opened.
+        if (!popovers.includes(entry)) popovers.push(entry);
+        list.hidden = !opening; button.setAttribute('aria-expanded', String(opening));
+        if (opening) list.querySelector('[role=menuitem]')?.focus();
+      });
+      list.addEventListener('click', event => { if (event.target.closest('[role=menuitem]')) close(); });
+      return holder;
+    }
+    // Live previews: the dashboard itself, drawn at desktop size and scaled
+    // down, so it stays sharp. A preview loads only when its row is near the
+    // screen, two at a time, and fades in once the dashboard has drawn.
+    const PREVIEW_WIDTH = 1280, PREVIEW_HEIGHT = 800;
+    const previewQueue = [];
+    let previewsLoading = 0;
+    function pumpPreviews() {
+      while (previewsLoading < 2 && previewQueue.length) {
+        const frame = previewQueue.shift();
+        if (!frame.isConnected) continue;
+        previewsLoading++;
+        let released = false;
+        const release = () => { if (released) return; released = true; previewsLoading--; pumpPreviews(); };
+        frame.addEventListener('load', () => { setTimeout(() => frame.closest('.preview')?.classList.add('ready'), 400); release(); }, { once: true });
+        setTimeout(release, 15000);
+        frame.src = frame.dataset.src;
+      }
+    }
+    const previewObserver = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
+      for (const item of entries) {
+        if (!item.isIntersecting) continue;
+        previewObserver.unobserve(item.target);
+        previewQueue.push(item.target.querySelector('iframe'));
+      }
+      pumpPreviews();
+    }, { rootMargin: '200px 0px' }) : null;
+    const previewSizer = 'ResizeObserver' in window ? new ResizeObserver(entries => {
+      for (const item of entries) item.target.style.setProperty('--preview-scale', String(item.contentRect.width / PREVIEW_WIDTH));
+    }) : null;
+    function preview(entry) {
+      const holder = h('div', { class: 'preview', 'aria-hidden': 'true' }, h('span', { class: 'preview-placeholder' }, avatar(entry.name)));
+      if (entry.archived || !entry.path || !previewObserver) return holder;
+      // Decorative and out of reach: no focus, no pointer, no screen reader.
+      const frame = h('iframe', { title: '', tabindex: '-1', referrerpolicy: 'same-origin', width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT, 'data-src': entry.path });
+      frame.inert = true;
+      holder.append(frame);
+      previewObserver.observe(holder);
+      previewSizer?.observe(holder);
+      return holder;
     }
     // A new deployment's main dashboard has no address until the first
     // administrator picks one; nothing else on this page works until then.
@@ -1790,14 +1852,15 @@
       const lede = !view.authEnabled ? 'Every dashboard on this server. Open one, or change it from here.'
         : isAdmin ? (landing ? `This site’s address opens ${landing.name}, your default. Clear it to open this page instead.` : 'This site’s address opens this page. You can make a dashboard your default to open it instead.')
           : landing ? `This site’s address opens ${landing.name}.` : 'This site’s address opens this page until you choose a default dashboard.';
-      const create = isAdmin ? h('button', { type: 'button', class: 'primary', text: 'New dashboard', onclick: () => openDialog('New dashboard', close => nameAndAddress(close)) }) : null;
+      const create = isAdmin ? pill('New dashboard', { primary: true, iconName: 'plus', onclick: () => openDialog('New dashboard', close => nameAndAddress(close)) }) : null;
+      const [infoButton, callout] = infoToggle('this page', lede);
       const parts = [
-        h('div', { class: 'page-title' }, h('div', {}, h('h1', { text: 'Dashboards' }), h('p', { class: 'lede', text: lede })), create),
-        message,
-        active.length ? h('div', { class: 'dashboard-grid' }, active.map(card))
+        h('div', { class: 'page-title' }, h('div', { class: 'title-with-info' }, h('h1', { text: 'Dashboards' }), infoButton), create),
+        callout, message,
+        active.length ? h('div', { class: 'dashboard-list' }, active.map(card))
           : h('section', { class: 'section center' }, h('h2', { text: 'No dashboards have been shared with you yet' }), h('p', { class: 'muted', text: 'Ask an administrator to share a dashboard with your account.' })),
       ];
-      if (archived.length) parts.push(h('details', { class: 'section archived-list' }, h('summary', { text: `Archived (${archived.length})` }), h('div', { class: 'dashboard-grid' }, archived.map(card))));
+      if (archived.length) parts.push(h('details', { class: 'archived-list' }, h('summary', {}, icon('chevron', 15), h('span', { text: `Archived (${archived.length})` })), h('div', { class: 'dashboard-list' }, archived.map(card))));
       render(...pageChrome('/studio/dashboards', view.user, ...parts));
       if (view.mainNeedsAddress && !document.querySelector('dialog[open]')) askMainAddress();
     }
