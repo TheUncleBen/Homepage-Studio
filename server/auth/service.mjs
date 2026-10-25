@@ -9,7 +9,7 @@ import {
   base32Encode, backupCode, backupCodeHash, emailCode, sealSecret, openSecret,
 } from './primitives.mjs';
 import { createAuthStore, AuthError, DEFAULT_POLICY, MAX_GROUPS } from './store.mjs';
-import { dashboardLevel, effectivePolicy, userGroupIds, validGrantList, rank, GRANT_LEVELS } from './access.mjs';
+import { dashboardLevel, effectivePolicy, landingDashboard, userGroupIds, validGrantList, rank, GRANT_LEVELS } from './access.mjs';
 import { createPasskeys } from './webauthn.mjs';
 import { createMailer, describeMailError, messages } from './mail.mjs';
 import { createOidc } from './oidc.mjs';
@@ -120,7 +120,7 @@ export function publicUser(user, data) {
     id: user.id, username: user.username, displayName: user.displayName, email: user.email ?? null,
     role: effectiveRole(data, user, user.source === 'oidc' ? 'oidc' : 'local'), manualRole: user.role, providerAdmin: Boolean(user.providerAdmin && user.oidc),
     disabled: Boolean(user.disabled), source: user.source, createdAt: user.createdAt,
-    status: user.status, groupIds: user.groupIds ?? [], oidcGroups: user.oidcGroups ?? [], policyId: user.policyId ?? null,
+    status: user.status, groupIds: user.groupIds ?? [], oidcGroups: user.oidcGroups ?? [], policyId: user.policyId ?? null, defaultDashboardId: user.defaultDashboardId ?? null,
     linked: Boolean(user.oidc), emailFromProvider: Boolean(user.emailFromProvider && user.oidc),
     factors: {
       password: Boolean(user.password), totp: Boolean(user.totp),
@@ -390,6 +390,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     return {
       user, session, policy,
       level: dashboardId => dashboardLevel(data, user, dashboardId),
+      landing: dashboards => landingDashboard(data, user, dashboards),
       fresh: () => time - session.authAt <= policy.stepUpMinutes * MINUTE,
     };
   }
@@ -902,8 +903,21 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     });
     if (event) await audit(event, { userId: current.user.id });
   }
+  // A default dashboard is null (none) or the id of a dashboard in the
+  // registry. Archived dashboards can't be chosen.
+  async function checkDefaultDashboard(id, allowed = () => true) {
+    if (id === null) return null;
+    const dashboards = await listDashboards();
+    if (typeof id !== 'string' || !dashboards.some(entry => entry.id === id && !entry.archived) || !allowed(id)) fail('Choose one of the dashboards listed.', 'INVALID_DASHBOARD');
+    return id;
+  }
   const account = {
     view: current => accountView(current),
+    async defaultDashboard(current, body) {
+      const id = await checkDefaultDashboard(body?.dashboardId ?? null, dashboardId => current.level(dashboardId) !== 'none');
+      await changeUser(current, user => { user.defaultDashboardId = id; }, 'default-dashboard-changed');
+      return accountView(await refreshed(current));
+    },
     async profile(current, body) {
       const displayName = cleanText(body?.displayName, 100, 'a display name');
       const email = body?.email === undefined ? undefined : cleanEmail(body.email);
@@ -1099,6 +1113,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     },
     async update(current, body) {
       requireAdmin(current);
+      const defaultDashboardId = body?.defaultDashboardId === undefined ? undefined : await checkDefaultDashboard(body.defaultDashboardId);
       await store.mutate(data => {
         const user = findUser(data, body?.id);
         if (!user) fail('That user no longer exists.', 'NOT_FOUND', 404);
@@ -1123,6 +1138,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
           if (body.policyId !== null && !data.policies.some(policy => policy.id === body.policyId)) fail('Choose an existing policy.', 'INVALID_POLICY');
           user.policyId = body.policyId;
         }
+        if (defaultDashboardId !== undefined) user.defaultDashboardId = defaultDashboardId;
         guardAdmins(data);
       });
       if (body.disabled === true) await store.sessions.remove(item => item.userId === body.id);
@@ -1186,6 +1202,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     },
     async group(current, body) {
       requireAdmin(current);
+      const defaultDashboardId = body?.action === 'update' && body.defaultDashboardId !== undefined ? await checkDefaultDashboard(body.defaultDashboardId) : undefined;
       await store.mutate(data => {
         if (body?.action === 'create') {
           if (data.groups.length >= MAX_GROUPS) fail(`Studio holds up to ${MAX_GROUPS} groups.`, 'GROUP_LIMIT', 409);
@@ -1214,6 +1231,13 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
             if (body.policyId !== null && !data.policies.some(policy => policy.id === body.policyId)) fail('Choose an existing policy.', 'INVALID_POLICY');
             group.policyId = body.policyId;
           }
+          if (defaultDashboardId !== undefined) group.defaultDashboardId = defaultDashboardId;
+        } else if (body.action === 'move') {
+          // Group order decides whose default dashboard wins for someone in
+          // several groups: the first group with a default.
+          if (!['up', 'down'].includes(body.direction)) fail('Move the group up or down.', 'INVALID_ACTION');
+          const index = data.groups.indexOf(group), target = index + (body.direction === 'up' ? -1 : 1);
+          if (target >= 0 && target < data.groups.length) [data.groups[index], data.groups[target]] = [data.groups[target], data.groups[index]];
         } else if (body.action === 'delete') {
           data.groups = data.groups.filter(item => item.id !== group.id);
           for (const user of data.users) user.groupIds = (user.groupIds ?? []).filter(id => id !== group.id);

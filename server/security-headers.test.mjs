@@ -8,6 +8,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
 import { createStudioServer, parseFrameAncestors, securityHeaders } from './index.mjs';
+// The main dashboard lives at /home. Its own addresses (native API, editor
+// API, native data) move with it; Studio-wide addresses stay at the root.
+const onPrimary = target => (/^\/(?:api\/|__studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+
 
 const HOST = 'frames.example.test:3000';
 
@@ -29,7 +33,7 @@ async function fixture(t, options = {}, nativeHeaders = {}) {
     await fs.rm(root, { recursive: true, force: true });
   });
   return (target, method = 'GET') => new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, path: target, method, agent: false, headers: { host: HOST } }, res => {
+    const req = http.request({ host: '127.0.0.1', port, path: onPrimary(target), method, agent: false, headers: { host: HOST } }, res => {
       res.resume(); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, raw: res.rawHeaders }));
     });
     req.on('error', reject); req.end();
@@ -49,14 +53,14 @@ test('dashboard documents refuse foreign framing by default', async t => {
     assert.equal(response.headers['content-security-policy'], "frame-ancestors 'self'", target);
     assert.equal(response.headers['x-frame-options'], 'SAMEORIGIN', target);
   }
-  const page = await request('/');
+  const page = await request('/home');
   assert.equal(page.status, 200);
   assert.match(page.headers['content-type'], /text\/html/);
 });
 
 test('a native response cannot remove or loosen the frame policy', async t => {
   const request = await fixture(t, {}, { 'x-frame-options': 'ALLOWALL', 'content-security-policy': "default-src 'self'" });
-  const response = await request('/');
+  const response = await request('/home');
   assert.deepEqual(allValues(response.raw, 'x-frame-options'), ['SAMEORIGIN']);
   // The native policy stays in force and the controller adds its own header.
   assert.deepEqual(allValues(response.raw, 'content-security-policy'), ["default-src 'self'", "frame-ancestors 'self'"]);

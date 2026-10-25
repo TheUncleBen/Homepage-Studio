@@ -590,16 +590,59 @@
       catch { go('/__studio/auth/sign-in?signedOut=1'); }
     });
   }
+  // Stroke icons drawn as SVG elements (no markup parsing).
+  const ICONS = {
+    layout: 'M4 4h6v7H4zM14 4h6v11h-6zM4 15h6v5H4zM14 19h6v1h-6z',
+    user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0',
+  };
+  function icon(name, size = 17) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    for (const [key, value] of Object.entries({ width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) svg.setAttribute(key, String(value));
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', ICONS[name]);
+    svg.append(path);
+    return svg;
+  }
+  // The one top bar on every Studio page. Dashboards draw the same bar
+  // (homepage/src/components/studio/top-bar.jsx): keep the two in step.
+  const PAGE_TITLES = { '/__studio/dashboards': 'Dashboards', '/__studio/account': 'My account', '/__studio/admin': 'Administration' };
+  function topBar(current, user) {
+    const isAdmin = !user || user.role === 'admin';
+    const links = [['/__studio/dashboards', 'Dashboards'], ...(user && isAdmin ? [['/__studio/admin', 'Administration']] : [])];
+    const linkNode = ([href, label], extra = {}) => h('a', { href, 'aria-current': href === current ? 'page' : undefined, text: label, ...extra });
+    let menu = null;
+    if (user) {
+      const name = user.displayName || user.username;
+      const out = h('button', { type: 'button', role: 'menuitem', text: 'Sign out' });
+      out.addEventListener('click', () => signOut(out));
+      const popover = h('div', { class: 'account-popover', role: 'menu', hidden: true },
+        h('p', { class: 'account-name', text: name }),
+        links.map(link => linkNode(link, { role: 'menuitem', class: 'narrow-only' })),
+        linkNode(['/__studio/account', 'My account'], { role: 'menuitem' }), out);
+      const button = h('button', { type: 'button', class: 'icon-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': 'Account: ' + name, title: name }, icon('user'));
+      const close = () => { popover.hidden = true; button.setAttribute('aria-expanded', 'false'); };
+      button.addEventListener('click', () => {
+        const opening = popover.hidden;
+        popover.hidden = !opening;
+        button.setAttribute('aria-expanded', String(opening));
+      });
+      menu = h('div', { class: 'account-menu' }, button, popover);
+      accountMenu = { menu, button, popover, close };
+    }
+    return h('header', { class: 'top-bar' },
+      h('a', { class: 'top-brand', href: '/__studio/dashboards', 'aria-label': 'Dashboards' }, h('span', { class: 'brand-mark' }, icon('layout', 16))),
+      h('span', { class: 'top-title', text: PAGE_TITLES[current] ?? 'Homepage Studio' }),
+      h('nav', { class: 'top-actions', 'aria-label': 'Studio' }, links.map(link => linkNode(link, { class: 'top-link' + (user ? ' wide-only' : '') })), menu));
+  }
+  // Pages redraw their chrome, so one pair of listeners serves the latest menu.
+  let accountMenu = null;
+  document.addEventListener('pointerdown', event => { if (accountMenu && !accountMenu.menu.contains(event.target)) accountMenu.close(); });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && accountMenu && !accountMenu.popover.hidden) { accountMenu.close(); accountMenu.button.focus(); }
+  });
   function pageChrome(current, user, ...body) {
-    const out = h('button', { type: 'button', class: 'small-button', text: 'Sign out' });
-    out.addEventListener('click', () => signOut(out));
-    const links = [['/', 'Dashboards'], ['/__studio/account', 'My account'], ...(user.role === 'admin' ? [['/__studio/admin', 'Administration']] : [])];
-    return [
-      h('header', { class: 'page-header' }, h('div', { class: 'page-header-inner' }, brand(),
-        h('nav', { class: 'page-nav', 'aria-label': 'Studio' }, links.map(([href, label]) => h('a', { href, 'aria-current': href === current ? 'page' : undefined, text: label }))),
-        h('div', { class: 'row' }, h('span', { class: 'small muted hide-narrow', text: user.displayName || user.username }), out))),
-      h('div', { class: 'page-body' }, ...body),
-    ];
+    return [topBar(current, user), h('div', { class: 'page-body' }, ...body)];
   }
   function section(title, description, ...children) {
     return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('div', {}, h('h2', { text: title }), description ? h('p', { class: 'small muted', text: description }) : null)), ...children);
@@ -1241,9 +1284,123 @@
     render(...pageChrome('/__studio/admin', me, h('h1', { text: 'Administration' }), freshBanner(view.fresh), message, tabList, panel));
   }
 
+  // ---- Dashboards -------------------------------------------------------------
+
+  // Everyone's list of the dashboards they can open. Editing, settings and
+  // (for administrators) adding, renaming and archiving all start here; the
+  // dashboards themselves show only the dashboard.
+  const LEVEL_LABELS = { view: 'Can view', arrange: 'Can arrange', admin: 'Administrator' };
+  const slugFrom = name => String(name).toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64).replace(/-+$/, '');
+  const pagePath = (path, page) => (path === '/' ? '' : path) + '/__studio/' + page;
+  async function dashboardsPage() {
+    let view = await call('/__studio/api/overview');
+    const message = notice();
+    const isAdmin = !view.authEnabled || view.user?.role === 'admin';
+    const registry = change => call('/__studio/api/dashboards', { revision: view.revision, ...change });
+    async function reload(success) {
+      view = await call('/__studio/api/overview');
+      draw();
+      if (success) say(message, success, 'ok');
+    }
+    function nameAndAddress(close, { entry, source } = {}) {
+      const box = notice();
+      const name = h('input', { type: 'text', maxlength: 100, required: true, value: entry ? entry.name : source ? source.name + ' copy' : '' });
+      const slug = h('input', { type: 'text', maxlength: 64, required: true, spellcheck: 'false', autocapitalize: 'off', value: entry ? entry.slug : source ? slugFrom(source.name + ' copy') : '' });
+      let slugEdited = Boolean(entry);
+      slug.addEventListener('input', () => { slugEdited = true; });
+      name.addEventListener('input', () => { if (!slugEdited) slug.value = slugFrom(name.value); });
+      const copyAccess = h('input', { type: 'checkbox', checked: true });
+      const save = h('button', { type: 'submit', class: 'primary', text: entry ? 'Save' : source ? 'Duplicate' : 'Create dashboard' });
+      const form = h('form', { class: 'stack' },
+        field('Name', name),
+        field('Address', slug, `${location.origin}/${'…'} · lowercase letters, numbers and hyphens. Changing it breaks bookmarks to the old address.`),
+        source && view.authEnabled ? check('Share it with the same people', copyAccess) : null,
+        box, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
+      const hint = form.querySelector('.hint');
+      const showAddress = () => { hint.textContent = `${location.origin}/${slug.value || '…'} · lowercase letters, numbers and hyphens.` + (entry ? ' Changing it breaks bookmarks to the old address.' : ''); };
+      slug.addEventListener('input', showAddress); name.addEventListener('input', showAddress); showAddress();
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        busy(save, 'Saving…', async () => {
+          try {
+            if (entry) await registry({ action: 'update', id: entry.id, name: name.value, slug: slug.value });
+            else await registry({ action: 'create', name: name.value, slug: slug.value, ...(source ? { sourceId: source.id, copyAccess: view.authEnabled && copyAccess.checked } : {}) });
+            close();
+            await reload(entry ? 'Saved.' : `${name.value.trim()} is ready.`);
+          } catch (error) { failure(box, error); }
+        });
+      });
+      return form;
+    }
+    async function setDefault(id, button) {
+      await busy(button, 'Saving…', async () => {
+        try { await api('account/default-dashboard', { dashboardId: id }); await reload(id ? 'Saved. The bare address now opens it.' : (isAdmin ? 'Saved. The bare address opens this page again.' : 'Saved.')); }
+        catch (error) { failure(message, error); }
+      });
+    }
+    function card(entry) {
+      const mine = view.user?.defaultDashboardId === entry.id;
+      const landing = view.landingId === entry.id;
+      const canEdit = entry.level === 'arrange' || entry.level === 'admin';
+      const badges = [
+        landing ? h('span', { class: 'badge accent', text: mine ? 'Your default' : 'Default from your group' }) : null,
+        entry.archived ? h('span', { class: 'badge warn', text: 'Archived' }) : null,
+        !isAdmin && entry.level !== 'admin' ? h('span', { class: 'badge', text: LEVEL_LABELS[entry.level] }) : null,
+      ];
+      const actions = [];
+      if (!entry.archived) {
+        actions.push(h('a', { class: 'button primary', href: entry.path, text: 'Open' }));
+        if (canEdit) actions.push(h('a', { class: 'button', href: pagePath(entry.path, 'edit'), text: 'Edit' }));
+        if (canEdit) actions.push(h('a', { class: 'button', href: pagePath(entry.path, 'settings'), text: 'Settings' }));
+      }
+      const more = [];
+      if (view.authEnabled && !entry.archived) {
+        const button = h('button', { type: 'button', text: mine ? 'Stop using as my default' : 'Make my default' });
+        button.addEventListener('click', () => setDefault(mine ? null : entry.id, button));
+        more.push(button);
+      }
+      if (isAdmin && !entry.archived) {
+        more.push(h('button', { type: 'button', text: 'Rename or change address', onclick: () => openDialog(`Rename ${entry.name}`, close => nameAndAddress(close, { entry })) }));
+        more.push(h('button', { type: 'button', text: 'Duplicate', onclick: () => openDialog(`Duplicate ${entry.name}`, close => nameAndAddress(close, { source: entry })) }));
+        if (view.authEnabled) more.push(h('a', { class: 'button', href: '/__studio/admin#access', text: 'Who can open it' }));
+        if (entry.id !== 'default') more.push(h('button', { type: 'button', class: 'danger', text: 'Archive', onclick: () => confirmDialog(`Archive ${entry.name}?`, 'Its address stops working and it leaves everyone’s list. Its files and snapshots are kept, and you can restore it here.', 'Archive', async () => { await registry({ action: 'archive', id: entry.id, confirmed: true }); await reload(`${entry.name} is archived.`); }) }));
+      }
+      if (isAdmin && entry.archived) {
+        const restore = h('button', { type: 'button', class: 'primary', text: 'Restore' });
+        restore.addEventListener('click', () => busy(restore, 'Restoring…', async () => { try { await registry({ action: 'restore', id: entry.id }); await reload(`${entry.name} is back.`); } catch (error) { failure(message, error); } }));
+        actions.push(restore);
+      }
+      return h('article', { class: 'dashboard-card' + (entry.archived ? ' archived' : '') },
+        h('div', { class: 'dashboard-card-head' },
+          h('h2', { text: entry.name }),
+          h('p', { class: 'small muted mono', text: location.host + entry.path }),
+          h('div', { class: 'badges' }, badges)),
+        actions.length ? h('div', { class: 'actions' }, actions) : null,
+        more.length ? h('details', { class: 'more-actions' }, h('summary', { text: 'More actions' }), h('div', { class: 'action-grid' }, more)) : null);
+    }
+    function draw() {
+      const active = view.dashboards.filter(entry => !entry.archived);
+      const archived = view.dashboards.filter(entry => entry.archived);
+      const landing = view.dashboards.find(entry => entry.id === view.landingId);
+      const lede = !view.authEnabled ? 'Every dashboard on this server. Open one, or change it from here.'
+        : isAdmin ? (landing ? `The bare address opens ${landing.name}, your default. Clear it to open this page instead.` : 'The bare address opens this page. You can make a dashboard your default to open it instead.')
+          : landing ? `The bare address opens ${landing.name}.` : 'The bare address opens this page until you choose a default dashboard.';
+      const create = isAdmin ? h('button', { type: 'button', class: 'primary', text: 'New dashboard', onclick: () => openDialog('New dashboard', close => nameAndAddress(close)) }) : null;
+      const parts = [
+        h('div', { class: 'page-title' }, h('div', {}, h('h1', { text: 'Dashboards' }), h('p', { class: 'lede', text: lede })), create),
+        message,
+        active.length ? h('div', { class: 'dashboard-grid' }, active.map(card))
+          : h('section', { class: 'section center' }, h('h2', { text: 'No dashboards have been shared with you yet' }), h('p', { class: 'muted', text: 'Ask an administrator to share a dashboard with your account.' })),
+      ];
+      if (archived.length) parts.push(h('details', { class: 'section archived-list' }, h('summary', { text: `Archived (${archived.length})` }), h('div', { class: 'dashboard-grid' }, archived.map(card))));
+      render(...pageChrome('/__studio/dashboards', view.user, ...parts));
+    }
+    draw();
+  }
+
   // ---- Start ------------------------------------------------------------------
 
-  const pages = { 'sign-in': signInPage, setup: setupPage, enroll: enrollPage, recover: recoverPage, recovery: recoveryPage, account: accountPage, admin: adminPage };
+  const pages = { 'sign-in': signInPage, setup: setupPage, enroll: enrollPage, recover: recoverPage, recovery: recoveryPage, account: accountPage, admin: adminPage, dashboards: dashboardsPage };
   const start = pages[page];
   if (!start) return render(card(false, brand(), h('h1', { text: 'Page not found' })));
   start().catch(error => {

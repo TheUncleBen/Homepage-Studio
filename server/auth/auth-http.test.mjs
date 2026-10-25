@@ -9,6 +9,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from '../index.mjs';
 import { base32Decode, hotp, totpStep } from './primitives.mjs';
+// The main dashboard lives at /home. Its own addresses (native API, editor
+// API, native data) move with it; Studio-wide addresses stay at the root.
+const onPrimary = target => (/^\/(?:api\/|__studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+
 
 const HOST = 'localhost:3001';
 const ORIGIN = `http://${HOST}`;
@@ -52,7 +56,7 @@ async function setup(t, options = {}) {
   });
   function request(target, { method = 'GET', headers = {}, body, cookie } = {}) {
     return new Promise((resolve, reject) => {
-      const req = http.request({ host: '127.0.0.1', port, path: target, method, agent: false, headers: { host: HOST, ...(cookie ? { cookie } : {}), ...headers } }, res => {
+      const req = http.request({ host: '127.0.0.1', port, path: onPrimary(target), method, agent: false, headers: { host: HOST, ...(cookie ? { cookie } : {}), ...headers } }, res => {
         const chunks = [];
         res.on('data', chunk => chunks.push(chunk));
         res.on('end', () => {
@@ -165,10 +169,12 @@ test('members only reach dashboards shared with them, at the shared level', asyn
   const admin = await createAdmin(context);
   const member = await inviteMember(context, admin.cookie);
 
-  // Nothing shared yet: the home page explains, dashboards look missing.
+  // Nothing shared yet: the bare address opens an empty Dashboards page, and
+  // dashboards look missing.
   const home = await request('/', { cookie: member.cookie, headers: html });
-  assert.equal(home.status, 200);
-  assert.match(home.text, /No dashboards have been shared with you yet/);
+  assert.equal(home.status, 307);
+  assert.equal(home.headers.location, '/__studio/dashboards');
+  assert.deepEqual((await request('/__studio/api/overview', { cookie: member.cookie })).json.dashboards, []);
   assert.equal((await request('/__studio/api/board', { cookie: member.cookie })).status, 404, 'an unshared dashboard looks like a missing one');
   const list = await request('/__studio/api/dashboards', { cookie: member.cookie });
   assert.deepEqual(list.json.dashboards, []);
@@ -179,7 +185,7 @@ test('members only reach dashboards shared with them, at the shared level', asyn
   const access = await request('/__studio/api/access', { cookie: member.cookie });
   assert.equal(access.json.level, 'view');
   assert.equal((await request('/__studio/api/board', { cookie: member.cookie })).status, 200);
-  assert.equal((await request('/', { cookie: member.cookie, headers: html })).status, 200);
+  assert.equal((await request('/home', { cookie: member.cookie, headers: html })).status, 200);
   const board = await request('/__studio/api/board', { cookie: member.cookie });
   const arrange = await post('/__studio/api/board', { revision: board.json.revision, board: board.json.board }, { cookie: member.cookie });
   assert.equal(arrange.status, 403);
@@ -203,6 +209,74 @@ test('members only reach dashboards shared with them, at the shared level', asyn
   const disabled = await post('/__studio/auth/admin/update', { id: member.invited.id, disabled: true }, { cookie: admin.cookie });
   assert.equal(disabled.status, 200, disabled.text);
   assert.equal((await request('/__studio/api/board', { cookie: member.cookie })).status, 401);
+});
+
+test('the bare address, the Dashboards page and the editor pages follow each person and their access', async t => {
+  const context = await setup(t);
+  const { request, post, upstreamCalls } = context;
+  const admin = await createAdmin(context);
+  const member = await inviteMember(context, admin.cookie);
+  const landing = async cookie => (await request('/', { cookie, headers: html })).headers.location;
+
+  // Administrators land on the Dashboards page until they choose a default.
+  assert.equal(await landing(admin.cookie), '/__studio/dashboards');
+  const page = await request('/__studio/dashboards', { cookie: admin.cookie, headers: html });
+  assert.equal(page.status, 200);
+  assert.match(page.text, /data-page="dashboards"/);
+  assert.equal((await post('/__studio/auth/account/default-dashboard', { dashboardId: 'default' }, { cookie: admin.cookie })).status, 200);
+  assert.equal(await landing(admin.cookie), '/home');
+  await post('/__studio/auth/account/default-dashboard', { dashboardId: null }, { cookie: admin.cookie });
+  assert.equal(await landing(admin.cookie), '/__studio/dashboards');
+
+  // A second dashboard, and two groups with different defaults.
+  const registry = await request('/__studio/api/dashboards', { cookie: admin.cookie });
+  const media = (await post('/__studio/api/dashboards', { revision: registry.json.revision, action: 'create', name: 'Media', slug: 'media' }, { cookie: admin.cookie })).json.dashboard;
+  await post('/__studio/auth/admin/group', { action: 'create', name: 'Family' }, { cookie: admin.cookie });
+  await post('/__studio/auth/admin/group', { action: 'create', name: 'Movies' }, { cookie: admin.cookie });
+  const groups = (await request('/__studio/auth/admin/overview', { cookie: admin.cookie })).json.groups;
+  const [family, movies] = ['Family', 'Movies'].map(name => groups.find(group => group.name === name));
+  assert.equal((await post('/__studio/auth/admin/group', { action: 'update', id: family.id, defaultDashboardId: 'default' }, { cookie: admin.cookie })).status, 200);
+  assert.equal((await post('/__studio/auth/admin/group', { action: 'update', id: movies.id, defaultDashboardId: media.id }, { cookie: admin.cookie })).status, 200);
+  assert.equal((await post('/__studio/auth/admin/group', { action: 'update', id: movies.id, defaultDashboardId: 'missing' }, { cookie: admin.cookie })).status, 400);
+  await post('/__studio/auth/admin/update', { id: member.invited.id, groupIds: [family.id, movies.id] }, { cookie: admin.cookie });
+
+  // A group default the member can't open doesn't count.
+  assert.equal(await landing(member.cookie), '/__studio/dashboards');
+  await post('/__studio/auth/admin/grants', { dashboardId: 'default', grants: [{ subject: 'group:' + family.id, level: 'view' }] }, { cookie: admin.cookie });
+  await post('/__studio/auth/admin/grants', { dashboardId: media.id, grants: [{ subject: 'group:' + movies.id, level: 'view' }] }, { cookie: admin.cookie });
+  // The first of their groups, in the administrator's order, wins.
+  assert.equal(await landing(member.cookie), '/home');
+  assert.equal((await post('/__studio/auth/admin/group', { action: 'move', id: movies.id, direction: 'up' }, { cookie: admin.cookie })).status, 200);
+  assert.equal(await landing(member.cookie), '/media');
+  // Their own choice wins over their groups', and must be a dashboard they can open.
+  assert.equal((await post('/__studio/auth/account/default-dashboard', { dashboardId: 'default' }, { cookie: member.cookie })).status, 200);
+  assert.equal(await landing(member.cookie), '/home');
+  const other = (await post('/__studio/api/dashboards', { revision: (await request('/__studio/api/dashboards', { cookie: admin.cookie })).json.revision, action: 'create', name: 'Private', slug: 'private' }, { cookie: admin.cookie })).json.dashboard;
+  assert.equal((await post('/__studio/auth/account/default-dashboard', { dashboardId: other.id }, { cookie: member.cookie })).status, 400);
+  const overview = (await request('/__studio/api/overview', { cookie: member.cookie })).json;
+  assert.deepEqual(overview.dashboards.map(entry => [entry.name, entry.path, entry.level]), [['Main dashboard', '/home', 'view'], ['Media', '/media', 'view']]);
+  assert.equal(overview.landingId, 'default');
+  assert.equal(overview.revision, undefined, 'members do not get the registry revision');
+
+  // Editing opens only from Studio addresses, for people who can arrange.
+  const viewEdit = await request('/home/__studio/edit', { cookie: member.cookie, headers: html });
+  assert.equal(viewEdit.status, 303);
+  assert.equal(viewEdit.headers.location, '/home');
+  assert.ok(!upstreamCalls.some(call => call.url.includes('studio-edit')));
+  await post('/__studio/auth/admin/grants', { dashboardId: 'default', grants: [{ subject: 'group:' + family.id, level: 'arrange' }] }, { cookie: admin.cookie });
+  for (const [target, nativePage] of [['/home/__studio/edit', 'studio-edit'], ['/home/__studio/settings?x=1', 'studio-settings?x=1']]) {
+    const opened = await request(target, { cookie: member.cookie, headers: html });
+    assert.equal(opened.status, 200, target);
+    assert.ok(upstreamCalls.at(-1).url.endsWith(nativePage), upstreamCalls.at(-1).url);
+  }
+  for (const target of ['/home/studio-edit', '/home/studio-settings', '/home/_next/data/build/studio-edit.json']) {
+    assert.equal((await request(target, { cookie: admin.cookie })).status, 404, target);
+  }
+  assert.equal((await post('/home/__studio/edit', {}, { cookie: admin.cookie })).status, 405);
+  // Signed out, the editor address asks for sign-in like any page.
+  const signedOut = await request('/home/__studio/edit', { headers: html });
+  assert.equal(signedOut.status, 302);
+  assert.match(signedOut.headers.location, /^\/__studio\/auth\/sign-in\?next=%2Fhome%2F__studio%2Fedit$/);
 });
 
 test('sign-in needs the password and a second factor, and failures stay generic', async t => {

@@ -9,6 +9,9 @@ import { once } from 'node:events';
 import { createStudioServer, NATIVE_BODY_LIMIT, NATIVE_BODY_BUDGET } from './index.mjs';
 import { createRendererPool } from './renderer-pool.mjs';
 
+// The main dashboard lives at /home. Its own addresses (native API, editor
+// API, native data) move with it; Studio-wide addresses stay at the root.
+const onPrimary = target => (/^\/(?:api\/|__studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
 const HOST = 'slow-body.example.test:3000';
 const ORIGIN = `http://${HOST}`;
 const BUILD = 'slow-body-test';
@@ -44,7 +47,7 @@ async function fixture(t, options = {}) {
     await fs.rm(root, { recursive: true, force: true });
   });
   const request = (target, { method = 'GET', body, headers = {} } = {}) => new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, path: target, method, agent: false, headers: { host: HOST, ...headers } }, res => {
+    const req = http.request({ host: '127.0.0.1', port, path: onPrimary(target), method, agent: false, headers: { host: HOST, ...headers } }, res => {
       const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('error', reject);
       res.on('end', () => { const text = Buffer.concat(chunks).toString('utf8'); let json; try { json = JSON.parse(text); } catch {} resolve({ status: res.statusCode, headers: res.headers, json, text }); });
     });
@@ -62,7 +65,7 @@ async function fixture(t, options = {}) {
     await once(socket, 'connect');
     let response = '';
     socket.on('data', data => { response += data.toString(); });
-    socket.write(`POST ${target} HTTP/1.1\r\nHost: ${HOST}\r\nContent-Type: application/json\r\nContent-Length: 64\r\n\r\n{`);
+    socket.write(`POST ${onPrimary(target)} HTTP/1.1\r\nHost: ${HOST}\r\nContent-Type: application/json\r\nContent-Length: 64\r\n\r\n{`);
     return { socket, get response() { return response; } };
   };
   // Sends only the request head; the caller decides what follows.
@@ -137,7 +140,7 @@ test('native request bodies above the controller limit are refused without using
 
 test('a declared oversized length is refused at once, before any body arrives', async t => {
   const f = await fixture(t);
-  const raw = await f.rawHead(`POST /api/action HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nContent-Length: ${NATIVE_BODY_LIMIT + 1}\n`);
+  const raw = await f.rawHead(`POST /home/api/action HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nContent-Length: ${NATIVE_BODY_LIMIT + 1}\n`);
   await once(raw.socket, 'close');
   assert.match(raw.response, /^HTTP\/1\.1 413/);
   assert.match(raw.response, /REQUEST_TOO_LARGE/);
@@ -148,12 +151,12 @@ test('a declared oversized length is refused at once, before any body arrives', 
 
 test('Expect: 100-continue is answered only for acceptable native uploads and is not forwarded', async t => {
   const f = await fixture(t);
-  const oversized = await f.rawHead(`POST /api/action HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nExpect: 100-continue\nContent-Length: ${NATIVE_BODY_LIMIT + 1}\n`);
+  const oversized = await f.rawHead(`POST /home/api/action HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nExpect: 100-continue\nContent-Length: ${NATIVE_BODY_LIMIT + 1}\n`);
   await once(oversized.socket, 'close');
   assert.match(oversized.response, /^HTTP\/1\.1 413/);
   assert.doesNotMatch(oversized.response, /100 Continue/);
   assert.equal(f.rendererPool.workerCount, 0);
-  const valid = await f.rawHead(`POST /api/action HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nExpect: 100-continue\nContent-Length: 7\nConnection: close\n`);
+  const valid = await f.rawHead(`POST /home/api/action HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nExpect: 100-continue\nContent-Length: 7\nConnection: close\n`);
   await until(() => valid.response.includes('\r\n\r\n'));
   assert.match(valid.response, /^HTTP\/1\.1 100 Continue\r\n\r\n$/);
   const closed = once(valid.socket, 'close');
@@ -178,7 +181,7 @@ test('concurrent native uploads share one byte budget and excess uploads get 503
   assert.equal(NATIVE_BODY_BUDGET, 32 * 1024 * 1024);
   const slots = NATIVE_BODY_BUDGET / NATIVE_BODY_LIMIT;
   const stalled = [];
-  for (let i = 0; i < slots; i++) stalled.push(await f.rawHead(`POST ${i % 2 ? '/family' : ''}/api/upload HTTP/1.1\nHost: ${HOST}\nContent-Type: application/octet-stream\nContent-Length: ${NATIVE_BODY_LIMIT}\n`));
+  for (let i = 0; i < slots; i++) stalled.push(await f.rawHead(`POST ${i % 2 ? '/family' : '/home'}/api/upload HTTP/1.1\nHost: ${HOST}\nContent-Type: application/octet-stream\nContent-Length: ${NATIVE_BODY_LIMIT}\n`));
   await until(() => f.app.nativeBodyBytesInFlight === NATIVE_BODY_BUDGET);
   const over = await f.request('/family/api/upload', { method: 'POST', body: 'z', headers: { 'content-type': 'application/json' } });
   assert.equal(over.status, 503); assert.equal(over.json.code, 'REQUEST_BODY_BUDGET_EXCEEDED');

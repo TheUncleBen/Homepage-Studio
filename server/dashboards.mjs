@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   DASHBOARD_REGISTRY_FILE, DASHBOARD_REGISTRY_MARKER, MAX_DASHBOARDS, MAX_REGISTRY_BYTES,
-  DashboardError, validateDashboardManifest, validateDashboardName, validateDashboardSlug, dashboardBasePath,
+  DashboardError, validateDashboardManifest, validateDashboardName, validateDashboardSlug, dashboardBasePath, migrateDashboardManifest, migratedManifests,
 } from './dashboard-paths.mjs';
 
 const copy = value => structuredClone(value);
@@ -27,7 +27,7 @@ async function readRegistry(file) {
     if (!stat.isFile() || stat.size > MAX_REGISTRY_BYTES) throw new Error('Invalid registry file');
     const text = await handle.readFile('utf8');
     if (Buffer.byteLength(text) > MAX_REGISTRY_BYTES) throw new Error('Oversized registry');
-    return validateDashboardManifest(JSON.parse(text));
+    return validateDashboardManifest(migrateDashboardManifest(JSON.parse(text)));
   } catch (error) {
     if (error.code === 'ENOENT') return null;
     if (error instanceof DashboardError) throw error;
@@ -107,9 +107,13 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
       let manifest = await readRegistry(registryFile);
       if (!manifest) {
         await assertFirstUse();
-        manifest = { version: 1, revision: randomUUID(), dashboards: [{ id: 'default', slug: '', name: 'Main dashboard', archived: false }] };
+        manifest = { version: 1, revision: randomUUID(), dashboards: [{ id: 'default', slug: 'home', name: 'Main dashboard', archived: false }] };
         await prepareDashboard(manifest.dashboards[0]);
         await publish(manifest);
+      } else if (migratedManifests.has(manifest)) {
+        const previous = manifest.revision;
+        manifest = { ...copy(manifest), revision: randomUUID() };
+        await publish(manifest, previous);
       }
       await ensureMarker();
       return copy(manifest);

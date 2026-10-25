@@ -120,12 +120,39 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .steps li.done { border-color: var(--accent-solid); }
 
 /* Page shell for account and administration */
-.page-header { border-bottom: 1px solid var(--line); background: var(--surface); }
-.page-header-inner { max-width: 1100px; margin: 0 auto; padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
-.page-nav { display: flex; flex-wrap: wrap; gap: 4px; }
-.page-nav a { padding: 8px 12px; border-radius: 8px; color: var(--muted); text-decoration: none; font-weight: 550; }
-.page-nav a:hover { background: var(--raised); color: var(--text); }
-.page-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--text); }
+/* The one top bar on every Studio page; dashboards draw the same bar
+   (homepage/src/styles/studio.css, .studio-topbar). Keep the two in step. */
+.top-bar { height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.top-brand { display: grid; place-items: center; text-decoration: none; border-radius: 8px; }
+.top-brand .brand-mark { width: 30px; height: 30px; }
+.top-title { flex: 1; min-width: 0; font-weight: 650; font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-actions { display: flex; align-items: center; gap: 4px; }
+.top-link { padding: 6px 10px; border-radius: 8px; color: var(--muted); text-decoration: none; font-weight: 550; font-size: 0.875rem; white-space: nowrap; }
+.top-link:hover { background: var(--raised); color: var(--text); }
+.top-link[aria-current="page"] { background: var(--accent-soft); color: var(--text); }
+.icon-button { width: 34px; height: 34px; min-height: 34px; padding: 0; display: inline-grid; place-items: center; border-radius: 8px; border-color: transparent; background: transparent; color: var(--muted); }
+.icon-button:hover { background: var(--raised); color: var(--text); border-color: var(--line); }
+.account-menu { position: relative; }
+.account-popover { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 13rem; padding: 6px; display: grid; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px #0006; }
+.account-popover > a, .account-popover > button { display: block; width: 100%; min-height: 36px; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: left; text-decoration: none; font: inherit; font-size: 0.875rem; font-weight: 550; }
+.account-popover > a:hover, .account-popover > button:hover, .account-popover > a[aria-current="page"] { background: var(--raised); }
+.account-name { margin: 0; padding: 6px 10px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; color: var(--muted); font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.narrow-only { display: none !important; }
+/* Dashboards page */
+.page-title { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 20px; }
+.page-title h1 { margin: 0 0 4px; }
+.page-title .lede { margin: 0; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); gap: 16px; }
+.dashboard-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 14px; align-content: start; text-align: center; }
+.dashboard-card.archived { opacity: 0.85; }
+.dashboard-card-head h2 { margin: 0 0 2px; font-size: 1.125rem; overflow-wrap: anywhere; }
+.dashboard-card-head p { margin: 0; overflow-wrap: anywhere; }
+.badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 8px; }
+.badges:empty { display: none; }
+.dashboard-card .actions { width: 100%; }
+.dashboard-card .actions > .button, .dashboard-card .actions > button { min-width: 0; }
+.archived-list > summary { cursor: pointer; font-weight: 600; }
+.archived-list[open] > summary { margin-bottom: 14px; }
 .page-body { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 20px; }
 .section { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 14px; min-width: 0; }
 .section.link-confirm { border-color: var(--accent); background: var(--accent-soft); }
@@ -237,6 +264,11 @@ dialog::backdrop { background: rgb(0 0 0 / 0.6); }
 .more-actions > summary:hover { color: var(--text); background: var(--raised); }
 .more-actions[open] > summary { margin-bottom: 12px; }
 
+@media (max-width: 680px) {
+  .top-bar { padding: 0 12px; }
+  .wide-only { display: none !important; }
+  .narrow-only { display: block !important; }
+}
 @media (max-width: 420px) {
   .action-grid { grid-template-columns: 1fr; }
   .action-grid > :last-child:nth-child(odd) { width: 100%; }
@@ -259,9 +291,6 @@ dialog::backdrop { background: rgb(0 0 0 / 0.6); }
   .list-item > .row select { flex: 1 1 100%; }
   .hide-narrow { display: none; }
   /* Two rows on phones: brand and Sign out, then the navigation. */
-  .page-header-inner { padding: 10px 16px; row-gap: 6px; }
-  .page-nav { order: 3; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; margin: 0 -8px; scrollbar-width: none; }
-  .page-nav a { padding: 6px 8px; white-space: nowrap; }
   /* People become stacked rows instead of a wide table. */
   .people-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .people-table tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 12px; border-bottom: 1px solid var(--line); }

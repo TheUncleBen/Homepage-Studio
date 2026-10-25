@@ -36,7 +36,7 @@ export default function PanelHost({
   const slideAnimation = useRef(null);
   const playback = controller?.();
   const press = useLongPress({
-    disabled: editing || busy || overlayOpen || Boolean(stack),
+    disabled: editing || busy || overlayOpen || Boolean(stack) || !onLongPress,
     accepts: (event) => !event.target.closest("button,input"),
     onLongPress: (pointer) => onLongPress?.(panel.id, pointer),
   });
@@ -75,7 +75,7 @@ export default function PanelHost({
   // Mouse keeps header-only holds; the header handles its own presses.
   const bodyHeld = useRef(0);
   const bodyPress = useLongPress({
-    disabled: editing || busy || overlayOpen,
+    disabled: editing || busy || overlayOpen || !onLongPress,
     accepts: (event) =>
       event.pointerType === "touch" &&
       !event.target.closest(".studio-panel-header,.studio-resize-handle") &&
@@ -234,7 +234,7 @@ export default function PanelHost({
             onPointerCancel={press.onPointerCancel}
             onContextMenu={(event) => {
               press.cancel();
-              if (busy) return;
+              if (busy || !onLongPress) return;
               event.preventDefault();
               onLongPress?.(panel.id);
             }}

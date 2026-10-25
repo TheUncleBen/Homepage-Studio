@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { hotp, verifyTotp, base32Encode, base32Decode, hashPassword, verifyPassword, passwordProblem, backupCodeHash, backupCode, deriveKey, sealSecret, openSecret, safeEqual } from './primitives.mjs';
-import { requiredLevel, dashboardLevel, effectivePolicy, validGrantList } from './access.mjs';
+import { requiredLevel, dashboardLevel, effectivePolicy, validGrantList, landingDashboard } from './access.mjs';
 import { readAuthConfig, parseTrustedProxies } from './config.mjs';
 import { emptyAuthData } from './store.mjs';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
@@ -92,6 +92,33 @@ test('access levels default to administrator for anything not listed', () => {
   assert.deepEqual(requiredLevel('GET', '/__studio/api/export'), { level: 'admin', stepUp: true });
   assert.deepEqual(requiredLevel('GET', '/__studio/api/backups/one.json'), { level: 'admin', stepUp: true });
   assert.deepEqual(requiredLevel('GET', '/__studio/api/something-new'), { level: 'admin', stepUp: false });
+  assert.deepEqual(requiredLevel('GET', '/__studio/edit'), { level: 'arrange' });
+  assert.deepEqual(requiredLevel('GET', '/__studio/settings'), { level: 'arrange' });
+  assert.deepEqual(requiredLevel('POST', '/__studio/edit'), { level: 'admin', stepUp: false });
+});
+
+test('the landing dashboard: own choice, then the first group in order with a default, then the Dashboards page', () => {
+  const data = emptyAuthData();
+  data.groups.push({ id: 'g1', kind: 'local', name: 'One', defaultDashboardId: 'd1' }, { id: 'g2', kind: 'local', name: 'Two', defaultDashboardId: 'd2' });
+  data.grants = { d1: [{ subject: 'group:g1', level: 'view' }], d2: [{ subject: 'group:g2', level: 'view' }], d3: [{ subject: 'user:u1', level: 'arrange' }] };
+  const dashboards = ['d1', 'd2', 'd3', 'd4'].map(id => ({ id, archived: id === 'd4' }));
+  const member = { id: 'u1', role: 'member', groupIds: ['g1', 'g2'] };
+  assert.equal(landingDashboard(data, member, dashboards), 'd1');
+  data.groups.reverse();
+  assert.equal(landingDashboard(data, member, dashboards), 'd2');
+  assert.equal(landingDashboard(data, { ...member, defaultDashboardId: 'd3' }, dashboards), 'd3');
+  // Choices the person can no longer open, or archived dashboards, fall through.
+  assert.equal(landingDashboard(data, { ...member, defaultDashboardId: 'd4' }, dashboards), 'd2');
+  data.grants.d2 = [];
+  assert.equal(landingDashboard(data, member, dashboards), 'd1');
+  data.grants.d1 = [];
+  assert.equal(landingDashboard(data, member, dashboards), null);
+  // Administrators ignore group defaults and keep the Dashboards page unless they choose.
+  const admin = { id: 'u2', role: 'admin', groupIds: ['g1'] };
+  data.grants.d1 = [{ subject: 'group:g1', level: 'view' }];
+  assert.equal(landingDashboard(data, admin, dashboards), null);
+  assert.equal(landingDashboard(data, { ...admin, defaultDashboardId: 'd4' }, dashboards), null);
+  assert.equal(landingDashboard(data, { ...admin, defaultDashboardId: 'd2' }, dashboards), 'd2');
 });
 
 function sample() {

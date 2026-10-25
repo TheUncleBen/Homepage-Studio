@@ -14,7 +14,7 @@ const MAX_BODY = 64 * 1024;
 
 // Pages that need no session; everything else in the auth UI does.
 const PUBLIC_PAGES = new Set(['/__studio/auth/sign-in', '/__studio/auth/setup', '/__studio/auth/enroll', '/__studio/auth/recover', '/__studio/auth/recovery']);
-const SIGNED_IN_PAGES = new Set(['/__studio/account', '/__studio/admin']);
+const SIGNED_IN_PAGES = new Set(['/__studio/dashboards', '/__studio/account', '/__studio/admin']);
 export const AUTH_PAGE_POLICY = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 
 let assets;
@@ -51,6 +51,17 @@ function shell(page) {
 </body>
 </html>
 `;
+}
+
+// The Dashboards page and its assets also run with sign-in off, served by
+// the controller without the sign-in routes.
+export async function sendStudioAsset(res, path) {
+  const asset = (await loadAssets()).get(path);
+  if (!asset) return json(res, 404, { error: 'Not found.' });
+  return send(res, 200, asset.body, { 'content-type': asset.type, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
+}
+export function sendStudioPage(res, page) {
+  return send(res, 200, shell(page), { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': [].concat(res.getHeader('content-security-policy') ?? [], AUTH_PAGE_POLICY) });
 }
 
 function send(res, status, body, headers) {
@@ -116,18 +127,13 @@ export function createAuthRoutes(auth, { listDashboards }) {
     const path = url.pathname;
     const method = req.method;
     try {
-      if (method === 'GET' && path.startsWith('/__studio/auth/assets/')) {
-        const asset = (await loadAssets()).get(path);
-        if (!asset) return json(res, 404, { error: 'Not found.' });
-        return send(res, 200, asset.body, { 'content-type': asset.type, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
-      }
+      if (method === 'GET' && path.startsWith('/__studio/auth/assets/')) return await sendStudioAsset(res, path);
       if (method === 'GET' && (PUBLIC_PAGES.has(path) || SIGNED_IN_PAGES.has(path))) {
         if (SIGNED_IN_PAGES.has(path) && !current) return redirect(res, '/__studio/auth/sign-in?next=' + encodeURIComponent(path + url.search));
         if (path === '/__studio/admin' && current.user.role !== 'admin') return redirect(res, '/__studio/account');
         if (path === '/__studio/auth/sign-in' && current && !url.searchParams.has('reauth')) return redirect(res, auth.safeNext(url.searchParams.get('next')));
         if (auth.setupRequired() && path === '/__studio/auth/sign-in') return redirect(res, '/__studio/auth/setup');
-        const body = shell(path.split('/').pop());
-        return send(res, 200, body, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': [].concat(res.getHeader('content-security-policy') ?? [], AUTH_PAGE_POLICY) });
+        return sendStudioPage(res, path.split('/').pop());
       }
       if (method === 'GET' && path === '/__studio/auth/state') return json(res, 200, auth.state(current));
       // Plain sign-in can start from a link. Confirming and linking change an
@@ -202,6 +208,7 @@ export function createAuthRoutes(auth, { listDashboards }) {
         '/__studio/auth/account/backup-codes': () => auth.account.backupCodes(signedIn()),
         '/__studio/auth/account/sessions/revoke': () => auth.account.revokeSessions(signedIn(), body),
         '/__studio/auth/account/unlink': () => auth.account.unlink(signedIn()),
+        '/__studio/auth/account/default-dashboard': () => auth.account.defaultDashboard(signedIn(), body),
         '/__studio/auth/account/link/confirm': () => auth.account.linkConfirm(req, res, signedIn()),
         '/__studio/auth/account/link/cancel': () => auth.account.linkCancel(signedIn()),
         '/__studio/auth/claim/password': () => auth.passwordStep(req, body, { intent: 'claim', current: signedIn() }),
