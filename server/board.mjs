@@ -216,7 +216,7 @@ export function boardSources({ services, serviceWidgets, infoWidgets, bookmarks 
   return sources;
 }
 
-export function reconcileBoard(sources, previous, legacyLayout = { items: {} }) {
+export function reconcileBoard(sources, previous) {
   previous = validateStoredBoard(previous);
   const sourceIds = new Set(sources.map((s) => s.id));
   const byId = new Map(previous.panels.map((p) => [p.id, p]));
@@ -235,9 +235,7 @@ export function reconcileBoard(sources, previous, legacyLayout = { items: {} }) 
     let position = byId.get(source.id)?.rect;
     if (!position) {
       placement ??= placementIndex(occupied);
-      const legacy = legacyLayout.items?.[source.id];
-      try { if (legacy) position = rect(legacy); } catch { /* Old wider layouts are reflowed, not interpreted as new valid coordinates. */ }
-      if (!position || placement.overlaps(position)) position = placement.next({ w: 4, h: source.kind === 'serviceWidget' ? 5 : 3 });
+      position = placement.next({ w: 4, h: source.kind === 'serviceWidget' ? 5 : 3 });
       if (!stacked.has(source.id)) placement.add(position);
     }
     return { ...source, rect: { ...position } };

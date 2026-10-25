@@ -32,7 +32,7 @@ test('the Dashboards page creates independent dashboards, duplicates complete co
   const copyName = `Admin copy ${suffix}`;
   const ids = [];
   await saveFiles(request, { widgetsYaml: JSON.stringify([{ greeting: { text: `Admin original ${suffix}` } }]), customCss: ':root { --dashboard-fixture: admin; }' });
-  const root = await studioApi(request, '/home/studio/api/state');
+  const root = await studioApi(request, '/dashboard/studio/api/state');
   try {
     // With sign-in off, the bare address opens the Dashboards page.
     await page.goto('/');
@@ -59,7 +59,7 @@ test('the Dashboards page creates independent dashboards, duplicates complete co
     expect(nativeFiles(copied)).toEqual(nativeFiles(root));
     expect(copied.board.panels).toEqual(root.board.panels);
     await dashboardSave(request, copy, { widgetsYaml: JSON.stringify([{ greeting: { text: `Copy only ${suffix}` } }]), customCss: ':root { --dashboard-fixture: copy; }' });
-    expect(nativeFiles(await studioApi(request, '/home/studio/api/state'))).toEqual(nativeFiles(root));
+    expect(nativeFiles(await studioApi(request, '/dashboard/studio/api/state'))).toEqual(nativeFiles(root));
 
     await moreAction(page, guestName, 'Rename or change address');
     dialog = await nameAndAddress(page, `Rename ${guestName}`, renamedName, `shared-${suffix}`, 'Save');
@@ -78,7 +78,7 @@ test('the Dashboards page creates independent dashboards, duplicates complete co
     await expect(page.getByText(`Guest private ${suffix}`, { exact: true })).toBeVisible();
 
     // The main dashboard keeps its original native configuration.
-    await page.goto('/home');
+    await page.goto('/dashboard');
     await expect(page.getByText(`Admin original ${suffix}`, { exact: true })).toBeVisible();
     await page.goto(DASHBOARDS);
     await moreAction(page, renamedName, 'Archive');
@@ -99,9 +99,9 @@ test('the Dashboards page creates independent dashboards, duplicates complete co
     await expect(card(page, renamedName).getByRole('link', { name: 'Open', exact: true })).toBeVisible();
     await card(page, renamedName).getByRole('link', { name: 'Open', exact: true }).click();
     await expect(page.getByText(`Guest private ${suffix}`, { exact: true })).toBeVisible();
-    expect(nativeFiles(await studioApi(request, '/home/studio/api/state'))).toEqual(nativeFiles(root));
+    expect(nativeFiles(await studioApi(request, '/dashboard/studio/api/state'))).toEqual(nativeFiles(root));
   } finally {
-    await page.goto('/home');
+    await page.goto('/dashboard');
     await archiveFixtures(request, ids);
   }
 });
@@ -141,7 +141,7 @@ test('a rename that meets someone else\'s change keeps the draft, shows what is 
   } finally {
     release?.();
     await page.unrouteAll({ behavior: 'wait' });
-    await page.goto('/home');
+    await page.goto('/dashboard');
     await archiveFixtures(request, [id]);
   }
 });
@@ -199,7 +199,7 @@ test('concurrent dashboard tabs isolate identical native proxy locators, private
     expect(errors).toEqual([]);
   } finally {
     await other.close();
-    await page.goto('/home');
+    await page.goto('/dashboard');
     await archiveFixtures(request, ids);
     await upstream.close();
   }

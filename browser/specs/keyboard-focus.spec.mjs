@@ -38,7 +38,7 @@ const focusedUnit = page => page.evaluate(() => {
 test('Tab follows the visual reading order of panels and stacks without moving native hosts', async ({ page, request }) => {
   const seeded = await seedFocusBoard(request);
   const searchTitle = seeded.board.panels.find(panel => panel.nativeLocator?.type === 'search').title;
-  await page.goto('/home');
+  await page.goto('/dashboard');
   const search = page.getByRole('combobox').first();
   await expect(search).toBeVisible();
   await search.fill('kept native state');
@@ -110,7 +110,7 @@ test('in the editor Tab reaches a stack\'s Select checkbox first among its contr
 
 test('Studio controls use one focus style while native widgets keep their own', async ({ page, request }) => {
   await seedFocusBoard(request);
-  await page.goto('/home');
+  await page.goto('/dashboard');
   const focusStyle = locator => locator.evaluate(element => {
     const style = getComputedStyle(element);
     return { outline: `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor}`, offset: style.outlineOffset, shadow: style.boxShadow };

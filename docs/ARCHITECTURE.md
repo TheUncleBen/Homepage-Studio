@@ -32,18 +32,20 @@ step; it adds no request-time compression or worker startup dependency.
 ## Dashboard identity and isolation
 
 The versioned registry `studio-dashboards.json` lives in the configuration root.
-The original dashboard has ID `default` and retains existing configuration and
-state paths. New dashboards have immutable UUIDs; configuration lives under
+The original dashboard has ID `default` and uses the root configuration and
+state paths. It has no slug until the first administrator (or, with sign-in
+off, the first visitor) chooses one; until then only Studio's own pages open. New dashboards have immutable UUIDs; configuration lives under
 `config/dashboards/<id>/` and state/history under `state/dashboards/<id>/`.
 Changing a name or slug changes routing without moving identity or files.
 Archiving retains data and reserves the address. Restoration reuses that identity.
-The default dashboard remains present and may be renamed or assigned a slug.
+The default dashboard remains present and may be renamed or given another slug,
+but not left without one once chosen.
 
 Registry writes are serialized, revision checked, validated and atomically
 replaced. The initialization marker prevents a missing registry from silently
 recreating an empty list over existing dashboards. Creates prepare the complete
 dashboard before publication; a failed preparation never exposes a partial page.
-Duplicates copy all nine files and layout identities, then diverge independently.
+Duplicates copy all nine files, layout identities and the dashboard logo, then diverge independently.
 Snapshots and recovery journals belong to their dashboard; a snapshot ID from
 another dashboard cannot be restored through the selected endpoint.
 
@@ -82,7 +84,7 @@ State version 2 has a 12-column board, independently identified panels, and one-
 Newly reconciled panels use the same first-free row-major placement as the
 original allocator. A sparse 12-column occupancy index and cursors per rectangle
 size avoid repeatedly scanning every prior rectangle. Persisted positions,
-legacy layout handling, stack collapse, identity and geometry limits are
+stack collapse, identity and geometry limits are
 unchanged. The index is built only when a new placement is needed; it does not
 allocate a dense grid up to every distant stored coordinate. The existing
 4,096-panel ceiling remains a validation bound, not a device performance promise.
@@ -195,7 +197,7 @@ Every mutation validates the candidate content and generated state before creati
 
 Each snapshot file is JSON with `version` 1, `createdAt`, `revision`, `changedFiles`, `before` (the managed files' previous bytes) and `afterHashes`. Snapshots written since this field was added also carry `action`: a fixed code chosen by the server for the endpoint that made the change (`arrangement-saved`, `settings-saved`, `files-saved`, `snapshot-restored`, `dashboard-imported`, `discovered-panel-hidden`/`-shown`, and `service-`, `service-widget-`, `info-widget-` or `bookmark-` followed by `added`, `edited` or `deleted`). It never contains request text. Older files without it still list (with `action: null`), restore, export and import; the editor shows them as "Saved change". Listing and export drop an unrecognized stored value. Import accepts an optional `action` that is a short lowercase code and ignores it; any other value is rejected as unsupported metadata.
 
-Snapshots default to 25, with configurable retention. Their ordering uses a logical timestamp greater than the last retained snapshot, so saves in the same millisecond, a backward wall-clock change, and process restart do not prune a newer save as if it were older. The displayed creation time remains the actual clock time. A live journal's snapshot is never pruned. Read/export operations and playback do not create snapshots. Legacy four-file recovery material can be restored without erasing newer optional native files.
+Snapshots default to 25, with configurable retention. Their ordering uses a logical timestamp greater than the last retained snapshot, so saves in the same millisecond, a backward wall-clock change, and process restart do not prune a newer save as if it were older. The displayed creation time remains the actual clock time. A live journal's snapshot is never pruned. Read/export operations and playback do not create snapshots.
 
 Complete exports and downloaded full snapshots can be imported into another Studio instance. Import requires all nine files plus state.json, validates the complete archive before any snapshot or write, uses the destination's current revision, and follows the same journaled replacement path. It creates a recovery snapshot of the destination first. Unknown filenames and incomplete archives are rejected. Discovery cache entries from the old destination are discarded; imported external sources remain unavailable until rediscovery. Environment variables, mounted secrets, sockets, and external service prerequisites are deployment inputs and are not included in the archive.
 

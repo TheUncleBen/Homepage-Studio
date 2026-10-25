@@ -43,6 +43,15 @@ test('first administrator sets up with a passkey, signs out and signs back in wi
   await expect(open).toBeDisabled();
   await page.getByLabel('I have saved these codes').check();
   await open.click();
+  // On a fresh deployment Studio first asks for the main dashboard's address.
+  await expect(page).toHaveURL(/\/studio\/(?:admin|dashboards)$/);
+  if (page.url().endsWith('/studio/dashboards')) {
+    const ask = page.getByRole('dialog', { name: 'Choose the main dashboard’s address' });
+    await expect(ask.getByLabel('Address')).toHaveValue('dashboard');
+    await ask.getByRole('button', { name: 'Save address' }).click();
+    await expect(ask).toHaveCount(0);
+    await page.goto('/studio/admin');
+  }
   await expect(page).toHaveURL(/\/studio\/admin$/);
   await expect(page.getByRole('heading', { name: 'Administration' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'People' })).toHaveAttribute('aria-selected', 'true');
@@ -58,10 +67,10 @@ test('first administrator sets up with a passkey, signs out and signs back in wi
   await expect(page.getByRole('button', { name: 'Account: Studio Admin' })).toBeVisible();
   const native = process.env.STUDIO_BROWSER_NO_NATIVE !== '1';
   if (native) {
-    await page.goto('/home');
+    await page.goto('/dashboard');
     await expect(page.getByRole('button', { name: 'Account: Studio Admin' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Widgets' })).toHaveCount(0);
-    await page.goto('/home/studio/edit');
+    await page.goto('/dashboard/studio/edit');
     await expect(page.getByRole('button', { name: 'Widgets' })).toBeVisible();
   }
 

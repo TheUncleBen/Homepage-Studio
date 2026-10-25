@@ -80,7 +80,7 @@ describe("dashboard controls follow the sign-in access level", () => {
     ]) {
       const view = mount(access);
       await waitFor(() => expect(screen.getByLabelText("Quick Launch")).toBeEnabled());
-      expect(screen.getByText("Family", { selector: ".studio-topbar-title" })).toBeInTheDocument();
+      expect(screen.getByText("Family", { selector: ".studio-switcher-name" })).toBeInTheDocument();
       for (const name of ["Edit dashboard", "Add widget", "Done"]) expect(screen.queryByText(name)).toBeNull();
       expect(screen.queryByLabelText("Dashboard settings")).toBeNull();
       expect(screen.queryByLabelText("Edit Found")).toBeNull();

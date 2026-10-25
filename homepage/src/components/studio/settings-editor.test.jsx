@@ -39,6 +39,7 @@ describe("Appearance settings save", () => {
       target: { value: "light" },
     });
     expect(screen.getByLabelText("Item configuration YAML").value).toContain("mode: light");
+    fireEvent.click(screen.getByLabelText(/Use the platform accent color/));
     fireEvent.change(screen.getByLabelText("Accent color"), {
       target: { value: "#nothex" },
     });

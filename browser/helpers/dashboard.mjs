@@ -4,7 +4,7 @@ export { expect };
 export const origin = process.env.STUDIO_BROWSER_ORIGIN;
 // The main dashboard's address. Its live page has no editing controls; the
 // editor and the settings dialog have addresses of their own.
-export const HOME = '/home';
+export const HOME = '/dashboard';
 export const DASHBOARDS = '/studio/dashboards';
 
 export async function openEditor(page, base = HOME) {
@@ -30,12 +30,12 @@ export async function studioApi(request, route, body) {
 }
 
 export async function saveFiles(request, changes) {
-  const current = await studioApi(request, '/home/studio/api/state');
-  const saved = await studioApi(request, '/home/studio/api/save', {
+  const current = await studioApi(request, '/dashboard/studio/api/state');
+  const saved = await studioApi(request, '/dashboard/studio/api/save', {
     revision: current.revision,
     ...changes,
   });
-  await studioApi(request, '/home/api/revalidate');
+  await studioApi(request, '/dashboard/api/revalidate');
   return saved;
 }
 
@@ -137,7 +137,7 @@ export async function seedServicePanels(request, items) {
   });
   const board = state.board;
   for (const item of items) board.panels.find(panel => panel.title === item.name).rect = item.rect;
-  return studioApi(request, '/home/studio/api/board', { revision: state.revision, board });
+  return studioApi(request, '/dashboard/studio/api/board', { revision: state.revision, board });
 }
 
 export async function panelPixels(panel) {

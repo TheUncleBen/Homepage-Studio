@@ -316,14 +316,15 @@ ignores it, and you change your password under **My account**.
 ## 6. Fill in the environment file
 
 Copy the bundle's `portainer.env.example` to a file on your computer, say
-`homepage.env`, and change the lines marked `REQUIRED`. The comments in the
-file explain every other line; everything not listed here can stay at its
-default. **No secret values go in this file.**
+`homepage.env`, and set the `REQUIRED` lines at the top. Everything below them
+is optional and works unset; the comments in the file explain each line.
+**No secret values go in this file.**
 
 | Variable | What to put |
 | --- | --- |
 | `STUDIO_PUBLIC_ORIGIN` | The address people will type, `https://homepage.example.test`. Scheme and hostname only, no path. It must be the hostname you give your reverse proxy in step 8 |
 | `STUDIO_NODE` | The node from step 3, exactly as `docker node ls` shows it |
+| `STUDIO_DEPLOYMENT_NAME` | Optional: the name shown next to the logo, on the sign-in page, in tab titles, in email and in passkey prompts (default `Homepage Studio`) |
 | `STUDIO_TRUSTED_PROXIES` | Recommended: the subnet from step 2, for example `10.0.10.0/24`. Remove the `# ` in front of the line |
 | `STUDIO_NETWORK_NAME` | Only if your network isn't called `homepage-studio` |
 | `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | Only for host directories (step 3) |
@@ -415,7 +416,9 @@ docker service ps homepage_studio        # wait for Running
 
 ### Updating
 
-[UPGRADING.md](UPGRADING.md) has the steps. In short: **Stacks → homepage →
+Until version 1.0.0, install each new candidate fresh: remove the stack,
+delete both volumes (or empty the host directories), and follow this guide
+again from the start. The network and the secrets you already made can stay. From 1.0.0 on, [UPGRADING.md](UPGRADING.md) has the steps. In short: **Stacks → homepage →
 Editor**, replace the whole text with the new bundle's `portainer-swarm.yml`,
 keep your environment variables, **Update the stack**. Your secrets, network
 and volumes stay as they are.
@@ -436,8 +439,8 @@ Add one proxy host for Studio. Whatever the proxy, it must:
 
 The full list, and complete examples for Caddy, Traefik and plain nginx, are in
 [REVERSE-PROXY.md](REVERSE-PROXY.md#what-every-proxy-needs). That's the only
-thing you expose: one proxy host serves every dashboard (`/home`, `/kitchen`
-and so on), the Dashboards page, the editor and the sign-in pages.
+thing you expose: one proxy host serves every dashboard (`/dashboard`,
+`/kitchen` and so on), the Dashboards page, the editor and the sign-in pages.
 
 ### Example: Nginx Proxy Manager
 
@@ -504,18 +507,20 @@ the open setup page is off:
 2. Studio asks for a second step before anything else: add a **passkey**, an
    **authenticator app**, or both. Keep the backup codes Studio shows you
    somewhere safe.
-3. You land on **Administration**. From then on the bare address,
-   `https://homepage.example.test/`, opens **Dashboards**: the list of
-   dashboards, where you open, edit and set up each one. The first dashboard
-   is at `/home`.
+3. Studio opens **Dashboards** and asks for the **main dashboard's address**,
+   suggesting `dashboard` (`https://homepage.example.test/dashboard`). Save
+   it; you can change it later from the dashboard's card.
+4. From then on the bare address, `https://homepage.example.test/`, opens
+   **Dashboards**: the list of dashboards, where you open, edit and set up
+   each one. **Administration** is in the top bar.
 
 The password alone gets nobody further than step 2, but finish it now anyway.
 Studio never reads the secret again, so changing it later changes nothing.
 
 **Without them** (the secret says `off`), a fresh Studio asks the first visitor
 to create the administrator account, so do it **straight away**, before anyone
-else can: pick a username and password, add a passkey or authenticator app, and
-keep the backup codes.
+else can: pick a username and password, add a passkey or authenticator app,
+keep the backup codes, and choose the main dashboard's address.
 
 Then check two things under **Administration**:
 
@@ -623,10 +628,11 @@ variables with a short comment each.
 | --- | --- | --- |
 | `STUDIO_PUBLIC_ORIGIN` | (required) | Exact `https://` origin, with the port when it isn't 443. No path, query, wildcard or credentials. The container won't start with anything else |
 | `STUDIO_NODE` | (required) | Swarm placement: the node that keeps the data |
+| `STUDIO_SECRETS_DIR` | (required for Compose) | Docker Compose only: the folder with the four secret files ([DEPLOY-COMPOSE.md](DEPLOY-COMPOSE.md)). The Swarm stack doesn't use it |
+| `STUDIO_DEPLOYMENT_NAME` | `Homepage Studio` | The deployment's name on Studio's pages, the sign-in page, tab titles, email and passkey prompts; changeable in **Administration → Sign-in settings** ([AUTHENTICATION.md](AUTHENTICATION.md#settings-reference)) |
 | `STUDIO_NETWORK_NAME` | `homepage-studio` | The existing network shared with the reverse proxy |
 | `STUDIO_TRUSTED_PROXIES` | (unset) | Comma-separated IP addresses or CIDR ranges of your reverse proxy, usually the network's subnet. Studio then takes the client address from `X-Forwarded-For` for sign-in throttling and the activity log |
 | `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | the named volumes `config` and `state` | Absolute host directories to bind mount instead ([step 3](#host-directories-instead-of-named-volumes)) |
-| `STUDIO_SECRETS_DIR` | (required for Compose) | Docker Compose only: the folder with the four secret files ([DEPLOY-COMPOSE.md](DEPLOY-COMPOSE.md)). The Swarm stack doesn't use it |
 | `STUDIO_AUTH` | `on` | `off` only if your proxy already decides who may open Studio ([AUTHENTICATION.md](AUTHENTICATION.md#turning-sign-in-off)) |
 | `STUDIO_OIDC_ISSUER`, `STUDIO_OIDC_CLIENT_ID` | (unset) | Single sign-on with any OpenID Connect provider; both together, plus the `studio_oidc_client_secret` secret ([step 4](#4-identity-provider-optional)) |
 | `STUDIO_ADMIN_USERNAME`, `STUDIO_ADMIN_EMAIL` | (unset) | The first administrator, created once with the `studio_admin_password` secret ([AUTHENTICATION.md](AUTHENTICATION.md#first-start-the-administrator)) |

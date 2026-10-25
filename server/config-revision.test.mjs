@@ -60,7 +60,7 @@ test('every managed native file changes the fingerprint on the saved and loaded 
   }
 });
 
-test('layout-only saves advance the optimistic revision without invalidating native data', async t => {
+test('arrangement-only saves advance the optimistic revision without invalidating native data', async t => {
   const { store, configDir } = await fixture(t);
   const initial = await store.load();
   const state = await store.mutateInfoWidget({ revision: initial.revision, action: 'add', type: 'greeting', config: { text: 'Hello' } });

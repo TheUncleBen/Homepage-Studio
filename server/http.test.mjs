@@ -350,9 +350,11 @@ test('HTTP state, native service and info-widget mutations, stale revisions, bac
   result = await post('/studio/api/info-widget', { revision: result.json.revision, action: 'add', type: 'datetime', config: { text_size: 'xl' } });
   assert.equal(result.status, 200);
   assert.equal(result.json.infoWidgets[0].type, 'datetime');
-  result = await post('/studio/api/save', { revision: result.json.revision, layout: { version: 1, items: { [tile.id]: { x: 1, y: 3, w: 5, h: 4 } } } });
+  const board = structuredClone(result.json.board);
+  board.panels.find((panel) => panel.id === tile.id).rect = { x: 1, y: 30, w: 5, h: 4 };
+  result = await post('/studio/api/save', { revision: result.json.revision, board });
   assert.equal(result.status, 200);
-  assert.deepEqual(result.json.layout.items[tile.id], { x: 1, y: 3, w: 5, h: 4 });
+  assert.deepEqual(result.json.board.panels.find((panel) => panel.id === tile.id).rect, { x: 1, y: 30, w: 5, h: 4 });
   const invalid = await post('/studio/api/save', { revision: result.json.revision, servicesYaml: '- broken: [unterminated' });
   assert.equal(invalid.status, 422);
   assert.equal(invalid.json.code, 'INVALID_YAML');
@@ -379,7 +381,7 @@ test('HTTP state, native service and info-widget mutations, stale revisions, bac
   assert.equal(restored.json.servicesYaml, before.servicesYaml);
   assert.deepEqual(restored.json.services, []);
   assert.deepEqual(restored.json.infoWidgets, []);
-  assert.deepEqual(restored.json.layout, before.layout);
+  assert.deepEqual(restored.json.board.panels, []);
   assert.equal((await request('/studio/api/backups')).json.length, 5);
   assert.ok(upstreamCalls.length > 0);
   assert.ok(upstreamCalls.every((call) => call.method === 'GET' && call.url === '/api/studio/sources'), 'Editor mutations may read safe discovery metadata but must not invoke native mutation/integration endpoints.');

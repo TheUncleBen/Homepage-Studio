@@ -51,7 +51,7 @@ test('invalid syntax or shape rejects the entire save without changing any file 
     { bookmarksYaml: '- Docs:\n  - Wrong: scalar\n' },
     { widgetsYaml: '- resources: nope\n' },
     { servicesYaml: null },
-    { layout: { version: 1, items: { invalid: { x: 0, y: 0, w: 0, h: 3 } } } },
+    { board: { version: 2, columns: 12, panels: [], stacks: [] } },
   ]) {
     await assert.rejects(store.save({ revision: before.revision, settingsYaml: 'title: Must not be written\n', ...changes }), (error) => error.status === 422);
     assert.equal((await store.load()).revision, before.revision);
@@ -121,13 +121,15 @@ test('nested add, edit, rename, move and delete retain unknown fields, comments 
   assert.equal(added.id, added.config.id);
   result = await store.mutateService({ revision: result.revision, action: 'update', id: added.id, name: 'Moved service', group: 'Media' });
   assert.equal(result.services.find((entry) => entry.id === added.id).group, 'Media');
-  result = await store.save({ revision: result.revision, layout: { version: 1, items: { [added.id]: { x: 2, y: 5, w: 4, h: 3 } } } });
+  const board = structuredClone(result.board);
+  board.panels.find((panel) => panel.id === added.id).rect = { x: 0, y: 40, w: 4, h: 3 };
+  result = await store.saveBoard({ revision: result.revision, board });
   const restarted = createConfigStore(options);
-  assert.deepEqual((await restarted.load()).layout, result.layout);
+  assert.deepEqual((await restarted.load()).board, result.board);
   assert.equal((await restarted.load()).services.find((entry) => entry.name === 'Moved service').id, added.id);
   result = await restarted.mutateService({ revision: result.revision, action: 'delete', id: added.id });
   assert.ok(!result.services.some((entry) => entry.id === added.id));
-  assert.equal(result.layout.items[added.id], undefined);
+  assert.ok(!result.board.panels.some((panel) => panel.id === added.id));
 });
 
 test('nested widget edits retain comments and unrelated options while null clears a whole native widget', async (t) => {
@@ -208,7 +210,7 @@ test('information widget names match the shipped catalog', async () => {
 test('raw widget reordering keeps identity by configuration fingerprint', async (t) => {
   const { store } = await fixture(t);
   let result = await store.load();
-  result = await store.save({ revision: result.revision, layout: result.layout });
+  result = await store.save({ revision: result.revision, board: result.board });
   const before = Object.fromEntries(result.infoWidgets.map((entry) => [entry.type, entry.id]));
   result = await store.save({ revision: result.revision, widgetsYaml: '- resources:\n    cpu: true\n    memory: true\n- datetime:\n    text_size: xl\n' });
   assert.deepEqual(Object.fromEntries(result.infoWidgets.map((entry) => [entry.type, entry.id])), before);
@@ -269,7 +271,7 @@ test('a symlinked state path and backup traversal are rejected', async (t) => {
   await fs.symlink(outside, path.join(directory, 'state-link'));
   await assert.rejects(createConfigStore({ ...options, stateDir: path.join(directory, 'state-link') }).load(), { code: 'UNSAFE_PATH' });
   const externalState = path.join(directory, 'external-state.json');
-  await fs.writeFile(externalState, JSON.stringify({ version: 1, layout: { version: 1, items: {} } }));
+  await fs.writeFile(externalState, JSON.stringify({ version: 2 }));
   await fs.symlink(externalState, path.join(stateDir, 'state.json'));
   await assert.rejects(store.save({ revision: before.revision, settingsYaml: 'title: Change\n' }), { code: 'UNSAFE_PATH' });
 });

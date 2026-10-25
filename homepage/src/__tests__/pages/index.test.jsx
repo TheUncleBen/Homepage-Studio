@@ -212,11 +212,22 @@ describe("Studio main-page composition", () => {
     expect(state.boardProps.dashboard).toEqual(dashboard);
     expect(document.querySelector('meta[name="studio-dashboard-id"]').content).toBe(dashboard.id);
     expect(document.querySelector('meta[name="robots"]').content).toBe("noindex, nofollow");
-    expect(document.querySelector('link[rel="stylesheet"]').getAttribute("href")).toBe(
+    // The platform CSS loads first, then the dashboard's own custom.css.
+    expect([...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.getAttribute("href"))).toEqual([
+      "/studio/platform.css",
       "/family/api/config/custom.css?v=0",
-    );
+    ]);
     expect(state.script.src).toBe("/family/api/config/custom.js");
-    expect(document.querySelector('link[rel="icon"]').getAttribute("href")).toBe("/homepage.ico");
+    // Without Homepage's own favicon setting the tab shows the dashboard's logo.
+    expect(document.querySelector('link[rel="icon"]').getAttribute("href")).toBe("/family/studio/logo");
+  });
+
+  it("keeps Homepage's favicon setting and lets a dashboard switch the platform CSS off", async () => {
+    await mount({ title: "Family", favicon: "/own.ico", studioTheme: { platformCss: false } });
+    expect(document.querySelector('link[rel="icon"]').getAttribute("href")).toBe("/own.ico");
+    expect([...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.getAttribute("href"))).toEqual([
+      "/api/config/custom.css?v=0",
+    ]);
   });
 
   it("starts Quick Launch inert and rejects shortcuts and the native floating control until the board reports readiness", async () => {
@@ -347,7 +358,7 @@ describe("Studio main-page composition", () => {
     expect(state.mounts).toBe(1);
     expect(request).toHaveBeenCalledWith("/api/revalidate");
     expect(globalMutate).toHaveBeenCalledWith("/api/widgets", state.data.widgets, { revalidate: false });
-    expect(document.querySelector('link[rel="stylesheet"]').href).toContain("custom.css?v=1");
+    expect(document.querySelector('link[rel="stylesheet"][href*="custom.css"]').href).toContain("custom.css?v=1");
   });
   it("reports native refresh errors, applies identity/locale and leaves customJS loading native", async () => {
     state.error = new Error("native temporarily offline");

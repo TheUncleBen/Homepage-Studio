@@ -5,8 +5,10 @@ import {
   appearanceConfig,
   appearanceStyles,
   appearanceTokens,
+  applyPlatformDefaults,
   contrastRatio,
   hexColor,
+  ownAppearance,
 } from "./appearance.mjs";
 
 describe("appearance settings", () => {
@@ -80,5 +82,37 @@ describe("appearance settings", () => {
         ).toBeGreaterThanOrEqual(4.5);
       }
     }
+  });
+});
+
+describe("platform defaults", () => {
+  const platform = { mode: "light", accent: "#91b09e", background: "https://example.test/bg.jpg" };
+
+  it("fills in only what the dashboard does not set itself", () => {
+    expect(applyPlatformDefaults({ title: "A" }, platform)).toEqual({
+      title: "A",
+      theme: "light",
+      background: "https://example.test/bg.jpg",
+      studioTheme: { mode: "light", accent: "#91b09e" },
+    });
+    const own = { theme: "dark", background: "own.jpg", studioTheme: { mode: "dark", accent: "#81a8c8" } };
+    expect(applyPlatformDefaults(own, platform)).toEqual(own);
+    expect(applyPlatformDefaults({ studioTheme: { accent: "#81a8c8" } }, platform).studioTheme).toEqual({
+      accent: "#81a8c8",
+      mode: "light",
+    });
+  });
+
+  it("counts a native light or dark theme as the dashboard's own mode", () => {
+    expect(ownAppearance({ theme: "light" })).toEqual({ mode: true, accent: false, background: false });
+    expect(applyPlatformDefaults({ theme: "dark" }, platform).theme).toBe("dark");
+  });
+
+  it("follows the device without a fixed native theme, and leaves settings alone without a platform", () => {
+    const followed = applyPlatformDefaults({ theme: "light" }, { mode: "system" });
+    expect(followed.theme).toBe("light");
+    expect(applyPlatformDefaults({}, { mode: "system" })).not.toHaveProperty("theme");
+    const settings = { title: "B" };
+    expect(applyPlatformDefaults(settings, null)).toBe(settings);
   });
 });

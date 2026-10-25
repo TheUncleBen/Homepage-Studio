@@ -71,8 +71,8 @@ try {
   const seeded = await seedPlayback(api, { intervalMs: dwellMs });
   const firstId = seeded.board.stacks[0].panelIds[0];
   const secondId = seeded.board.stacks[0].panelIds[1];
-  const backupsBefore = await studioApi(api, '/home/studio/api/backups');
-  const nativeIdentity = await studioApi(api, '/home/api/studio/health');
+  const backupsBefore = await studioApi(api, '/dashboard/studio/api/backups');
+  const nativeIdentity = await studioApi(api, '/dashboard/api/studio/health');
   child = spawn(executable, [
     '--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check',
     '--window-size=1440,1080', '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0',
@@ -120,7 +120,7 @@ try {
   await call('Runtime.enable', {}, observedSession);
   await call('Network.enable', {}, observedSession);
   await call('Page.enable', {}, observedSession);
-  await call('Page.navigate', { url: new URL('/home', origin).href }, observedSession);
+  await call('Page.navigate', { url: new URL('/dashboard', origin).href }, observedSession);
   await call('Target.activateTarget', { targetId: dashboard });
   await until(() => evaluate(`Boolean(document.querySelector('[aria-label="Play slideshow"]') && document.querySelector('[data-panel-kind="informationWidget"] [role="combobox"]'))`), Boolean, 'Native stack ready');
   const initial = await evaluate(`(() => {
@@ -176,7 +176,7 @@ try {
   assert.ok(resumedAfterMs >= remainingMs - 300 && resumedAfterMs <= remainingMs + 1500, `Resume must preserve remaining time: expected ${remainingMs}ms, observed ${resumedAfterMs}ms`);
   assert.ok(followingDwellMs >= dwellMs - 300 && followingDwellMs <= dwellMs + 1500, `Next advance must use an ordinary dwell, not a catch-up burst: ${followingDwellMs}ms`);
   assert.equal(slides.length, 2);
-  assert.deepEqual(await studioApi(api, '/home/studio/api/backups'), backupsBefore, 'Playback must not create snapshots');
+  assert.deepEqual(await studioApi(api, '/dashboard/studio/api/backups'), backupsBefore, 'Playback must not create snapshots');
   assert.deepEqual(failures, [], 'No uncaught page exceptions or same-origin HTTP 5xx');
   evidence = {
     passed: true,

@@ -40,6 +40,8 @@ Administrators and members see the same page, filtered to what each can open.
 **More actions** on a card has **Make my default** and, for administrators,
 **Rename or change address**, **Duplicate**, **Who can open it** and
 **Archive**. Administrators also get **New dashboard** and the archived list.
+Each card shows when the dashboard last changed and, for administrators, who
+can open it.
 
 The bare address (`https://homepage.example.test/`) opens:
 
@@ -55,13 +57,25 @@ With sign-in turned off, the bare address always opens the Dashboards page.
 
 ### The top bar
 
-Every page, dashboards and administration alike, has the same bar: the Studio
-mark (back to Dashboards), the page or dashboard name, **Quick Launch** on a
-dashboard (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd>, Homepage's own
-search across your services and bookmarks), **Dashboards**,
-**Administration** for administrators, and your account menu (**My account**,
-**Sign out**). On a phone, Dashboards and Administration move into the account
-menu.
+Every page, dashboards and administration alike, has the same bar:
+
+- On Studio's own pages (Dashboards, My account, Administration), the logo and
+  the deployment's name. On a dashboard, that dashboard's logo and name.
+- The name opens the **dashboard switcher**: **All dashboards**, then every
+  dashboard you can open, to jump straight to one.
+- **Quick Launch** on a dashboard (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> +
+  <kbd>K</kbd>, Homepage's own search across your services and bookmarks).
+- **Dashboards**, **Administration** for administrators, and your account
+  menu (**My account**, **Sign out**).
+
+On a phone, Dashboards and Administration move into the account menu.
+
+The deployment's name is `STUDIO_DEPLOYMENT_NAME` (default *Homepage
+Studio*); an administrator can change it in **Administration → Sign-in
+settings → Deployment name**. It's also the sign-in page's heading, the
+browser tab title, the sender name in email and the name your passkey prompt
+shows. A dashboard's logo is set in its settings
+([APPEARANCE.md](APPEARANCE.md#logo)); without one it shows the Studio logo.
 
 ### Live, editor and settings pages
 
@@ -76,8 +90,10 @@ A dashboard has three addresses:
 **Edit** and **Settings** on the Dashboards page open the last two. People who
 may only view a dashboard are sent back to it from either address.
 
-The main dashboard is at `/home` (an existing deployment's main dashboard
-moves there on upgrade; see [UPGRADING.md](UPGRADING.md)).
+On a new deployment the main dashboard has no address yet. The first time an
+administrator opens Studio (with sign-in off, whoever opens it first), the
+Dashboards page asks for one, suggesting `dashboard`, and nothing else opens
+until it's saved. You can change it later from the dashboard's card.
 
 A new dashboard is empty. In the editor it shows a short note, *A clean
 slate*, and an **Add your first widget** button. Group buttons (**All
@@ -338,11 +354,11 @@ Administrators manage dashboards from the **Dashboards** page.
 
 | Action | What happens |
 | --- | --- |
-| **New dashboard** | Pick a **Name** and an **Address**; it starts empty. To start from an existing dashboard, use **Duplicate** |
+| **New dashboard** | Pick a **Name** and an **Address** (suggested: the first free of `dashboard`, `dashboard-2`, `dashboard-3`, …); it starts empty. To start from an existing dashboard, use **Duplicate** |
 | **Open** | Goes to the live dashboard |
 | **Edit** / **Settings** | The editor and the dashboard settings ([Start here](#live-editor-and-settings-pages)) |
 | **More actions → Rename or change address** | Its widgets, layout and snapshots stay with it |
-| **More actions → Duplicate** | Makes an independent copy of everything; changing one never changes the other. **Share it with the same people** copies who can open it |
+| **More actions → Duplicate** | Makes an independent copy of everything, logo included, at the next suggested address; changing one never changes the other. **Share it with the same people** copies who can open it |
 | **More actions → Who can open it** | Opens **Administration → Dashboard access** |
 | **More actions → Archive** | Takes it off line after you confirm. Its files and snapshots are kept and its address stays reserved |
 | **Restore** (under *Archived*) | Brings an archived dashboard back as it was |
@@ -350,11 +366,13 @@ Administrators manage dashboards from the **Dashboards** page.
 - An address is one path segment of 1 to 64 lowercase letters, numbers and
   inner hyphens: `https://homepage.example.test/family`. A few names used by
   the application itself can't be taken.
-- The main dashboard can't be archived. Its address is `/home` unless you
-  change it.
+- The main dashboard can't be archived. Its address is the one chosen when
+  Studio first asked for it.
 - Up to 64 dashboards fit on one deployment, archived ones included.
-- Each dashboard has its own widgets, layout, stacks, appearance, custom CSS,
-  custom JavaScript, settings and snapshot history.
+- Each dashboard has its own widgets, layout, stacks, appearance, logo,
+  custom CSS, custom JavaScript, settings and snapshot history. Anything it
+  doesn't set for itself follows the platform's default look
+  ([APPEARANCE.md](APPEARANCE.md#the-platform-default-look)).
 
 An address is not a password, and it doesn't decide who may open a dashboard:
 sharing does ([AUTHENTICATION.md](AUTHENTICATION.md)). With sign-in turned

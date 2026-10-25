@@ -37,28 +37,29 @@ services:
       - studio_smtp_password
       - studio_admin_password
     environment:
+      # Required.
       STUDIO_PUBLIC_ORIGIN: ${STUDIO_PUBLIC_ORIGIN:?Set the exact dashboard URL origin}
-      STUDIO_BACKUP_RETENTION: ${STUDIO_BACKUP_RETENTION:-25}
-      STUDIO_RENDERER_MAX_WORKERS: ${STUDIO_RENDERER_MAX_WORKERS:-8}
-      STUDIO_RENDERER_IDLE_SECONDS: ${STUDIO_RENDERER_IDLE_SECONDS:-600}
-      STUDIO_RENDERER_STARTUP_SECONDS: ${STUDIO_RENDERER_STARTUP_SECONDS:-30}
-      STUDIO_FRAME_ANCESTORS: ${STUDIO_FRAME_ANCESTORS:-}
-      # Studio sign-in (docs/AUTHENTICATION.md). On by default; it needs an
-      # https:// STUDIO_PUBLIC_ORIGIN. Set off only if another layer controls access.
-      # Empty optional values use Studio's defaults (portainer.env.example).
-      STUDIO_AUTH: ${STUDIO_AUTH:-on}
-      STUDIO_TRUSTED_PROXIES: ${STUDIO_TRUSTED_PROXIES:-}
       # The secrets above, read from the files Swarm mounts.
       STUDIO_AUTH_KEY_FILE: /run/secrets/studio_auth_key
       STUDIO_OIDC_CLIENT_SECRET_FILE: /run/secrets/studio_oidc_client_secret
       STUDIO_SMTP_PASSWORD_FILE: /run/secrets/studio_smtp_password
       STUDIO_ADMIN_PASSWORD_FILE: /run/secrets/studio_admin_password
+      LOG_TARGETS: stdout
+      # Optional. Empty values use Studio's defaults (portainer.env.example).
+      # The deployment's name, shown with the logo, on the sign-in page, in
+      # tab titles, in email and in passkey prompts.
+      STUDIO_DEPLOYMENT_NAME: ${STUDIO_DEPLOYMENT_NAME:-}
+      # Studio sign-in (docs/AUTHENTICATION.md). On by default; it needs an
+      # https:// STUDIO_PUBLIC_ORIGIN. Set off only if another layer controls access.
+      STUDIO_AUTH: ${STUDIO_AUTH:-on}
       # The first administrator, created once on the first start with the
       # studio_admin_password secret (docs/AUTHENTICATION.md). Ignored as soon
       # as Studio has any account.
       STUDIO_ADMIN_USERNAME: ${STUDIO_ADMIN_USERNAME:-}
       STUDIO_ADMIN_EMAIL: ${STUDIO_ADMIN_EMAIL:-}
-      # Optional single sign-on with an identity provider (docs/IDP-OTHERS.md;
+      # The proxy network's subnet, so logs and throttling see real addresses.
+      STUDIO_TRUSTED_PROXIES: ${STUDIO_TRUSTED_PROXIES:-}
+      # Single sign-on with an identity provider (docs/IDP-OTHERS.md;
       # Authentik example: docs/IDP-AUTHENTIK.md). Issuer and client ID
       # turn it on; the client secret is the studio_oidc_client_secret secret.
       STUDIO_OIDC_ISSUER: ${STUDIO_OIDC_ISSUER:-}
@@ -73,7 +74,7 @@ services:
       STUDIO_OIDC_ALLOWED_GROUPS: ${STUDIO_OIDC_ALLOWED_GROUPS:-}
       # Testing only: true accepts a plain http issuer.
       STUDIO_OIDC_ALLOW_HTTP: ${STUDIO_OIDC_ALLOW_HTTP:-}
-      # Optional email for invitations, password resets and security alerts.
+      # Email for invitations, password resets and security alerts.
       # The password is the studio_smtp_password secret.
       STUDIO_SMTP_HOST: ${STUDIO_SMTP_HOST:-}
       STUDIO_SMTP_PORT: ${STUDIO_SMTP_PORT:-}
@@ -81,7 +82,12 @@ services:
       STUDIO_SMTP_USER: ${STUDIO_SMTP_USER:-}
       STUDIO_SMTP_FROM_ADDRESS: ${STUDIO_SMTP_FROM_ADDRESS:-}
       STUDIO_SMTP_FROM_NAME: ${STUDIO_SMTP_FROM_NAME:-}
-      LOG_TARGETS: stdout
+      # Framing and limits.
+      STUDIO_FRAME_ANCESTORS: ${STUDIO_FRAME_ANCESTORS:-}
+      STUDIO_BACKUP_RETENTION: ${STUDIO_BACKUP_RETENTION:-25}
+      STUDIO_RENDERER_MAX_WORKERS: ${STUDIO_RENDERER_MAX_WORKERS:-8}
+      STUDIO_RENDERER_IDLE_SECONDS: ${STUDIO_RENDERER_IDLE_SECONDS:-600}
+      STUDIO_RENDERER_STARTUP_SECONDS: ${STUDIO_RENDERER_STARTUP_SECONDS:-30}
     # No published port: the reverse proxy reaches Studio as
     # <stack name>_studio:3000 on the shared network (docs/DEPLOY.md, step 8).
     networks:

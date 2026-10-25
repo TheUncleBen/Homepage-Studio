@@ -156,14 +156,14 @@ export default function StudioBoard({
   } = useSWR("/studio/api/access", studioRequest, {
     revalidateOnFocus: true,
   });
-  // Until the answer arrives every control stays disabled. A server without
-  // sign-in levels (or one that predates them) means full access.
+  // Until the answer arrives every control shows but stays disabled; a failed
+  // or unexpected answer leaves only viewing. With sign-in off Studio answers admin.
   const accessLoading = !access && !accessError;
   const level = ["view", "arrange", "admin"].includes(access?.level)
     ? access.level
-    : accessError && accessError.status !== 404
-      ? "view"
-      : "admin";
+    : accessLoading
+      ? "admin"
+      : "view";
   const isAdmin = level === "admin";
   const canArrange = isAdmin || level === "arrange";
   const [draft, setDraft] = useState(null);

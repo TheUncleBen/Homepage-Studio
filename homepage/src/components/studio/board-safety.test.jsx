@@ -156,6 +156,7 @@ async function mountBoard({
       value = await writer(path, JSON.parse(options.body));
       state = value;
     } else if (path === "/studio/catalog.json") value = catalog;
+    else if (path === "/studio/api/access") value = { authEnabled: false, level: "admin", user: null };
     else if (path === "/studio/api/backups") value = backups;
     else {
       if (firstBoardRead && path === "/studio/api/board") await firstBoardRead;

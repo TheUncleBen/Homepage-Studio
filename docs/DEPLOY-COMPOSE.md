@@ -83,7 +83,8 @@ cp portainer.env.example .env
 | Variable | What to put |
 | --- | --- |
 | `STUDIO_PUBLIC_ORIGIN` | The address people type, `https://homepage.example.test` |
-| `STUDIO_SECRETS_DIR` | The folder from step 3, `/srv/homepage-studio/secrets` |
+| `STUDIO_SECRETS_DIR` | The folder from step 3, `/srv/homepage-studio/secrets`. Remove the `# ` in front of the line |
+| `STUDIO_DEPLOYMENT_NAME` | Optional: the deployment's name on Studio's pages (default `Homepage Studio`) |
 | `STUDIO_TRUSTED_PROXIES` | Recommended: the subnet from step 2 |
 | `STUDIO_NETWORK_NAME` | Only if your network isn't called `homepage-studio` |
 | `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | Only to use host directories instead of named volumes (below) |
@@ -167,6 +168,11 @@ proxy's address. The network from step 2 must still exist, because the Compose
 file joins it.
 
 ## Updating
+
+Until version 1.0.0, install each new candidate fresh: run
+`docker compose --project-name homepage --file portainer-compose.yml down --volumes`
+(or empty the host directories) and follow this guide again. The network and
+the secrets folder can stay. From 1.0.0 on:
 
 Replace `portainer-compose.yml` with the new bundle's file, keep your `.env`
 and secrets folder, and run the same `up -d`. The old container stops and the

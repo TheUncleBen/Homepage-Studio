@@ -9,7 +9,7 @@ test('intentional stack title picker preserves native state, keyboard focus and 
   const searchId = seeded.board.panels.find(panel => panel.nativeLocator.type === 'search').id;
   const greetingId = seeded.board.panels.find(panel => panel.nativeLocator.type === 'greeting').id;
   await page.clock.install({ time: new Date('2026-10-21T12:00:00Z') });
-  await page.goto('/home');
+  await page.goto('/dashboard');
   const input = page.locator(`[data-panel-id="${searchId}"]`).getByRole('combobox', { includeHidden: true });
   await input.fill('Picker keeps this native input');
   const original = await input.elementHandle();
@@ -72,7 +72,7 @@ test.describe('mobile title picker', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   test('short title taps open intentionally, touch swipes still navigate, and a held touch does nothing', async ({ page, request }) => {
     await seedPlayback(request);
-    await page.goto('/home');
+    await page.goto('/dashboard');
     await title(page).tap();
     await expect(menu(page)).toBeVisible();
     await menu(page).getByRole('menuitemradio', { name: 'Greeting 2 of 2', exact: true }).tap();

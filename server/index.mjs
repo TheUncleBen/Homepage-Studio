@@ -618,11 +618,12 @@ export function createStudioServer(options = {}) {
     return owned;
   }
   const registry = createDashboardRegistry({ configRoot, prepareDashboard: async (entry, source, { isNew = false } = {}) => {
-    let archive;
+    let archive, logo;
     if (source) {
       const sourceHandler = forDashboard(source);
       await sourceHandler.initialization;
       archive = await sourceHandler.store.exportCurrent();
+      logo = await sourceHandler.logo.read();
     }
     const owned = isNew ? await allocateDashboard(entry) : null;
     const target = forDashboard(entry);
@@ -632,6 +633,8 @@ export function createStudioServer(options = {}) {
       const current = await target.store.load();
       await target.store.importArchive({ revision: current.revision, archive });
     }
+    // A duplicate keeps the source's logo too.
+    if (logo) await target.logo.save(`data:${logo.type};base64,${logo.bytes.toString('base64')}`);
   }, cleanupDashboard: async entry => {
     if (entry.id === 'default') throw new DashboardError('The original dashboard cannot be removed.', 'DEFAULT_DASHBOARD_REQUIRED');
     const owned = unpublished.get(entry.id);

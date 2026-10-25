@@ -48,7 +48,7 @@ async function docker(args, options = {}) {
   }
 }
 
-const { request, ready, state, freshAndEdit, assertPersisted, restoreEmpty, assertLegacyAdopted, multiDashboard, assertDashboardsPersisted } = createDashboardFixture({
+const { request, ready, state, freshAndEdit, assertPersisted, restoreEmpty, multiDashboard, assertDashboardsPersisted } = createDashboardFixture({
   origin, expectedRevision: env.STUDIO_EXPECTED_REVISION,
 });
 
@@ -58,62 +58,6 @@ async function composeHealth(services = ['studio']) {
     assert.equal(ids.length, services.length);
     for (const id of ids) assert.equal(await docker(['inspect', '--format', '{{.State.Health.Status}}', id]), 'healthy');
   }, `Docker health: ${services.join(', ')}`);
-}
-
-async function seedLegacyRootVolumes() {
-  // Initialize the pre-registry root file/state format on real product volumes,
-  // without starting the controller or creating a dashboard registry. This is
-  // synthetic existing-installation data, never an owner's deployment.
-  await docker([...composeArgs, 'create', '--no-build', '--pull', 'never']);
-  const id = await docker([...composeArgs, 'ps', '--all', '--quiet', 'studio']);
-  const container = JSON.parse(await docker(['inspect', id]))[0];
-  const mounts = ['/app/config', '/app/state'].map(target => {
-    const mount = container.Mounts.find(item => item.Destination === target);
-    assert.ok(mount?.Name, 'Legacy fixture requires disposable named product volumes');
-    return `type=volume,source=${mount.Name},target=${target}`;
-  });
-  const program = `
-    import fs from 'node:fs/promises';
-    import { createHash } from 'node:crypto';
-    import { createConfigStore } from './server/config.mjs';
-    const store = createConfigStore({ configDir: '/app/config', stateDir: '/app/state' });
-    await store.initialize();
-    const initial = await store.load();
-    await store.save({ revision: initial.revision,
-      servicesYaml: '- Existing:\\n    - Retained service:\\n        href: https://example.test/legacy\\n',
-      settingsYaml: '# Existing root settings\\ntitle: Legacy adoption fixture\\n',
-      widgetsYaml: '- greeting:\\n    text: Retained existing content\\n',
-      bookmarksYaml: '- Existing:\\n    - Reference:\\n        - href: https://example.test/reference\\n',
-      dockerYaml: '# Existing Docker configuration\\n{}\\n',
-      kubernetesYaml: '# Existing Kubernetes configuration\\n{}\\n',
-      proxmoxYaml: '# Existing Proxmox configuration\\n{}\\n',
-      customCss: ':root { --legacy-fixture: retained; }\\n',
-      customJs: 'window.__legacyFixture = "retained";\\n',
-    });
-    const archive = await store.exportCurrent();
-    const backups = await store.listBackups();
-    const hashes = {};
-    for (const name of Object.keys(archive.files)) {
-      const file = name === 'state.json' ? '/app/state/state.json' : '/app/config/' + name;
-      hashes[file] = createHash('sha256').update(await fs.readFile(file)).digest('hex');
-    }
-    for (const entry of backups) {
-      const file = '/app/state/backups/' + entry.id + '.json';
-      hashes[file] = createHash('sha256').update(await fs.readFile(file)).digest('hex');
-    }
-    if ((await fs.readdir('/app/config')).some(name => name.startsWith('studio-dashboards.'))) throw new Error('Fixture unexpectedly created a registry');
-    console.log(JSON.stringify({ archive, backups, hashes }));
-  `;
-  return JSON.parse(await docker(['run', '--rm', '--network', 'none', '--mount', mounts[0], '--mount', mounts[1], '--entrypoint', 'node', env.STUDIO_IMAGE, '--input-type=module', '-e', program]));
-}
-
-async function assertLegacyBytes(container, expected) {
-  const actual = JSON.parse(await docker(['exec', container, 'node', '-e', `
-    const fs = require('node:fs'), crypto = require('node:crypto');
-    const files = JSON.parse(process.argv[1]);
-    console.log(JSON.stringify(Object.fromEntries(files.map(file => [file, crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')]))));
-  `, JSON.stringify(Object.keys(expected.hashes))]));
-  assert.deepEqual(actual, expected.hashes, 'Registry adoption and default address changes must preserve every original file and snapshot byte');
 }
 
 async function workers(container) {
@@ -244,16 +188,6 @@ try {
   networkCreated = true;
   await docker([...composeArgs, 'config', '--quiet']);
   composeStarted = true;
-  const legacy = await seedLegacyRootVolumes();
-  await docker([...composeArgs, 'up', '--detach', '--no-build', '--pull', 'never']);
-  await assertLegacyAdopted(legacy);
-  await composeHealth();
-  await assertLegacyBytes(await docker([...composeArgs, 'ps', '--quiet', 'studio']), legacy);
-  await docker([...composeArgs, 'restart']);
-  await assertLegacyAdopted(legacy);
-  await assertLegacyBytes(await docker([...composeArgs, 'ps', '--quiet', 'studio']), legacy);
-  await docker([...composeArgs, 'down', '--volumes', '--remove-orphans']);
-  console.log('PASS: real legacy-root volume adoption at /home, main-dashboard move to /admin, native CSS/JS, complete byte/history preservation and idempotent restart.');
   await docker([...composeArgs, 'up', '--detach', '--no-build', '--pull', 'never']);
   await composeHealth();
   assert.equal((await request('/studio/application-ready')).json().status, 'ready');

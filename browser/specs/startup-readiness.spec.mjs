@@ -6,13 +6,13 @@ test('startup controls wait for the first board response and the settings page o
   await page.setViewportSize({ width: 390, height: 844 });
   let releaseBoard;
   const boardGate = new Promise(resolve => { releaseBoard = resolve; });
-  const boardRequested = page.waitForRequest(req => new URL(req.url()).pathname === '/home/studio/api/board' && req.method() === 'GET');
+  const boardRequested = page.waitForRequest(req => new URL(req.url()).pathname === '/dashboard/studio/api/board' && req.method() === 'GET');
   await page.route('**/studio/api/board', async route => {
     if (route.request().method() === 'GET') await boardGate;
     await route.continue();
   });
   try {
-    await page.goto('/home', { waitUntil: 'domcontentloaded' });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     await boardRequested;
     const search = page.getByRole('button', { name: 'Quick Launch', exact: true });
     await expect(search).toBeDisabled();

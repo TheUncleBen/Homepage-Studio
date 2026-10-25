@@ -23,7 +23,6 @@ const FILES = {
 const NATIVE_REVISION_FILES = ['services.yaml', 'bookmarks.yaml', 'widgets.yaml', 'settings.yaml', 'docker.yaml', 'kubernetes.yaml', 'proxmox.yaml', 'custom.css', 'custom.js'];
 const DEFAULTS = { 'services.yaml': '[]\n', 'widgets.yaml': '[]\n', 'bookmarks.yaml': '[]\n', 'settings.yaml': '{}\n', 'docker.yaml': '{}\n', 'kubernetes.yaml': '{}\n', 'proxmox.yaml': '{}\n', 'custom.css': '', 'custom.js': '' };
 const ALL_FILES = [...Object.values(FILES), 'state.json'];
-const LEGACY_FILES = ['services.yaml', 'widgets.yaml', 'bookmarks.yaml', 'settings.yaml', 'state.json'];
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_STATE_BYTES = 2 * 1024 * 1024;
 const MAX_BACKUP_BYTES = 20 * MAX_FILE_BYTES;
@@ -45,7 +44,6 @@ const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const fileHash = (value) => hash(JSON.stringify(value));
-const clone = (value) => JSON.parse(JSON.stringify(value));
 
 function nativeRevisionOf(raw) {
   // A fallback shown by the editor is not a physical file the renderer read.
@@ -285,39 +283,21 @@ function validateSettings(data) {
   if (data != null && !object(data)) fail('settings.yaml must contain a mapping of Homepage settings.');
 }
 
-function validateLayout(value) {
-  if (!object(value) || value.version !== 1 || !object(value.items)) fail('Layout must have version 1 and an items mapping.');
-  if (Object.keys(value.items).length > 4096) fail('Layout contains too many tiles.');
-  const items = Object.create(null);
-  for (const [id, item] of Object.entries(value.items)) {
-    named(id, 'Layout tile id');
-    if (!object(item)) fail(`Layout entry "${id}" must contain x, y, w, and h.`);
-    for (const dimension of ['x', 'y', 'w', 'h']) {
-      if (!Number.isInteger(item[dimension]) || item[dimension] < (dimension === 'w' || dimension === 'h' ? 1 : 0) || item[dimension] > 100000) {
-        fail(`Layout entry "${id}" has an invalid ${dimension}.`);
-      }
-    }
-    items[id] = { x: item.x, y: item.y, w: item.w, h: item.h };
-  }
-  return { version: 1, items };
-}
-
 function decodeState(raw) {
-  if (raw == null) return { version: 2, layout: { version: 1, items: {} }, infoWidgets: [], serviceWidgets: [], bookmarks: [], discoveredSources: [], hiddenDiscoveredIds: [], board: null };
+  if (raw == null) return { version: 2, infoWidgets: [], serviceWidgets: [], bookmarks: [], discoveredSources: [], hiddenDiscoveredIds: [], board: null };
   let state;
   try { state = JSON.parse(raw); } catch { fail('Dashboard layout state is not valid JSON.', 'INVALID_STATE'); }
-  if (!object(state) || ![1, 2].includes(state.version)) fail('Unsupported dashboard state version.', 'INVALID_STATE');
-  const layout = validateLayout(state.layout);
+  if (!object(state) || state.version !== 2) fail('Unsupported dashboard state version.', 'INVALID_STATE');
   const infoWidgets = state.infoWidgets ?? [];
   if (!Array.isArray(infoWidgets) || infoWidgets.length > MAX_PANELS || new Set(infoWidgets.map((entry) => entry?.id)).size !== infoWidgets.length || infoWidgets.some((entry) => !object(entry) || typeof entry.id !== 'string' || !entry.id || entry.id.length > 256 || typeof entry.type !== 'string' || typeof entry.fingerprint !== 'string')) {
     fail('Information widget identity metadata is invalid.', 'INVALID_STATE');
   }
-  return { version: 2, layout, infoWidgets,
+  return { version: 2, infoWidgets,
     serviceWidgets: validateIdentityRecords(state.serviceWidgets, 'Service widget'),
     bookmarks: validateIdentityRecords(state.bookmarks, 'Bookmark'),
     discoveredSources: validateStoredDiscoveredSources(state.discoveredSources ?? []),
     hiddenDiscoveredIds: validateHiddenDiscoveredIds(state.hiddenDiscoveredIds ?? []),
-    board: state.version === 2 ? validateStoredBoard(state.board) : null };
+    board: validateStoredBoard(state.board) };
 }
 
 function reconcileInfo(entries, previous = []) {
@@ -366,7 +346,7 @@ function parseSnapshot(raw, forced = {}, discovery = {}) {
   const hiddenDiscoveredIds = state.hiddenDiscoveredIds;
   const sources = [...boardSources({ services, serviceWidgets, infoWidgets, bookmarks }), ...discoveredSources.filter((source) => !hiddenDiscoveredIds.includes(source.id))];
   if (sources.length > MAX_PANELS) fail('The dashboard contains too many independently placed panels.', 'CONFIG_SIZE_LIMIT');
-  const board = reconcileBoard(sources, state.board, state.layout);
+  const board = reconcileBoard(sources, state.board);
   return { parsed, state, services, groups, infoWidgets, serviceWidgets, bookmarks, discoveredSources, hiddenDiscoveredIds, sources, board };
 }
 
@@ -404,7 +384,7 @@ function importFiles(archive) {
 
 function backupTimestamp(name) {
   const m = /^backup-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{3})Z-/.exec(name);
-  if (!m) return 0; // Legacy manually named recovery snapshots predate new saves.
+  if (!m) return 0;
   const milliseconds = Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}.${m[7]}Z`);
   return Number.isFinite(milliseconds) ? milliseconds : 0;
 }
@@ -589,7 +569,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     let backup;
     try { backup = JSON.parse(text); } catch { fail('Backup metadata is invalid.', 'INVALID_BACKUP', 500); }
     const managedFiles = object(backup.before) ? Object.keys(backup.before) : [];
-    if (backup.version !== 1 || !object(backup.before) || !object(backup.afterHashes) || LEGACY_FILES.some((name) => !managedFiles.includes(name)) || managedFiles.some((name) => !ALL_FILES.includes(name) || !(backup.before[name] === null || typeof backup.before[name] === 'string') || typeof backup.afterHashes[name] !== 'string')) {
+    if (backup.version !== 1 || !object(backup.before) || !object(backup.afterHashes) || ALL_FILES.some((name) => !managedFiles.includes(name)) || managedFiles.some((name) => !ALL_FILES.includes(name) || !(backup.before[name] === null || typeof backup.before[name] === 'string') || typeof backup.afterHashes[name] !== 'string')) {
       fail('Backup metadata is incomplete.', 'INVALID_BACKUP', 500);
     }
     return { ...backup, managedFiles };
@@ -691,7 +671,6 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       serviceWidgets: current.serviceWidgets.map(({ scope, key, fingerprint, ...entry }) => entry),
       bookmarks: current.bookmarks.map(({ scope, key, fingerprint, type, path, ...entry }) => entry),
       settingsConfig: current.parsed.settingsYaml.data ?? {},
-      layout: current.state.layout,
       board: current.board,
       discoveredSources: current.discoveredSources,
       hiddenDiscoveredIds: current.hiddenDiscoveredIds,
@@ -761,9 +740,8 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       desired['state.json'] = JSON.stringify(state);
     }
     const candidate = parseSnapshot(desired, forced, discoveryContext());
-    const layout = own(change, 'layout') ? validateLayout(change.layout) : candidate.state.layout;
     const state = {
-      version: 2, layout,
+      version: 2,
       infoWidgets: candidate.infoWidgets.map(({ id, type, fingerprint }) => ({ id, type, fingerprint })),
       serviceWidgets: identityRecords(candidate.serviceWidgets),
       bookmarks: identityRecords(candidate.bookmarks),
@@ -784,12 +762,10 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const { doc } = parsed;
     const existing = change.action === 'add' ? null : current.services.find((entry) => entry.id === change.id);
     if (change.action !== 'add' && !existing) fail('That service tile no longer exists.', 'TILE_NOT_FOUND', 404);
-    const layout = clone(current.state.layout);
     if (change.action === 'delete') {
       const parent = doc.getIn(existing.path.slice(0, -2), true);
       if (!isSeq(parent)) fail('This service uses an unsupported YAML alias. Edit its YAML directly.');
       parent.items.splice(existing.index, 1);
-      delete layout.items[existing.id];
     } else {
       const name = named(change.name ?? existing?.name, 'Service name');
       const groupPath = resolveGroup(change.group, current.groups, existing?.groupPath ?? ['Services']);
@@ -816,7 +792,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         }
       }
     }
-    return saveCurrent(current, { revision: change.revision, servicesYaml: parsed.text(), layout }, `service-${CONTENT_ACTIONS[change.action]}`);
+    return saveCurrent(current, { revision: change.revision, servicesYaml: parsed.text() }, `service-${CONTENT_ACTIONS[change.action]}`);
   }
 
   async function mutateInfoInner(change) {
@@ -829,12 +805,10 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const { doc } = parsed;
     if (!doc.contents || (isScalar(doc.contents) && doc.contents.value == null)) doc.contents = doc.createNode([]);
     if (!isSeq(doc.contents)) fail('widgets.yaml must be a mutable YAML list.');
-    const layout = clone(current.state.layout);
     const identities = current.infoWidgets.map(({ id }) => ({ id }));
     if (change.action === 'delete') {
       doc.contents.items.splice(existing.index, 1);
       identities.splice(existing.index, 1);
-      delete layout.items[existing.id];
     } else {
       const type = named(change.type ?? existing?.type, 'Information widget type');
       const config = change.config ?? {};
@@ -849,7 +823,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         renamePair(entry.items[0], type);
       }
     }
-    return saveCurrent(current, { revision: change.revision, widgetsYaml: parsed.text(), layout }, `info-widget-${CONTENT_ACTIONS[change.action]}`, { infoWidgets: identities });
+    return saveCurrent(current, { revision: change.revision, widgetsYaml: parsed.text() }, `info-widget-${CONTENT_ACTIONS[change.action]}`, { infoWidgets: identities });
   }
 
   async function mutateBookmarkInner(change) {
@@ -1097,7 +1071,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     }),
     exportCurrent: () => serialized(async () => {
       const current = await readCurrent();
-      const state = { version: 2, layout: current.state.layout, board: current.board,
+      const state = { version: 2, board: current.board,
         infoWidgets: current.infoWidgets.map(({ id, type, fingerprint }) => ({ id, type, fingerprint })),
         serviceWidgets: identityRecords(current.serviceWidgets), bookmarks: identityRecords(current.bookmarks),
         discoveredSources: current.discoveredSources.map(({ available, ...source }) => source), hiddenDiscoveredIds: current.hiddenDiscoveredIds };
@@ -1112,7 +1086,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       const desired = importFiles(archive);
       const candidate = parseSnapshot(desired);
       const state = {
-        version: 2, layout: candidate.state.layout,
+        version: 2,
         infoWidgets: candidate.infoWidgets.map(({ id, type, fingerprint }) => ({ id, type, fingerprint })),
         serviceWidgets: identityRecords(candidate.serviceWidgets), bookmarks: identityRecords(candidate.bookmarks),
         discoveredSources: candidate.discoveredSources.map(({ available, ...source }) => source),
@@ -1138,8 +1112,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       const restored = parseSnapshot(restoredRaw);
       return saveCurrent(current, {
         revision,
-        ...Object.fromEntries(Object.entries(FILES).filter(([, file]) => backup.managedFiles.includes(file)).map(([field, file]) => [field, backup.before[file] ?? DEFAULTS[file]])),
-        layout: restored.state.layout,
+        ...Object.fromEntries(Object.entries(FILES).map(([field, file]) => [field, backup.before[file] ?? DEFAULTS[file]])),
       }, 'snapshot-restored', {}, restored.state);
     }),
   };

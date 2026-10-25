@@ -62,6 +62,8 @@ appears.
    **authenticator app**, or both. Until you add one, the password gets you no
    further than that page.
 3. Save the ten **backup codes**.
+4. Studio asks for the **main dashboard's address** (suggested: `dashboard`).
+   Until it's saved, no dashboard has an address.
 
 Studio uses the seed **once**. As soon as any account exists, it ignores
 `STUDIO_ADMIN_USERNAME`, `STUDIO_ADMIN_EMAIL` and the secret on every start
@@ -78,8 +80,7 @@ in when the provider is down.
 ### Created in the browser
 
 Without a seed (`studio_admin_password` says `off`), the first person to open
-a fresh deployment (or one updated from a version without sign-in) is asked
-to create the administrator. Every address leads to the setup page until
+a fresh deployment is asked to create the administrator. Every address leads to the setup page until
 that's done.
 
 1. Open the dashboard's address. You land on **Create the administrator**.
@@ -88,6 +89,8 @@ that's done.
    **authenticator app**, or both.
 4. Save the ten **backup codes**. Each signs you in once if you lose your
    passkey or phone. They aren't shown again.
+5. Choose the **main dashboard's address** when Studio asks (suggested:
+   `dashboard`).
 
 **Do this straight after deploying.** Whoever completes the setup page first
 becomes the administrator, and there is no setup code. While one browser is
@@ -118,7 +121,8 @@ then **Administration**, or `/studio/admin`).
   Default dashboard**), and an administrator can set one for a person (**People
   → Manage**) or a group (**Groups → Manage**). The bare address opens the
   person's own default, else the first of their groups (in the order on the
-  Groups page, changed with **Move up** and **Move down**) that has a default
+  Groups page, changed by dragging a group by its handle or with **Move up**
+  and **Move down**) that has a default
   they can open, else the Dashboards page. Administrators get the Dashboards
   page unless they choose their own.
 
@@ -317,7 +321,7 @@ STUDIO_SMTP_HOST=smtp.example.test
 STUDIO_SMTP_PORT=587                  # 465 uses TLS from the start; other ports must offer STARTTLS
 STUDIO_SMTP_USER=studio@example.test
 STUDIO_SMTP_FROM_ADDRESS=studio@example.test   # a sender your mail provider has verified
-STUDIO_SMTP_FROM_NAME=Homepage Studio           # the name people see; this is the default
+STUDIO_SMTP_FROM_NAME=Homepage Studio           # the name people see; default: the deployment name
 ```
 
 The sender's name and address are separate, so mail shows the name rather
@@ -344,6 +348,7 @@ or a backup code, so a mailbox alone can't take over an account.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `STUDIO_AUTH` | `on` | `on` or `off` |
+| `STUDIO_DEPLOYMENT_NAME` | `Homepage Studio` | The deployment's name: next to the logo at the top of Studio's pages, the sign-in page heading, browser tab titles, the email sender name and subject lines, and the name passkey prompts and authenticator apps show. Up to 60 characters, no `<` or `>`. **Administration → Sign-in settings → Deployment name** overrides it; clearing that field goes back to this value |
 | `STUDIO_PUBLIC_ORIGIN` | (required) | Must be `https://` while sign-in is on. `http://localhost:<port>` is accepted for testing. With plain HTTP on any other address Studio starts but shows only a page explaining the fix |
 | `STUDIO_AUTH_KEY_FILE` | `/run/secrets/studio_auth_key` in the templates | The file holding the encryption key: long random text that encrypts authenticator secrets and single sign-on tokens in the state volume. The templates read it from the `studio_auth_key` Docker secret, which must not be empty or `off`. Keep a copy: if it's lost or changed, authenticator apps must be set up again and provider sessions end. Without a key, **Sign-in settings** warns that these are stored unencrypted |
 | `STUDIO_TRUSTED_PROXIES` | (unset) | Comma-separated IP addresses or CIDR ranges of your reverse proxies. Studio then takes the client address from `X-Forwarded-For` for sign-in throttling and the activity log. Without it, every request seems to come from the proxy |
@@ -366,7 +371,7 @@ or a backup code, so a mailbox alone can't take over an account.
 | `STUDIO_SMTP_USER` | (unset) | |
 | `STUDIO_SMTP_PASSWORD_FILE` | `/run/secrets/studio_smtp_password` in the templates | The file holding the mail password, from the `studio_smtp_password` Docker secret. `off` (or an empty file) means no password |
 | `STUDIO_SMTP_FROM_ADDRESS` | (unset) | The sender address, required with `STUDIO_SMTP_HOST`. A plain address, such as `studio@example.test` |
-| `STUDIO_SMTP_FROM_NAME` | `Homepage Studio` | The sender name people see. Needs `STUDIO_SMTP_FROM_ADDRESS` |
+| `STUDIO_SMTP_FROM_NAME` | the deployment name | The sender name people see. Needs `STUDIO_SMTP_FROM_ADDRESS` |
 
 **Secrets as plain variables (not recommended).** Outside the templates, the
 four secrets can also be given directly as `STUDIO_AUTH_KEY`,
@@ -437,6 +442,8 @@ sensitive.
 
 `STUDIO_AUTH=off` returns to the earlier model: anyone who can reach the page
 can view and change every dashboard, so access control must come from your
-reverse proxy ([REVERSE-PROXY.md](REVERSE-PROXY.md#access-control)). Accounts
+reverse proxy ([REVERSE-PROXY.md](REVERSE-PROXY.md#access-control)). The first
+person to open Studio chooses the main dashboard's address, and
+**Administration** has only **Appearance**, the platform's default look. Accounts
 and sharing are kept in the state volume and come back if you turn sign-in on
 again.

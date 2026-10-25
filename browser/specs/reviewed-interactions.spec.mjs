@@ -9,7 +9,7 @@ async function seedStack(request, members = 3, transition = 'horizontal', overri
     id: 'reviewed-interactions', panelIds: saved.board.panels.map(panel => panel.id),
     rect: { x: 0, y: 0, w: 4, h: 3 }, playback: playback({ transition, transitionDurationMs: 500, ...overrides }),
   }];
-  return studioApi(request, '/home/studio/api/board', { revision: saved.revision, board: saved.board });
+  return studioApi(request, '/dashboard/studio/api/board', { revision: saved.revision, board: saved.board });
 }
 
 async function armWrapCapture(page, firstId) {
@@ -28,7 +28,7 @@ async function armWrapCapture(page, firstId) {
 
 test('a short header press released outside the stack neither edits nor leaves playback suspended', async ({ page, request }) => {
   await seedStack(request);
-  await page.goto('/home');
+  await page.goto('/dashboard');
   const stack = carousel(page);
   await stack.getByRole('button', { name: 'Play slideshow', exact: true }).click();
   const bounds = await stack.boundingBox();
@@ -45,12 +45,12 @@ test('a short header press released outside the stack neither edits nor leaves p
 test('Quick Launch freezes the remaining playback interval and resumes without a catch-up tick', async ({ page, request }) => {
   await seedStack(request);
   await page.clock.install({ time: new Date('2026-10-22T12:00:00Z') });
-  await page.goto('/home');
+  await page.goto('/dashboard');
   const stack = carousel(page);
   await expect(stack).toBeVisible();
   await page.clock.pauseAt(new Date('2026-10-22T13:00:00Z'));
   const first = await activePanel(page).getAttribute('data-panel-id');
-  const snapshots = await studioApi(request, '/home/studio/api/backups');
+  const snapshots = await studioApi(request, '/dashboard/studio/api/backups');
   await stack.getByRole('button', { name: 'Play slideshow', exact: true }).click();
   await page.clock.fastForward(500);
   await page.getByRole('button', { name: 'Quick Launch', exact: true }).click();
@@ -63,12 +63,12 @@ test('Quick Launch freezes the remaining playback interval and resumes without a
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', first);
   await page.clock.fastForward(1);
   await expect(activePanel(page)).not.toHaveAttribute('data-panel-id', first);
-  expect(await studioApi(request, '/home/studio/api/backups')).toEqual(snapshots);
+  expect(await studioApi(request, '/dashboard/studio/api/backups')).toEqual(snapshots);
 });
 
 test('opening Quick Launch during a held stack title neither edits nor opens the picker', async ({ page, request }) => {
   await seedStack(request);
-  await page.goto('/home');
+  await page.goto('/dashboard');
   const bounds = await carousel(page).getByRole('button', { name: /^Choose widget in stack:/ }).boundingBox();
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();
@@ -88,7 +88,7 @@ for (const transition of ['horizontal', 'vertical']) {
       const saved = await seedStack(request, members, transition);
       const ids = saved.board.stacks[0].panelIds;
       const axis = transition === 'vertical' ? 'Y' : 'X';
-      await page.goto('/home');
+      await page.goto('/dashboard');
       const stack = carousel(page);
       await expect(stack).toBeVisible();
       await page.evaluate(() => { window.__reviewedHosts = [...document.querySelectorAll('[data-panel-id]')]; });
@@ -115,7 +115,7 @@ for (const transition of ['horizontal', 'vertical']) {
 test('automatic wrap uses the forward transition after a complete playback cycle', async ({ page, request }) => {
   const saved = await seedStack(request, 3, 'horizontal', { intervalMs: 1000 });
   const ids = saved.board.stacks[0].panelIds;
-  await page.goto('/home');
+  await page.goto('/dashboard');
   await expect(carousel(page)).toBeVisible();
   await armWrapCapture(page, ids[0]);
   await carousel(page).getByRole('button', { name: 'Play slideshow', exact: true }).click();
@@ -140,11 +140,11 @@ for (const input of ['pointer', 'keyboard']) {
     expect(await page.evaluate(() => window.__reviewedHost === document.querySelector('[data-panel-id][aria-label="Beta"]'))).toBe(true);
     await page.getByRole('button', { name: 'Save arrangement', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Save arrangement', exact: true })).toHaveCount(0);
-    const saved = await studioApi(request, '/home/studio/api/board');
+    const saved = await studioApi(request, '/dashboard/studio/api/board');
     expect(saved.board.panels.find(panel => panel.title === 'Beta').rect).toEqual({ x: 0, y: 0, w: 4, h: 3 });
     expect(saved.board.panels.find(panel => panel.title === 'Alpha').rect).toEqual({ x: 4, y: 0, w: 4, h: 3 });
     await page.setViewportSize({ width: 1440, height: 1080 });
-    await page.goto('/home');
+    await page.goto('/dashboard');
     await expect(beta).toBeVisible();
     expect((await panelPixels(beta)).left).toBe(0);
     expect((await panelPixels(page.locator('[data-panel-id][aria-label="Alpha"]'))).left).toBeGreaterThan(0);
@@ -168,7 +168,7 @@ test('at 8 columns Left and Right move a wrapped panel one reading position and 
   expect(beta.left).toBe(alpha.left);
   await page.getByRole('button', { name: 'Save arrangement', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save arrangement', exact: true })).toHaveCount(0);
-  const saved = await studioApi(request, '/home/studio/api/board');
+  const saved = await studioApi(request, '/dashboard/studio/api/board');
   const rect = name => saved.board.panels.find(item => item.title === name).rect;
   expect(rect('Alpha')).toEqual({ x: 0, y: 0, w: 4, h: 3 });
   expect(rect('Gamma')).toEqual({ x: 4, y: 0, w: 4, h: 3 });

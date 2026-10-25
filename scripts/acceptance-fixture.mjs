@@ -17,8 +17,10 @@ export async function eventually(check, label, timeout = 180000) {
   throw new Error(`${label} did not succeed: ${last?.message || 'deadline exceeded'}`);
 }
 
-// The main dashboard's address. The bare address is the Dashboards page.
-export const HOME = '/home';
+// A fresh deployment's main dashboard has no address until the first person
+// in Studio picks one; this fixture takes the suggested one. The bare address
+// is the Dashboards page while sign-in is off.
+export const HOME = '/dashboard';
 
 export function createDashboardFixture({ origin, expectedRevision }) {
   async function request(route, body, expectedStatus = 200) {
@@ -52,7 +54,21 @@ export function createDashboardFixture({ origin, expectedRevision }) {
 
   async function state(basePath = HOME) { return (await request(`${basePath}/studio/api/state`)).json(); }
 
+  async function addressMain() {
+    await eventually(async () => assert.equal((await request('/studio/application-ready')).json().status, 'ready'), 'Application readiness');
+    const bare = await request('/', undefined, 307);
+    assert.equal(bare.response.headers.get('location'), '/studio/dashboards', 'With sign-in off the bare address opens the Dashboards page');
+    const overview = (await request('/studio/api/overview')).json();
+    assert.equal(overview.mainNeedsAddress, true, 'A fresh deployment asks for the main dashboard address');
+    assert.equal(`/${overview.suggestedSlug}`, HOME);
+    const asked = await fetch(new URL(`${HOME}/`, origin), { headers: { accept: 'text/html' }, redirect: 'manual', signal: AbortSignal.timeout(35000) });
+    assert.equal(asked.status, 404, 'The main dashboard has no address before one is chosen');
+    await manage({ action: 'update', id: 'default', name: 'Main dashboard', slug: overview.suggestedSlug });
+    assert.equal((await request('/studio/api/overview')).json().mainNeedsAddress, false);
+  }
+
   async function freshAndEdit() {
+    await addressMain();
     await ready();
     const current = await state();
     for (const field of ['servicesYaml', 'widgetsYaml', 'bookmarksYaml']) assert.deepEqual(parse(current[field]), [], `${field} should start empty`);
@@ -97,7 +113,7 @@ export function createDashboardFixture({ origin, expectedRevision }) {
   async function assertDefaultAddress() {
     const registry = (await request('/studio/api/dashboards')).json();
     const original = registry.dashboards.find(entry => entry.id === 'default');
-    assert.equal(original.slug, 'home', 'The address fixture starts from the main dashboard\'s /home address');
+    assert.equal(`/${original.slug}`, HOME, 'The address fixture starts from the main dashboard\'s chosen address');
     assert.ok(!registry.dashboards.some(entry => entry.slug === 'admin'), 'The disposable /admin fixture address must be available');
     const before = await state();
     const history = (await request(`${HOME}/studio/api/backups`)).json();
@@ -121,17 +137,6 @@ export function createDashboardFixture({ origin, expectedRevision }) {
     await ready();
     assert.equal((await state()).revision, before.revision);
     assert.deepEqual((await request(`${HOME}/studio/api/backups`)).json(), history);
-  }
-
-  async function assertLegacyAdopted(expected) {
-    await ready();
-    const archive = (await request(`${HOME}/studio/api/export`)).json();
-    assert.deepEqual(archive.files, expected.archive.files, 'Adopting existing root files must preserve complete native configuration and state');
-    assert.deepEqual((await request(`${HOME}/studio/api/backups`)).json(), expected.backups, 'Registry initialization must preserve preexisting snapshots');
-    const registry = (await request('/studio/api/dashboards')).json();
-    assert.deepEqual(registry.dashboards, [{ id: 'default', slug: 'home', name: 'Main dashboard', archived: false }]);
-    assert.equal(parse((await state()).settingsYaml).title, 'Legacy adoption fixture');
-    await assertDefaultAddress();
   }
 
   async function multiDashboard() {
@@ -210,5 +215,5 @@ export function createDashboardFixture({ origin, expectedRevision }) {
     }
   }
 
-  return { request, ready, state, freshAndEdit, assertPersisted, restoreEmpty, assertDefaultAddress, assertLegacyAdopted, multiDashboard, assertDashboardsPersisted };
+  return { request, ready, state, freshAndEdit, assertPersisted, restoreEmpty, assertDefaultAddress, multiDashboard, assertDashboardsPersisted };
 }

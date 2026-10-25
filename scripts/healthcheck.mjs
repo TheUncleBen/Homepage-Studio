@@ -43,8 +43,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const kind = process.argv[2] || 'application';
     const host = process.env.STUDIO_HEALTH_HOST || runtimeHost(process.env.STUDIO_PUBLIC_ORIGIN, process.env.HOMEPAGE_ALLOWED_HOSTS).healthHost;
     const port = process.env.PORT || '3000';
-    // The renderer check reads the main dashboard at its default /home address.
-    const endpoint = kind === 'application' ? '/studio/application-ready' : kind === 'renderer' ? '/home/api/studio/health' : kind === 'configuration' ? '/studio/config-ready' : '/studio/ready';
+    // The renderer check reads one dashboard, named by its address: renderer /<address>.
+    const address = process.argv[3] || '';
+    if (kind === 'renderer' && !/^\/[a-z0-9][a-z0-9-]*$/.test(address)) throw new Error('Name the dashboard address to check.');
+    const endpoint = kind === 'application' ? '/studio/application-ready' : kind === 'renderer' ? `${address}/api/studio/health` : kind === 'configuration' ? '/studio/config-ready' : '/studio/ready';
     await checkHealth({ url: `http://127.0.0.1:${port}${endpoint}`, host, kind, buildRevision: process.env.STUDIO_BUILD_REVISION });
   } catch { process.exitCode = 1; }
 }
