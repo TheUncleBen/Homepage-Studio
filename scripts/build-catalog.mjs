@@ -87,6 +87,93 @@ export function documentedFields(markdown) {
   return result;
 }
 
+// Setup guidance for the widget dialog and the widget reference: a page's
+// prose, lists, tables, notes and shell commands, as plain blocks. YAML
+// examples are left out (the dialog's fields and Advanced YAML cover them),
+// as are images and, when the field picker lists them, "Allowed fields".
+// Inline Markdown (`code`, **bold**, [links]) stays in the text; links are
+// made absolute against the documentation site.
+export function guideBlocks(markdown, folderUrl, { dropAllowedFields = false } = {}) {
+  const lines = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').split(/\r?\n/);
+  const absolute = text => text.replace(/\]\((?!https?:|#)([^)\s]+)\)/g, (_, href) => `](${new URL(href.replace(/\.md(?=#|$)/, '/').replace(/(^|\/)index\/$/, '$1'), folderUrl).href})`);
+  const clean = text => absolute(text.replace(/<br\s*\/?>/gi, ' ').replace(/<img\b[^>]*>/gi, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\s+/g, ' ').trim());
+  const blocks = [];
+  const parse = (source, into) => {
+    let index = 0;
+    let paragraph = [];
+    const flush = () => {
+      const text = clean(paragraph.join(' '));
+      paragraph = [];
+      if (text && !(dropAllowedFields && /^Allowed fields/i.test(text))) into.push({ type: 'p', text });
+    };
+    while (index < source.length) {
+      const line = source[index];
+      const fence = /^\s*```\s*([\w-]*)/.exec(line);
+      if (fence) {
+        flush();
+        const body = [];
+        index += 1;
+        while (index < source.length && !/^\s*```/.test(source[index])) body.push(source[index++]);
+        index += 1;
+        if (/^ya?ml$/i.test(fence[1])) {
+          // "For version 2:" introduces an example that isn't shown.
+          if (into.at(-1)?.type === 'p' && into.at(-1).text.endsWith(':')) into.pop();
+          continue;
+        }
+        const code = body.join('\n').trim();
+        if (code) into.push({ type: 'code', text: code });
+        continue;
+      }
+      const note = /^!!!\s+(\w+)/.exec(line);
+      if (note) {
+        flush();
+        const body = [];
+        index += 1;
+        while (index < source.length && (/^\s{4}/.test(source[index]) || !source[index].trim())) body.push(source[index++].replace(/^ {4}/, ''));
+        const children = [];
+        parse(body, children);
+        if (children.length) into.push({ type: 'note', tone: note[1].toLowerCase() === 'warning' ? 'warning' : 'note', blocks: children });
+        continue;
+      }
+      const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+      if (heading) { flush(); into.push({ type: 'heading', text: clean(heading[2]) }); index += 1; continue; }
+      if (/^\s*\|/.test(line)) {
+        flush();
+        const rows = [];
+        while (index < source.length && /^\s*\|/.test(source[index])) {
+          const cells = source[index++].trim().replace(/^\||\|$/g, '').split('|').map(cell => clean(cell));
+          if (!cells.every(cell => /^:?-+:?$/.test(cell))) rows.push(cells);
+        }
+        if (rows.length) into.push({ type: 'table', rows });
+        continue;
+      }
+      const item = /^(\s*)(?:[-*]|\d+\.)\s+(.*)$/.exec(line);
+      if (item && !item[1]) {
+        flush();
+        const ordered = /^\d+\./.test(line.trim());
+        const items = [];
+        while (index < source.length) {
+          const current = /^(?:[-*]|\d+\.)\s+(.*)$/.exec(source[index]);
+          if (current) { items.push(current[1]); index += 1; continue; }
+          if (/^\s+\S/.test(source[index]) && items.length) { items[items.length - 1] += ' ' + source[index].trim().replace(/^(?:[-*]|\d+\.)\s+/, ''); index += 1; continue; }
+          break;
+        }
+        const kept = items.map(clean).filter(text => text && !(dropAllowedFields && /^Allowed fields/i.test(text)));
+        if (kept.length) into.push({ type: ordered ? 'ol' : 'ul', items: kept });
+        continue;
+      }
+      if (!line.trim()) { flush(); index += 1; continue; }
+      if (/^\s*<img\b[^>]*>\s*$/i.test(line) || /^\s*!\[[^\]]*\]\([^)]*\)\s*$/.test(line)) { index += 1; continue; }
+      paragraph.push(line.trim());
+      index += 1;
+    }
+    flush();
+  };
+  parse(lines, blocks);
+  // A heading left with nothing under it (its examples were removed) goes too.
+  return blocks.filter((block, position) => block.type !== 'heading' || (blocks[position + 1] && blocks[position + 1].type !== 'heading'));
+}
+
 function applyReviewedCorrections(byType) {
   const set = (kind, type, key, types, metadata = {}) => {
     const item = byType[kind].get(type);
@@ -209,7 +296,7 @@ export async function buildCatalog(sourceDirectory) {
           }
         }
       }
-      docRecords.push({ kind, markdown, docs, types: [...typesInPage] });
+      docRecords.push({ kind, folder, markdown, docs, types: [...typesInPage] });
     }
   }
 
@@ -228,6 +315,14 @@ export async function buildCatalog(sourceDirectory) {
     }
   }
   applyReviewedCorrections(byType);
+  for (const doc of docRecords) {
+    for (const type of doc.types) {
+      const item = byType[doc.kind].get(type);
+      if (!item || item.guide) continue;
+      const guide = guideBlocks(doc.markdown, `https://gethomepage.dev/widgets/${doc.folder}/`, { dropAllowedFields: Boolean(item.fields.find(field => field.key === 'fields')?.choices) });
+      if (guide.length) item.guide = guide;
+    }
+  }
 
   for (const kind of ['service', 'info']) {
     for (const type of registry[kind]) {

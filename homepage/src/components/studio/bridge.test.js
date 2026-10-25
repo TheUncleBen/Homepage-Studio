@@ -130,6 +130,7 @@ describe("Native Studio bridge endpoints", () => {
     expect(Object.keys(res.payload).sort()).toEqual([
       "bookmarks",
       "configurationRevision",
+      "platformRevision",
       "protocolVersion",
       "services",
       "settings",

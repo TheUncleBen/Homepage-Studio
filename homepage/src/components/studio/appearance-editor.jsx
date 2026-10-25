@@ -9,9 +9,10 @@ import {
   ownAppearance,
 } from "./appearance.mjs";
 import LogoEditor from "./logo-editor";
+import { Group, Row, Segmented } from "./ui";
 import useSystemTheme from "./use-system-theme";
 
-const MODE_LABELS = { dark: "Dark", light: "Light", system: "Follow device" };
+const MODE_LABELS = { dark: "Dark", light: "Light", system: "Auto" };
 
 // Each setting either follows the platform default from Administration →
 // Appearance or is this dashboard's own; changing one doesn't touch others.
@@ -29,6 +30,7 @@ export default function AppearanceEditor({
   const appearance = appearanceConfig(effective);
   const [accentText, setAccentText] = useState(appearance.accent);
   const lastTheme = useRef(settings.studioTheme);
+  const colorInput = useRef(null);
   const systemDark = useSystemTheme();
   const valid = Boolean(hexColor(accentText));
   useEffect(() => {
@@ -66,89 +68,106 @@ export default function AppearanceEditor({
     Object.entries(preview.tokens).map(([key, value]) => [`--studio-${key}`, value]),
   );
 
+  const custom = own.accent && !ACCENT_PRESETS.some((preset) => preset.color === appearance.accent);
   return (
-    <section className="studio-appearance" aria-labelledby="studio-appearance-heading">
-      <h3 id="studio-appearance-heading">Appearance</h3>
-      <p className="studio-note">Choose a look for this dashboard. Changes apply when you choose {saveLabel}.</p>
+    <section className="studio-appearance" aria-label="Appearance">
       <div className="studio-appearance-layout">
-        <div className="studio-appearance-controls">
-          <div className="studio-field">
-            <label htmlFor="studio-display-mode">Display mode</label>
-            <select
-              id="studio-display-mode"
+        <Group
+          title="Appearance"
+          info={`Default follows the look an administrator sets for every dashboard (${platformMode}, ${platformAccent}). Changes apply when you choose ${saveLabel}.`}
+        >
+          <Row label="Mode">
+            <Segmented
+              label="Display mode"
               value={own.mode ? appearance.mode : "platform"}
-              onChange={(event) => change({ mode: event.target.value === "platform" ? undefined : event.target.value })}
-            >
-              <option value="platform">Platform default ({platformMode})</option>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-              <option value="system">Follow device</option>
-            </select>
-          </div>
-          <label className="studio-checkbox-field">
-            <input
-              type="checkbox"
-              checked={!own.accent}
-              onChange={(event) => {
-                if (event.target.checked) {
+              onChange={(next) => change({ mode: next === "platform" ? undefined : next })}
+              options={[
+                ["platform", "Default"],
+                ["dark", "Dark"],
+                ["light", "Light"],
+                ["system", "Auto"],
+              ]}
+            />
+          </Row>
+          <Row label="Accent" stacked>
+            <div className="studio-swatches" role="group" aria-label="Accent">
+              <button
+                type="button"
+                className="studio-swatch studio-swatch-default"
+                aria-pressed={!own.accent}
+                aria-label={`Default (${platformAccent})`}
+                title={`Default (${platformAccent})`}
+                style={{ "--swatch": platformAccent }}
+                onClick={() => {
                   setAccentText(platformAccent);
                   change({ accent: undefined });
-                } else pickAccent(appearance.accent);
-              }}
-            />
-            <span>Use the platform accent color ({platformAccent})</span>
-          </label>
-          <div className="studio-field">
-            <label htmlFor="studio-accent-text">Accent color</label>
-            <div className="studio-color-input">
+                }}
+              >
+                <span aria-hidden="true" />
+              </button>
+              {ACCENT_PRESETS.map((preset) => (
+                <button
+                  key={preset.name}
+                  type="button"
+                  className="studio-swatch"
+                  aria-pressed={Boolean(own.accent) && appearance.accent === preset.color}
+                  aria-label={preset.name}
+                  title={preset.name}
+                  style={{ "--swatch": preset.color }}
+                  onClick={() => pickAccent(preset.color)}
+                >
+                  <span aria-hidden="true" />
+                </button>
+              ))}
+              <button
+                type="button"
+                className="studio-swatch studio-swatch-custom"
+                aria-pressed={custom}
+                aria-label="Custom"
+                title="Custom"
+                style={{ "--swatch": custom ? appearance.accent : "transparent" }}
+                onClick={() => colorInput.current?.click()}
+              >
+                <span aria-hidden="true" />
+              </button>
               <input
+                ref={colorInput}
                 type="color"
-                aria-label="Choose accent color"
+                className="studio-color-well"
+                tabIndex={-1}
+                aria-hidden="true"
                 value={appearance.accent}
-                disabled={!own.accent}
                 onChange={(event) => pickAccent(event.target.value)}
               />
-              <input
-                id="studio-accent-text"
-                disabled={!own.accent}
-                value={accentText}
-                maxLength={7}
-                autoComplete="off"
-                spellCheck={false}
-                aria-invalid={!valid}
-                aria-describedby={!valid ? "studio-accent-error" : undefined}
-                onChange={(event) => {
-                  setAccentText(event.target.value);
-                  const color = hexColor(event.target.value);
-                  if (color) change({ accent: color });
-                }}
-              />
             </div>
-            {!valid && (
-              <span id="studio-accent-error" className="studio-field-error">
-                Use a hex color such as #b299be.
-              </span>
+            {own.accent && (
+              <div className="studio-hex">
+                <input
+                  id="studio-accent-text"
+                  aria-label="Accent color"
+                  value={accentText}
+                  maxLength={7}
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-invalid={!valid}
+                  aria-describedby={!valid ? "studio-accent-error" : undefined}
+                  onChange={(event) => {
+                    setAccentText(event.target.value);
+                    const color = hexColor(event.target.value);
+                    if (color) change({ accent: color });
+                  }}
+                />
+                {!valid && (
+                  <span id="studio-accent-error" className="studio-field-error">
+                    Use a hex color such as #b299be.
+                  </span>
+                )}
+              </div>
             )}
-          </div>
-          <div className="studio-accent-presets" aria-label="Accent presets">
-            {ACCENT_PRESETS.map((preset) => (
-              <button
-                key={preset.name}
-                type="button"
-                disabled={!own.accent}
-                aria-pressed={own.accent && appearance.accent === preset.color}
-                onClick={() => pickAccent(preset.color)}
-              >
-                <span aria-hidden="true" style={{ background: preset.color }} />
-                {preset.name}
-              </button>
-            ))}
-          </div>
-        </div>
+          </Row>
+        </Group>
         <div className="studio-appearance-preview" style={previewStyle} aria-label="Appearance preview">
-          <span className="studio-eyebrow">Your dashboard</span>
-          <strong>Homepage Studio</strong>
-          <span className="studio-appearance-preview-note">Your links, widgets and services.</span>
+          <strong>{settings.title || "Your dashboard"}</strong>
           <div aria-hidden="true" className="studio-appearance-preview-panels">
             <span>
               <i />
@@ -164,11 +183,6 @@ export default function AppearanceEditor({
         </div>
       </div>
       {onLogoChange && <LogoEditor logo={logo} onChange={onLogoChange} />}
-      <p className="studio-note">
-        {platform?.background ? "Without a background of its own, this dashboard uses the platform background. " : ""}
-        Background images and native widget colors are in this dashboard&apos;s settings. For finer control, an
-        administrator can edit custom.css in Configuration files.
-      </p>
     </section>
   );
 }

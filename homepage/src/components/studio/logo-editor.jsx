@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 
-import { dashboardPath } from "./dashboard-path.mjs";
 import { studioRequest } from "./api.mjs";
+import { dashboardPath } from "./dashboard-path.mjs";
 import { STUDIO_LOGO } from "./top-bar";
+import { Group } from "./ui";
 
 const MAX_BYTES = 256 * 1024;
 const readAsDataUrl = (file) =>
@@ -45,44 +46,49 @@ export default function LogoEditor({ logo, onChange }) {
     await send({ image: await readAsDataUrl(file) }, "Logo saved.");
   };
   return (
-    <div className="studio-logo-editor">
-      <h4>Logo</h4>
+    <Group
+      title="Logo"
+      info="Shown next to this dashboard's name and as its browser tab icon. PNG, JPEG, WebP or SVG up to 256 KiB; square works best. It saves straight away."
+    >
       <div className="studio-logo-row">
-        <img src={source} alt="" width={48} height={48} className="studio-logo-preview" />
-        <div className="studio-logo-actions">
-          <input
-            ref={input}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/svg+xml"
-            hidden
-            tabIndex={-1}
-            aria-hidden="true"
-            onChange={pick}
-          />
-          <button type="button" className="studio-button" disabled={pending} onClick={() => input.current?.click()}>
-            {pending ? "Saving…" : logo ? "Change logo" : "Upload logo"}
+        <img src={source} alt="" width={44} height={44} className="studio-logo-preview" />
+        <span className="studio-logo-name">{logo ? "Your logo" : "Studio logo"}</span>
+        <input
+          ref={input}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+          hidden
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={pick}
+        />
+        {logo && (
+          <button
+            type="button"
+            className="studio-pill-button"
+            disabled={pending}
+            onClick={() => send({ reset: true }, "Back to the Studio logo.")}
+          >
+            Use the Studio logo
           </button>
-          {logo && (
-            <button
-              type="button"
-              className="studio-button studio-quiet"
-              disabled={pending}
-              onClick={() => send({ reset: true }, "Back to the Studio logo.")}
-            >
-              Use the Studio logo
-            </button>
-          )}
-        </div>
+        )}
+        <button
+          type="button"
+          className="studio-pill-button studio-pill-accent"
+          disabled={pending}
+          onClick={() => input.current?.click()}
+        >
+          {pending ? "Saving…" : logo ? "Change" : "Upload"}
+        </button>
       </div>
-      <p className="studio-note">
-        Shown next to this dashboard&apos;s name and as its browser tab icon. PNG, JPEG, WebP or SVG, up to 256 KiB;
-        a square image works best. It saves straight away.
-      </p>
       {message && (
-        <p className={message.kind === "error" ? "studio-field-error" : "studio-note"} role={message.kind === "error" ? "alert" : "status"}>
+        <p
+          className={message.kind === "error" ? "studio-field-error studio-group-message" : "studio-group-message"}
+          role={message.kind === "error" ? "alert" : "status"}
+        >
           {message.text}
         </p>
       )}
-    </div>
+    </Group>
   );
 }

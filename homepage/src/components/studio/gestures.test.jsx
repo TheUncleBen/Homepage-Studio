@@ -200,9 +200,22 @@ describe("Stack pointer/trackpad gestures", () => {
     tall.style.overflowY = "auto";
     Object.defineProperty(tall, "scrollHeight", { value: 600 });
     Object.defineProperty(tall, "clientHeight", { value: 300 });
-    const at = (selector, pointerType = "touch") => touchesNativeContent({ pointerType, target: root.querySelector(selector), currentTarget: root });
+    const at = (selector, pointerType = "touch") =>
+      touchesNativeContent({ pointerType, target: root.querySelector(selector), currentTarget: root });
     try {
-      for (const selector of [".link", ".input", ".area", ".select", ".label", ".editable", ".frame", ".embed", ".canvas", ".chart", ".wide-child"])
+      for (const selector of [
+        ".link",
+        ".input",
+        ".area",
+        ".select",
+        ".label",
+        ".editable",
+        ".frame",
+        ".embed",
+        ".canvas",
+        ".chart",
+        ".wide-child",
+      ])
         expect(at(selector), selector).toBe(true);
       for (const selector of [".text", ".body", ".tall-child", ".title"]) expect(at(selector), selector).toBe(false);
       // Mouse behavior is unchanged: only the original interactive list applies.

@@ -5,7 +5,9 @@ import AppearanceEditor from "./appearance-editor";
 import ConfigForm, { SETTINGS_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
+import StudioIcon from "./icons";
 import { patchFromDraft } from "./native-adapter.mjs";
+import { ActionRow, Group, Row, Switch } from "./ui";
 
 const buildRevision = process.env.NEXT_PUBLIC_REVISION;
 const sourceUrl = `https://github.com/TheUncleBen/Homepage-Studio${/^[a-f0-9]{40}$/i.test(buildRevision || "") ? `/tree/${buildRevision}` : ""}`;
@@ -119,16 +121,6 @@ export default function SettingsEditor({
       <div className="studio-dialog-body">
         <ErrorMessage error={error} onReload={onReload} />
         <fieldset disabled={pending} style={editorFieldsetStyle}>
-          <div className="studio-settings-shortcuts">
-            <button type="button" onClick={onOpenFiles}>
-              <strong>Configuration files</strong>
-              <span>All nine native files, with YAML and code editing</span>
-            </button>
-            <button type="button" onClick={onOpenBackups}>
-              <strong>Snapshots & restore</strong>
-              <span>{state.backupRetention || 25} pre-change snapshots retained</span>
-            </button>
-          </div>
           <fieldset disabled={!valid} style={editorFieldsetStyle}>
             <AppearanceEditor
               settings={draft}
@@ -138,23 +130,28 @@ export default function SettingsEditor({
               onChange={setDraft}
               onValidity={setAppearanceValid}
             />
-            <label className="studio-checkbox-field">
-              <input
-                type="checkbox"
-                checked={draft.studioTheme?.platformCss !== false}
-                onChange={(event) => {
-                  const studioTheme = { ...(draft.studioTheme && typeof draft.studioTheme === "object" ? draft.studioTheme : {}) };
-                  if (event.target.checked) delete studioTheme.platformCss;
-                  else studioTheme.platformCss = false;
-                  const next = { ...draft, studioTheme };
-                  if (!Object.keys(studioTheme).length) delete next.studioTheme;
-                  setDraft(next);
-                }}
-              />
-              <span>Load the platform CSS (Administration → Appearance) before this dashboard&apos;s custom.css</span>
-            </label>
+            <Group>
+              <Row
+                label="Platform CSS"
+                info="The CSS an administrator sets for every dashboard in Administration → Appearance. It loads before this dashboard's own custom.css."
+              >
+                <Switch
+                  label="Load the platform CSS"
+                  checked={draft.studioTheme?.platformCss !== false}
+                  onChange={(on) => {
+                    const studioTheme = {
+                      ...(draft.studioTheme && typeof draft.studioTheme === "object" ? draft.studioTheme : {}),
+                    };
+                    if (on) delete studioTheme.platformCss;
+                    else studioTheme.platformCss = false;
+                    const next = { ...draft, studioTheme };
+                    if (!Object.keys(studioTheme).length) delete next.studioTheme;
+                    setDraft(next);
+                  }}
+                />
+              </Row>
+            </Group>
           </fieldset>
-          <h3 className="studio-settings-heading">Homepage settings</h3>
           <ConfigForm
             value={draft}
             onChange={setDraft}
@@ -162,22 +159,31 @@ export default function SettingsEditor({
             knownKeys={["theme", "studioTheme"]}
             onValidity={setValid}
             docs="https://gethomepage.dev/configs/settings/"
+            name="Homepage settings"
+            grouped={false}
+            title="Homepage settings"
+            info="Homepage's own settings for this dashboard. Studio places and sizes the panels, so Homepage's layout options (tabs, columns, equal heights) are kept but don't change this board."
           />
-          <p className="studio-note">
-            Studio owns panel size, position, stacking and dashboard appearance. Native group tabs, column counts,
-            collapse and equal-height layout options are preserved in YAML; they do not control this board. Native
-            status colors, providers, targets and widget behavior remain Homepage settings.
-          </p>
-          <div className="studio-about">
-            <strong>Homepage Studio</strong>
-            <span>
-              Homepage 2.6.0
-              {buildRevision ? ` · Studio build ${buildRevision.slice(0, 8)}` : " · Development build"}
-            </span>
-            <a href={sourceUrl} target="_blank" rel="noreferrer">
-              Source code & license ↗
+          <Group title="Files and history">
+            <ActionRow icon="code" onClick={onOpenFiles}>
+              Configuration files
+            </ActionRow>
+            <ActionRow icon="clock" detail={`${state.backupRetention || 25} kept`} onClick={onOpenBackups}>
+              Snapshots & restore
+            </ActionRow>
+          </Group>
+          <Group title="About">
+            <Row label="Homepage">
+              <span className="studio-row-value">2.6.0</span>
+            </Row>
+            <Row label="Studio build">
+              <span className="studio-row-value">{buildRevision ? buildRevision.slice(0, 8) : "Development"}</span>
+            </Row>
+            <a className="studio-action-row" href={sourceUrl} target="_blank" rel="noreferrer">
+              <StudioIcon name="external" size={17} />
+              <span className="studio-action-label">Source code & license</span>
             </a>
-          </div>
+          </Group>
         </fieldset>
       </div>
       <footer className="studio-dialog-footer">

@@ -3,13 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import { studioRequest } from "./api.mjs";
 import ConfigForm, { LINK_FIELDS, SERVICE_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
-import {
-  editorDraftChanged,
-  editorFieldsetStyle,
-  useEditorDraft,
-} from "./draft-guard";
+import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
 import StudioIcon from "./icons";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
+import { ActionRow, Group, Row } from "./ui";
 
 // A Custom API widget renders only its mappings, so without any it shows an
 // empty native panel. This is valid YAML, so the editor hints instead of
@@ -17,8 +14,7 @@ import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
 export function customApiMappingsMissing(type, config) {
   if (type !== "customapi") return false;
   const mappings = config?.mappings;
-  if (mappings === undefined || mappings === null || mappings === "")
-    return true;
+  if (mappings === undefined || mappings === null || mappings === "") return true;
   if (Array.isArray(mappings)) return mappings.length === 0;
   return typeof mappings === "object" && Object.keys(mappings).length === 0;
 }
@@ -83,9 +79,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
   const visible = entries.filter(
     (entry) =>
       (category === "all" || entry.kind === category) &&
-      `${entry.name} ${entry.type} ${entry.description || ""}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
+      `${entry.name} ${entry.type} ${entry.description || ""}`.toLowerCase().includes(query.toLowerCase()),
   );
   return (
     <>
@@ -96,15 +90,12 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
             <input
               autoFocus
               aria-label="Find a tile or widget"
-              placeholder="Search native widgets and tiles…"
+              placeholder="Search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
-          <nav
-            className="studio-tabs studio-picker-tabs"
-            aria-label="Content categories"
-          >
+          <nav className="studio-tabs studio-picker-tabs" aria-label="Content categories">
             {[
               ["all", "All"],
               ["serviceWidget", "Integrations"],
@@ -123,20 +114,12 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
               </button>
             ))}
           </nav>
-          <p className="studio-note">
-            Native Homepage content, with a separate panel for every instance.
-            Integration credentials stay in your local configuration.
-          </p>
           {Boolean(state?.hiddenDiscoveredIds?.length) && (
             <details className="studio-hidden-discovered">
-              <summary>
-                Hidden discovered panels ({state.hiddenDiscoveredIds.length})
-              </summary>
+              <summary>Hidden discovered panels ({state.hiddenDiscoveredIds.length})</summary>
               <div className="studio-stack-candidates">
                 {(state.discoveredSources || [])
-                  .filter((source) =>
-                    state.hiddenDiscoveredIds.includes(source.id),
-                  )
+                  .filter((source) => state.hiddenDiscoveredIds.includes(source.id))
                   .map((source) => (
                     <button
                       key={source.id}
@@ -153,9 +136,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
                     >
                       <strong>{source.title}</strong>
                       <small>
-                        {restoring === source.id
-                          ? "Restoring…"
-                          : "Restore to dashboard"}
+                        {restoring === source.id ? "Restoring…" : "Restore to dashboard"}
                         {" · "}
                         {source.group}
                       </small>
@@ -182,9 +163,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
               </button>
             ))}
           </div>
-          {!visible.length && (
-            <p className="studio-muted">No native widgets match that search.</p>
-          )}
+          {!visible.length && <p className="studio-muted">No native widgets match that search.</p>}
         </fieldset>
       </div>
     </>
@@ -204,22 +183,13 @@ export default function ContentEditor({
 }) {
   const kind = panel?.kind || entry.kind;
   const source = panel ? sourceForPanel(panel, state) : null;
-  const parent = state.services?.find(
-    (service) => service.id === source?.serviceId,
-  );
+  const parent = state.services?.find((service) => service.id === source?.serviceId);
   const selectedEntry =
-    entry ||
-    (kind === "serviceWidget" ? catalog.service : catalog.info)?.find(
-      (item) => item.type === source?.type,
-    );
+    entry || (kind === "serviceWidget" ? catalog.service : catalog.info)?.find((item) => item.type === source?.type);
   const initial = source?.config || selectedEntry?.defaults || {};
   const [draft, setDraft] = useState(() => structuredClone(initial));
-  const initialName =
-    source?.name ||
-    entry?.seed?.name ||
-    (kind === "serviceWidget" ? selectedEntry?.name || "" : "");
-  const initialGroup =
-    source?.group || entry?.seed?.group || parent?.group || "Dashboard";
+  const initialName = source?.name || entry?.seed?.name || (kind === "serviceWidget" ? selectedEntry?.name || "" : "");
+  const initialGroup = source?.group || entry?.seed?.group || parent?.group || "Dashboard";
   const initialServiceId = source?.serviceId || entry?.seed?.serviceId || "new";
   const [name, setName] = useState(initialName);
   const [group, setGroup] = useState(initialGroup);
@@ -269,13 +239,9 @@ export default function ContentEditor({
     kind === "service"
       ? SERVICE_FIELDS
       : kind === "bookmark"
-        ? [
-            ...LINK_FIELDS,
-            { key: "abbr", label: "Abbreviation", type: "string" },
-          ]
+        ? [...LINK_FIELDS, { key: "abbr", label: "Abbreviation", type: "string" }]
         : selectedEntry?.fields || [];
-  const changedGroup =
-    source?.group === group ? source?.groupPath || group : group;
+  const changedGroup = source?.group === group ? source?.groupPath || group : group;
   const submit = async (action = source ? "update" : "add") => {
     if (pending) return;
     setError(null);
@@ -291,16 +257,12 @@ export default function ContentEditor({
         body.name = name;
         body.group = changedGroup;
       }
-      if (kind === "informationWidget" || kind === "serviceWidget")
-        body.type = source?.type || entry.type;
+      if (kind === "informationWidget" || kind === "serviceWidget") body.type = source?.type || entry.type;
       if (kind === "serviceWidget" && !source) {
         if (serviceId === "new") body.newService = { name, group };
         else body.serviceId = serviceId;
       }
-      const result = await studioRequest(
-        `/studio/api/${ENDPOINT[kind]}`,
-        body,
-      );
+      const result = await studioRequest(`/studio/api/${ENDPOINT[kind]}`, body);
       await onSaved(result);
     } catch (err) {
       setError(err);
@@ -309,11 +271,8 @@ export default function ContentEditor({
     }
   };
   const requiresName =
-    kind === "service" ||
-    kind === "bookmark" ||
-    (kind === "serviceWidget" && !source && serviceId === "new");
-  const disabled =
-    !valid || pending || (requiresName && (!name.trim() || !group.trim()));
+    kind === "service" || kind === "bookmark" || (kind === "serviceWidget" && !source && serviceId === "new");
+  const disabled = !valid || pending || (requiresName && (!name.trim() || !group.trim()));
   return (
     <form
       onSubmit={(event) => {
@@ -324,84 +283,76 @@ export default function ContentEditor({
       <div className="studio-dialog-body">
         <ErrorMessage error={error} onReload={onReload} />
         <fieldset disabled={pending} style={editorFieldsetStyle}>
-          {kind === "serviceWidget" && !source && (
-            <div className="studio-field">
-              <label htmlFor="studio-service-context">Service context</label>
-              <select
-                id="studio-service-context"
-                value={serviceId}
-                onChange={(event) => setServiceId(event.target.value)}
-              >
-                <option value="new">Create a new service context</option>
-                {state.services?.map((service) => (
-                  <option key={service.id} value={service.id}>
-                    {service.group} / {service.name}
-                  </option>
-                ))}
-              </select>
-              <small className="studio-muted">
-                Native integrations belong to a service. A new context without a
-                URL creates just this widget.
-              </small>
-            </div>
-          )}
-          {requiresName && (
-            <div className="studio-fields-grid studio-identity-fields">
-              <div className="studio-field">
-                <label htmlFor="studio-source-name">Name</label>
-                <input
-                  id="studio-source-name"
-                  autoFocus
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  required
-                  maxLength={200}
-                  placeholder="Name this panel"
-                />
-              </div>
-              <div className="studio-field">
-                <label htmlFor="studio-source-group">Group</label>
-                <input
-                  id="studio-source-group"
-                  list="studio-groups"
-                  value={group}
-                  onChange={(event) => setGroup(event.target.value)}
-                  required
-                />
-                <datalist id="studio-groups">
-                  {[
-                    ...new Set([
-                      ...(state.groups || []).map(
-                        (item) => item.label || item.name,
-                      ),
-                      ...(state.bookmarks || []).map((item) => item.group),
-                    ]),
-                  ].map((item) => (
-                    <option value={item} key={item} />
-                  ))}
-                </datalist>
-              </div>
-            </div>
+          {((kind === "serviceWidget" && !source) || requiresName) && (
+            <Group>
+              {kind === "serviceWidget" && !source && (
+                <Row
+                  label="Service"
+                  htmlFor="studio-service-context"
+                  info="An integration lives in a service tile. Add it to one you have, or to a new tile that shows only this widget."
+                >
+                  <select
+                    id="studio-service-context"
+                    value={serviceId}
+                    onChange={(event) => setServiceId(event.target.value)}
+                  >
+                    <option value="new">New service</option>
+                    {state.services?.map((service) => (
+                      <option key={service.id} value={service.id}>
+                        {service.group} / {service.name}
+                      </option>
+                    ))}
+                  </select>
+                </Row>
+              )}
+              {requiresName && (
+                <>
+                  <Row label="Name" htmlFor="studio-source-name">
+                    <input
+                      id="studio-source-name"
+                      autoFocus
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      required
+                      maxLength={200}
+                      placeholder="Required"
+                    />
+                  </Row>
+                  <Row label="Group" htmlFor="studio-source-group">
+                    <input
+                      id="studio-source-group"
+                      list="studio-groups"
+                      value={group}
+                      onChange={(event) => setGroup(event.target.value)}
+                      required
+                      placeholder="Required"
+                    />
+                    <datalist id="studio-groups">
+                      {[
+                        ...new Set([
+                          ...(state.groups || []).map((item) => item.label || item.name),
+                          ...(state.bookmarks || []).map((item) => item.group),
+                        ]),
+                      ].map((item) => (
+                        <option value={item} key={item} />
+                      ))}
+                    </datalist>
+                  </Row>
+                </>
+              )}
+            </Group>
           )}
           {parent && (
-            <p className="studio-note">
-              Service context: {parent.group} / {parent.name}.{" "}
-              <button
-                type="button"
-                className="studio-text-button"
+            <Group>
+              <ActionRow
+                icon="link"
+                detail={`${parent.group} / ${parent.name}`}
                 disabled={pending}
                 onClick={() => onParent(parent)}
               >
-                Edit service name, group and link
-              </button>
-            </p>
-          )}
-          {kind === "informationWidget" && (
-            <p className="studio-note">
-              {selectedEntry?.name || source?.type || entry.type} is a native
-              information widget. Each instance can move, resize and join a
-              stack independently.
-            </p>
+                Service
+              </ActionRow>
+            </Group>
           )}
           <ConfigForm
             value={draft}
@@ -409,43 +360,64 @@ export default function ContentEditor({
             fields={fields}
             onValidity={setValid}
             docs={selectedEntry?.docs}
-            notice={selectedEntry?.coverage}
+            guide={selectedEntry?.guide}
+            setupNotes={selectedEntry?.setupNotes}
+            name={selectedEntry?.name}
           />
           {(kind === "serviceWidget" || kind === "informationWidget") &&
             customApiMappingsMissing(source?.type || entry?.type, draft) && (
-              <p className="studio-note" role="status">
-                This Custom API widget has no <code>mappings</code> yet, so its
-                panel will be empty. Add at least one mapping (the response
-                field and the label to show) in the options above or in Advanced
+              <p className="studio-callout studio-callout-warn" role="status">
+                This Custom API widget has no <code>mappings</code> yet, so its panel will be empty. Add at least one in
                 YAML. You can still save it now.
               </p>
             )}
-          {selectedEntry?.setupNotes?.map((note, index) => (
-            <p key={index} className="studio-note">
-              {note}
-            </p>
-          ))}
+          {source && (
+            <Group className="studio-item-actions">
+              <ActionRow
+                icon="copy"
+                disabled={pending}
+                onClick={() => {
+                  // Duplicate the saved source. Switching away from an edited
+                  // source asks before discarding its local changes.
+                  const copy = structuredClone(initial);
+                  if (kind === "service" || kind === "bookmark") delete copy.id;
+                  onDuplicate({
+                    ...selectedEntry,
+                    kind,
+                    type: source.type || kind,
+                    name: selectedEntry?.name || LABEL[kind],
+                    defaults: copy,
+                    seed: {
+                      name: `${source.name || parent?.name || selectedEntry?.name || "Widget"} copy`,
+                      group: source.group || parent?.group || "Dashboard",
+                      serviceId: source.serviceId,
+                    },
+                  });
+                }}
+              >
+                Duplicate
+              </ActionRow>
+              <ActionRow
+                ref={deleteButton}
+                icon="trash"
+                danger
+                disabled={pending}
+                aria-expanded={deleting}
+                onClick={() => setDeleting(true)}
+              >
+                Delete
+              </ActionRow>
+            </Group>
+          )}
           {deleting && (
-            <div
-              ref={deleteConfirm}
-              className="studio-delete-confirm"
-              role="alert"
-            >
+            <div ref={deleteConfirm} className="studio-delete-confirm" role="alert">
               <strong>Delete {panel?.title || "this item"}?</strong>
               <p>
                 {kind === "service"
-                  ? "This removes the service and its configured widgets. Other dashboard content is kept."
-                  : "This removes its native configuration and panel. A pre-change snapshot is retained."}
+                  ? "This removes the service and its widgets. The rest of the dashboard stays."
+                  : "A snapshot is kept, so you can restore it from dashboard settings under Snapshots & restore."}
               </p>
               <div className="studio-inline-actions">
-                <button
-                  type="button"
-                  className="studio-button studio-danger"
-                  disabled={pending}
-                  onClick={() => submit("delete")}
-                >
-                  Delete permanently
-                </button>
                 <button
                   ref={keepButton}
                   type="button"
@@ -454,65 +426,25 @@ export default function ContentEditor({
                 >
                   Keep it
                 </button>
+                <button
+                  type="button"
+                  className="studio-button studio-danger"
+                  disabled={pending}
+                  onClick={() => submit("delete")}
+                >
+                  Delete permanently
+                </button>
               </div>
             </div>
           )}
         </fieldset>
       </div>
       <footer className="studio-dialog-footer">
-        {source && (
-          <>
-            <button
-              ref={deleteButton}
-              type="button"
-              className="studio-text-button studio-danger-text"
-              disabled={pending}
-              onClick={() => setDeleting(true)}
-            >
-              <StudioIcon name="trash" size={16} />
-              Delete
-            </button>
-            <button
-              type="button"
-              className="studio-text-button"
-              disabled={pending}
-              onClick={() => {
-                // Duplicate the saved source. Switching away from an edited
-                // source asks before discarding its local changes.
-                const copy = structuredClone(initial);
-                if (kind === "service" || kind === "bookmark") delete copy.id;
-                onDuplicate({
-                  ...selectedEntry,
-                  kind,
-                  type: source.type || kind,
-                  name: selectedEntry?.name || LABEL[kind],
-                  defaults: copy,
-                  seed: {
-                    name: `${source.name || parent?.name || selectedEntry?.name || "Widget"} copy`,
-                    group: source.group || parent?.group || "Dashboard",
-                    serviceId: source.serviceId,
-                  },
-                });
-              }}
-            >
-              Duplicate
-            </button>
-          </>
-        )}
         <span className="studio-footer-spacer" />
-        <button
-          type="button"
-          className="studio-button studio-quiet"
-          disabled={pending}
-          onClick={onCancel}
-        >
+        <button type="button" className="studio-button studio-quiet" disabled={pending} onClick={onCancel}>
           Cancel
         </button>
-        <button
-          type="submit"
-          className="studio-button studio-primary"
-          disabled={disabled}
-        >
+        <button type="submit" className="studio-button studio-primary" disabled={disabled}>
           {pending ? "Saving…" : source ? "Save changes" : "Add to dashboard"}
         </button>
       </footer>

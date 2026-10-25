@@ -6,7 +6,12 @@ import LogoEditor from "./logo-editor";
 
 afterEach(() => vi.unstubAllGlobals());
 
-const reply = (status, value) => ({ ok: status < 400, status, json: async () => value, text: async () => JSON.stringify(value) });
+const reply = (status, value) => ({
+  ok: status < 400,
+  status,
+  json: async () => value,
+  text: async () => JSON.stringify(value),
+});
 
 describe("dashboard logo", () => {
   it("shows the Studio logo until one is uploaded, and saves an upload at once", async () => {

@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCatalog, writeCatalog, inspectExamples, fieldType, documentedFields } from '../scripts/build-catalog.mjs';
+import { buildCatalog, writeCatalog, inspectExamples, fieldType, documentedFields, guideBlocks } from '../scripts/build-catalog.mjs';
 
 // Build from the tracked native fork itself, the same input `npm run catalog`
 // uses, so the shipped catalog cannot silently drift from its source.
@@ -184,4 +184,19 @@ test('a mismatched source version cannot be mislabeled as the catalog pin', asyn
   const source=await mkdtemp(join(tmpdir(),'homepage-catalog-version-'));
   try{await writeFile(join(source,'package.json'),JSON.stringify({version:'99.0.0'}));await assert.rejects(()=>buildCatalog(source),/verified Homepage v2\.6\.0/);}
   finally{await rm(source,{recursive:true,force:true});}
+});
+
+test('setup guidance keeps the page prose and leaves out examples, images and listed fields', () => {
+  const authentik = catalog.service.find(item => item.type === 'authentik');
+  const text = JSON.stringify(authentik.guide);
+  assert.match(text, /Tokens & App passwords/);
+  assert.ok(authentik.guide.some(block => block.type === 'table' && block.rows[0][0] === 'Authentik Version'));
+  // The field picker lists the allowed fields; YAML examples stay in Advanced YAML.
+  assert.doesNotMatch(text, /Allowed fields|type: authentik/);
+  const markdown = '---\ntitle: X\n---\n\nIntro with a [relative link](../../configs/services.md#block-highlighting).\n\n<img src="x.png">\n\nFor version 2:\n\n```yaml\nwidget:\n  type: x\n```\n\n!!! warning\n\n    Not **proxied**.\n\n```bash\nuhttpd -m "<pass>"\n```\n';
+  assert.deepEqual(guideBlocks(markdown, 'https://gethomepage.dev/widgets/services/'), [
+    { type: 'p', text: 'Intro with a [relative link](https://gethomepage.dev/configs/services/#block-highlighting).' },
+    { type: 'note', tone: 'warning', blocks: [{ type: 'p', text: 'Not **proxied**.' }] },
+    { type: 'code', text: 'uhttpd -m "<pass>"' },
+  ]);
 });

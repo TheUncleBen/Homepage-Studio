@@ -57,7 +57,7 @@ describe("Custom API empty mappings hint", () => {
     const save = screen.getByRole("button", { name: /^(Add|Save)/ });
     expect(save).toBeEnabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
     fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
       target: {
         value: "url: http://api.example.test/status\nmappings:\n  - field: status\n    label: Status\n",
@@ -86,7 +86,10 @@ describe("Content picker names", () => {
     render(
       <ContentPicker
         catalog={{
-          info: [{ type: "customapi", name: "Custom API" }, { type: "datetime", name: "Date & Time" }],
+          info: [
+            { type: "customapi", name: "Custom API" },
+            { type: "datetime", name: "Date & Time" },
+          ],
           service: [{ type: "customapi", name: "Custom API" }],
         }}
         state={{ hiddenDiscoveredIds: [] }}

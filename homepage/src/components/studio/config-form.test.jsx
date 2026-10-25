@@ -25,32 +25,18 @@ function Fixture({ fields, initial, onChange = () => {} }) {
 describe("Coherent native option drafts", () => {
   it("synchronizes adjacent settings changes into valid YAML without discarding an incomplete edit", () => {
     const props = { onChange: vi.fn(), fields: [] };
-    const { rerender } = render(
-      <ConfigForm {...props} value={{ title: "Before" }} />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
-    rerender(
-      <ConfigForm
-        {...props}
-        value={{ title: "Before", studioTheme: { mode: "light" } }}
-      />,
-    );
+    const { rerender } = render(<ConfigForm {...props} value={{ title: "Before" }} />);
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
+    rerender(<ConfigForm {...props} value={{ title: "Before", studioTheme: { mode: "light" } }} />);
     expect(screen.getByLabelText("Item configuration YAML")).toHaveValue(
       "title: Before\nstudioTheme:\n  mode: light\n",
     );
     fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
       target: { value: "studioTheme: [" },
     });
-    rerender(
-      <ConfigForm
-        {...props}
-        value={{ title: "Other setting", studioTheme: { mode: "light" } }}
-      />,
-    );
-    expect(screen.getByLabelText("Item configuration YAML")).toHaveValue(
-      "studioTheme: [",
-    );
-    expect(screen.getByRole("button", { name: "Options" })).toBeDisabled();
+    rerender(<ConfigForm {...props} value={{ title: "Other setting", studioTheme: { mode: "light" } }} />);
+    expect(screen.getByLabelText("Item configuration YAML")).toHaveValue("studioTheme: [");
+    expect(screen.getByRole("radio", { name: "Options" })).toBeDisabled();
   });
   it("preserves unknown nested options and literal secret references while editing common fields", () => {
     render(
@@ -87,14 +73,12 @@ describe("Coherent native option drafts", () => {
         ]}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
     fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
       target: { value: "network: eno1\nunknown: [1, false]\n" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Options" }));
-    expect(screen.getByRole("textbox", { name: "Network" })).toHaveValue(
-      "eno1",
-    );
+    fireEvent.click(screen.getByRole("radio", { name: "Options" }));
+    expect(screen.getByRole("textbox", { name: "Network" })).toHaveValue("eno1");
     fireEvent.change(screen.getByRole("textbox", { name: "Network" }), {
       target: { value: "eno2" },
     });
@@ -121,30 +105,37 @@ describe("Coherent native option drafts", () => {
     );
     expect(changed).not.toHaveBeenCalled();
     expect(screen.getByTestId("config-value")).toHaveTextContent("{}");
-    fireEvent.click(screen.getByLabelText("total"));
-    fireEvent.click(screen.getByLabelText("healthy"));
+    // Nothing chosen means the widget's own default fields.
+    expect(screen.getByText("Default")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Total" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Healthy" }));
     expect(JSON.parse(screen.getByTestId("config-value").textContent)).toEqual({
       fields: ["total", "healthy"],
     });
+    expect(screen.getByText("2 shown")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Move Healthy up" }));
+    expect(JSON.parse(screen.getByTestId("config-value").textContent)).toEqual({
+      fields: ["healthy", "total"],
+    });
+    // Turning every field off goes back to the default and writes nothing.
+    fireEvent.click(screen.getByRole("switch", { name: "Total" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Healthy" }));
+    expect(screen.getByTestId("config-value")).toHaveTextContent("{}");
   });
   it("does not replace a valid draft with invalid advanced YAML", () => {
     render(<Fixture initial={{ keep: true }} fields={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
     fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
       target: { value: "keep: [" },
     });
-    expect(screen.getByRole("button", { name: "Options" })).toBeDisabled();
-    expect(screen.getByTestId("config-value")).toHaveTextContent(
-      '{"keep":true}',
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
-    expect(screen.getByLabelText("Item configuration YAML")).toHaveValue(
-      "keep: [",
-    );
+    expect(screen.getByRole("radio", { name: "Options" })).toBeDisabled();
+    expect(screen.getByTestId("config-value")).toHaveTextContent('{"keep":true}');
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
+    expect(screen.getByLabelText("Item configuration YAML")).toHaveValue("keep: [");
   });
   it("reports an advanced YAML error by line and column without echoing the source", () => {
     render(<Fixture initial={{ keep: true }} fields={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
     fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
       target: { value: "keep: true\nsecret: synthetic-private-marker\nlist: [a, b\n" },
     });
@@ -155,47 +146,37 @@ describe("Coherent native option drafts", () => {
   it("retains cyclic YAML as a local invalid draft without exposing it to adjacent controls", () => {
     const changed = vi.fn();
     render(<Fixture initial={{ keep: true }} fields={[]} onChange={changed} />);
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
     const text = "x-extra: &loop\n  self: *loop\n";
     fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
       target: { value: text },
     });
     expect(changed).not.toHaveBeenCalled();
-    expect(
-      screen.getByText(/This item contains cyclic values/),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Options" })).toBeDisabled();
-    expect(screen.getByTestId("config-value")).toHaveTextContent(
-      '{"keep":true}',
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+    expect(screen.getByText(/This item contains cyclic values/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Options" })).toBeDisabled();
+    expect(screen.getByTestId("config-value")).toHaveTextContent('{"keep":true}');
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
     expect(screen.getByLabelText("Item configuration YAML")).toHaveValue(text);
     fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
       target: { value: "keep: false\n" },
     });
     expect(changed).toHaveBeenCalledWith({ keep: false });
-    expect(screen.getByRole("button", { name: "Options" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: "Options" })).toBeEnabled();
   });
   it.each([".inf", "-.inf", ".nan"])(
     "retains non-finite YAML (%s) without coercing it to null, then recovers after correction",
     (number) => {
       const changed = vi.fn();
-      render(
-        <Fixture initial={{ keep: true }} fields={[]} onChange={changed} />,
-      );
-      fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+      render(<Fixture initial={{ keep: true }} fields={[]} onChange={changed} />);
+      fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
       const yaml = screen.getByLabelText("Item configuration YAML");
       const text = `limits:\n  values: [1, ${number}]\n`;
       fireEvent.change(yaml, { target: { value: text } });
       expect(changed).not.toHaveBeenCalled();
-      expect(
-        screen.getByText(/This item contains a non-finite number/),
-      ).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Options" })).toBeDisabled();
-      expect(screen.getByTestId("config-value")).toHaveTextContent(
-        '{"keep":true}',
-      );
-      fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+      expect(screen.getByText(/This item contains a non-finite number/)).toBeInTheDocument();
+      expect(screen.getByRole("radio", { name: "Options" })).toBeDisabled();
+      expect(screen.getByTestId("config-value")).toHaveTextContent('{"keep":true}');
+      fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
       expect(yaml).toHaveValue(text);
       fireEvent.change(yaml, {
         target: { value: 'limits:\n  values: [1, 100]\nlabel: ".inf"\n' },
@@ -205,21 +186,19 @@ describe("Coherent native option drafts", () => {
         limits: { values: [1, 100] },
         label: ".inf",
       });
-      expect(
-        screen.queryByText(/This item contains a non-finite number/),
-      ).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Options" })).toBeEnabled();
+      expect(screen.queryByText(/This item contains a non-finite number/)).not.toBeInTheDocument();
+      expect(screen.getByRole("radio", { name: "Options" })).toBeEnabled();
     },
   );
   it("keeps parser-produced strings that resemble overflowing numbers intact", () => {
     const changed = vi.fn();
     render(<Fixture initial={{}} fields={[]} onChange={changed} />);
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
     fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
       target: { value: 'large: 1e999\nlabel: ".inf"\n' },
     });
     expect(changed).toHaveBeenCalledWith({ large: "1e999", label: ".inf" });
-    expect(screen.getByRole("button", { name: "Options" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: "Options" })).toBeEnabled();
   });
   it("retains a nested JSON overflow in its field until it is corrected instead of propagating a null", () => {
     const changed = vi.fn();
@@ -236,36 +215,28 @@ describe("Coherent native option drafts", () => {
     expect(changed).not.toHaveBeenCalled();
     expect(limits).toHaveValue(overflow);
     expect(limits).toHaveAttribute("aria-invalid", "true");
-    expect(
-      screen.getByText(/This item contains a non-finite number/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Advanced YAML" }),
-    ).toBeDisabled();
-    expect(screen.getByTestId("config-value")).toHaveTextContent(
-      '{"limits":{"values":[1,2]}}',
-    );
+    expect(screen.getByText(/This item contains a non-finite number/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "YAML" })).toBeDisabled();
+    expect(screen.getByTestId("config-value")).toHaveTextContent('{"limits":{"values":[1,2]}}');
     fireEvent.change(limits, { target: { value: '{"values":[1,100]}' } });
     expect(changed).toHaveBeenCalledTimes(1);
     expect(changed).toHaveBeenCalledWith({ limits: { values: [1, 100] } });
     expect(limits).toHaveAttribute("aria-invalid", "false");
-    expect(
-      screen.queryByText(/This item contains a non-finite number/),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Advanced YAML" })).toBeEnabled();
+    expect(screen.queryByText(/This item contains a non-finite number/)).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "YAML" })).toBeEnabled();
   });
 });
 
 describe("Accessible configuration views and field errors", () => {
   it("exposes the selected view and explains a view disabled by the other view's error", () => {
     render(<Fixture initial={{ title: "Before" }} fields={[]} />);
-    const options = screen.getByRole("button", { name: "Options" });
-    const yaml = screen.getByRole("button", { name: "Advanced YAML" });
-    expect(options).toHaveAttribute("aria-pressed", "true");
-    expect(yaml).toHaveAttribute("aria-pressed", "false");
+    const options = screen.getByRole("radio", { name: "Options" });
+    const yaml = screen.getByRole("radio", { name: "YAML" });
+    expect(options).toHaveAttribute("aria-checked", "true");
+    expect(yaml).toHaveAttribute("aria-checked", "false");
     fireEvent.click(yaml);
-    expect(options).toHaveAttribute("aria-pressed", "false");
-    expect(yaml).toHaveAttribute("aria-pressed", "true");
+    expect(options).toHaveAttribute("aria-checked", "false");
+    expect(yaml).toHaveAttribute("aria-checked", "true");
     expect(options).not.toHaveAttribute("aria-describedby");
     fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
       target: { value: "title: [" },
@@ -276,7 +247,7 @@ describe("Accessible configuration views and field errors", () => {
   it("links an option field's error message to its input", () => {
     render(
       <Fixture
-        initial={{}}
+        initial={{ extra: { nested: { a: 1 } } }}
         fields={[
           { key: "url", label: "Service URL", type: "string" },
           { key: "extra", label: "Extra", type: "object" },
@@ -288,7 +259,7 @@ describe("Accessible configuration views and field errors", () => {
     fireEvent.change(extra, { target: { value: "[1]" } });
     expect(extra).toHaveAttribute("aria-invalid", "true");
     expect(extra).toHaveAccessibleDescription("Use a JSON object.");
-    const yaml = screen.getByRole("button", { name: "Advanced YAML" });
+    const yaml = screen.getByRole("radio", { name: "YAML" });
     expect(yaml).toBeDisabled();
     expect(yaml).toHaveAccessibleDescription("Use a JSON object.");
     fireEvent.change(extra, { target: { value: '{"a":1}' } });

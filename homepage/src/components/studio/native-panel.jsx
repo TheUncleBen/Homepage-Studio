@@ -14,29 +14,18 @@ export default memo(function NativePanel({ panel, data }) {
     return (
       <div className="studio-panel-placeholder">
         <strong>Content unavailable</strong>
-        <p>
-          Its native configuration could not be matched. Open Edit to review the
-          source.
-        </p>
+        <p>Its native configuration could not be matched. Open Edit to review the source.</p>
       </div>
     );
   return (
     <ErrorBoundary>
       {resolved.kind === "service" && (
         <ul className="studio-native-list">
-          <ServiceItem
-            service={resolved.service}
-            groupName={resolved.groupName}
-            useEqualHeights
-          />
+          <ServiceItem service={resolved.service} groupName={resolved.groupName} useEqualHeights />
         </ul>
       )}
-      {resolved.kind === "serviceWidget" && (
-        <ServiceWidget widget={resolved.widget} service={resolved.service} />
-      )}
-      {resolved.kind === "informationWidget" && (
-        <InformationWidget widget={resolved.widget} style="clean" />
-      )}
+      {resolved.kind === "serviceWidget" && <ServiceWidget widget={resolved.widget} service={resolved.service} />}
+      {resolved.kind === "informationWidget" && <InformationWidget widget={resolved.widget} style="clean" />}
       {resolved.kind === "bookmark" && (
         <ul className="studio-native-list">
           <BookmarkItem bookmark={resolved.bookmark} />

@@ -34,12 +34,10 @@ describe("Appearance settings save", () => {
         onClose={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
-    fireEvent.change(screen.getByLabelText("Display mode"), {
-      target: { value: "light" },
-    });
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Light" }));
     expect(screen.getByLabelText("Item configuration YAML").value).toContain("mode: light");
-    fireEvent.click(screen.getByLabelText(/Use the platform accent color/));
+    fireEvent.click(screen.getByRole("button", { name: "Graphite", exact: true }));
     fireEvent.change(screen.getByLabelText("Accent color"), {
       target: { value: "#nothex" },
     });

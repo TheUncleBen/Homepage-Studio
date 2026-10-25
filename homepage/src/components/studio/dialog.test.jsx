@@ -43,7 +43,9 @@ describe("Conflict message", () => {
     render(<ErrorMessage arrangement error={conflict} onReload={onReload} />);
     const alert = screen.getByRole("alert");
     expect(alert).not.toHaveTextContent(/copy/i);
-    expect(alert).toHaveTextContent("Your unsaved arrangement is still shown. Reloading the current configuration discards it");
+    expect(alert).toHaveTextContent(
+      "Your unsaved arrangement is still shown. Reloading the current configuration discards it",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Reload current configuration" }));
     expect(onReload).toHaveBeenCalledTimes(1);
   });

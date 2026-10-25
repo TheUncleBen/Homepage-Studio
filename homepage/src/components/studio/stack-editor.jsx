@@ -11,8 +11,7 @@ const POSITION_FIELDS = [
   ["h", "Height", 1, 1000],
 ];
 
-const positionText = (rect) =>
-  Object.fromEntries(POSITION_FIELDS.map(([key]) => [key, String(rect[key])]));
+const positionText = (rect) => Object.fromEntries(POSITION_FIELDS.map(([key]) => [key, String(rect[key])]));
 
 // Validate the raw text of every field without rewriting any of them. Content
 // minimums are not errors here: blur raises a field to its minimum and the
@@ -22,8 +21,7 @@ export function validatePosition(text) {
   for (const [key, label, min, max] of POSITION_FIELDS) {
     const raw = String(text[key] ?? "").trim();
     if (!raw) return { field: key, error: `Enter a ${label.toLowerCase()}.` };
-    if (!/^\d+$/.test(raw))
-      return { field: key, error: `${label} must be a whole number.` };
+    if (!/^\d+$/.test(raw)) return { field: key, error: `${label} must be a whole number.` };
     const value = Number(raw);
     if (value < min || value > max)
       return {
@@ -80,12 +78,7 @@ const PLAYBACK_FIELDS = [
 ];
 
 const playbackText = (playback) =>
-  Object.fromEntries(
-    PLAYBACK_FIELDS.map(({ key, scale }) => [
-      key,
-      String(playback[key] / scale),
-    ]),
-  );
+  Object.fromEntries(PLAYBACK_FIELDS.map(({ key, scale }) => [key, String(playback[key] / scale)]));
 
 const numberPattern = (decimals) => (decimals ? /^\d+(\.\d+)?$/ : /^\d+$/);
 
@@ -110,12 +103,7 @@ export function validatePlaybackField(key, raw) {
   return { value: Math.round(number * field.scale), error: null };
 }
 
-export function PositionFields({
-  rect,
-  onChange,
-  onValidityChange,
-  minimum = { w: 1, h: 1 },
-}) {
+export function PositionFields({ rect, onChange, onValidityChange, minimum = { w: 1, h: 1 } }) {
   const [text, setText] = useState(() => positionText(rect));
   const errorId = useId();
   const { error, field } = validatePosition(text);
@@ -144,15 +132,11 @@ export function PositionFields({
               max={max}
               step={1}
               value={text[key]}
-              onChange={(event) =>
-                update({ ...text, [key]: event.target.value })
-              }
+              onChange={(event) => update({ ...text, [key]: event.target.value })}
               onBlur={() => {
                 const raw = String(text[key]).trim();
                 if (!/^\d+$/.test(raw)) return;
-                const value = String(
-                  Math.max(min, Math.min(max, Number(raw))),
-                );
+                const value = String(Math.max(min, Math.min(max, Number(raw))));
                 if (value !== raw) update({ ...text, [key]: value });
               }}
             />
@@ -171,35 +155,26 @@ export function PositionFields({
 export function PositionEditor({ unit, onApply, onClose, blocked = false }) {
   const [rect, setRect] = useState(unit.rect);
   const [invalid, setInvalid] = useState(null);
-  useEditorDraft(
-    Boolean(invalid) || JSON.stringify(rect) !== JSON.stringify(unit.rect),
-  );
+  useEditorDraft(Boolean(invalid) || JSON.stringify(rect) !== JSON.stringify(unit.rect));
   return (
     <>
       <div className="studio-dialog-body">
         {blocked && (
           <p className="studio-note" role="status">
-            Dashboard data is updating. Your draft is still here. Keep it open,
-            or close this editor to review the dashboard status.
+            Dashboard data is updating. Your draft is still here. Keep it open, or close this editor to review the
+            dashboard status.
           </p>
         )}
         <p className="studio-note">
-          Adjust the shared 12-column layout. Columns and rows start at zero.
-          Nearby panels move down when needed.
+          Adjust the shared 12-column layout. Columns and rows start at zero. Nearby panels move down when needed.
           {unit.minimum && (
             <>
               {" "}
-              This content needs at least {unit.minimum.w} columns and{" "}
-              {unit.minimum.h} rows.
+              This content needs at least {unit.minimum.w} columns and {unit.minimum.h} rows.
             </>
           )}
         </p>
-        <PositionFields
-          rect={rect}
-          onChange={setRect}
-          onValidityChange={setInvalid}
-          minimum={unit.minimum}
-        />
+        <PositionFields rect={rect} onChange={setRect} onValidityChange={setInvalid} minimum={unit.minimum} />
       </div>
       <footer className="studio-dialog-footer">
         <span className="studio-footer-spacer" />
@@ -218,42 +193,19 @@ export function PositionEditor({ unit, onApply, onClose, blocked = false }) {
   );
 }
 
-export default function StackEditor({
-  stack,
-  board,
-  onApply,
-  onClose,
-  onPanelEdit,
-  fitting = false,
-  blocked = false,
-}) {
+export default function StackEditor({ stack, board, onApply, onClose, onPanelEdit, fitting = false, blocked = false }) {
   const [draft, setDraft] = useState(() => structuredClone(stack));
   const [movedOut, setMovedOut] = useState([]);
   const [adding, setAdding] = useState(false);
   const [invalid, setInvalid] = useState(null);
-  const [timingText, setTimingText] = useState(() =>
-    playbackText(stack.playback),
-  );
+  const [timingText, setTimingText] = useState(() => playbackText(stack.playback));
   const timingErrors = Object.fromEntries(
-    PLAYBACK_FIELDS.map(({ key }) => [
-      key,
-      validatePlaybackField(key, timingText[key]).error,
-    ]),
+    PLAYBACK_FIELDS.map(({ key }) => [key, validatePlaybackField(key, timingText[key]).error]),
   );
   const timingInvalid = Object.values(timingErrors).some(Boolean);
-  useEditorDraft(
-    Boolean(invalid) ||
-      timingInvalid ||
-      JSON.stringify(draft) !== JSON.stringify(stack),
-  );
-  const occupied = new Set(
-    board.stacks
-      .filter((item) => item.id !== stack.id)
-      .flatMap((item) => item.panelIds),
-  );
-  const candidates = board.panels.filter(
-    (panel) => !draft.panelIds.includes(panel.id) && !occupied.has(panel.id),
-  );
+  useEditorDraft(Boolean(invalid) || timingInvalid || JSON.stringify(draft) !== JSON.stringify(stack));
+  const occupied = new Set(board.stacks.filter((item) => item.id !== stack.id).flatMap((item) => item.panelIds));
+  const candidates = board.panels.filter((panel) => !draft.panelIds.includes(panel.id) && !occupied.has(panel.id));
   const updatePlayback = (key, value) =>
     setDraft((current) => ({
       ...current,
@@ -313,10 +265,7 @@ export default function StackEditor({
           : board.stacks.filter((item) => item.id !== stack.id),
     };
     if (draft.panelIds.length >= 2) next = moveUnit(next, stack.id, draft.rect);
-    const returned = [
-      ...movedOut,
-      ...(draft.panelIds.length < 2 ? draft.panelIds : []),
-    ];
+    const returned = [...movedOut, ...(draft.panelIds.length < 2 ? draft.panelIds : [])];
     returned.forEach((id) => {
       const panel = next.panels.find((item) => item.id === id);
       if (panel) next = moveUnit(next, id, panel.rect);
@@ -328,19 +277,19 @@ export default function StackEditor({
       <div className="studio-dialog-body">
         {blocked && (
           <p className="studio-note" role="status">
-            Dashboard data is updating. Your draft is still here. Keep it open,
-            or close this editor to review the dashboard status.
+            Dashboard data is updating. Your draft is still here. Keep it open, or close this editor to review the
+            dashboard status.
           </p>
         )}
         <p className="studio-note">
           {fitting && (
             <>
-              These panels have different sizes. Review their shared{" "}
-              {draft.rect.w} × {draft.rect.h} size below before applying.{" "}
+              These panels have different sizes. Review their shared {draft.rect.w} × {draft.rect.h} size below before
+              applying.{" "}
             </>
           )}
-          Every member shares one visible size. Moving a member out keeps its
-          native configuration and previous standalone dimensions.
+          Every member shares one visible size. Moving a member out keeps its native configuration and previous
+          standalone dimensions.
         </p>
         <div className="studio-stack-members">
           {draft.panelIds.map((id, index) => {
@@ -355,8 +304,7 @@ export default function StackEditor({
                     {fitting && (
                       <>
                         {" "}
-                        · {panel?.rect.w} × {panel?.rect.h} → {draft.rect.w} ×{" "}
-                        {draft.rect.h}
+                        · {panel?.rect.w} × {panel?.rect.h} → {draft.rect.w} × {draft.rect.h}
                       </>
                     )}
                   </small>
@@ -404,11 +352,7 @@ export default function StackEditor({
             );
           })}
         </div>
-        <button
-          type="button"
-          className="studio-text-button"
-          onClick={() => setAdding(!adding)}
-        >
+        <button type="button" className="studio-text-button" onClick={() => setAdding(!adding)}>
           <StudioIcon name="plus" size={15} />
           Add existing panel
         </button>
@@ -429,15 +373,12 @@ export default function StackEditor({
               >
                 <strong>{panel.title}</strong>
                 <small>
-                  {panel.rect.w} × {panel.rect.h} → shared {draft.rect.w} ×{" "}
-                  {draft.rect.h}
+                  {panel.rect.w} × {panel.rect.h} → shared {draft.rect.w} × {draft.rect.h}
                 </small>
               </button>
             ))}
             {!candidates.length && (
-              <p className="studio-muted">
-                Add a widget to the board first, then include it here.
-              </p>
+              <p className="studio-muted">Add a widget to the board first, then include it here.</p>
             )}
           </div>
         )}
@@ -447,9 +388,7 @@ export default function StackEditor({
           minimum={unitMinimum(
             {
               ...board,
-              stacks: board.stacks.map((item) =>
-                item.id === stack.id ? draft : item,
-              ),
+              stacks: board.stacks.map((item) => (item.id === stack.id ? draft : item)),
             },
             stack.id,
           )}
@@ -476,9 +415,7 @@ export default function StackEditor({
             <select
               id="studio-stack-transition"
               value={draft.playback.transition}
-              onChange={(event) =>
-                updatePlayback("transition", event.target.value)
-              }
+              onChange={(event) => updatePlayback("transition", event.target.value)}
             >
               {[
                 ["horizontal", "Horizontal slide"],
@@ -503,13 +440,10 @@ export default function StackEditor({
           </label>
         </div>
         <p className="studio-note">
-          Manual switching while playing waits{" "}
-          {Math.max(draft.playback.intervalMs, draft.playback.manualHoldMs) /
-            1000}{" "}
-          seconds, then resumes the normal timing. Paused stays paused. Hidden
-          tabs, off-screen stacks, editing and focus inside native content
-          temporarily stop the timer. Reduced motion suppresses automatic start
-          and animation; explicit Play is available.
+          Manual switching while playing waits {Math.max(draft.playback.intervalMs, draft.playback.manualHoldMs) / 1000}{" "}
+          seconds, then resumes the normal timing. Paused stays paused. Hidden tabs, off-screen stacks, editing and
+          focus inside native content temporarily stop the timer. Reduced motion suppresses automatic start and
+          animation; explicit Play is available.
         </p>
       </div>
       <footer className="studio-dialog-footer">

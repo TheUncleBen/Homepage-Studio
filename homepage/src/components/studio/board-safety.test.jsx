@@ -200,7 +200,8 @@ async function mountBoard({
   // The editor page opens straight into editing, the settings page straight
   // into the settings dialog.
   if (!firstBoardRead) {
-    if (mode === "edit") await waitFor(() => expect(screen.getByRole("button", { name: "Done", exact: true })).toBeEnabled());
+    if (mode === "edit")
+      await waitFor(() => expect(screen.getByRole("button", { name: "Done", exact: true })).toBeEnabled());
     else if (mode === "settings") await screen.findByLabelText(/Dashboard title/);
     else await waitFor(() => expect(screen.getByRole("button", { name: "Quick Launch" })).toBeEnabled());
   }
@@ -243,12 +244,21 @@ afterEach(() => vi.unstubAllGlobals());
 describe("Native board save and draft safety", () => {
   it("a live dashboard shows only the dashboard: no edit controls, and holding or right-clicking never starts editing", async () => {
     const initial = structuredClone(initialState);
-    initial.board.stacks = [{
-      id: "live-stack",
-      panelIds: ["clock", "search"],
-      rect: { x: 0, y: 0, w: 4, h: 3 },
-      playback: { mode: "manual", intervalMs: 2000, manualHoldMs: 30000, loop: true, transition: "horizontal", transitionDurationMs: 250 },
-    }];
+    initial.board.stacks = [
+      {
+        id: "live-stack",
+        panelIds: ["clock", "search"],
+        rect: { x: 0, y: 0, w: 4, h: 3 },
+        playback: {
+          mode: "manual",
+          intervalMs: 2000,
+          manualHoldMs: 30000,
+          loop: true,
+          transition: "horizontal",
+          transitionDurationMs: 250,
+        },
+      },
+    ];
     await mountBoard({ mode: "live", initial });
     for (const name of ["Edit dashboard", "Add widget", "Dashboard settings", "Dashboard appearance", "Done", "Cancel"])
       expect(screen.queryByRole("button", { name, exact: true })).not.toBeInTheDocument();
@@ -256,7 +266,14 @@ describe("Native board save and draft safety", () => {
     expect(screen.queryByText("Your space, arranged your way")).not.toBeInTheDocument();
     const body = screen.getByTestId("native-value-clock");
     const touch = (type) =>
-      Object.assign(new Event(type, { bubbles: true }), { pointerId: 1, pointerType: "touch", button: 0, isPrimary: true, clientX: 100, clientY: 100 });
+      Object.assign(new Event(type, { bubbles: true }), {
+        pointerId: 1,
+        pointerType: "touch",
+        button: 0,
+        isPrimary: true,
+        clientX: 100,
+        clientY: 100,
+      });
     vi.useFakeTimers();
     try {
       fireEvent(body, touch("pointerdown"));
@@ -614,7 +631,7 @@ describe("Native board save and draft safety", () => {
     expect(title).toHaveFocus();
     fireEvent.change(title, { target: { value: "My dashboard" } });
     const save = editor.getByRole("button", { name: "Save settings" });
-    fireEvent.click(editor.getByRole("button", { name: "Advanced YAML" }));
+    fireEvent.click(editor.getByRole("radio", { name: "YAML" }));
     const yaml = editor.getByLabelText("Item configuration YAML");
     fireEvent.change(yaml, { target: { value: "title: [unfinished" } });
     await waitFor(() => expect(save).toBeDisabled());
