@@ -290,7 +290,6 @@ dialog::backdrop { background: rgb(0 0 0 / 0.6); }
   .list-item > button, .list-item > .button { align-self: center; }
   .list-item > .row select { flex: 1 1 100%; }
   .hide-narrow { display: none; }
-  /* Two rows on phones: brand and Sign out, then the navigation. */
   /* People become stacked rows instead of a wide table. */
   .people-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .people-table tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 12px; border-bottom: 1px solid var(--line); }

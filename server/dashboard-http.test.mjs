@@ -351,7 +351,7 @@ test('browser navigation to an unavailable dashboard gets an accessible page; AP
     assert.match(page.text, /<html lang="en">/);
     assert.match(page.text, /<h1>This dashboard isn&#39;t available<\/h1>/);
     assert.match(page.text, /Error 404/);
-    assert.match(page.text, /<a href="\/">Open the main dashboard<\/a>/);
+    assert.match(page.text, /<a href="\/__studio\/dashboards">Open Dashboards<\/a>/);
     assert.doesNotMatch(page.text, /<script|family|garage|no-such|alert/i, target);
   }
   const head = await f.request('/garage', { method: 'HEAD', headers: html });

@@ -685,6 +685,7 @@
 
   async function accountPage() {
     let view = await api('account');
+    const { dashboards: shared } = await api('dashboards');
     const message = notice();
     if (params.has('linked')) say(message, `Your ${view.oidc?.name ?? 'single sign-on'} account is linked.`, 'ok');
     if (params.has('confirmed')) say(message, 'Confirmed. You can close this tab and go back to your change.', 'ok');
@@ -700,6 +701,7 @@
       if (view.recovery) parts.push(h('div', { class: 'notice warn', text: 'You signed in with a command-line recovery link. This session ends when you close the browser. Add a passkey or authenticator app now if you lost yours.' }));
       if (local) parts.push(freshBanner(view.fresh));
       parts.push(profileSection(user));
+      parts.push(defaultDashboardSection(user));
       if (local) parts.push(securitySection(user, factors));
       if (view.oidc) parts.push(linkSection(user));
       parts.push(sessionsSection());
@@ -720,6 +722,18 @@
         h('dl', { class: 'facts small' }, h('dt', { class: 'muted', text: 'Username' }), h('dd', { class: 'mono', text: user.username }), h('dt', { class: 'muted', text: 'Role' }), h('dd', { text: user.role === 'admin' ? 'Administrator' : 'Member' })),
         h('form', { class: 'stack', onsubmit: event => { event.preventDefault(); return busy(save, 'Saving…', () => update(() => api('account/profile', { displayName: name.value, ...(managed ? {} : { email: email.value }) }), box, 'Profile saved.')); } },
           field('Display name', name), field('Email', email, user.emailFromProvider ? `Follows your ${view.oidc?.name ?? 'single sign-on'} account. Change it there; Studio picks it up at your next sign-in with it.` : view.email ? 'Changing it needs a recent confirmation.' : 'Email is not set up on this server, so nothing is sent yet.'), box, h('div', { class: 'actions' }, save)));
+    }
+    // The dashboard the bare address opens for this person.
+    function defaultDashboardSection(user) {
+      const box = notice();
+      const admin = user.role === 'admin';
+      const select = h('select', {},
+        h('option', { value: '', text: admin ? 'None: open the Dashboards page' : 'None: use my group’s default' }),
+        shared.map(entry => h('option', { value: entry.id, text: entry.name, selected: entry.id === user.defaultDashboardId })));
+      const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
+      return section('Default dashboard', admin ? 'The bare address opens the Dashboards page unless you choose a dashboard here.' : 'The dashboard the bare address opens for you. Without a choice, your group’s default opens, or the Dashboards page.',
+        h('form', { class: 'stack', onsubmit: event => { event.preventDefault(); return busy(save, 'Saving…', () => update(() => api('account/default-dashboard', { dashboardId: select.value || null }), box, 'Default dashboard saved.')); } },
+          field('Opens at ' + location.host, select), box, h('div', { class: 'actions' }, save)));
     }
     function securitySection(user, factors) {
       const box = notice();
@@ -1028,6 +1042,7 @@
         const email = h('input', { type: 'email', maxlength: 254, value: user.email ?? '', disabled: user.source === 'oidc' });
         const role = h('select', { disabled: roleFromProvider }, h('option', { value: 'member', text: 'Member', selected: user.manualRole !== 'admin' }), h('option', { value: 'admin', text: 'Administrator', selected: user.manualRole === 'admin' }));
         const policy = h('select', {}, h('option', { value: '', text: 'From groups, or the default' }), view.policies.map(item => h('option', { value: item.id, text: item.name, selected: user.policyId === item.id })));
+        const defaultDashboard = dashboardSelect(user.defaultDashboardId, user.role === 'admin' ? 'None: the Dashboards page' : 'None: their group’s default');
         const localGroups = view.groups.filter(group => group.kind === 'local');
         const groupBoxes = localGroups.map(group => ({ group, input: h('input', { type: 'checkbox', checked: user.groupIds.includes(group.id) }) }));
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
@@ -1060,7 +1075,7 @@
         actions.push(remove);
         return h('form', { class: 'stack', onsubmit: async event => {
           event.preventDefault(); say(box, '');
-          const change = { id: user.id, displayName: displayName.value, policyId: policy.value || null, groupIds: groupBoxes.filter(item => item.input.checked).map(item => item.group.id) };
+          const change = { id: user.id, displayName: displayName.value, policyId: policy.value || null, defaultDashboardId: defaultDashboard.value || null, groupIds: groupBoxes.filter(item => item.input.checked).map(item => item.group.id) };
           if (user.source !== 'oidc') change.email = email.value || null;
           if (!roleFromProvider) change.role = role.value;
           await busy(save, 'Saving…', async () => { if (await act(() => api('admin/update', change), box, 'Saved.')) close(); });
@@ -1073,6 +1088,7 @@
           localGroups.length ? h('fieldset', {}, h('legend', { text: 'Groups' }), groupBoxes.map(item => check(item.group.name, item.input))) : null,
           user.oidcGroups.length ? h('p', { class: 'small muted', text: `Provider groups: ${user.oidcGroups.join(', ')}` }) : null,
           field('Session policy', policy, 'A personal policy wins. Otherwise the strictest of their groups’ policies applies, or the default.'),
+          field('Default dashboard', defaultDashboard, 'What the bare address opens for them. They can change it in My account. It only opens if they can see that dashboard.'),
           box,
           h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save),
           h('details', { class: 'more-actions' }, h('summary', { text: 'More actions' }), h('div', { class: 'action-grid' }, actions)));
@@ -1080,28 +1096,52 @@
     }
 
     // Groups
+    function dashboardSelect(selected, noneLabel) {
+      return h('select', {}, h('option', { value: '', text: noneLabel }),
+        view.dashboards.filter(entry => !entry.archived).map(entry => h('option', { value: entry.id, text: entry.name, selected: entry.id === selected })));
+    }
+    function groupDialog(group) {
+      openDialog(group.name, close => {
+        const box = notice();
+        const name = h('input', { type: 'text', maxlength: 60, value: group.name, required: true, disabled: group.kind === 'idp' });
+        const policy = h('select', {}, h('option', { value: '', text: 'No group policy' }), view.policies.map(item => h('option', { value: item.id, text: item.name, selected: group.policyId === item.id })));
+        const defaultDashboard = dashboardSelect(group.defaultDashboardId, 'None');
+        const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
+        const remove = h('button', { type: 'button', class: 'danger', text: 'Delete group' });
+        remove.addEventListener('click', () => { close(); confirmDialog(`Delete ${group.name}?`, group.kind === 'idp' ? 'It is added again if someone signs in with this provider group or it is listed in Sign-in settings. Dashboard access given to it is removed.' : 'Members leave the group and dashboard access given to it is removed.', 'Delete', () => act(() => api('admin/group', { action: 'delete', id: group.id }), null, 'Group deleted.')); });
+        return h('form', { class: 'stack', onsubmit: async event => {
+          event.preventDefault(); say(box, '');
+          const change = { action: 'update', id: group.id, policyId: policy.value || null, defaultDashboardId: defaultDashboard.value || null, ...(group.kind === 'local' ? { name: name.value } : {}) };
+          await busy(save, 'Saving…', async () => { if (await act(() => api('admin/group', change), box, 'Group saved.')) close(); });
+        } },
+          field('Name', name, group.kind === 'idp' ? `Named by ${view.oidc?.name ?? 'the identity provider'}.` : undefined),
+          field('Default dashboard', defaultDashboard, 'What the bare address opens for members of this group, if they can see it and haven’t chosen their own.'),
+          field('Session policy', policy),
+          box,
+          h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save),
+          h('details', { class: 'more-actions' }, h('summary', { text: 'More actions' }), h('div', { class: 'action-grid' }, remove)));
+      });
+    }
     function groupsTab() {
       const box = notice();
       const name = h('input', { type: 'text', maxlength: 60, required: true, placeholder: 'For example: Family' });
       const add = h('button', { type: 'submit', class: 'primary', text: 'Create group' });
-      const list = view.groups.slice().sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name)).map(group => {
-        const policy = h('select', { 'aria-label': `Session policy for ${group.name}` }, h('option', { value: '', text: 'No group policy' }), view.policies.map(item => h('option', { value: item.id, text: item.name, selected: group.policyId === item.id })));
-        policy.addEventListener('change', () => act(() => api('admin/group', { action: 'update', id: group.id, policyId: policy.value || null }), box, 'Group policy saved.'));
-        const controls = [policy];
-        if (group.kind === 'local') {
-          const rename = h('button', { type: 'button', class: 'small-button', text: 'Rename' });
-          rename.addEventListener('click', () => openDialog('Rename group', close => {
-            const input = h('input', { type: 'text', maxlength: 60, value: group.name, required: true });
-            const local = notice();
-            const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
-            return h('form', { class: 'stack', onsubmit: async event => { event.preventDefault(); await busy(save, 'Saving…', async () => { if (await act(() => api('admin/group', { action: 'update', id: group.id, name: input.value }), local)) close(); }); } }, field('Name', input), local, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
-          }));
-          controls.push(rename);
-        }
-        const remove = h('button', { type: 'button', class: 'small-button', text: 'Delete' });
-        remove.addEventListener('click', () => confirmDialog(`Delete ${group.name}?`, group.kind === 'idp' ? 'It is added again if someone signs in with this provider group or it is listed in Sign-in settings. Dashboard access given to it is removed.' : 'Members leave the group and dashboard access given to it is removed.', 'Delete', () => act(() => api('admin/group', { action: 'delete', id: group.id }), null, 'Group deleted.')));
-        controls.push(remove);
-        return h('li', { class: 'list-item' }, h('div', {}, h('strong', {}, group.name, ' ', h('span', { class: 'badge', text: group.kind === 'idp' ? (view.oidc?.name ?? 'Provider') : 'Local' })), h('span', { class: 'small muted', text: `${group.memberCount} ${group.memberCount === 1 ? 'person' : 'people'}` })), h('div', { class: 'row' }, controls));
+      // Listed in their order: for someone in several groups, the first group
+      // with a default dashboard decides where the bare address opens.
+      const list = view.groups.map((group, index) => {
+        const dashboard = view.dashboards.find(entry => entry.id === group.defaultDashboardId && !entry.archived);
+        const policyName = view.policies.find(item => item.id === group.policyId)?.name;
+        const move = (direction, label) => {
+          const button = h('button', { type: 'button', class: 'small-button', text: label, 'aria-label': `${label}: ${group.name}`, disabled: direction === 'up' ? index === 0 : index === view.groups.length - 1 });
+          button.addEventListener('click', () => act(() => api('admin/group', { action: 'move', id: group.id, direction }), box, 'Group order saved.'));
+          return button;
+        };
+        const manage = h('button', { type: 'button', class: 'small-button', text: 'Manage' });
+        manage.addEventListener('click', () => groupDialog(group));
+        return h('li', { class: 'list-item' },
+          h('div', {}, h('strong', {}, `${index + 1}. ${group.name}`, ' ', h('span', { class: 'badge', text: group.kind === 'idp' ? (view.oidc?.name ?? 'Provider') : 'Local' })),
+            h('span', { class: 'small muted', text: [`${group.memberCount} ${group.memberCount === 1 ? 'person' : 'people'}`, `default dashboard: ${dashboard?.name ?? 'none'}`, policyName ? `policy: ${policyName}` : null].filter(Boolean).join(' · ') })),
+          h('div', { class: 'row' }, move('up', 'Move up'), move('down', 'Move down'), manage));
       });
       // A provider group can be added by its exact name, so dashboards can be
       // shared with it before anyone in it signs in.
@@ -1112,7 +1152,7 @@
         providerForm = h('form', { class: 'row', onsubmit: async event => { event.preventDefault(); await busy(providerAdd, 'Adding…', async () => { if (await act(() => api('admin/group', { action: 'create', kind: 'idp', name: providerName.value }), box, `${view.oidc.name} group added.`)) providerName.value = ''; }); } },
           h('label', { class: 'visually-hidden', for: 'new-provider-group', text: `${view.oidc.name} group name, exactly as ${view.oidc.name} sends it` }), Object.assign(providerName, { id: 'new-provider-group', className: 'narrow-input' }), providerAdd);
       }
-      return section('Groups', `Share dashboards and set session policies for several people at once. ${view.oidc ? `${view.oidc.name} groups appear here when someone in them signs in, and groups listed in Sign-in settings are added for you. To share a dashboard before anyone in a ${view.oidc.name} group has signed in, add the group by its exact name.` : ''}`,
+      return section('Groups', `Share dashboards, set a default dashboard and set session policies for several people at once. Someone in several groups gets the default dashboard of the first one listed that has one, unless they choose their own. ${view.oidc ? `${view.oidc.name} groups appear here when someone in them signs in, and groups listed in Sign-in settings are added for you. To share a dashboard before anyone in a ${view.oidc.name} group has signed in, add the group by its exact name.` : ''}`,
         h('form', { class: 'row', onsubmit: async event => { event.preventDefault(); await busy(add, 'Creating…', async () => { if (await act(() => api('admin/group', { action: 'create', name: name.value }), box, 'Group created.')) name.value = ''; }); } }, h('label', { class: 'visually-hidden', for: 'new-group', text: 'New group name' }), Object.assign(name, { id: 'new-group', className: 'narrow-input' }), add),
         providerForm,
         box, list.length ? h('ul', { class: 'list' }, list) : h('p', { class: 'muted', text: 'No groups yet.' }));
@@ -1245,8 +1285,8 @@
           copyRow('Redirect URI (set this in the provider)', view.oidc.redirectUri),
           copyRow('Back-channel logout URI (optional)', view.oidc.backchannelLogoutUri),
           copyBox,
-          view.oidc.lastSignIn && !view.oidc.lastSignIn.refreshToken ? h('p', { class: 'notice warn', role: 'status', text: `The last ${view.oidc.name} sign-in didn't return a refresh token, so those sessions end after ${view.oidc.refreshMinutes} minutes. Request the offline_access scope and allow it in the provider. In Authentik, add the offline_access scope mapping to the provider's selected scopes.` }) : null,
-          view.oidc.lastSignIn?.emailUnverified ? h('p', { class: 'notice warn', role: 'status', text: `The last ${view.oidc.name} sign-in sent an email address that isn't marked as verified, so Studio didn't use it. In Authentik, give the provider an email scope mapping that sets email_verified to true; see docs/AUTHENTICATION.md.` }) : null,
+          view.oidc.lastSignIn && !view.oidc.lastSignIn.refreshToken ? h('p', { class: 'notice warn', role: 'status', text: `The last ${view.oidc.name} sign-in didn't return a refresh token, so those sessions end after ${view.oidc.refreshMinutes} minutes. Request the offline_access scope and allow it in the provider (in Authentik, for example, add the offline_access scope mapping to the provider's selected scopes).` }) : null,
+          view.oidc.lastSignIn?.emailUnverified ? h('p', { class: 'notice warn', role: 'status', text: `The last ${view.oidc.name} sign-in sent an email address that isn't marked as verified, so Studio didn't use it. Have the provider mark verified addresses with email_verified (in Authentik, an email scope mapping that sets it to true); see docs/AUTHENTICATION.md.` }) : null,
           h('form', { class: 'stack', onsubmit: async event => {
             event.preventDefault();
             await busy(save, 'Saving…', () => act(() => api('admin/settings', { oidc: { adminGroups: toList(adminGroups.value), allowedGroups: toList(allowedGroups.value), autoCreate: autoCreate.checked } }), box, 'Single sign-on settings saved.'));
@@ -1255,7 +1295,7 @@
             field('Allowed groups', allowedGroups, `One per line. Leave empty to allow everyone the provider signs in. Administrator groups are always allowed.${locked.allowedGroups ? fromDeployment('STUDIO_OIDC_ALLOWED_GROUPS') : ''}`, locked.allowedGroups ? 'Set by the deployment' : null),
             check(`Create a Studio account the first time someone signs in with ${view.oidc.name}`, autoCreate, `Only for people in an allowed or administrator group. While both lists are empty, nobody new is created. Others need an invitation, then link their ${view.oidc.name} account from their account page.`),
             h('div', { class: 'actions' }, save))));
-      } else parts.push(section('Single sign-on', 'Not configured. Set STUDIO_OIDC_ISSUER, STUDIO_OIDC_CLIENT_ID and STUDIO_OIDC_CLIENT_SECRET_FILE to sign in with Authentik or another OpenID Connect provider. See docs/AUTHENTICATION.md.'));
+      } else parts.push(section('Single sign-on', 'Not configured. Set STUDIO_OIDC_ISSUER, STUDIO_OIDC_CLIENT_ID and STUDIO_OIDC_CLIENT_SECRET_FILE to sign in with any OpenID Connect provider. See docs/AUTHENTICATION.md.'));
       return [box, ...parts];
     }
 

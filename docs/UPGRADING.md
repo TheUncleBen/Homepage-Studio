@@ -9,6 +9,28 @@ new template.
 your environment values, your Docker secrets and network, your proxy. **What you take new each time:** the
 bundle's `portainer-swarm.yml` or `portainer-compose.yml`, used unchanged.
 
+## Updating to the version with the Dashboards page
+
+Nothing to do before you update. What changes:
+
+- **The main dashboard moves to `/home`** (or `/home-2` if `home` is taken)
+  the first time the new version starts. Its widgets, layout and snapshots
+  stay; update any bookmarks that pointed at the bare address and expected
+  the main dashboard.
+- **The bare address** opens the person's default dashboard, their group's,
+  or the new **Dashboards** page ([USING.md](USING.md#the-dashboards-page)).
+  Administrators get the Dashboards page unless they choose a default.
+- **Editing and settings** have their own addresses,
+  `/<slug>/__studio/edit` and `/<slug>/__studio/settings`. The live dashboard
+  no longer has edit controls, and holding a panel no longer starts editing.
+- **The single sign-on button** now says **Single sign-on** unless
+  `STUDIO_OIDC_NAME` is set. To keep the old label, set
+  `STUDIO_OIDC_NAME=Authentik` (or your provider's name).
+- **Email** has a separate sender address and name,
+  `STUDIO_SMTP_FROM_ADDRESS` and `STUDIO_SMTP_FROM_NAME`
+  ([AUTHENTICATION.md](AUTHENTICATION.md#email)). The older `STUDIO_SMTP_FROM`
+  still works.
+
 ## Updating to the version with Docker secrets and no published port
 
 From this version the templates read Studio's keys and passwords from Docker
@@ -38,7 +60,7 @@ paste the new template. Your volumes, dashboards and accounts stay.
 4. **The update.** Paste the new template as in the update steps below.
 5. **The proxy.** Point the proxy host at `homepage_studio:3000` (your stack
    name, underscore, `studio`) instead of the node's address and port
-   ([DEPLOY.md step 8](DEPLOY.md#8-nginx-proxy-manager)). Studio is
+   ([DEPLOY.md step 8](DEPLOY.md#8-reverse-proxy)). Studio is
    unreachable through the proxy between steps 4 and 5.
 
 If the new task doesn't start, `docker service ps --no-trunc homepage_studio`

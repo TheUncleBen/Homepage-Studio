@@ -129,6 +129,7 @@ export default function SettingsEditor({
           <fieldset disabled={!valid} style={editorFieldsetStyle}>
             <AppearanceEditor settings={draft} onChange={setDraft} onValidity={setAppearanceValid} />
           </fieldset>
+          <h3 className="studio-settings-heading">Homepage settings</h3>
           <ConfigForm
             value={draft}
             onChange={setDraft}

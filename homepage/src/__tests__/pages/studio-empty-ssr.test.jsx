@@ -71,10 +71,14 @@ async function renderPage() {
 
 function expectServerControlsUnavailable(html) {
   const buttons = html.match(/<button\b[^>]*>/g) || [];
-  for (const label of ["Dashboard settings", "Quick Launch"])
+  expect(
+    buttons.find((button) => button.includes('aria-label="Quick Launch"')),
+  ).toContain('disabled=""');
+  // The live dashboard carries no editing or settings controls.
+  for (const label of ["Dashboard settings", "Edit dashboard"])
     expect(
       buttons.find((button) => button.includes(`aria-label="${label}"`)),
-    ).toContain('disabled=""');
+    ).toBeUndefined();
   const quickLaunch = html.match(
     /<div\b[^>]*class="studio-quicklaunch"[^>]*>/,
   )?.[0];

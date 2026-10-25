@@ -8,8 +8,11 @@ import StudioIcon from "./icons";
 export const DASHBOARDS_PAGE = "/__studio/dashboards";
 const ACCOUNT_PAGE = "/__studio/account";
 const ADMIN_PAGE = "/__studio/admin";
+// Studio pages, not pages of this Next.js app, so they load in full.
+const SIGNED_OUT_PAGE = "/__studio/auth/sign-in?signedOut=1";
 
 async function signOut() {
+  let next = SIGNED_OUT_PAGE;
   try {
     const response = await fetch("/__studio/auth/sign-out", {
       method: "POST",
@@ -18,10 +21,12 @@ async function signOut() {
       body: "{}",
     });
     const result = await response.json().catch(() => ({}));
-    window.location.assign(result.logoutUrl || "/__studio/auth/sign-in?signedOut=1");
+    // An identity provider sign-out page ends that session too.
+    if (result.logoutUrl) next = result.logoutUrl;
   } catch {
-    window.location.assign("/__studio/auth/sign-in?signedOut=1");
+    // Signed out locally or not, the sign-in page shows where things stand.
   }
+  window.location.assign(next);
 }
 
 export default function StudioTopBar({ title, access, onSearch, searchDisabled = false }) {
@@ -61,7 +66,8 @@ export default function StudioTopBar({ title, access, onSearch, searchDisabled =
           <button
             type="button"
             className="studio-icon-button"
-            aria-label="Quick Launch (Ctrl or ⌘ K)"
+            aria-label="Quick Launch"
+            aria-keyshortcuts="Control+K Meta+K"
             title="Quick Launch (Ctrl / ⌘ K)"
             disabled={searchDisabled}
             onClick={onSearch}

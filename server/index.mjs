@@ -121,8 +121,8 @@ a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
 <main>
 <p class="status">Error ${code}</p>
 <h1>This dashboard isn&#39;t available</h1>
-<p>Its address may have changed, or it may have been archived. Open the main dashboard, then choose the dashboard you need from its dashboard list.</p>
-<a href="/">Open the main dashboard</a>
+<p>Its address may have changed, or it may have been archived. Choose the dashboard you need on the Dashboards page.</p>
+<a href="/__studio/dashboards">Open Dashboards</a>
 </main>
 </body>
 </html>

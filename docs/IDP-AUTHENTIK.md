@@ -207,11 +207,13 @@ with `off` in that secret, Swarm can't edit a secret in place, so:
 ```env
 STUDIO_OIDC_ISSUER=https://authentik.example.test/application/o/homepage-studio/
 STUDIO_OIDC_CLIENT_ID=<client ID>
+STUDIO_OIDC_NAME=Authentik
 ```
 
-The rest can stay at their defaults: `STUDIO_OIDC_NAME` (the name on the
-sign-in button, `Authentik`), `STUDIO_OIDC_SCOPES`, `STUDIO_OIDC_GROUPS_CLAIM`
-(`groups`) and `STUDIO_OIDC_REFRESH_MINUTES` (`15`).
+`STUDIO_OIDC_NAME` is the name on the sign-in button and account pages
+(default `Single sign-on`). The rest can stay at their defaults:
+`STUDIO_OIDC_SCOPES`, `STUDIO_OIDC_GROUPS_CLAIM` (`groups`) and
+`STUDIO_OIDC_REFRESH_MINUTES` (`15`).
 
 If the issuer or client ID is set while the secret still says `off`, Studio
 doesn't start, and its log says so.

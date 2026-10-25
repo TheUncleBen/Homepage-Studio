@@ -56,7 +56,7 @@ own address on the same host (`/family`, `/admin`, ...).
 
 The main guide assumes a Docker Swarm managed with Portainer, Nginx Proxy
 Manager in front for HTTPS, and Docker secrets for every key and password.
-Studio's own sign-in is built in; Authentik single sign-on is optional. Every
+Studio's own sign-in is built in; single sign-on through any OpenID Connect identity provider is optional. Every
 piece can be swapped, and the guide links to the alternatives.
 
 1. Get a **candidate bundle** or an **official release** and check it
@@ -64,8 +64,8 @@ piece can be swapped, and the guide links to the alternatives.
    templates with the image already pinned by digest. There is no `latest`
    tag to pull.
 2. Work through [docs/DEPLOY.md](docs/DEPLOY.md) top to bottom: the shared
-   proxy network, storage, the optional Authentik provider, three Docker
-   secrets, the environment file, the Portainer stack, the NPM proxy host and
+   proxy network, storage, the optional identity provider, three Docker
+   secrets, the environment file, the Portainer stack, the reverse proxy and
    the first sign-in.
    - One machine without Swarm: [docs/DEPLOY-COMPOSE.md](docs/DEPLOY-COMPOSE.md).
    - Another proxy (Caddy, Traefik, nginx): [docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md).
@@ -89,11 +89,11 @@ piece can be swapped, and the guide links to the alternatives.
 | --- | --- | --- |
 | [USING.md](docs/USING.md) | Editors | Adding and arranging panels, touch and keyboard, stacks and slideshows, the title picker, configuration files, snapshots, import/export, multiple dashboards |
 | [APPEARANCE.md](docs/APPEARANCE.md) | Editors | Dark, light or device mode, accent colors, custom CSS variables, copying a design to another deployment |
-| [DEPLOY.md](docs/DEPLOY.md) | Operators | The main guide, top to bottom: Docker Swarm with Portainer (or `docker stack deploy`), Docker secrets, Nginx Proxy Manager, optional Authentik, plus every environment variable |
+| [DEPLOY.md](docs/DEPLOY.md) | Operators | The main guide, top to bottom: Docker Swarm with Portainer (or `docker stack deploy`), Docker secrets, a reverse proxy, an optional identity provider (Authentik and Nginx Proxy Manager as worked examples), plus every environment variable |
 | [DEPLOY-COMPOSE.md](docs/DEPLOY-COMPOSE.md) | Operators | The same on one machine with Docker Compose |
-| [IDP-AUTHENTIK.md](docs/IDP-AUTHENTIK.md) | Operators | Single sign-on with Authentik: every provider field, the Studio settings, troubleshooting |
+| [IDP-AUTHENTIK.md](docs/IDP-AUTHENTIK.md) | Operators | Worked example: single sign-on with Authentik, every provider field, the Studio settings, troubleshooting |
 | [IDP-OTHERS.md](docs/IDP-OTHERS.md) | Operators | Single sign-on with Keycloak, Authelia and other OpenID Connect providers |
-| [AUTHENTICATION.md](docs/AUTHENTICATION.md) | Operators, administrators | Sign-in, the first administrator, inviting people, sharing dashboards, session policies, Authentik and other single sign-on, email, recovery |
+| [AUTHENTICATION.md](docs/AUTHENTICATION.md) | Operators, administrators | Sign-in, the first administrator, inviting people, sharing dashboards, session policies, single sign-on with any OpenID Connect provider, email, recovery |
 | [REVERSE-PROXY.md](docs/REVERSE-PROXY.md) | Operators | What any proxy must pass through, Caddy, Traefik and nginx examples, a published port instead of the network, request limits, framing |
 | [OPERATIONS.md](docs/OPERATIONS.md) | Operators | Logs and health, backups and restore, snapshots and secrets, worker limits, integration secrets |
 | [UPGRADING.md](docs/UPGRADING.md) | Operators | Moving to a new version and going back |
@@ -108,12 +108,16 @@ piece can be swapped, and the guide links to the alternatives.
 
 ## Features
 
-- **Edit on the page.** **Edit dashboard** (or press and hold empty space)
-  turns on edit mode. Press and hold a panel (its title bar with a mouse,
-  anywhere on it with a finger) to pick it up and drag it without letting go;
-  in edit mode, use its move handle, its resize corner or the keyboard. The board
-  snaps to a 12-column grid and never lets panels overlap. **Done** saves the
-  arrangement; **Cancel** asks before it throws away unsaved moves.
+- **A Dashboards page and clean live dashboards.** The Dashboards page lists
+  what each person can open, with **Open**, **Edit** and **Settings**. A live
+  dashboard shows widgets only; arranging happens in its editor
+  (`/<slug>/__studio/edit`) and settings in `/<slug>/__studio/settings`. The
+  bare address opens your default dashboard, your group's, or the Dashboards
+  page. One top bar is the same on every page.
+- **Arrange in the editor.** Move panels by their handle, resize from the
+  corner or use the keyboard. The board snaps to a 12-column grid and never
+  lets panels overlap. **Done** saves the arrangement and goes back to
+  Dashboards; **Cancel** asks before it throws away unsaved moves.
 - **Four kinds of panel, each placed on its own.** Service tiles, single
   service widgets (one integration of a service, apart from the rest),
   information widgets (clock, weather, search, resources, ...) and bookmarks.
@@ -143,11 +147,10 @@ piece can be swapped, and the guide links to the alternatives.
   stacks) and import it into another dashboard or deployment, after an
   explicit confirmation.
 - **Multiple dashboards.** Create, duplicate, rename, move to another address,
-  archive and restore dashboards from **Dashboard settings → Manage
-  dashboards**. Each has its own widgets, layout, stacks, appearance, CSS,
+  archive and restore dashboards from the **Dashboards** page. Each has its own widgets, layout, stacks, appearance, CSS,
   JavaScript and snapshot history. An archived or unknown address shows a
-  plain "This dashboard isn't available" page with a link to the main
-  dashboard.
+  plain "This dashboard isn't available" page with a link to the
+  Dashboards page.
 - **Discovery.** Docker labels and Kubernetes annotations still define
   discovered services; Studio only decides where they go and whether they show.
 - **Appearance.** Dark, light or follow device, any accent color, native
@@ -196,7 +199,7 @@ browser ──HTTPS──▶ your reverse proxy ──▶ studio container :3000
   shared with chosen people or groups to view or to arrange, and only
   administrators change widget settings, configuration files, custom code,
   people and sharing. Passkeys, authenticator apps, backup codes, optional
-  email codes and single sign-on through Authentik or any OpenID Connect
+  email codes and single sign-on through any OpenID Connect identity
   provider are supported ([docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)).
   Sign-in needs an `https://` address.
 - **With `STUDIO_AUTH=off`** there is no login: anyone who can reach the page

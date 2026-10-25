@@ -58,8 +58,8 @@ services:
       # as Studio has any account.
       STUDIO_ADMIN_USERNAME: ${STUDIO_ADMIN_USERNAME:-}
       STUDIO_ADMIN_EMAIL: ${STUDIO_ADMIN_EMAIL:-}
-      # Optional single sign-on with an identity provider (docs/IDP-AUTHENTIK.md,
-      # docs/IDP-OTHERS.md). Issuer and client ID
+      # Optional single sign-on with an identity provider (docs/IDP-OTHERS.md;
+      # Authentik example: docs/IDP-AUTHENTIK.md). Issuer and client ID
       # turn it on; the client secret is the studio_oidc_client_secret secret.
       STUDIO_OIDC_ISSUER: ${STUDIO_OIDC_ISSUER:-}
       STUDIO_OIDC_CLIENT_ID: ${STUDIO_OIDC_CLIENT_ID:-}

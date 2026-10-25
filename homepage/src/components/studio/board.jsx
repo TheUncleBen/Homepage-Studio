@@ -23,7 +23,6 @@ import {
   unitMinimum,
   unitsForBoard,
 } from "./geometry.mjs";
-import { useLongPress } from "./gestures";
 import StudioIcon from "./icons";
 import PanelHost from "./panel-host";
 import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
@@ -36,14 +35,6 @@ const EMPTY_NATIVE = {};
 const isConfigurationRevision = (revision) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision);
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const uuid = () => globalThis.crypto?.randomUUID?.() || `stack-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const isEmptyBoardSpace = (target, element) =>
-  target === element ||
-  Boolean(
-    element?.contains(target) &&
-    target.closest?.(".studio-empty") &&
-    !target.closest("a,button,input,select,textarea,[contenteditable]"),
-  );
-
 function useReducedMotion() {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
@@ -173,7 +164,8 @@ export default function StudioBoard({
   const canArrange = isAdmin || level === "arrange";
   const [draft, setDraft] = useState(null);
   const [draftSource, setDraftSource] = useState(null);
-  const [editing, setEditing] = useState(false);
+  // The editor page is always in editing; it is left by navigating away.
+  const editing = editorPage && canArrange;
   const [selection, setSelection] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -407,21 +399,10 @@ export default function StudioBoard({
   const cancelEditing = () => {
     setDraft(null);
     setDraftSource(null);
-    setEditing(false);
     setSelection([]);
     setError(null);
   };
-  const beginEditing = () => {
-    if (!editorPage || !canArrange || saveInFlight.current || nativeRefreshLock.current) return;
-    setEditing(true);
-    setFilter("all");
-    setNotice("");
-  };
-  const emptyPress = useLongPress({
-    disabled: !editorPage || !canArrange || editing || interactionBlocked || overlayOpen,
-    accepts: (event) => isEmptyBoardSpace(event.target, canvas.current),
-    onLongPress: beginEditing,
-  });
+
   const select = (id) => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
     setSelection((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
@@ -449,10 +430,7 @@ export default function StudioBoard({
   const saveArrangement = async (finish = false) => {
     if (saveInFlight.current || nativeRefreshLock.current) return false;
     if (!dirty) {
-      if (finish) {
-        setEditing(false);
-        setSelection([]);
-      }
+      if (finish) setSelection([]);
       return true;
     }
     saveInFlight.current = true;
@@ -467,10 +445,7 @@ export default function StudioBoard({
       setDraft(null);
       setDraftSource(null);
       setNotice("Arrangement saved");
-      if (finish) {
-        setEditing(false);
-        setSelection([]);
-      }
+      if (finish) setSelection([]);
       return true;
     } catch (err) {
       setError(err);
@@ -481,6 +456,22 @@ export default function StudioBoard({
     }
   };
 
+  const loadEditorData = async (type) => {
+    if ((type === "picker" || type === "content") && !catalogRequest.current) {
+      const request = studioRequest("/__studio/catalog.json");
+      catalogRequest.current = request;
+      request.catch(() => {
+        if (catalogRequest.current === request) catalogRequest.current = null;
+      });
+    }
+    if (type === "appearance") return { appearance: await studioRequest("/__studio/api/appearance") };
+    const [state, catalog, backups] = await Promise.all([
+      studioRequest("/__studio/api/state"),
+      type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
+      type === "backups" ? studioRequest("/__studio/api/backups") : Promise.resolve([]),
+    ]);
+    return { state, catalog, backups };
+  };
   const openEditor = async (type, detail = {}, reload = false) => {
     if (saveInFlight.current || (!reload && nativeRefreshLock.current)) return;
     if (dirty) {
@@ -492,24 +483,8 @@ export default function StudioBoard({
     setEditorError(null);
     setEditorData(null);
     try {
-      if ((type === "picker" || type === "content") && !catalogRequest.current) {
-        const request = studioRequest("/__studio/catalog.json");
-        catalogRequest.current = request;
-        request.catch(() => {
-          if (catalogRequest.current === request) catalogRequest.current = null;
-        });
-      }
-      if (type === "appearance") {
-        const appearance = await studioRequest("/__studio/api/appearance");
-        if (token === generation.current) setEditorData({ appearance });
-        return;
-      }
-      const [state, catalog, backups] = await Promise.all([
-        studioRequest("/__studio/api/state"),
-        type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
-        type === "backups" ? studioRequest("/__studio/api/backups") : Promise.resolve([]),
-      ]);
-      if (token === generation.current) setEditorData({ state, catalog, backups });
+      const loaded = await loadEditorData(type);
+      if (token === generation.current) setEditorData(loaded);
     } catch (err) {
       if (token === generation.current) setEditorError(err);
     }
@@ -846,32 +821,40 @@ export default function StudioBoard({
     }
     changeBoard(moveUnit(board, id, { ...unit.rect, [key]: unit.rect[key] + amount }));
   };
-  const longPress = (id, pointer) => {
-    if (!editorPage || !canArrange || saveInFlight.current || nativeRefreshLock.current) return;
-    beginEditing();
-    setSelection([id]);
-    if (pointer) manipulate(pointer, id, "move");
-  };
-  // The editor page opens straight into editing, and the settings page straight
-  // into this dashboard's settings, once the access level and board are known.
+  // People who can't arrange this dashboard are sent back from the editor and
+  // settings pages. The settings page opens this dashboard's settings once
+  // the access level and board are known.
   useEffect(() => {
-    if (opened.current || accessLoading) return;
-    if ((editorPage || settingsPage) && !canArrange) {
+    if (opened.current || accessLoading || (!editorPage && !settingsPage)) return;
+    if (!canArrange) {
       opened.current = true;
       leave();
       return;
     }
-    if (nativeUnavailable) return;
-    if (editorPage) {
-      opened.current = true;
-      beginEditing();
-    } else if (settingsPage) {
-      opened.current = true;
-      openEditor(isAdmin ? "settings" : "appearance");
-    }
+    if (!settingsPage || nativeUnavailable) return;
+    opened.current = true;
+    const type = isAdmin ? "settings" : "appearance";
+    const token = ++generation.current;
+    loadEditorData(type).then(
+      (loaded) => {
+        if (token !== generation.current) return;
+        setModal({ type });
+        setEditorData(loaded);
+      },
+      (err) => {
+        if (token !== generation.current) return;
+        setModal({ type });
+        setEditorError(err);
+      },
+    );
   });
+  // Closing the settings dialog returns to Dashboards, but only once the
+  // dialog has actually been shown: it loads asynchronously.
+  const settingsShown = useRef(false);
   useEffect(() => {
-    if (settingsPage && opened.current && !modal) leave();
+    if (!settingsPage) return;
+    if (modal) settingsShown.current = true;
+    else if (settingsShown.current) leave();
   }, [settingsPage, modal, leave]);
   const finishEditing = async () => {
     if (await saveArrangement(true)) leave();
@@ -901,7 +884,7 @@ export default function StudioBoard({
         onSearch={editing ? undefined : onSearch}
         searchDisabled={controlsDisabled}
       />
-      {editorPage && (
+      {editorPage && (canArrange || accessLoading) && (
         <header className="studio-page-header studio-editor-header">
           <div>
             <p className="studio-eyebrow">Editing</p>
@@ -974,7 +957,7 @@ export default function StudioBoard({
             </button>
             <span className="studio-toolbar-spacer" />
             <span className="studio-muted">
-              {dirty ? "Unsaved arrangement" : "Hold a panel · drag to move · resize from the corner"}
+              {dirty ? "Unsaved arrangement" : "Drag a panel by its handle to move it · resize from the corner"}
             </span>
             {dirty && (
               <button
@@ -1040,17 +1023,6 @@ export default function StudioBoard({
           height: board.panels.length ? projection.rows * (ROW_HEIGHT + GAP) + 32 : 480,
           "--studio-grid-column": `${(width + GAP) / projection.columns}px`,
           "--studio-grid-row": `${ROW_HEIGHT + GAP}px`,
-        }}
-        onPointerDown={emptyPress.onPointerDown}
-        onPointerMove={emptyPress.onPointerMove}
-        onPointerUp={emptyPress.onPointerUp}
-        onPointerCancel={emptyPress.onPointerCancel}
-        onContextMenu={(event) => {
-          emptyPress.cancel();
-          if (editorPage && isEmptyBoardSpace(event.target, canvas.current)) {
-            event.preventDefault();
-            beginEditing();
-          }
         }}
       >
         {!board.panels.length && (
@@ -1128,7 +1100,6 @@ export default function StudioBoard({
           onSelect={select}
           onManipulate={manipulate}
           onUnitKey={unitKey}
-          onLongPress={editorPage ? longPress : undefined}
           overlayOpen={overlayOpen}
         />
         <div className="studio-stack-layer">
@@ -1152,8 +1123,7 @@ export default function StudioBoard({
               onEdit={editStack}
               onManipulate={manipulate}
               onUnitKey={unitKey}
-              onLongPress={editorPage ? longPress : undefined}
-              onStackDrag={(offset) => onStackDrag(stack.id, offset)}
+                  onStackDrag={(offset) => onStackDrag(stack.id, offset)}
             />
           ))}
         </div>

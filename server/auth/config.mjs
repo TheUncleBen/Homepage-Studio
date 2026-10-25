@@ -104,7 +104,7 @@ export function readAuthConfig(options = {}, rawEnv = process.env) {
       issuer: issuerUrl,
       clientId,
       clientSecret,
-      name: options.oidcName ?? env.STUDIO_OIDC_NAME ?? 'Authentik',
+      name: options.oidcName ?? env.STUDIO_OIDC_NAME ?? 'Single sign-on',
       scopes: options.oidcScopes ?? env.STUDIO_OIDC_SCOPES ?? 'openid profile email offline_access',
       groupsClaim: options.oidcGroupsClaim ?? env.STUDIO_OIDC_GROUPS_CLAIM ?? 'groups',
       allowHttp: issuerUrl.protocol === 'http:',

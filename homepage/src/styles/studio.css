@@ -785,57 +785,6 @@ body {
   outline: 2px solid var(--studio-focus);
   outline-offset: 4px;
 }
-.studio-dashboard-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 18px;
-}
-.studio-dashboard-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px;
-  border: 1px solid var(--studio-line);
-  border-radius: 12px;
-  background: var(--studio-surface);
-}
-.studio-dashboard-identity {
-  display: grid;
-  min-width: 0;
-  gap: 5px;
-  overflow-wrap: anywhere;
-}
-.studio-dashboard-identity code,
-.studio-dashboard-identity small {
-  color: var(--studio-muted);
-  font-size: 11px;
-}
-.studio-dashboard-actions,
-.studio-dashboard-form-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.studio-dashboard-form-actions {
-  justify-content: flex-end;
-  margin-top: 20px;
-}
-.studio-dashboard-discard {
-  padding: 15px;
-  border: 1px solid var(--studio-accent-line);
-  border-radius: 12px;
-}
-@media (max-width: 650px) {
-  .studio-dashboard-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .studio-dashboard-actions {
-    width: 100%;
-  }
-}
 .studio-stack-drop {
   position: absolute;
   z-index: 9;
@@ -959,11 +908,14 @@ body {
 .studio-dialog-wide {
   width: min(1040px, calc(100vw - 32px));
 }
+/* Dialog titles and actions are centred, with the close button balanced by
+   an empty column on the left. */
 .studio-dialog-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  text-align: center;
+  gap: 12px;
   padding: 24px 27px 20px;
   border-bottom: 1px solid var(--studio-line);
   position: sticky;
@@ -971,6 +923,9 @@ body {
   background: color-mix(in srgb, var(--studio-surface) 96%, transparent);
   backdrop-filter: blur(12px);
   z-index: 5;
+}
+.studio-dialog-header::before {
+  content: "";
 }
 .studio-dialog-header h2 {
   font-size: 22px;
@@ -988,8 +943,9 @@ body {
 }
 .studio-dialog-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 10px;
   padding: 17px 27px;
   border-top: 1px solid var(--studio-line);
@@ -998,6 +954,21 @@ body {
   background: color-mix(in srgb, var(--studio-surface) 96%, transparent);
   backdrop-filter: blur(12px);
   z-index: 5;
+}
+/* Main buttons sit side by side at an even width; a secondary text action
+   or a note takes its own centred row below them. */
+.studio-dialog-footer > .studio-footer-spacer {
+  display: none;
+}
+.studio-dialog-footer > .studio-button {
+  flex: 0 1 11rem;
+}
+.studio-dialog-footer > :is(.studio-text-button, small, p) {
+  order: 1;
+  flex-basis: 100%;
+  justify-content: center;
+  text-align: center;
+  margin: 0;
 }
 .studio-dialog h3 {
   margin: 27px 0 13px;
@@ -1284,8 +1255,13 @@ body {
 }
 .studio-inline-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
   margin-top: 12px;
+}
+.studio-inline-actions > .studio-button {
+  flex: 0 1 11rem;
 }
 .studio-danger {
   color: var(--studio-danger-contrast);
@@ -1428,9 +1404,15 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  padding-bottom: 22px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--studio-line);
+}
+.studio-settings-heading {
+  margin: 0 0 12px;
 }
 .studio-settings-shortcuts button {
-  text-align: left;
+  text-align: center;
   padding: 17px 14px;
   border: 1px solid var(--studio-line-strong);
   border-radius: 12px;
@@ -1726,7 +1708,10 @@ body {
   }
   .studio-dialog-footer {
     padding: 15px 20px;
-    flex-wrap: wrap;
+  }
+  .studio-dialog-footer > .studio-button,
+  .studio-inline-actions > .studio-button {
+    flex: 1 1 0;
   }
   .studio-catalog {
     grid-template-columns: 1fr;
