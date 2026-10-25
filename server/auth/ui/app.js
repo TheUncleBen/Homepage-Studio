@@ -1011,7 +1011,9 @@
           const keepFilters = platform.background && typeof platform.background === 'object' ? platform.background : {};
           try {
             platform = await call('/studio/api/platform', { revision: platform.revision, mode: mode.value, accent: value, background: image ? (Object.keys(keepFilters).length ? { ...keepFilters, image } : image) : null, css: css.value });
-            draw('Saved. Dashboards that follow the platform default use it from their next load.');
+            // Open dashboards in this browser update at once.
+            try { const channel = new BroadcastChannel('studio-platform'); channel.postMessage(platform.revision); channel.close(); } catch {}
+            draw('Saved.');
           } catch (error) {
             if (error?.code === 'PLATFORM_REVISION_CONFLICT') {
               const latest = await call('/studio/api/platform').catch(() => null);
