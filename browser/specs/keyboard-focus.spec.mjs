@@ -1,4 +1,4 @@
-import { expect, test } from '../helpers/dashboard.mjs';
+import { expect, openEditor, test } from '../helpers/dashboard.mjs';
 import { playback, seedNative } from '../helpers/engineering.mjs';
 
 // Board order (and so native host DOM order) deliberately differs from the
@@ -38,7 +38,7 @@ const focusedUnit = page => page.evaluate(() => {
 test('Tab follows the visual reading order of panels and stacks without moving native hosts', async ({ page, request }) => {
   const seeded = await seedFocusBoard(request);
   const searchTitle = seeded.board.panels.find(panel => panel.nativeLocator?.type === 'search').title;
-  await page.goto('/');
+  await page.goto('/home');
   const search = page.getByRole('combobox').first();
   await expect(search).toBeVisible();
   await search.fill('kept native state');
@@ -79,10 +79,9 @@ test('Tab follows the visual reading order of panels and stacks without moving n
   await expect(search).toHaveValue('kept native state');
 });
 
-test('in edit mode Tab reaches a stack\'s Select checkbox first among its controls, as for a panel', async ({ page, request }) => {
+test('in the editor Tab reaches a stack\'s Select checkbox first among its controls, as for a panel', async ({ page, request }) => {
   await seedFocusBoard(request);
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await openEditor(page);
   const shell = page.locator('[data-stack-shell-id="focus-stack"]');
   const checkbox = shell.getByRole('checkbox', { name: 'Select stack Stacked first', exact: true });
   await expect(checkbox).toBeVisible();
@@ -111,7 +110,7 @@ test('in edit mode Tab reaches a stack\'s Select checkbox first among its contro
 
 test('Studio controls use one focus style while native widgets keep their own', async ({ page, request }) => {
   await seedFocusBoard(request);
-  await page.goto('/');
+  await page.goto('/home');
   const focusStyle = locator => locator.evaluate(element => {
     const style = getComputedStyle(element);
     return { outline: `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor}`, offset: style.outlineOffset, shadow: style.boxShadow };
@@ -139,7 +138,7 @@ test('Studio controls use one focus style while native widgets keep their own', 
   expect(native.shadow).not.toBe('none');
   expect(native.offset).not.toBe('4px');
 
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await openEditor(page);
   const checkbox = page.getByRole('checkbox', { name: 'Select Right panel', exact: true });
   await page.keyboard.press('Shift');
   await checkbox.focus();

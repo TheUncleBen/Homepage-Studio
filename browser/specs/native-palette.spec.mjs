@@ -1,4 +1,4 @@
-import { expect, saveFiles, test } from '../helpers/dashboard.mjs';
+import { DASHBOARDS, expect, openSettings, saveFiles, test } from '../helpers/dashboard.mjs';
 import { seedNative } from '../helpers/engineering.mjs';
 
 const textSelectors = ['.service-name', '.service-description', '.service-block-value', '.service-block-label', '.information-widget-greeting span', '.bookmark-name', '.bookmark-description'];
@@ -47,11 +47,11 @@ async function textContrast(page, testInfo, name) {
 }
 
 async function setMode(page, mode) {
-  await page.getByRole('button', { name: 'Dashboard settings', exact: true }).click();
-  const dialog = page.getByRole('dialog');
+  const dialog = await openSettings(page);
   await dialog.getByLabel('Display mode', { exact: true }).selectOption(mode);
   await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
-  await expect(dialog).toHaveCount(0);
+  await page.waitForURL(`**${DASHBOARDS}`);
+  await page.goto('/home');
   const expected = mode === 'system' ? await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : mode;
   await expect(page.locator('html')).toHaveClass(new RegExp(expected));
   await settledNative(page);
@@ -71,7 +71,7 @@ test('native default text remains readable in settled light and dark modes while
     settingsYaml: JSON.stringify({ title: 'Native palette fixture', studioTheme: { mode: 'light' } }),
   }, board => board.panels.forEach((panel, index) => { panel.rect = { x: (index % 2) * 6, y: Math.floor(index / 2) * 4, w: 6, h: panel.kind === 'serviceWidget' ? 4 : 3 }; }));
   await page.emulateMedia({ colorScheme: 'light' });
-  await page.goto('/');
+  await page.goto('/home');
   await expect(page.locator('html')).toHaveClass(/light/);
   await expect(page.locator('.service-block-value')).toHaveText('41');
   await expect(page.locator('.ping-status .bg-emerald-500')).toBeVisible();

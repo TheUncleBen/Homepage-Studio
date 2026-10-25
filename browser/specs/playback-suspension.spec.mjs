@@ -1,15 +1,15 @@
 import { expect, studioApi, test } from '../helpers/dashboard.mjs';
 import { activePanel, carousel, seedPlayback } from '../helpers/engineering.mjs';
 
-test('native content focus, offscreen position and an editor suspend the remaining visible playback time', async ({ page, request }) => {
+test('native content focus, offscreen position and Quick Launch suspend the remaining visible playback time', async ({ page, request }) => {
   await seedPlayback(request);
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
-  await page.goto('/');
+  await page.goto('/home');
   const stack = carousel(page);
   const input = page.locator('[data-panel-kind="informationWidget"][aria-label="Search"]').getByRole('combobox');
   await expect(input).toBeVisible();
   await stack.scrollIntoViewIfNeeded();
-  const before = await studioApi(request, '/__studio/api/backups');
+  const before = await studioApi(request, '/home/__studio/api/backups');
   await page.clock.pauseAt(new Date('2026-10-20T13:00:00Z'));
   const firstId = await activePanel(page).getAttribute('data-panel-id');
   await stack.getByRole('button', { name: 'Play slideshow', exact: true }).click();
@@ -41,19 +41,21 @@ test('native content focus, offscreen position and an editor suspend the remaini
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', firstId);
 
   await page.clock.fastForward(500);
-  await page.getByRole('button', { name: 'Dashboard settings', exact: true }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Quick Launch', exact: true }).click();
+  const quickLaunch = page.locator('.studio-quicklaunch input');
+  await expect(quickLaunch).toBeVisible();
   await expect(stack.locator('.studio-playback-status')).toHaveText('Waiting');
   await page.clock.fastForward(60000);
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', firstId);
-  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(quickLaunch).not.toBeVisible();
   await stack.scrollIntoViewIfNeeded();
   await expect(stack.locator('.studio-playback-status')).toHaveText('Playing');
   await page.clock.fastForward(1499);
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', firstId);
   await page.clock.fastForward(1);
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', secondId);
-  expect(await studioApi(request, '/__studio/api/backups')).toEqual(before);
+  expect(await studioApi(request, '/home/__studio/api/backups')).toEqual(before);
 });
 
 test.describe('reduced motion', () => {
@@ -61,7 +63,7 @@ test.describe('reduced motion', () => {
   test('automatic start is suppressed, explicit Play advances without animation, and non-looping stops at the end', async ({ page, request }) => {
     await seedPlayback(request, { mode: 'automatic', loop: false });
     await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
-    await page.goto('/');
+    await page.goto('/home');
     const stack = carousel(page);
     await expect(stack.getByRole('button', { name: 'Play slideshow', exact: true })).toBeVisible();
     await page.clock.pauseAt(new Date('2026-10-20T13:00:00Z'));

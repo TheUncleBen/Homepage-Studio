@@ -1,6 +1,6 @@
 import {
-  addBookmark, addInformation, chooseContent, expect, finishArrangement,
-  mouseDrag, origin, panelPixels, seedServicePanels, setPanelSize,
+  addBookmark, addInformation, chooseContent, DASHBOARDS, expect, finishArrangement,
+  mouseDrag, openEditor, origin, panelPixels, seedServicePanels, setPanelSize,
   studioApi, test, touchSession,
 } from '../helpers/dashboard.mjs';
 import { playback, seedNative, seedPlayback } from '../helpers/engineering.mjs';
@@ -14,14 +14,14 @@ test('pointer placement and resize persist independently; Escape cancels an acti
     { name: 'Pointer tile', rect: { x: 0, y: 0, w: 4, h: 3 } },
     { name: 'Unchanged tile', rect: { x: 8, y: 4, w: 4, h: 3 } },
   ]);
-  await page.goto('/');
+  await page.goto('/home');
   const tile = servicePanel(page, 'Pointer tile');
   const other = servicePanel(page, 'Unchanged tile');
   await expect(tile).toBeVisible();
   const otherBefore = await panelPixels(other);
   const column = await page.locator('.studio-canvas').evaluate(element => parseFloat(getComputedStyle(element).getPropertyValue('--studio-grid-column')));
   const row = await page.locator('.studio-canvas').evaluate(element => parseFloat(getComputedStyle(element).getPropertyValue('--studio-grid-row')));
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await openEditor(page);
   await mouseDrag(page, page.getByRole('button', { name: /^Move Pointer tile\. Use arrow keys/ }), column * 2, row);
   await expect.poll(async () => (await panelPixels(tile)).top).toBeGreaterThan(row * 0.9);
   const moved = await panelPixels(tile);
@@ -35,72 +35,75 @@ test('pointer placement and resize persist independently; Escape cancels an acti
   await expect.poll(() => panelPixels(tile)).toEqual(resized);
   expect(await panelPixels(other)).toEqual(otherBefore);
   await finishArrangement(page);
-  const saved = await studioApi(request, '/__studio/api/board');
+  const saved = await studioApi(request, '/home/__studio/api/board');
   expect(saved.board.panels.find(panel => panel.title === 'Pointer tile').rect).toEqual({ x: 2, y: 1, w: 6, h: 4 });
   expect(saved.board.panels.find(panel => panel.title === 'Unchanged tile').rect).toEqual({ x: 8, y: 4, w: 4, h: 3 });
-  await page.reload();
+  await page.goto('/home');
   await expect.poll(() => panelPixels(tile)).toEqual(resized);
 });
 
 test.describe('touch direct manipulation', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test('vertical scrolling remains available, then the same held finger moves and deliberately stacks a panel', async ({ page, request }) => {
+  test('vertical scrolling on the live dashboard never arranges; in the editor a finger on the move handle moves and deliberately stacks a panel', async ({ page, request }) => {
     await seedServicePanels(request, [
       { name: 'Touch source', rect: { x: 0, y: 0, w: 4, h: 3 } },
       { name: 'Touch target', rect: { x: 0, y: 3, w: 4, h: 3 } },
       { name: 'Scroll fixture', rect: { x: 0, y: 8, w: 4, h: 3 } },
     ]);
-    await page.goto('/');
+    await page.goto('/home');
     const source = servicePanel(page, 'Touch source');
     const target = servicePanel(page, 'Touch target');
     await expect(source).toBeVisible();
     const touch = await touchSession(page);
-    const headerPoint = async () => {
-      await source.locator('.studio-panel-header').scrollIntoViewIfNeeded();
-      const bounds = await source.locator('.studio-panel-header').boundingBox();
+    const center = async locator => {
+      await locator.scrollIntoViewIfNeeded();
+      const bounds = await locator.boundingBox();
       return { x: bounds.x + bounds.width * 0.5, y: bounds.y + bounds.height * 0.5 };
     };
+    const handle = page.getByRole('button', { name: /^Move Touch source\. Use arrow keys/ });
     try {
-      let point = await headerPoint();
+      let point = await center(source.locator('.studio-panel-header'));
       const scrollBefore = await page.evaluate(() => scrollY);
       await touch.start(point.x, point.y);
       await touch.move(point, { x: point.x, y: point.y - 100 });
       await touch.end();
-      await expect(page.getByRole('button', { name: 'Edit dashboard', exact: true })).toBeVisible();
       await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(scrollBefore + 20);
-
-      point = await headerPoint();
-      const before = await panelPixels(source);
-      // Establish real implicit capture on a child before the hold transfers
-      // it to the header; slight finger movement must not cancel arrangement.
-      const titleBounds = await source.locator('.studio-panel-title strong').boundingBox();
-      point = { x: titleBounds.x + titleBounds.width / 2, y: titleBounds.y + titleBounds.height / 2 };
+      // A held finger on the live dashboard does nothing either.
+      point = await center(source.locator('.studio-panel-header'));
       await touch.start(point.x, point.y);
-      await touch.move(point, { x: point.x + 2, y: point.y }, 1);
-      await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+      await page.waitForTimeout(900);
+      await touch.end();
+      await expect(page.getByRole('button', { name: 'Done', exact: true })).toHaveCount(0);
+      await expect(handle).toHaveCount(0);
+
+      await openEditor(page);
+      const before = await panelPixels(source);
+      point = await center(handle);
+      await touch.start(point.x, point.y);
       await touch.move(point, { x: point.x, y: point.y + 100 });
       await touch.end();
       await expect.poll(async () => (await panelPixels(source)).top).toBeGreaterThan(before.top + 50);
-      // Cancel the whole arrangement before the independent direct-stack gesture.
-      // A dirty arrangement asks before Cancel discards it.
+      // A dirty arrangement asks before Cancel discards it, then returns to
+      // the Dashboards page with nothing saved.
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       await expect(page.getByRole('dialog')).toContainText('Discard unsaved changes?');
       await expect(page.getByRole('dialog').getByRole('button', { name: 'Keep editing', exact: true })).toBeFocused();
       await page.getByRole('dialog').getByRole('button', { name: 'Discard changes', exact: true }).click();
-      await expect(page.getByRole('dialog')).toHaveCount(0);
-      await expect.poll(() => panelPixels(source)).toEqual(before);
+      await page.waitForURL(`**${DASHBOARDS}`);
+      expect((await studioApi(request, '/home/__studio/api/board')).board.stacks).toHaveLength(0);
 
-      point = await headerPoint();
-      await touch.start(point.x, point.y);
-      await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+      await openEditor(page);
+      await expect.poll(() => panelPixels(source)).toEqual(before);
+      point = await center(handle);
       const targetBounds = await target.boundingBox();
+      await touch.start(point.x, point.y);
       await touch.move(point, { x: targetBounds.x + targetBounds.width / 2, y: targetBounds.y + 70 });
       await expect(page.getByText('Release to stack', { exact: true })).toBeVisible();
       await touch.end();
       await expect(carousel(page)).toHaveCount(1);
       await finishArrangement(page);
-      const saved = await studioApi(request, '/__studio/api/board');
+      const saved = await studioApi(request, '/home/__studio/api/board');
       expect(saved.board.stacks).toHaveLength(1);
       expect(saved.board.stacks[0].panelIds).toHaveLength(2);
       expect(saved.board.panels).toHaveLength(3);
@@ -111,7 +114,7 @@ test.describe('touch direct manipulation', () => {
 test.describe('touch on panel bodies', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test('body swipe navigates a stack and body hold selects, while native controls, links and vertical scroll keep their touch', async ({ page, request }) => {
+  test('body swipe navigates a stack and a body hold does nothing on the live dashboard, while native controls, links and vertical scroll keep their touch', async ({ page, request }) => {
     await seedNative(request, {
       widgetsYaml: JSON.stringify([
         { greeting: { text: 'Swipe body fixture' } },
@@ -133,8 +136,7 @@ test.describe('touch on panel bodies', () => {
       board.panels.find(panel => panel.title === 'Tall page marker').rect = { x: 0, y: 30, w: 4, h: 3 };
       board.stacks = [{ id: 'body-stack', panelIds: [swipe.id, search.id], rect: { x: 0, y: 0, w: 4, h: 4 }, playback: playback() }];
     });
-    await page.goto('/');
-    const editDashboard = page.getByRole('button', { name: 'Edit dashboard', exact: true });
+    await page.goto('/home');
     const done = page.getByRole('button', { name: 'Done', exact: true });
     const picker = page.getByRole('menu');
     await expect(activePanel(page)).toContainText('Swipe body fixture');
@@ -150,7 +152,7 @@ test.describe('touch on panel bodies', () => {
       await touch.start(point.x, point.y);
       await touch.end();
       await expect(picker).toHaveCount(0);
-      await expect(editDashboard).toBeVisible();
+      await expect(done).toHaveCount(0);
 
       // Horizontal swipe across the stacked widget's body changes the slide.
       await touch.start(point.x + 60, point.y);
@@ -158,7 +160,7 @@ test.describe('touch on panel bodies', () => {
       await touch.end();
       await expect(activePanel(page).getByRole('combobox')).toBeVisible();
       await expect(picker).toHaveCount(0);
-      await expect(editDashboard).toBeVisible();
+      await expect(done).toHaveCount(0);
 
       // A swipe or hold that starts on the native search input stays with it.
       const input = activePanel(page).getByRole('combobox');
@@ -170,7 +172,6 @@ test.describe('touch on panel bodies', () => {
       await touch.start(point.x, point.y);
       await page.waitForTimeout(800);
       await touch.end();
-      await expect(editDashboard).toBeVisible();
       await expect(done).toHaveCount(0);
 
       // A hold that starts on a native link neither selects nor navigates.
@@ -180,7 +181,6 @@ test.describe('touch on panel bodies', () => {
       await touch.start(point.x, point.y);
       await page.waitForTimeout(800);
       await touch.end();
-      await expect(editDashboard).toBeVisible();
       await expect(done).toHaveCount(0);
       expect(page.url()).toBe(url);
 
@@ -192,17 +192,17 @@ test.describe('touch on panel bodies', () => {
       await touch.move(point, { x: point.x, y: point.y - 120 });
       await touch.end();
       await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(scrollBefore + 20);
-      await expect(editDashboard).toBeVisible();
+      await expect(done).toHaveCount(0);
 
-      // Holding the body selects that panel for arrangement (IN-01).
+      // Holding the body neither edits nor selects: arranging happens only
+      // in the editor.
       point = await center(holdBody);
       await touch.start(point.x, point.y);
-      await expect(done).toBeVisible();
+      await page.waitForTimeout(900);
       await touch.end();
-      await expect(page.getByRole('checkbox', { name: 'Select Greeting 2', exact: true })).toBeChecked();
+      await expect(done).toHaveCount(0);
+      await expect(page.getByRole('checkbox', { name: 'Select Greeting 2', exact: true })).toHaveCount(0);
       await expect(picker).toHaveCount(0);
-      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-      await expect(editDashboard).toBeVisible();
     } finally { await touch.detach(); }
   });
 });
@@ -212,8 +212,7 @@ test.describe('phone delete confirmation', () => {
 
   test('Delete brings its confirmation into view with focus on Keep it, which returns focus to Delete', async ({ page, request }) => {
     await seedServicePanels(request, [{ name: 'Delete fixture', rect: { x: 0, y: 0, w: 4, h: 3 } }]);
-    await page.goto('/');
-    await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+    await openEditor(page);
     await page.getByRole('button', { name: 'Edit Delete fixture', exact: true }).click();
     const dialog = page.getByRole('dialog');
     const remove = dialog.getByRole('button', { name: 'Delete', exact: true });
@@ -236,7 +235,7 @@ test.describe('phone delete confirmation', () => {
     await expect(dialog.getByText('Delete Delete fixture?')).toHaveCount(0);
     await expect(remove).toBeFocused();
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-    expect((await studioApi(request, '/__studio/api/board')).board.panels).toHaveLength(1);
+    expect((await studioApi(request, '/home/__studio/api/board')).board.panels).toHaveLength(1);
   });
 });
 
@@ -247,10 +246,9 @@ test.describe('selection checkbox target size', () => {
   ]) {
     test.describe(label, () => {
       test.use(use);
-      test(`the edit-mode selection target is at least ${minimum} px and toggles from its edge`, async ({ page, request }) => {
+      test(`the editor's selection target is at least ${minimum} px and toggles from its edge`, async ({ page, request }) => {
         await seedServicePanels(request, [{ name: 'Target tile', rect: { x: 0, y: 0, w: 4, h: 3 } }]);
-        await page.goto('/');
-        await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+        await openEditor(page);
         const checkbox = page.getByRole('checkbox', { name: 'Select Target tile', exact: true });
         const target = page.locator('.studio-select-target').filter({ has: checkbox });
         const bounds = await target.boundingBox();
@@ -272,8 +270,7 @@ test.describe('selection checkbox target size', () => {
       });
       test(`a stack's Select checkbox target is at least ${minimum} px and toggles the stack's selection`, async ({ page, request }) => {
         await seedPlayback(request);
-        await page.goto('/');
-        await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+        await openEditor(page);
         const shell = page.locator('[data-stack-shell-id="playback-fixture"]');
         const checkbox = shell.getByRole('checkbox', { name: /^Select stack \S/ });
         await expect(checkbox).not.toBeChecked();
@@ -307,8 +304,8 @@ test.describe('selection checkbox target size', () => {
   }
 });
 
-test('native search state survives arrangement and moving out; bookmark and layout survive reload', { tag: '@cross-engine' }, async ({ page, request }) => {
-  await page.goto('/');
+test('native search state survives stacking and moving out in the editor; bookmark and layout survive reload', { tag: '@cross-engine' }, async ({ page, request }) => {
+  await openEditor(page);
   const bookmark = await addBookmark(page);
   await expect(bookmark.getByRole('link').first()).toHaveAttribute('href', 'https://example.test/reference');
   await addInformation(page, 'Search', 'provider: duckduckgo\nshowSearchSuggestions: false\nfocus: false\n');
@@ -316,24 +313,14 @@ test('native search state survives arrangement and moving out; bookmark and layo
   const input = search.getByRole('combobox', { includeHidden: true });
   await input.fill('Native search state retained');
   const originalInput = await input.elementHandle();
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
   await setPanelSize(page, 'Search', 5, 3);
   await setPanelSize(page, 'Browser bookmark', 5, 3);
   await page.getByRole('checkbox', { name: 'Select Search', exact: true }).check();
   await page.getByRole('checkbox', { name: 'Select Browser bookmark', exact: true }).check();
   await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
-  await finishArrangement(page);
-  const searchId = await search.getAttribute('data-panel-id');
-  if (await activePanel(page).getAttribute('data-panel-id') !== searchId)
-    await carousel(page).press('ArrowRight');
-  await expect(activePanel(page)).toHaveAttribute('data-panel-id', searchId);
+  await expect(carousel(page)).toHaveCount(1);
   await expect(input).toHaveValue('Native search state retained');
   expect(await input.evaluate((node, original) => node === original, originalInput)).toBe(true);
-  await carousel(page).press('ArrowRight');
-  await expect(search).toHaveAttribute('inert', '');
-  await carousel(page).press('ArrowLeft');
-  await expect(input).toHaveValue('Native search state retained');
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.locator('.studio-stack-member').filter({ hasText: 'Browser bookmark' }).getByRole('button', { name: 'Move out Browser bookmark from stack', exact: true }).click();
@@ -342,11 +329,11 @@ test('native search state survives arrangement and moving out; bookmark and layo
   await expect(input).toHaveValue('Native search state retained');
   expect(await input.evaluate((node, original) => node === original, originalInput)).toBe(true);
   await finishArrangement(page);
-  const beforeReload = await studioApi(request, '/__studio/api/board');
-  await page.reload();
+  const beforeReload = await studioApi(request, '/home/__studio/api/board');
+  await page.goto('/home');
   await expect(search.getByRole('combobox')).toBeVisible();
   await expect(bookmark.getByRole('link').first()).toHaveAttribute('href', 'https://example.test/reference');
-  expect((await studioApi(request, '/__studio/api/board')).board).toEqual(beforeReload.board);
+  expect((await studioApi(request, '/home/__studio/api/board')).board).toEqual(beforeReload.board);
   // The native search query is transient; only config/layout must survive reload.
 });
 
@@ -356,26 +343,25 @@ test('an edited manual navigation delay survives save/reload and sets the next a
     { name: 'Delay two', rect: { x: 4, y: 0, w: 4, h: 3 } },
   ]);
   seeded.board.stacks = [{ id: 'delay-fixture', panelIds: seeded.board.panels.map(panel => panel.id), rect: { x: 0, y: 0, w: 4, h: 3 } }];
-  await studioApi(request, '/__studio/api/board', seeded);
+  await studioApi(request, '/home/__studio/api/board', seeded);
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await openEditor(page);
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
   let dialog = page.getByRole('dialog');
   await dialog.getByLabel('Seconds per widget', { exact: true }).fill('2');
   await dialog.getByLabel('Manual navigation delay (seconds)', { exact: true }).fill('45');
   await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();
   await finishArrangement(page);
-  await page.reload();
-  const saved = await studioApi(request, '/__studio/api/board');
+  const saved = await studioApi(request, '/home/__studio/api/board');
   expect(saved.board.stacks[0].playback).toMatchObject({ intervalMs: 2000, manualHoldMs: 45000 });
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await openEditor(page);
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
   dialog = page.getByRole('dialog');
   await expect(dialog.getByLabel('Manual navigation delay (seconds)', { exact: true })).toHaveValue('45');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await finishArrangement(page);
-  const historyBefore = await studioApi(request, '/__studio/api/backups');
+  await page.goto('/home');
+  const historyBefore = await studioApi(request, '/home/__studio/api/backups');
   await carousel(page).scrollIntoViewIfNeeded();
   await page.clock.pauseAt(new Date('2026-10-20T13:00:00Z'));
   await carousel(page).getByRole('button', { name: 'Play slideshow', exact: true }).click();
@@ -387,11 +373,11 @@ test('an edited manual navigation delay survives save/reload and sets the next a
   await expect(activePanel(page)).not.toHaveAttribute('data-panel-id', held);
   await page.clock.fastForward(2000);
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', held);
-  expect(await studioApi(request, '/__studio/api/backups')).toEqual(historyBefore);
+  expect(await studioApi(request, '/home/__studio/api/backups')).toEqual(historyBefore);
 });
 
 test('the native Custom API widget renders an actual private proxy response', async ({ page, request, browser }, testInfo) => {
-  await page.goto('/');
+  await openEditor(page);
   const dialog = await chooseContent(page, 'Custom API', 'Integrations');
   await dialog.getByLabel('Name', { exact: true }).fill('Native API fixture');
   await dialog.getByLabel('Group', { exact: true }).fill('Fixtures');
@@ -408,7 +394,7 @@ test('the native Custom API widget renders an actual private proxy response', as
     '    format: text',
     '',
   ].join('\n'));
-  const responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === '/api/services/proxy');
+  const responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === '/home/api/services/proxy');
   await dialog.getByRole('button', { name: 'Add to dashboard', exact: true }).click();
   const response = await responsePromise;
   expect(response.status()).toBe(200);
@@ -417,25 +403,25 @@ test('the native Custom API widget renders an actual private proxy response', as
   await expect(widget).toHaveCount(1);
   await expect(widget).toContainText('Configuration');
   await expect(widget).toContainText('ready');
-  expect(JSON.stringify(await studioApi(request, '/__studio/api/board'))).not.toContain(fixtureUrl);
+  expect(JSON.stringify(await studioApi(request, '/home/__studio/api/board'))).not.toContain(fixtureUrl);
 
   // Populate the same synthetic dashboard for actual desktop/mobile visual review.
   await addBookmark(page);
   await addInformation(page, 'Search', 'provider: duckduckgo\nshowSearchSuggestions: false\nfocus: false\n');
   await addInformation(page, 'Greeting', 'text: Your own space\ntext_size: xl\n');
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
   await setPanelSize(page, 'Greeting', 5, 3);
   await setPanelSize(page, 'Browser bookmark', 5, 3);
   await page.getByRole('checkbox', { name: 'Select Greeting', exact: true }).check();
   await page.getByRole('checkbox', { name: 'Select Browser bookmark', exact: true }).check();
   await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
   await finishArrangement(page);
+  await page.goto('/home');
   await expect(widget).toContainText('ready');
   await page.screenshot({ path: testInfo.outputPath('native-populated-desktop.png'), fullPage: true });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'no-preference' });
   try {
     const mobile = await context.newPage();
-    await mobile.goto(origin);
+    await mobile.goto(new URL('/home', origin).href);
     await expect(mobile.locator('[data-panel-kind="serviceWidget"]')).toContainText('ready');
     await expect(carousel(mobile)).toHaveCount(1);
     await expect.poll(() => mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);

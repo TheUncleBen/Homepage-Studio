@@ -1,10 +1,8 @@
-import { expect, finishArrangement, saveFiles, seedServicePanels, studioApi, test } from '../helpers/dashboard.mjs';
+import { DASHBOARDS, expect, finishArrangement, openEditor, openSettings, saveFiles, seedServicePanels, studioApi, test } from '../helpers/dashboard.mjs';
 import { downloadText, fileText, NATIVE_FILES, openFiles, playback, seedNative } from '../helpers/engineering.mjs';
 
 test('guided settings and nine-file import/export preserve drafts, literal options and one validated transaction', async ({ page, request }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Dashboard settings', exact: true }).click();
-  let dialog = page.getByRole('dialog');
+  let dialog = await openSettings(page);
   await dialog.getByRole('button', { name: 'Advanced YAML', exact: true }).click();
   await dialog.getByRole('textbox', { name: 'Item configuration YAML' }).fill([
     'title: Original settings title',
@@ -20,8 +18,9 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
   await dialog.getByRole('button', { name: 'Options', exact: true }).click();
   await dialog.getByLabel(/^Dashboard title/).fill('Configured through settings');
   await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Configured through settings');
-  const settingsState = await studioApi(request, '/__studio/api/state');
+  // Saved settings return to the Dashboards page.
+  await page.waitForURL(`**${DASHBOARDS}`);
+  const settingsState = await studioApi(request, '/home/__studio/api/state');
   expect(settingsState.settingsConfig).toMatchObject({ title: 'Configured through settings', target: '_self', quicklaunch: { searchDescriptions: true }, 'x-browser-fixture': { enabled: false, labels: ['one', 'two'], literal: '{{HOMEPAGE_VAR_BROWSER_FIXTURE}}' } });
 
   dialog = await openFiles(page);
@@ -32,15 +31,15 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
   await page.keyboard.press('Enter');
   await (await fileChooser).setFiles({ name: 'widgets.yaml', mimeType: 'application/yaml', buffer: Buffer.from(widgets) });
   await expect(dialog.getByRole('textbox', { name: 'widgets.yaml', exact: true })).toHaveValue(widgets);
-  expect((await studioApi(request, '/__studio/api/state')).widgetsYaml).toBe(settingsState.widgetsYaml);
+  expect((await studioApi(request, '/home/__studio/api/state')).widgetsYaml).toBe(settingsState.widgetsYaml);
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(dialog.getByRole('button', { name: 'Keep editing', exact: true })).toBeFocused();
   await dialog.getByRole('button', { name: 'Keep editing', exact: true }).click();
   await expect(dialog.getByRole('textbox', { name: 'widgets.yaml', exact: true })).toHaveValue(widgets);
   await page.keyboard.press('Escape');
   await dialog.getByRole('button', { name: 'Discard changes', exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  expect((await studioApi(request, '/__studio/api/state')).revision).toBe(settingsState.revision);
+  await page.waitForURL(`**${DASHBOARDS}`);
+  expect((await studioApi(request, '/home/__studio/api/state')).revision).toBe(settingsState.revision);
 
   const drafts = {
     servicesYaml: '# Native file editor fixture\n- Fixtures:\n    - Saved service:\n        href: https://example.test/saved\n',
@@ -61,29 +60,26 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
   const draftExport = await downloadText(page, () => dialog.getByRole('button', { name: 'Export file', exact: true }).click());
   expect(draftExport).toEqual({ name: 'services.yaml', text: drafts.servicesYaml });
 
-  const historyBefore = await studioApi(request, '/__studio/api/backups');
+  const historyBefore = await studioApi(request, '/home/__studio/api/backups');
   await (await fileText(dialog, 'services.yaml')).fill('Fixtures: [\n');
   await dialog.getByRole('button', { name: 'Save configuration', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('This change could not be saved');
-  expect((await studioApi(request, '/__studio/api/state')).revision).toBe(settingsState.revision);
-  expect(await studioApi(request, '/__studio/api/backups')).toEqual(historyBefore);
+  expect((await studioApi(request, '/home/__studio/api/state')).revision).toBe(settingsState.revision);
+  expect(await studioApi(request, '/home/__studio/api/backups')).toEqual(historyBefore);
   await expect(await fileText(dialog, 'widgets.yaml')).toHaveValue(drafts.widgetsYaml);
   await (await fileText(dialog, 'services.yaml')).fill(drafts.servicesYaml);
   await dialog.getByRole('button', { name: 'Save configuration', exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  const saved = await studioApi(request, '/__studio/api/state');
+  await page.waitForURL(`**${DASHBOARDS}`);
+  const saved = await studioApi(request, '/home/__studio/api/state');
   for (const [, key] of NATIVE_FILES) expect(saved[key]).toBe(drafts[key]);
-  const historyAfter = await studioApi(request, '/__studio/api/backups');
+  const historyAfter = await studioApi(request, '/home/__studio/api/backups');
   const newSnapshots = historyAfter.filter(item => !historyBefore.some(previous => previous.id === item.id));
   expect(newSnapshots).toHaveLength(1);
   expect([...newSnapshots[0].changedFiles].sort()).toEqual([...NATIVE_FILES.map(([name]) => name), 'state.json'].sort());
-  await expect(page.locator('.studio-status-message')).toContainText('Reload once to apply custom JavaScript');
+  // The live dashboard opens with the saved custom CSS and JavaScript.
+  await page.goto('/home');
+  await expect(page).toHaveTitle('Configured through settings');
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--studio-browser-file-fixture').trim())).toBe('42');
-  // The button calls location.reload(). Wait for the new document's load
-  // event so evaluation never runs while documentElement is still null.
-  const reloaded = page.waitForEvent('load');
-  await page.getByRole('button', { name: 'Reload dashboard', exact: true }).click();
-  await reloaded;
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.studioFileFixture)).toBe('saved');
   await expect(page.locator('[data-panel-kind="informationWidget"]')).toContainText('Imported native greeting');
 
@@ -99,23 +95,23 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
 
 test('concurrent file and arrangement saves retain the local draft until explicit reload', async ({ page, request }) => {
   await seedServicePanels(request, [{ name: 'Conflict fixture', rect: { x: 0, y: 0, w: 4, h: 3 } }]);
-  await page.goto('/');
   let dialog = await openFiles(page);
   const draft = `${await (await fileText(dialog, 'services.yaml')).inputValue()}\n# Unsaved local draft\n`;
   await (await fileText(dialog, 'services.yaml')).fill(draft);
   const external = await saveFiles(request, { settingsYaml: 'title: Concurrent native change\n' });
-  const history = await studioApi(request, '/__studio/api/backups');
+  const history = await studioApi(request, '/home/__studio/api/backups');
   await dialog.getByRole('button', { name: 'Save configuration', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('Another change was saved');
   await expect(dialog.getByRole('textbox', { name: 'services.yaml', exact: true })).toHaveValue(draft);
-  expect((await studioApi(request, '/__studio/api/state')).revision).toBe(external.revision);
-  expect(await studioApi(request, '/__studio/api/backups')).toEqual(history);
+  expect((await studioApi(request, '/home/__studio/api/state')).revision).toBe(external.revision);
+  expect(await studioApi(request, '/home/__studio/api/backups')).toEqual(history);
   await dialog.getByRole('button', { name: 'Reload current configuration', exact: true }).click();
   await expect(await fileText(dialog, 'settings.yaml')).toHaveValue(external.settingsYaml);
   await expect(dialog.getByRole('button', { name: 'Save configuration', exact: true })).toBeDisabled();
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.waitForURL(`**${DASHBOARDS}`);
 
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await openEditor(page);
   await page.getByRole('button', { name: /^Move Conflict fixture\. Use arrow keys/ }).press('ArrowDown');
   const tile = page.locator('[data-panel-kind="service"][aria-label="Conflict fixture"]');
   await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(88);
@@ -123,7 +119,7 @@ test('concurrent file and arrangement saves retain the local draft until explici
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.locator('.studio-error[role="alert"]')).toContainText('Another change was saved');
   await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(88);
-  expect((await studioApi(request, '/__studio/api/board')).revision).toBe(externalAgain.revision);
+  expect((await studioApi(request, '/home/__studio/api/board')).revision).toBe(externalAgain.revision);
   await page.getByRole('button', { name: 'Reload current configuration', exact: true }).click();
   await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(0);
   await finishArrangement(page);
@@ -141,12 +137,10 @@ test('snapshot download and restore recover exact native source identities, stac
     board.stacks = [{ id: 'restore-stack', panelIds: members.map(panel => panel.id).reverse(), rect: { x: 1, y: 5, w: 5, h: 4 }, playback: playback({ transition: 'fade' }) }];
   });
   await saveFiles(request, { widgetsYaml: '- greeting:\n    text: Changed configuration\n' });
-  const backups = await studioApi(request, '/__studio/api/backups');
+  const backups = await studioApi(request, '/home/__studio/api/backups');
   const index = backups.findIndex(backup => backup.revision === previous.revision);
   expect(index).toBeGreaterThanOrEqual(0);
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Dashboard settings', exact: true }).click();
-  await page.getByRole('button', { name: /Snapshots & restore/ }).click();
+  await (await openSettings(page)).getByRole('button', { name: /Snapshots & restore/ }).click();
   const dialog = page.getByRole('dialog');
   await dialog.locator('.studio-snapshot').nth(index).click();
   const downloaded = await downloadText(page, () => dialog.getByRole('button', { name: 'Export pre-save snapshot', exact: true }).click());
@@ -155,12 +149,13 @@ test('snapshot download and restore recover exact native source identities, stac
   expect(snapshot.before['widgets.yaml']).toContain('Second duplicate');
   expect(JSON.parse(snapshot.before['state.json']).board).toEqual(previous.board);
   await dialog.getByRole('button', { name: 'Restore selected snapshot', exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  expect((await studioApi(request, '/__studio/api/board')).board).toEqual(previous.board);
+  await page.waitForURL(`**${DASHBOARDS}`);
+  expect((await studioApi(request, '/home/__studio/api/board')).board).toEqual(previous.board);
+  await page.goto('/home');
   await expect(page.locator('[data-panel-id]')).toHaveCount(previous.board.panels.length);
   await expect(page.locator('[aria-roledescription="carousel"]')).toContainText('Greeting');
   await expect(page.locator('[data-stack-id]:not([aria-hidden="true"])')).toContainText('Second duplicate');
   await page.reload();
-  expect((await studioApi(request, '/__studio/api/board')).board).toEqual(previous.board);
+  expect((await studioApi(request, '/home/__studio/api/board')).board).toEqual(previous.board);
   await expect(page.locator('[data-stack-id]:not([aria-hidden="true"])')).toContainText('Second duplicate');
 });

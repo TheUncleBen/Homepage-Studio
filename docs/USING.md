@@ -338,14 +338,14 @@ Administrators manage dashboards from the **Dashboards** page.
 
 | Action | What happens |
 | --- | --- |
-| **New dashboard** | Pick a **Dashboard name**, an **Address slug** and a **Starting configuration**: *Empty dashboard*, or a copy of an existing one |
+| **New dashboard** | Pick a **Name** and an **Address**; it starts empty. To start from an existing dashboard, use **Duplicate** |
 | **Open** | Goes to the live dashboard |
 | **Edit** / **Settings** | The editor and the dashboard settings ([Start here](#live-editor-and-settings-pages)) |
 | **More actions → Rename or change address** | Its widgets, layout and snapshots stay with it |
 | **More actions → Duplicate** | Makes an independent copy of everything; changing one never changes the other. **Share it with the same people** copies who can open it |
 | **More actions → Who can open it** | Opens **Administration → Dashboard access** |
-| **More actions → Archive** | Takes it off line after you tick *I want to archive this dashboard*. Its files and snapshots are kept and its address stays reserved |
-| **Restore** (under *Archived dashboards*) | Brings an archived dashboard back as it was |
+| **More actions → Archive** | Takes it off line after you confirm. Its files and snapshots are kept and its address stays reserved |
+| **Restore** (under *Archived*) | Brings an archived dashboard back as it was |
 
 - An address is one path segment of 1 to 64 lowercase letters, numbers and
   inner hyphens: `https://homepage.example.test/family`. A few names used by

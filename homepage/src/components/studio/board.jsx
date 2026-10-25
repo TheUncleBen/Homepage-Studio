@@ -199,6 +199,8 @@ export default function StudioBoard({
   // unsaved-changes guard doesn't stop the way back to the Dashboards page.
   const leaving = useRef(false);
   const leave = useCallback(() => {
+    // One way back: a second navigation would abort the first.
+    if (leaving.current) return;
     leaving.current = true;
     onLeave();
   }, [onLeave]);

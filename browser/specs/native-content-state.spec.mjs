@@ -1,4 +1,4 @@
-import { expect, finishArrangement, mouseDrag, setPanelSize, studioApi, test } from '../helpers/dashboard.mjs';
+import { expect, finishArrangement, mouseDrag, openEditor, setPanelSize, studioApi, test } from '../helpers/dashboard.mjs';
 import { activePanel, carousel, expectPageFits } from '../helpers/engineering.mjs';
 import { installDenseResponses, installEmbeddedDocument, seedDenseContent, seedEmbeddedContent } from '../helpers/native-fixtures.mjs';
 
@@ -38,7 +38,7 @@ test('native calendar, chart and process list fit their minima at desktop and na
   const fixture = await installDenseResponses(page);
   const seeded = await seedDenseContent(request);
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
-  await page.goto('/');
+  await page.goto('/home');
   const calendarSource = seeded.board.panels.find(panel => panel.nativeLocator.type === 'calendar');
   const chartSource = seeded.board.panels.find(panel => panel.nativeLocator.type === 'glances' && panel.nativeLocator.sourceIndex === 0);
   const listSource = seeded.board.panels.find(panel => panel.nativeLocator.type === 'glances' && panel.nativeLocator.sourceIndex === 1);
@@ -51,16 +51,25 @@ test('native calendar, chart and process list fit their minima at desktop and na
   await expect(list).toContainText('native-process-5');
   await expectListHeadingsInsidePanel(list);
   await expect.poll(() => fixture.cpuSamples).toBeGreaterThan(1);
+  // Arranging in the editor never remounts native content.
+  await openEditor(page);
+  await expect(calendar.getByRole('button', { name: 'October 2026', exact: true })).toBeVisible();
+  await expect(chart.locator('svg.recharts-surface')).toBeVisible();
   await page.clock.pauseAt(new Date('2026-10-20T13:00:00Z'));
   const chartNode = await chart.locator('svg.recharts-surface').elementHandle();
   await calendar.getByRole('button', { name: '>', exact: true }).click();
   await expect(calendar.getByRole('button', { name: 'November 2026', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
   await page.getByRole('button', { name: `Move ${calendarSource.title}. Use arrow keys; Shift and arrow keys resize.`, exact: true }).press('ArrowDown');
   await page.getByRole('button', { name: `Resize ${chartSource.title}. Use arrow keys.`, exact: true }).first().press('ArrowRight');
-  await finishArrangement(page);
   await expect(calendar.getByRole('button', { name: 'November 2026', exact: true })).toBeVisible();
   expect(await chart.locator('svg.recharts-surface').evaluate((node, original) => node === original, chartNode)).toBe(true);
+  await finishArrangement(page);
+  // A fresh page needs the clock running to render the calendar.
+  await page.clock.resume();
+  await page.goto('/home');
+  await expect(calendar.getByRole('button', { name: 'October 2026', exact: true })).toBeVisible();
+  await calendar.getByRole('button', { name: '>', exact: true }).click();
+  await expect(calendar.getByRole('button', { name: 'November 2026', exact: true })).toBeVisible();
   await expectPageFits(page);
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
@@ -82,7 +91,7 @@ test('native calendar, chart and process list fit their minima at desktop and na
     await calendar.getByRole('button', { name: '>', exact: true }).click();
     await expect(calendar.getByRole('button', { name: 'November 2026', exact: true })).toBeVisible();
   }
-  const saved = await studioApi(request, '/__studio/api/board');
+  const saved = await studioApi(request, '/home/__studio/api/board');
   expect(saved.board.panels.map(panel => panel.id).sort()).toEqual(seeded.board.panels.map(panel => panel.id).sort());
   expect(fixture.calls).toEqual(expect.arrayContaining([
     expect.objectContaining({ endpoint: 'Fixture calendar' }),
@@ -101,11 +110,11 @@ test('native calendar, chart and process list fit their minima at desktop and na
   await page.screenshot({ path: testInfo.outputPath('dense-native-enlarged-text.png'), fullPage: true });
 });
 
-test('an actual native iframe keeps its document and controls through move, resize, stack navigation and unstack', async ({ page, request }) => {
+test('an actual native iframe keeps its document and controls through move, resize, stacking and unstacking, then through stack navigation', async ({ page, request }) => {
   const fixture = await installEmbeddedDocument(page);
   const seeded = await seedEmbeddedContent(request);
   const source = seeded.board.panels.find(panel => panel.kind === 'serviceWidget');
-  await page.goto('/');
+  await openEditor(page);
   const panel = page.locator(`[data-panel-id="${source.id}"]`);
   const iframe = panel.locator('iframe');
   const content = iframe.contentFrame();
@@ -114,17 +123,36 @@ test('an actual native iframe keeps its document and controls through move, resi
   const iframeNode = await iframe.elementHandle();
   const frame = await iframeNode.contentFrame();
   const documentId = await frame.evaluate(() => window.fixtureLoadId);
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  const preserved = async () => {
+    expect(await iframe.evaluate((node, original) => node === original, iframeNode)).toBe(true);
+    expect(await frame.evaluate(() => window.fixtureLoadId)).toBe(documentId);
+    await expect(content.getByRole('textbox', { name: 'Embedded note', exact: true })).toHaveValue('Embedded document survives');
+    await expect(content.getByRole('button', { name: 'Count 1', exact: true })).toBeVisible();
+  };
   await page.getByRole('button', { name: `Move ${source.title}. Use arrow keys; Shift and arrow keys resize.`, exact: true }).press('ArrowDown');
   await page.getByRole('button', { name: `Resize ${source.title}. Use arrow keys.`, exact: true }).press('ArrowRight');
   await setPanelSize(page, source.title, 6, 6);
-  await page.getByRole('checkbox', { name: `Select ${source.title}`, exact: true }).check();
-  await page.getByRole('checkbox', { name: 'Select Stack companion', exact: true }).check();
-  await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
+  await preserved();
+  const stackBoth = async () => {
+    await page.getByRole('checkbox', { name: `Select ${source.title}`, exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Select Stack companion', exact: true }).check();
+    await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
+  };
+  await stackBoth();
+  await expect(carousel(page)).toHaveCount(1);
+  await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Unstack all', exact: true }).click();
+  await expect(carousel(page)).toHaveCount(0);
+  await preserved();
+  expect(fixture.loads).toBe(1);
+
+  // On the live dashboard, the embedded document keeps its controls and
+  // state through stack navigation.
+  await stackBoth();
   await finishArrangement(page);
+  await page.goto('/home');
   if (await activePanel(page).getAttribute('data-panel-id') !== source.id) await carousel(page).press('ArrowRight');
-  await expect(content.getByRole('textbox', { name: 'Embedded note', exact: true })).toHaveValue('Embedded document survives');
-  await expect(content.getByRole('button', { name: 'Count 1', exact: true })).toBeVisible();
+  await content.getByRole('textbox', { name: 'Embedded note', exact: true }).fill('Live document survives');
   // The fixture reports iframe-local pixels; its parent must finish the slide
   // transition before a fixed-distance pointer assertion has a stable origin.
   await expect.poll(() => panel.locator('.studio-panel-slide').evaluate(element =>
@@ -133,20 +161,13 @@ test('an actual native iframe keeps its document and controls through move, resi
   await mouseDrag(page, content.getByRole('slider', { name: 'Embedded drag', exact: true }), 80, 0);
   await expect(content.getByRole('slider', { name: 'Embedded drag', exact: true })).toHaveAttribute('aria-valuenow', '80');
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', source.id);
+  const liveNode = await iframe.elementHandle();
   await carousel(page).press('ArrowRight');
   await expect(panel).toHaveAttribute('inert', '');
   await carousel(page).press('ArrowLeft');
-  await expect(content.getByRole('textbox', { name: 'Embedded note', exact: true })).toHaveValue('Embedded document survives');
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
-  await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Unstack all', exact: true }).click();
-  await finishArrangement(page);
-  await expect(carousel(page)).toHaveCount(0);
-  expect(await iframe.evaluate((node, original) => node === original, iframeNode)).toBe(true);
-  expect(await frame.evaluate(() => window.fixtureLoadId)).toBe(documentId);
-  await expect(content.getByRole('textbox', { name: 'Embedded note', exact: true })).toHaveValue('Embedded document survives');
-  await expect(content.getByRole('button', { name: 'Count 1', exact: true })).toBeVisible();
-  expect(fixture.loads).toBe(1);
+  expect(await iframe.evaluate((node, original) => node === original, liveNode)).toBe(true);
+  await expect(content.getByRole('textbox', { name: 'Embedded note', exact: true })).toHaveValue('Live document survives');
+  await expect(content.getByRole('slider', { name: 'Embedded drag', exact: true })).toHaveAttribute('aria-valuenow', '80');
 });
 
 test('typing in a native embedded page suspends playback until focus returns to the dashboard', async ({ page, request }) => {
@@ -154,7 +175,7 @@ test('typing in a native embedded page suspends playback until focus returns to 
   const seeded = await seedEmbeddedContent(request, true);
   const source = seeded.board.panels.find(panel => panel.kind === 'serviceWidget');
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
-  await page.goto('/');
+  await page.goto('/home');
   const content = page.locator(`[data-panel-id="${source.id}"] iframe`).contentFrame();
   await expect(content.getByRole('textbox', { name: 'Embedded note', exact: true })).toBeVisible();
   await page.clock.pauseAt(new Date('2026-10-20T13:00:00Z'));

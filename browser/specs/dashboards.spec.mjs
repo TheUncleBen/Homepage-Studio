@@ -1,5 +1,5 @@
-import { expect, saveFiles, studioApi, test } from '../helpers/dashboard.mjs';
-import { archiveFixtures, dashboardPath, dashboardSave, fixtureId, openDashboardManager, privateUpstreamFixture, registryMutation } from '../helpers/dashboards.mjs';
+import { DASHBOARDS, expect, saveFiles, studioApi, test } from '../helpers/dashboard.mjs';
+import { archiveFixtures, dashboardPath, dashboardSave, fixtureId, privateUpstreamFixture, registryMutation } from '../helpers/dashboards.mjs';
 import { NATIVE_FILES } from '../helpers/engineering.mjs';
 
 function nativeFiles(state) {
@@ -9,22 +9,38 @@ function nativeFiles(state) {
   }));
 }
 
-test('dashboard management creates independent pages, duplicates complete configuration and preserves archived addresses', { tag: '@cross-engine' }, async ({ page, request }) => {
+const card = (page, name) => page.locator('.dashboard-card').filter({ has: page.getByRole('heading', { name, exact: true }) });
+
+async function moreAction(page, name, action) {
+  const entry = card(page, name);
+  await entry.locator('summary', { hasText: 'More actions' }).click();
+  await entry.getByRole('button', { name: action, exact: true }).click();
+}
+
+async function nameAndAddress(page, title, name, slug, submit) {
+  const dialog = page.getByRole('dialog', { name: title, exact: true });
+  await dialog.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
+  await dialog.getByRole('textbox', { name: 'Address', exact: true }).fill(slug);
+  await dialog.getByRole('button', { name: submit, exact: true }).click();
+  return dialog;
+}
+
+test('the Dashboards page creates independent dashboards, duplicates complete configuration and preserves archived addresses', { tag: '@cross-engine' }, async ({ page, request }) => {
   const suffix = fixtureId();
   const guestName = `Guest ${suffix}`;
   const renamedName = `Shared ${suffix}`;
   const copyName = `Admin copy ${suffix}`;
   const ids = [];
   await saveFiles(request, { widgetsYaml: JSON.stringify([{ greeting: { text: `Admin original ${suffix}` } }]), customCss: ':root { --dashboard-fixture: admin; }' });
-  const root = await studioApi(request, '/__studio/api/state');
+  const root = await studioApi(request, '/home/__studio/api/state');
   try {
+    // With sign-in off, the bare address opens the Dashboards page.
     await page.goto('/');
-    let dialog = await openDashboardManager(page);
-    await dialog.getByRole('button', { name: 'Create dashboard', exact: true }).click();
-    await dialog.getByRole('textbox', { name: 'Dashboard name', exact: true }).fill(guestName);
-    await dialog.getByRole('textbox', { name: 'Address slug', exact: true }).fill(`guest-${suffix}`);
-    await dialog.getByRole('button', { name: 'Create dashboard', exact: true }).click();
-    await expect(dialog.getByRole('region', { name: `Dashboard ${guestName}`, exact: true })).toBeVisible();
+    await page.waitForURL(`**${DASHBOARDS}`);
+    await page.getByRole('button', { name: 'New dashboard', exact: true }).click();
+    let dialog = await nameAndAddress(page, 'New dashboard', guestName, `guest-${suffix}`, 'Create dashboard');
+    await expect(dialog).toHaveCount(0);
+    await expect(card(page, guestName)).toBeVisible();
     let registry = await studioApi(request, '/__studio/api/dashboards');
     const guest = registry.dashboards.find(entry => entry.name === guestName);
     ids.push(guest.id);
@@ -32,11 +48,10 @@ test('dashboard management creates independent pages, duplicates complete config
     await dashboardSave(request, guest, { widgetsYaml: JSON.stringify([{ greeting: { text: `Guest private ${suffix}` } }]), customCss: ':root { --dashboard-fixture: guest; }', settingsYaml: 'studioTheme:\n  mode: light\n  accent: "#215c95"\n' });
 
     const defaultEntry = registry.dashboards.find(entry => entry.id === 'default');
-    await dialog.getByRole('button', { name: `Duplicate ${defaultEntry.name}`, exact: true }).click();
-    await dialog.getByRole('textbox', { name: 'Dashboard name', exact: true }).fill(copyName);
-    await dialog.getByRole('textbox', { name: 'Address slug', exact: true }).fill(`copy-${suffix}`);
-    await dialog.getByRole('button', { name: 'Create dashboard', exact: true }).click();
-    await expect(dialog.getByRole('region', { name: `Dashboard ${copyName}`, exact: true })).toBeVisible();
+    await moreAction(page, defaultEntry.name, 'Duplicate');
+    dialog = await nameAndAddress(page, `Duplicate ${defaultEntry.name}`, copyName, `copy-${suffix}`, 'Duplicate');
+    await expect(dialog).toHaveCount(0);
+    await expect(card(page, copyName)).toBeVisible();
     registry = await studioApi(request, '/__studio/api/dashboards');
     const copy = registry.dashboards.find(entry => entry.name === copyName);
     ids.push(copy.id);
@@ -44,33 +59,35 @@ test('dashboard management creates independent pages, duplicates complete config
     expect(nativeFiles(copied)).toEqual(nativeFiles(root));
     expect(copied.board.panels).toEqual(root.board.panels);
     await dashboardSave(request, copy, { widgetsYaml: JSON.stringify([{ greeting: { text: `Copy only ${suffix}` } }]), customCss: ':root { --dashboard-fixture: copy; }' });
-    expect(nativeFiles(await studioApi(request, '/__studio/api/state'))).toEqual(nativeFiles(root));
+    expect(nativeFiles(await studioApi(request, '/home/__studio/api/state'))).toEqual(nativeFiles(root));
 
-    await dialog.getByRole('button', { name: `Edit ${guestName}`, exact: true }).click();
-    await dialog.getByRole('textbox', { name: 'Dashboard name', exact: true }).fill(renamedName);
-    await dialog.getByRole('textbox', { name: 'Address slug', exact: true }).fill(`shared-${suffix}`);
-    await dialog.getByRole('button', { name: 'Save dashboard', exact: true }).click();
-    await expect(dialog.getByRole('region', { name: `Dashboard ${renamedName}`, exact: true })).toBeVisible();
+    await moreAction(page, guestName, 'Rename or change address');
+    dialog = await nameAndAddress(page, `Rename ${guestName}`, renamedName, `shared-${suffix}`, 'Save');
+    await expect(dialog).toHaveCount(0);
+    await expect(card(page, renamedName)).toBeVisible();
     const renamed = { ...guest, name: renamedName, slug: `shared-${suffix}` };
     expect((await request.get(dashboardPath(guest))).status()).toBe(404);
-    await dialog.getByRole('button', { name: `Open ${renamedName}`, exact: true }).click();
+    await card(page, renamedName).getByRole('link', { name: 'Open', exact: true }).click();
     await expect(page).toHaveURL(new URL(dashboardPath(renamed), process.env.STUDIO_BROWSER_ORIGIN).href.replace(/\/$/, ''));
     await expect(page.getByText(`Guest private ${suffix}`, { exact: true })).toBeVisible();
     await expect(page.getByText(`Admin original ${suffix}`, { exact: true })).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--dashboard-fixture').trim())).toBe('guest');
-    await expect(page.locator('.studio-brand')).toHaveAttribute('href', `/${renamed.slug}`);
+    // The top bar's mark leads back to the Dashboards page from any dashboard.
+    await expect(page.locator('.studio-brand')).toHaveAttribute('href', DASHBOARDS);
     await page.reload();
     await expect(page.getByText(`Guest private ${suffix}`, { exact: true })).toBeVisible();
 
-    // The root remains accessible and owns its original native configuration.
-    await page.goto('/');
+    // The main dashboard keeps its original native configuration.
+    await page.goto('/home');
     await expect(page.getByText(`Admin original ${suffix}`, { exact: true })).toBeVisible();
-    dialog = await openDashboardManager(page);
-    await dialog.getByRole('button', { name: `Archive ${renamedName}`, exact: true }).click();
-    await expect(dialog.getByRole('button', { name: 'Archive dashboard', exact: true })).toBeDisabled();
-    await dialog.getByRole('checkbox', { name: 'I want to archive this dashboard', exact: true }).check();
-    await dialog.getByRole('button', { name: 'Archive dashboard', exact: true }).click();
-    await expect(dialog.getByRole('region', { name: `Archived dashboard ${renamedName}`, exact: true })).toBeVisible();
+    await page.goto(DASHBOARDS);
+    await moreAction(page, renamedName, 'Archive');
+    dialog = page.getByRole('dialog', { name: `Archive ${renamedName}?`, exact: true });
+    await dialog.getByRole('button', { name: 'Archive', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    const archivedList = page.locator('details.archived-list');
+    await archivedList.locator('summary').click();
+    await expect(archivedList.getByRole('heading', { name: renamedName, exact: true })).toBeVisible();
     expect((await request.get(dashboardPath(renamed))).status()).toBe(404);
     registry = await studioApi(request, '/__studio/api/dashboards');
     const reserved = await request.post('/__studio/api/dashboards', {
@@ -78,60 +95,53 @@ test('dashboard management creates independent pages, duplicates complete config
       data: { action: 'create', revision: registry.revision, name: 'Reserved fixture', slug: renamed.slug },
     });
     expect(reserved.status()).toBe(409);
-    await dialog.getByRole('button', { name: `Restore ${renamedName}`, exact: true }).click();
-    await expect(dialog.getByRole('region', { name: `Dashboard ${renamedName}`, exact: true })).toBeVisible();
-    await dialog.getByRole('button', { name: `Open ${renamedName}`, exact: true }).click();
+    await card(page, renamedName).getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(card(page, renamedName).getByRole('link', { name: 'Open', exact: true })).toBeVisible();
+    await card(page, renamedName).getByRole('link', { name: 'Open', exact: true }).click();
     await expect(page.getByText(`Guest private ${suffix}`, { exact: true })).toBeVisible();
-    expect(nativeFiles(await studioApi(request, '/__studio/api/state'))).toEqual(nativeFiles(root));
+    expect(nativeFiles(await studioApi(request, '/home/__studio/api/state'))).toEqual(nativeFiles(root));
   } finally {
-    await page.goto('/');
+    await page.goto('/home');
     await archiveFixtures(request, ids);
   }
 });
 
-test('dashboard manager retains conflicts and dirty drafts and keeps pending dialog focus contained', async ({ page, request }) => {
+test('a rename that meets someone else\'s change keeps the draft, shows what is saved, and applies on a second Save', async ({ page, request }) => {
   const suffix = fixtureId();
   const created = await registryMutation(request, 'create', { name: `Draft ${suffix}`, slug: `draft-${suffix}` });
   const id = created.dashboard.id;
   let release;
   try {
-    await page.goto('/');
-    const dialog = await openDashboardManager(page);
-    await dialog.getByRole('button', { name: `Edit Draft ${suffix}`, exact: true }).click();
-    const name = dialog.getByRole('textbox', { name: 'Dashboard name', exact: true });
+    await page.goto(DASHBOARDS);
+    await moreAction(page, `Draft ${suffix}`, 'Rename or change address');
+    const dialog = page.getByRole('dialog', { name: `Rename Draft ${suffix}`, exact: true });
+    const name = dialog.getByRole('textbox', { name: 'Name', exact: true });
     await name.fill(`Retained ${suffix}`);
-    await page.keyboard.press('Escape');
-    await expect(dialog.getByRole('button', { name: 'Keep editing', exact: true })).toBeFocused();
-    await dialog.getByRole('button', { name: 'Keep editing', exact: true }).click();
-    await expect(name).toHaveValue(`Retained ${suffix}`);
     await registryMutation(request, 'update', { id, name: `External ${suffix}`, slug: `draft-${suffix}` });
-    await dialog.getByRole('button', { name: 'Save dashboard', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toContainText(`Currently saved: External ${suffix}`);
     await expect(dialog.getByRole('alert')).toContainText('Your draft is still here');
     await expect(name).toHaveValue(`Retained ${suffix}`);
-    await expect(dialog.getByRole('button', { name: 'Save dashboard', exact: true })).toBeDisabled();
-    await dialog.getByRole('button', { name: 'Review latest dashboard list', exact: true }).click();
-    await expect(dialog.getByText(new RegExp(`Currently saved: External ${suffix}`))).toBeVisible();
-    await expect(name).toHaveValue(`Retained ${suffix}`);
+    // The list behind the dialog already shows the other change.
+    await expect(card(page, `External ${suffix}`)).toHaveCount(1);
     const gate = new Promise(resolve => { release = resolve; });
     await page.route('**/__studio/api/dashboards', async route => {
       if (route.request().method() === 'POST') await gate;
       await route.continue();
     });
     const pending = page.waitForRequest(req => req.url().endsWith('/__studio/api/dashboards') && req.method() === 'POST');
-    await dialog.getByRole('button', { name: 'Save dashboard', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     await pending;
-    await expect(name).toBeDisabled();
-    await expect(dialog.getByRole('button', { name: 'Close dialog', exact: true })).toBeDisabled();
-    await page.keyboard.press('Escape');
     await page.keyboard.press('Tab');
     expect(await dialog.evaluate(element => element.open && (element.contains(document.activeElement) || document.activeElement === element))).toBe(true);
     release();
-    await expect(dialog.getByRole('region', { name: `Dashboard Retained ${suffix}`, exact: true })).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Close dialog', exact: true })).toBeEnabled();
+    await expect(dialog).toHaveCount(0);
+    await expect(card(page, `Retained ${suffix}`)).toBeVisible();
+    expect((await studioApi(request, '/__studio/api/dashboards')).dashboards.find(entry => entry.id === id).name).toBe(`Retained ${suffix}`);
   } finally {
     release?.();
     await page.unrouteAll({ behavior: 'wait' });
-    await page.goto('/');
+    await page.goto('/home');
     await archiveFixtures(request, [id]);
   }
 });
@@ -189,7 +199,7 @@ test('concurrent dashboard tabs isolate identical native proxy locators, private
     expect(errors).toEqual([]);
   } finally {
     await other.close();
-    await page.goto('/');
+    await page.goto('/home');
     await archiveFixtures(request, ids);
     await upstream.close();
   }

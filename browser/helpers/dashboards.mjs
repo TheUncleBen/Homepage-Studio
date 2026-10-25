@@ -26,17 +26,6 @@ export async function archiveFixtures(request, ids) {
   }
 }
 
-export async function openDashboardManager(page) {
-  const settings = page.getByRole('button', { name: 'Dashboard settings', exact: true });
-  await expect(settings).toBeEnabled();
-  // One deliberate keyboard action after readiness exercises the initial activation.
-  await settings.press('Enter');
-  await page.getByRole('button', { name: /Manage dashboards/ }).click();
-  const dialog = page.getByRole('dialog', { name: 'Manage dashboards', exact: true });
-  await expect(dialog.getByRole('button', { name: 'Create dashboard', exact: true })).toBeEnabled();
-  return dialog;
-}
-
 // The same upstream URL and cookie name are deliberately used by both native
 // renderer workers. A shared cookie jar would send the other dashboard's cookie.
 export async function privateUpstreamFixture() {

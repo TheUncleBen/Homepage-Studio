@@ -1367,7 +1367,14 @@
             else await registry({ action: 'create', name: name.value, slug: slug.value, ...(source ? { sourceId: source.id, copyAccess: view.authEnabled && copyAccess.checked } : {}) });
             close();
             await reload(entry ? 'Saved.' : `${name.value.trim()} is ready.`);
-          } catch (error) { failure(box, error); }
+          } catch (error) {
+            if (error?.code !== 'DASHBOARD_REVISION_CONFLICT') return failure(box, error);
+            // Someone else changed the list. Show the latest list behind the
+            // dialog and keep this draft; saving again applies it on top.
+            await reload().catch(() => {});
+            const current = entry && view.dashboards.find(item => item.id === entry.id);
+            say(box, current ? `Someone else changed the dashboard list. Currently saved: ${current.name} at /${current.slug}. Your draft is still here; Save again to apply it.` : 'Someone else changed the dashboard list. Your draft is still here; Save again to apply it.');
+          }
         });
       });
       return form;

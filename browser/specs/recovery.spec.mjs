@@ -1,28 +1,23 @@
-import { expect, saveFiles, studioApi, test } from '../helpers/dashboard.mjs';
+import { DASHBOARDS, expect, openSettings, saveFiles, studioApi, test } from '../helpers/dashboard.mjs';
 
-test('restoring changed custom JavaScript offers reload and applies the restored script only after reload', async ({ page, request }) => {
+test('restoring changed custom JavaScript applies the restored script when the dashboard next opens', async ({ page, request }) => {
   const restoredScript = "document.documentElement.dataset.studioRestoreFixture = 'restored';\n";
   const currentScript = "document.documentElement.dataset.studioRestoreFixture = 'current';\n";
   const previous = await saveFiles(request, { customJs: restoredScript });
   await saveFiles(request, { customJs: currentScript });
-  const backups = await studioApi(request, '/__studio/api/backups');
+  const backups = await studioApi(request, '/home/__studio/api/backups');
   const index = backups.findIndex(backup => backup.revision === previous.revision);
   expect(index).toBeGreaterThanOrEqual(0);
-  await page.goto('/');
+  await page.goto('/home');
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.studioRestoreFixture)).toBe('current');
-  await page.getByRole('button', { name: 'Dashboard settings', exact: true }).click();
-  await page.getByRole('button', { name: /Snapshots & restore/ }).click();
+  await (await openSettings(page)).getByRole('button', { name: /Snapshots & restore/ }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.locator('.studio-snapshot')).toHaveCount(backups.length);
   await dialog.locator('.studio-snapshot').nth(index).click();
   await dialog.getByRole('button', { name: 'Restore selected snapshot', exact: true }).click();
-  await expect(page.locator('.studio-status-message')).toContainText('Changes saved. Reload once to apply custom JavaScript.');
-  expect((await studioApi(request, '/__studio/api/state')).customJs).toBe(restoredScript);
-  expect(await page.evaluate(() => document.documentElement.dataset.studioRestoreFixture)).toBe('current');
-  // Wait for the reloaded document before reading it; evaluating during the
-  // navigation can hit a destroyed execution context or a null root.
-  const loaded = page.waitForEvent('load');
-  await page.getByRole('button', { name: 'Reload dashboard', exact: true }).click();
-  await loaded;
+  // A restore saves and returns to the Dashboards page.
+  await page.waitForURL(`**${DASHBOARDS}`);
+  expect((await studioApi(request, '/home/__studio/api/state')).customJs).toBe(restoredScript);
+  await page.goto('/home');
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.studioRestoreFixture)).toBe('restored');
 });
