@@ -34,14 +34,18 @@ sharing are covered in [AUTHENTICATION.md](AUTHENTICATION.md).
 
 ### The Dashboards page
 
-**Dashboards** (`/studio/dashboards`) lists every dashboard you can open,
-each with **Open**, and **Edit** and **Settings** when you may arrange it.
-Administrators and members see the same page, filtered to what each can open.
-**More actions** on a card has **Make my default** and, for administrators,
-**Rename or change address**, **Duplicate**, **Who can open it** and
-**Archive**. Administrators also get **New dashboard** and the archived list.
-Each card shows when the dashboard last changed and, for administrators, who
-can open it.
+**Dashboards** (`/studio/dashboards`) lists every dashboard you can open, one
+row each, all the same size. A row shows a live preview of the dashboard, its
+name and address, when it last changed and, for administrators, who can open
+it. **Open** is on every row, and **Edit** and **Settings** when you may
+arrange it. The row's **⋯** menu has **Make my default** and, for
+administrators, **Rename or change address**, **Duplicate**, **Who can open
+it** and **Archive**. Administrators also get **New dashboard** and the
+archived list.
+
+Previews load as their rows scroll into view, a couple at a time, and can't be
+clicked or typed into. Administrators and members see the same page, filtered
+to what each can open.
 
 The bare address (`https://homepage.example.test/`) opens:
 
@@ -61,14 +65,11 @@ Every page, dashboards and administration alike, has the same bar:
 
 - On Studio's own pages (Dashboards, My account, Administration), the logo and
   the deployment's name. On a dashboard, that dashboard's logo and name.
-- The name opens the **dashboard switcher**: **All dashboards**, then every
-  dashboard you can open, to jump straight to one.
+- The name opens Studio's menu: **All dashboards**, **Administration** for
+  administrators, then every dashboard you can open, to jump straight to one.
 - **Quick Launch** on a dashboard (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> +
   <kbd>K</kbd>, Homepage's own search across your services and bookmarks).
-- **Dashboards**, **Administration** for administrators, and your account
-  menu (**My account**, **Sign out**).
-
-On a phone, Dashboards and Administration move into the account menu.
+- Your account menu: **My account** and **Sign out**.
 
 The deployment's name is `STUDIO_DEPLOYMENT_NAME` (default *Homepage
 Studio*); an administrator can change it in **Administration → Sign-in
@@ -121,8 +122,11 @@ In the editor, **Widgets** opens *Add to your dashboard*. Search, or pick a cate
 | **Services** | A service tile: a link to an app, with Homepage's status and statistics |
 | **Bookmarks** | A compact link |
 
-Pick one, fill in its options (the form lists what the native widget accepts,
-with a link to Homepage's documentation), and save. The panel appears in the
+Pick one, fill in its options, and save. The form lists what the native
+widget accepts, with an info button on any setting that needs explaining and
+**Setting up …** underneath: what the service needs, from Homepage's
+documentation. The [widget reference](widgets/README.md) has the same for
+every widget, in one place. The panel appears in the
 first free spot on the board, and the save makes a snapshot you can go back to.
 
 Information widgets are titled by their native name, numbered when you have
@@ -264,9 +268,13 @@ used after a manual change.
 
 In the editor, a panel's **edit** button opens it with two tabs:
 
-- **Options**: a form for the common native options, with a link to
-  Homepage's documentation for that widget.
-- **Advanced YAML**: the same panel as YAML, for everything else the widget
+- **Options**: the connection (address, key, version), the fields it shows,
+  and the common native options. **Visible fields** turns each of the
+  widget's fields on or off and sets their order. **Version**, on widgets
+  that speak to more than one release of their app, is a choice between the
+  releases Homepage documents, such as *Before 2025.8.0* and *2025.8.0 or
+  later*; leaving it as it is keeps Homepage's default.
+- **YAML**: the same panel as YAML, for everything else the widget
   supports.
 
 Both edit one draft. Options you don't touch, including ones Studio doesn't
@@ -274,7 +282,7 @@ know about, `null` values and `{{HOMEPAGE_VAR_...}}` or
 `{{HOMEPAGE_FILE_...}}` references, are left exactly as they were.
 
 If the YAML has a mistake, the editor says where: *Invalid YAML at line 4,
-column 9: ...* in the YAML tab, and *services.yaml contains invalid YAML at
+column 9: ...* in the **YAML** view, and *services.yaml contains invalid YAML at
 line 12, column 3.* when a save is refused. The message never repeats the text
 of the line, so a secret on that line doesn't end up on screen or in a log. A
 draft with a mistake stays open for you to fix; the saved file isn't touched.

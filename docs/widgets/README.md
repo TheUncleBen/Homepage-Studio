@@ -1,6 +1,6 @@
 # Widget reference
 
-Every widget Studio can add, generated from Homepage 2.6.0's own documentation. Each page lists what the service needs, the settings the widget dialog shows, Homepage's examples and the source. How widgets work in Studio, and how to keep their API keys out of the files, is in [WIDGETS.md](../WIDGETS.md).
+Every widget Studio can add, generated from Homepage 2.6.0's own documentation. Each page lists what the service needs, the settings the widget dialog shows, Homepage's examples and the source. How the widget dialog works is in [USING.md](../USING.md#changing-what-a-panel-shows); how to keep API keys out of the files is in [DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets).
 
 ## Integrations
 

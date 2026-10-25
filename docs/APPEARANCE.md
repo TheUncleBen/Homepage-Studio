@@ -7,33 +7,34 @@ keep the platform accent and choose its own display mode, for example.
 
 ## The platform default look
 
-**Administration → Appearance → Default look for dashboards** has:
+**Administration → Appearance** has:
 
 | Setting | What it does |
 | --- | --- |
-| **Display mode** | Dark, Light or Follow device. Default: Dark |
-| **Accent color** | A hex color or one of the presets. Default: the muted eggplant `#b299be` |
-| **Background image** | Optional. An image address used by every dashboard without a background of its own |
+| **Mode** | Dark, Light or Auto (follows the device). Default: Dark |
+| **Accent** | A swatch (Eggplant, Graphite, Ocean, Sage) or **Custom**, which opens a colour picker and shows a **Hex** field. Default: Eggplant, `#b299be` |
+| **Background** | Optional. An image address used by every dashboard without a background of its own |
 | **Platform CSS** | Optional. Loaded on every dashboard before that dashboard's own `custom.css`, which can override it |
 
-**Save default look** applies it from each dashboard's next load. If another
-administrator saved a change while you were editing, Studio says so and keeps
-your draft; saving again replaces their change. With sign-in turned off,
-**Administration** shows only this page.
+**Save default look** takes effect straight away: dashboards open in the same
+browser update at once, and Studio's own pages follow the new look too. Other
+devices pick it up the next time their dashboard refreshes its data or
+reloads; nobody needs to clear a cache. If another administrator saved a
+change while you were editing, Studio says so and keeps your draft; saving
+again replaces their change.
 
 ## A dashboard's own look
 
 Open the dashboard's **Settings** (on the **Dashboards** page, or
 `/<slug>/studio/settings`) and find **Appearance**:
 
-- **Display mode**: **Platform default (…)** follows the platform; Dark,
-  Light or Follow device sets this dashboard's own.
-- **Use the platform accent color**: on, it follows the platform accent; off,
-  choose an accent or enter a hex color. Eggplant, Graphite, Ocean, and Sage
-  are convenient starting points; any three- or six-digit hex color is
-  accepted.
-- **Load the platform CSS before this dashboard's custom.css**: on by
-  default. Administrators can switch it off for one dashboard.
+- **Mode**: **Default** follows the platform; Dark, Light or Auto sets this
+  dashboard's own.
+- **Accent**: the first swatch, **Default**, follows the platform accent; the
+  others set this dashboard's own, and **Custom** takes any three- or
+  six-digit hex color.
+- **Platform CSS → Load the platform CSS**: on by default. Administrators can
+  switch it off for one dashboard.
 
 The preview changes with the draft. **Save settings** applies it to this
 dashboard and creates the usual recovery snapshot. Each dashboard stores its
@@ -69,7 +70,7 @@ studioTheme:
 
 The chosen accent is used to derive text, controls, focus rings, borders, and soft selection backgrounds. Studio adjusts its derived foreground colors for readability against the light or dark neutral surfaces. The exact chosen hex stays in the file. Native status colors and integration-specific chart colors keep Homepage's behavior; the native `color` palette remains independently configurable below Appearance.
 
-Background images and their native blur, brightness, saturation, and opacity settings remain available through the Background field and Advanced YAML; a dashboard without one uses the platform background image, if any. Widget dimensions and stack layout remain direct dashboard edits. There is no separate theme profile database or browser-only appearance setting to synchronize.
+Background images and their native blur, brightness, saturation, and opacity settings remain available through the Background field and the YAML view; a dashboard without one uses the platform background image, if any. Widget dimensions and stack layout remain direct dashboard edits. There is no separate theme profile database or browser-only appearance setting to synchronize.
 
 ## Custom CSS
 
