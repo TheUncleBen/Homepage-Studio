@@ -600,7 +600,10 @@
     user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0',
     down: 'm6 9 6 6 6-6',
     grip: 'M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01',
-    menu: 'M4 7h16M4 12h16M4 17h16',
+    grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+    settings: 'M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4',
+    check: 'm5 12 4 4L19 6',
+    info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 11v6M12 7.5h.01',
   };
   function icon(name, size = 17) {
     const ns = 'http://www.w3.org/2000/svg';
@@ -613,11 +616,16 @@
   }
   // The one top bar on every Studio page. Dashboards draw the same bar
   // (homepage/src/components/studio/top-bar.jsx): keep the two in step.
-  // The name at the top left opens a list of the dashboards this person can
-  // open, with "All dashboards" (this Dashboards page) first.
-  function switcher(name) {
-    const list = h('div', { class: 'switcher-popover', role: 'menu', hidden: true }, h('a', { role: 'menuitem', href: '/studio/dashboards', text: 'All dashboards' }), h('hr'));
-    const button = h('button', { type: 'button', class: 'switcher-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': name + '. Switch dashboard' }, h('span', { class: 'switcher-name', text: name }), icon('down', 16));
+  // The name at the top left opens Studio's one navigation menu: All
+  // dashboards, Administration for administrators, then the dashboards this
+  // person can open.
+  function switcher(name, current, isAdmin) {
+    const navItem = (href, label, iconName) => h('a', { role: 'menuitem', href, 'aria-current': href === current ? 'page' : undefined }, icon(iconName, 16), h('span', { text: label }));
+    const list = h('div', { class: 'switcher-popover', role: 'menu', hidden: true },
+      navItem('/studio/dashboards', 'All dashboards', 'grid'),
+      isAdmin ? navItem('/studio/admin', 'Administration', 'settings') : null,
+      h('hr'));
+    const button = h('button', { type: 'button', class: 'switcher-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': name + '. Open the menu' }, h('span', { class: 'switcher-name', text: name }), icon('down', 16));
     const holder = h('div', { class: 'switcher' }, button, list);
     let loaded = false;
     const close = () => { list.hidden = true; button.setAttribute('aria-expanded', 'false'); };
@@ -632,8 +640,8 @@
       try {
         const { dashboards } = await call('/studio/api/overview');
         note.remove();
-        list.append(...dashboards.filter(entry => !entry.archived && entry.path).map(entry => h('a', { role: 'menuitem', href: entry.path, text: entry.name })));
-      } catch { loaded = false; note.textContent = 'The list could not load. Use All dashboards.'; }
+        list.append(...dashboards.filter(entry => !entry.archived && entry.path).map(entry => h('a', { role: 'menuitem', href: entry.path }, h('span', { text: entry.name }))));
+      } catch { loaded = false; note.textContent = 'Couldn’t load your dashboards.'; }
     });
     popovers.push({ holder, button, popover: list, close });
     return holder;
@@ -641,36 +649,28 @@
   function topBar(current, user) {
     const isAdmin = !user || user.role === 'admin';
     popovers = [];
-    const links = [['/studio/dashboards', 'Dashboards'], ...(isAdmin ? [['/studio/admin', 'Administration']] : [])];
-    const linkNode = ([href, label], extra = {}) => h('a', { href, 'aria-current': href === current ? 'page' : undefined, text: label, ...extra });
-    // On a phone the links fold into the account menu; with sign-in off,
-    // into a menu of their own.
-    let items, button;
+    let menu = null;
     if (user) {
       const name = user.displayName || user.username;
       const out = h('button', { type: 'button', role: 'menuitem', text: 'Sign out' });
       out.addEventListener('click', () => signOut(out));
-      items = [h('p', { class: 'account-name', text: name }),
-        links.map(link => linkNode(link, { role: 'menuitem', class: 'narrow-only' })),
-        linkNode(['/studio/account', 'My account'], { role: 'menuitem' }), out];
-      button = h('button', { type: 'button', class: 'icon-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': 'Account: ' + name, title: name }, icon('user'));
-    } else {
-      items = links.map(link => linkNode(link, { role: 'menuitem' }));
-      button = h('button', { type: 'button', class: 'icon-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': 'Menu', title: 'Menu' }, icon('menu'));
+      const button = h('button', { type: 'button', class: 'icon-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': 'Account: ' + name, title: name }, icon('user'));
+      const popover = h('div', { class: 'account-popover', role: 'menu', hidden: true },
+        h('p', { class: 'account-name', text: name }),
+        h('a', { role: 'menuitem', href: '/studio/account', 'aria-current': current === '/studio/account' ? 'page' : undefined, text: 'My account' }), out);
+      const close = () => { popover.hidden = true; button.setAttribute('aria-expanded', 'false'); };
+      button.addEventListener('click', () => {
+        const opening = popover.hidden;
+        popover.hidden = !opening;
+        button.setAttribute('aria-expanded', String(opening));
+      });
+      menu = h('div', { class: 'account-menu' }, button, popover);
+      popovers.push({ holder: menu, button, popover, close });
     }
-    const popover = h('div', { class: 'account-popover', role: 'menu', hidden: true }, ...items);
-    const close = () => { popover.hidden = true; button.setAttribute('aria-expanded', 'false'); };
-    button.addEventListener('click', () => {
-      const opening = popover.hidden;
-      popover.hidden = !opening;
-      button.setAttribute('aria-expanded', String(opening));
-    });
-    const menu = h('div', { class: 'account-menu' + (user ? '' : ' narrow-only') }, button, popover);
-    popovers.push({ holder: menu, button, popover, close });
     return h('header', { class: 'top-bar' },
       h('a', { class: 'top-brand', href: '/studio/dashboards', 'aria-label': 'All dashboards' }, logo(30)),
-      switcher(deploymentName),
-      h('nav', { class: 'top-actions', 'aria-label': 'Studio' }, links.map(link => linkNode(link, { class: 'top-link wide-only' })), menu));
+      switcher(deploymentName, current, isAdmin),
+      h('nav', { class: 'top-actions', 'aria-label': 'Studio' }, menu));
   }
   // Pages redraw their chrome, so one pair of listeners serves the latest menu.
   let popovers = [];
@@ -1408,7 +1408,7 @@
             deploymentName = view.settings.deploymentName || view.deploymentNameDefault;
             document.title = deploymentName;
             for (const node of document.querySelectorAll('.switcher-name')) node.textContent = deploymentName;
-            document.querySelector('.switcher-button')?.setAttribute('aria-label', deploymentName + '. Switch dashboard');
+            document.querySelector('.switcher-button')?.setAttribute('aria-label', deploymentName + '. Open the menu');
           });
         } },
           field('Name', siteInput, `Leave it empty to use the deployment’s name, “${view.deploymentNameDefault}” (STUDIO_DEPLOYMENT_NAME).`),

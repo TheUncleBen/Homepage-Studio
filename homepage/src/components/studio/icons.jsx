@@ -18,6 +18,8 @@ export default function StudioIcon({ name, size = 18, ...props }) {
     link: "m10 14 4-4M8 15l-1 1a3.5 3.5 0 0 1-5-5l4-4a3.5 3.5 0 0 1 5 0M16 9l1-1a3.5 3.5 0 0 1 5 5l-4 4a3.5 3.5 0 0 1-5 0",
     chevron: "m9 5 7 7-7 7",
     down: "m6 9 6 6 6-6",
+    grid: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+    info: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 11v6M12 7.5h.01",
     menu: "M4 7h16M4 12h16M4 17h16",
     more: "M5 12h.01M12 12h.01M19 12h.01",
     clock: "M12 8v4l3 2M21 12a9 9 0 1 0-18 0 9 9 0 0 0 18 0Z",
