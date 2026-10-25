@@ -111,7 +111,7 @@ piece can be swapped, and the guide links to the alternatives.
 - **A Dashboards page and clean live dashboards.** The Dashboards page lists
   what each person can open, with **Open**, **Edit** and **Settings**. A live
   dashboard shows widgets only; arranging happens in its editor
-  (`/<slug>/__studio/edit`) and settings in `/<slug>/__studio/settings`. The
+  (`/<slug>/studio/edit`) and settings in `/<slug>/studio/settings`. The
   bare address opens your default dashboard, your group's, or the Dashboards
   page. One top bar is the same on every page.
 - **Arrange in the editor.** Move panels by their handle, resize from the

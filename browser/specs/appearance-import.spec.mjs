@@ -24,16 +24,16 @@ test('appearance persists, follows device changes and preserves native state and
   await expect(search).toBeVisible();
   await expect(page.locator('html')).toHaveClass(/light/);
   await expect.poll(() => token(page, '--studio-bg')).toBe('#f4f3f6');
-  const saved = await studioApi(request, '/home/__studio/api/state');
+  const saved = await studioApi(request, '/home/studio/api/state');
   expect(saved.settingsConfig).toMatchObject({ title: 'Appearance fixture', 'x-retained': null, studioTheme: { mode: 'system', accent: '#81a8c8' } });
   // Following the device needs no reload: the same input keeps its query.
   await search.fill('A native query that survives theme changes');
   const originalInput = await search.elementHandle();
-  const history = await studioApi(request, '/home/__studio/api/backups');
+  const history = await studioApi(request, '/home/studio/api/backups');
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveClass(/dark/);
   await expect.poll(() => token(page, '--studio-bg')).toBe('#111115');
-  expect(await studioApi(request, '/home/__studio/api/backups')).toEqual(history);
+  expect(await studioApi(request, '/home/studio/api/backups')).toEqual(history);
   await expect(search).toHaveValue('A native query that survives theme changes');
   expect(await search.evaluate((node, before) => node === before, originalInput)).toBe(true);
 
@@ -49,7 +49,7 @@ test('appearance persists, follows device changes and preserves native state and
   // the order of the head elements.
   await backToLive(page);
   await expect.poll(() => token(page, '--studio-accent')).toBe('#c1b6cc');
-  expect((await studioApi(request, '/home/__studio/api/state')).settingsConfig.studioTheme).toEqual({ mode: 'system', accent: '#91b09e' });
+  expect((await studioApi(request, '/home/studio/api/state')).settingsConfig.studioTheme).toEqual({ mode: 'system', accent: '#91b09e' });
 });
 
 test('a downloaded dashboard imports only after confirmation and restores exact native files, identities and stacks', { tag: '@cross-engine' }, async ({ page, request }) => {
@@ -73,7 +73,7 @@ test('a downloaded dashboard imports only after confirmation and restores exact 
   const replacement = await saveFiles(request, {
     servicesYaml: '[]\n', widgetsYaml: '[]\n', bookmarksYaml: '[]\n', settingsYaml: 'title: Before import\n', customCss: '',
   });
-  const before = await studioApi(request, '/home/__studio/api/backups');
+  const before = await studioApi(request, '/home/studio/api/backups');
   dialog = await openSettings(page);
   await dialog.getByRole('button', { name: /Snapshots & restore/ }).click();
   dialog = page.getByRole('dialog');
@@ -81,21 +81,21 @@ test('a downloaded dashboard imports only after confirmation and restores exact 
   await dialog.getByRole('button', { name: 'Choose dashboard backup', exact: true }).press('Enter');
   await (await picker).setFiles({ name: exported.name, mimeType: 'application/json', buffer: Buffer.from(exported.text) });
   await expect(dialog.getByRole('status')).toContainText(`Replace this dashboard with ${exported.name}?`);
-  expect((await studioApi(request, '/home/__studio/api/state')).revision).toBe(replacement.revision);
-  expect(await studioApi(request, '/home/__studio/api/backups')).toEqual(before);
+  expect((await studioApi(request, '/home/studio/api/state')).revision).toBe(replacement.revision);
+  expect(await studioApi(request, '/home/studio/api/backups')).toEqual(before);
   await dialog.getByRole('button', { name: 'Import dashboard', exact: true }).click();
   await backToLive(page);
-  const imported = await studioApi(request, '/home/__studio/api/state');
+  const imported = await studioApi(request, '/home/studio/api/state');
   const archive = JSON.parse(exported.text);
   for (const [name, key] of NATIVE_FILES) expect(imported[key]).toBe(archive.files[name]);
   expect(imported.board).toEqual(original.board);
   await expect(page).toHaveTitle('Portable dashboard');
   await expect(page.locator('[data-stack-id]:not([aria-hidden="true"])')).toContainText('Imported second greeting');
   await expect.poll(() => token(page, '--studio-import-fixture')).toBe('17');
-  const added = (await studioApi(request, '/home/__studio/api/backups')).filter(item => !before.some(previous => previous.id === item.id));
+  const added = (await studioApi(request, '/home/studio/api/backups')).filter(item => !before.some(previous => previous.id === item.id));
   expect(added).toHaveLength(1);
   expect(added[0].revision).toBe(replacement.revision);
   await page.reload();
-  expect((await studioApi(request, '/home/__studio/api/board')).board).toEqual(original.board);
+  expect((await studioApi(request, '/home/studio/api/board')).board).toEqual(original.board);
   await expect(page.locator('[data-stack-id]:not([aria-hidden="true"])')).toContainText('Imported second greeting');
 });

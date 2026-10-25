@@ -298,7 +298,7 @@ export default function ContentEditor({
         else body.serviceId = serviceId;
       }
       const result = await studioRequest(
-        `/__studio/api/${ENDPOINT[kind]}`,
+        `/studio/api/${ENDPOINT[kind]}`,
         body,
       );
       await onSaved(result);

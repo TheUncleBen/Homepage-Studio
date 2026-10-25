@@ -10,9 +10,10 @@ import { constants } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from './index.mjs';
 import { dashboardConfigDir, dashboardStateDir, DASHBOARD_REGISTRY_FILE } from './dashboard-paths.mjs';
+import { addressMainDashboard } from './fixtures/main-address.mjs';
 // The main dashboard lives at /home. Its own addresses (native API, editor
 // API, native data) move with it; Studio-wide addresses stay at the root.
-const onPrimary = target => (/^\/(?:api\/|__studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
 
 
 const HOST = 'dashboards.example.test:3000';
@@ -61,6 +62,8 @@ async function fixture(t) {
   };
   const app = createStudioServer({ configDir, stateDir, rendererDir, rendererPool: pool, allowedHosts: HOST, buildRevision: BUILD, auth: 'off' });
   const port = await listen(app.server);
+  await addressMainDashboard({ port, host: HOST, origin: ORIGIN });
+  drains.length = 0;
   t.after(async () => {
     beforeAcquire = undefined;
     await app.shutdown({ graceMs: 25 });
@@ -76,9 +79,9 @@ async function fixture(t) {
     req.on('error', reject); req.setTimeout(5000, () => req.destroy(new Error('Isolated dashboard request timed out'))); req.end(body);
   });
   const post = (url, value, headers = {}) => request(url, { method: 'POST', body: JSON.stringify(value), headers: { 'content-type': 'application/json', origin: ORIGIN, 'x-studio-request': '1', ...headers } });
-  const mutate = async change => post('/__studio/api/dashboards', { revision: (await request('/__studio/api/dashboards')).json.revision, ...change });
+  const mutate = async change => post('/studio/api/dashboards', { revision: (await request('/studio/api/dashboards')).json.revision, ...change });
   const create = async (slug, sourceId) => { const result = await mutate({ action: 'create', name: slug, slug, ...(sourceId ? { sourceId } : {}) }); assert.equal(result.status, 200, result.text); return result.json.dashboard; };
-  const state = async (slug = '') => { const result = await request(`${slug ? '/' + slug : ''}/__studio/api/state`); assert.equal(result.status, 200, result.text); return result.json; };
+  const state = async (slug = '') => { const result = await request(`${slug ? '/' + slug : ''}/studio/api/state`); assert.equal(result.status, 200, result.text); return result.json; };
   return { ...app, root, configDir, stateDir, rendererDir, port, pool, acquisitions, drains, request, post, mutate, create, state, setBeforeAcquire(fn) { beforeAcquire = fn; }, get leases() { return leases; }, get releases() { return releases; }, get closes() { return closes; }, get handlerCount() { return app.dashboardHandlerCount; } };
 }
 
@@ -86,21 +89,21 @@ test('all nine native files duplicate independently with their own revisions and
   const f = await fixture(t);
   const initial = await f.state();
   const edits = { servicesYaml: '# Root services\n- Apps:\n    - App:\n        href: https://app.example.test\n', bookmarksYaml: '# Links\n[]\n', widgetsYaml: '# Information\n[]\n', settingsYaml: 'title: Root\ntheme: dark\ncolor: purple\n', dockerYaml: '# Docker\n{}\n', kubernetesYaml: '# Kubernetes\n{}\n', proxmoxYaml: '# Proxmox\n{}\n', customCss: '.only-root { color: purple; }', customJs: 'window.onlyRoot = true;' };
-  const saved = await f.post('/__studio/api/save', { revision: initial.revision, ...edits }); assert.equal(saved.status, 200, saved.text);
+  const saved = await f.post('/studio/api/save', { revision: initial.revision, ...edits }); assert.equal(saved.status, 200, saved.text);
   const child = await f.create('family', 'default');
   const copied = await f.state('family');
   for (const [field, bytes] of Object.entries(edits)) assert.equal(copied[field], bytes, field);
   assert.deepEqual(copied.services.map(item => item.id), saved.json.services.map(item => item.id), 'A duplicated board keeps its internal stable identities in isolated storage.');
-  const childSave = await f.post('/family/__studio/api/save', { revision: copied.revision, settingsYaml: 'title: Family\ntheme: light\ncolor: blue\n', customCss: '.family { color: blue; }', customJs: 'window.family = true;' });
+  const childSave = await f.post('/family/studio/api/save', { revision: copied.revision, settingsYaml: 'title: Family\ntheme: light\ncolor: blue\n', customCss: '.family { color: blue; }', customJs: 'window.family = true;' });
   assert.equal(childSave.status, 200, childSave.text);
   assert.equal((await f.state()).settingsYaml, edits.settingsYaml);
   assert.equal((await f.request('/family/api/config')).json.id, child.id);
   assert.match((await f.request('/family/api/config')).json.settings, /Family/);
   assert.match((await f.request('/api/config')).json.settings, /Root/);
-  const rootBackups = (await f.request('/__studio/api/backups')).json;
+  const rootBackups = (await f.request('/studio/api/backups')).json;
   const list = Array.isArray(rootBackups) ? rootBackups : rootBackups.backups;
   assert.ok(list.length);
-  const foreign = await f.post('/family/__studio/api/restore', { revision: childSave.json.revision, backupId: list[0].id });
+  const foreign = await f.post('/family/studio/api/restore', { revision: childSave.json.revision, backupId: list[0].id });
   assert.equal(foreign.status, 404, foreign.text);
   assert.notEqual(dashboardStateDir(f.stateDir, child.id), f.stateDir);
 });
@@ -171,7 +174,7 @@ test('an unexpected pre-existing target directory is never adopted or cleaned up
 test('FIFO runtime files and shared assets fail promptly without waiting for a writer', async t => {
   const f = await fixture(t); await f.initialization;
   for (const [file, target, expected] of [
-    [path.join(f.rendererDir, '.next', 'BUILD_ID'), '/__studio/application-ready', 503],
+    [path.join(f.rendererDir, '.next', 'BUILD_ID'), '/studio/application-ready', 503],
     [path.join(f.rendererDir, 'public', 'homepage.ico'), '/homepage.ico', 404],
   ]) {
     await fs.unlink(file); execFileSync('mkfifo', [file]);
@@ -198,7 +201,7 @@ test('rename, root redirect, archive and restore retain immutable dashboard file
   assert.deepEqual(f.drains, [child.id]);
   assert.equal((await f.mutate({ action: 'update', id: 'default', name: 'Admin', slug: 'admin' })).status, 200);
   // With sign-in off the bare address always opens the Dashboards page.
-  const redirect = await f.request('/?view=1'); assert.equal(redirect.status, 307); assert.equal(redirect.headers.location, '/__studio/dashboards');
+  const redirect = await f.request('/?view=1'); assert.equal(redirect.status, 307); assert.equal(redirect.headers.location, '/studio/dashboards');
   assert.equal((await f.request('/api/config')).status, 404);
   assert.equal((await f.request('/admin/api/config')).json.id, 'default');
   const stored = await fs.readFile(path.join(dashboardConfigDir(f.configDir, child.id), 'settings.yaml'));
@@ -228,7 +231,7 @@ test('forged routing headers, wrong hosts and foreign origins cannot change dash
   assert.equal(response.json.headers['x-studio-base-path'], undefined);
   assert.equal((await f.request('/family/api/config', { headers: { host: 'wrong.example.test:3000' } })).status, 403);
   const current = await f.state('family');
-  assert.equal((await f.post('/family/__studio/api/save', { revision: current.revision, settingsYaml: 'title: Wrong\n' }, { origin: 'https://foreign.example.test' })).status, 403);
+  assert.equal((await f.post('/family/studio/api/save', { revision: current.revision, settingsYaml: 'title: Wrong\n' }, { origin: 'https://foreign.example.test' })).status, 403);
   for (const headers of [{ origin: 'https://foreign.example.test' }, { 'sec-fetch-site': 'cross-site' }, { 'sec-fetch-site': 'same-site' }]) {
     assert.equal((await f.request('/family/api/services/proxy?endpoint=Pause', { method: 'POST', body: 'ignored=1', headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers } })).status, 403);
   }
@@ -252,10 +255,10 @@ test('a blocked older request cannot replace a newer slug descriptor', async t =
 test('broken default configuration cannot block global readiness, shared files or a healthy dashboard', async t => {
   const f = await fixture(t); await f.create('family');
   await fs.writeFile(path.join(f.configDir, 'settings.yaml'), 'title: [broken\n');
-  assert.equal((await f.request('/__studio/ready')).status, 503);
-  assert.equal((await f.request('/family/__studio/ready')).status, 200);
+  assert.equal((await f.request('/studio/ready')).status, 503);
+  assert.equal((await f.request('/family/studio/ready')).status, 200);
   const before = f.acquisitions.length;
-  const health = await f.request('/__studio/application-ready'); assert.equal(health.status, 200, health.text);
+  const health = await f.request('/studio/application-ready'); assert.equal(health.status, 200, health.text);
   assert.equal(f.acquisitions.length, before, 'Application health does not acquire or parse a selected worker.');
   const asset = await f.request('/_next/static/chunks/shared.js'); assert.equal(asset.status, 200); assert.equal(asset.text, '/* immutable build */');
   assert.equal((await f.request('/homepage.ico')).text, 'native icon');
@@ -265,7 +268,7 @@ test('broken default configuration cannot block global readiness, shared files o
   assert.equal((await fs.readdir(f.configDir)).some(name => name.includes('readiness')), false);
   assert.equal((await fs.readdir(f.stateDir)).some(name => name.includes('readiness')), false);
   await fs.unlink(path.join(f.rendererDir, '.next', 'BUILD_ID'));
-  assert.equal((await f.request('/__studio/application-ready')).status, 503);
+  assert.equal((await f.request('/studio/application-ready')).status, 503);
 });
 
 test('shared asset links and malformed registry fail closed without leaking paths', async t => {
@@ -275,9 +278,9 @@ test('shared asset links and malformed registry fail closed without leaking path
   await fs.unlink(path.join(f.rendererDir, 'public', 'homepage.ico')); await fs.symlink(outside, path.join(f.rendererDir, 'public', 'homepage.ico'));
   const result = await f.request('/homepage.ico'); assert.equal(result.status, 404); assert.doesNotMatch(result.text, /private fixture|studio-multi-http/);
   await fs.writeFile(path.join(f.configDir, DASHBOARD_REGISTRY_FILE), '{broken');
-  assert.equal((await f.request('/__studio/application-ready')).status, 503);
+  assert.equal((await f.request('/studio/application-ready')).status, 503);
   const robots = await f.request('/robots.txt'); assert.equal(robots.status, 503); assert.equal(robots.text, 'User-agent: *\nDisallow: /\n');
-  assert.equal((await f.request('/__studio/live')).status, 200);
+  assert.equal((await f.request('/studio/live')).status, 200);
 });
 
 test('robots uses each resolved native setting without acquiring renderer workers', async t => {
@@ -304,7 +307,7 @@ test('WebSocket upgrades are refused at once and never wait for or hold a render
     return { received, elapsed: Date.now() - started };
   };
   const held = [];
-  for (const target of ['/family/_next/webpack-hmr', '/_next/webpack-hmr', '/family/api/socket', '/api/socket', '/__studio/api/state', '/missing/_next/webpack-hmr']) {
+  for (const target of ['/family/_next/webpack-hmr', '/_next/webpack-hmr', '/family/api/socket', '/api/socket', '/studio/api/state', '/missing/_next/webpack-hmr']) {
     for (const extra of ['', 'Origin: https://attacker.example.test\r\nSec-Fetch-Site: cross-site\r\n', `Origin: ${ORIGIN}\r\nSec-Fetch-Site: same-origin\r\n`]) held.push(upgrade(target, extra));
   }
   for (const { received, elapsed } of await Promise.all(held)) {
@@ -351,12 +354,12 @@ test('browser navigation to an unavailable dashboard gets an accessible page; AP
     assert.match(page.text, /<html lang="en">/);
     assert.match(page.text, /<h1>This dashboard isn&#39;t available<\/h1>/);
     assert.match(page.text, /Error 404/);
-    assert.match(page.text, /<a href="\/__studio\/dashboards">Open Dashboards<\/a>/);
+    assert.match(page.text, /<a href="\/studio\/dashboards">Open Dashboards<\/a>/);
     assert.doesNotMatch(page.text, /<script|family|garage|no-such|alert/i, target);
   }
   const head = await f.request('/garage', { method: 'HEAD', headers: html });
   assert.equal(head.status, 404); assert.equal(head.headers['content-type'], 'text/html; charset=utf-8'); assert.equal(head.text, '');
-  for (const [target, headers] of [['/family', {}], ['/family', { accept: 'application/json' }], ['/garage', { accept: '*/*' }], ['/family/api/config', html], ['/garage/__studio/api/state', html]]) {
+  for (const [target, headers] of [['/family', {}], ['/family', { accept: 'application/json' }], ['/garage', { accept: '*/*' }], ['/family/api/config', html], ['/garage/studio/api/state', html]]) {
     const result = await f.request(target, { headers });
     assert.equal(result.status, 404, target);
     assert.match(result.headers['content-type'], /^application\/json/, target);

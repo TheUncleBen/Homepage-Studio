@@ -6,8 +6,8 @@ test('startup controls wait for the first board response and the settings page o
   await page.setViewportSize({ width: 390, height: 844 });
   let releaseBoard;
   const boardGate = new Promise(resolve => { releaseBoard = resolve; });
-  const boardRequested = page.waitForRequest(req => new URL(req.url()).pathname === '/home/__studio/api/board' && req.method() === 'GET');
-  await page.route('**/__studio/api/board', async route => {
+  const boardRequested = page.waitForRequest(req => new URL(req.url()).pathname === '/home/studio/api/board' && req.method() === 'GET');
+  await page.route('**/studio/api/board', async route => {
     if (route.request().method() === 'GET') await boardGate;
     await route.continue();
   });
@@ -32,13 +32,13 @@ test('startup controls wait for the first board response and the settings page o
     // The settings page holds its dialog until the board has answered.
     let releaseAgain;
     const gateAgain = new Promise(resolve => { releaseAgain = resolve; });
-    const requestedAgain = page.waitForRequest(req => new URL(req.url()).pathname === `${HOME}/__studio/api/board` && req.method() === 'GET');
-    await page.unroute('**/__studio/api/board');
-    await page.route('**/__studio/api/board', async route => {
+    const requestedAgain = page.waitForRequest(req => new URL(req.url()).pathname === `${HOME}/studio/api/board` && req.method() === 'GET');
+    await page.unroute('**/studio/api/board');
+    await page.route('**/studio/api/board', async route => {
       if (route.request().method() === 'GET') await gateAgain;
       await route.continue();
     });
-    await page.goto(`${HOME}/__studio/settings`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${HOME}/studio/settings`, { waitUntil: 'domcontentloaded' });
     await requestedAgain;
     const dialog = page.getByRole('dialog', { name: 'Dashboard settings', exact: true });
     await expect(dialog).toHaveCount(0);
@@ -46,6 +46,6 @@ test('startup controls wait for the first board response and the settings page o
     await expect(dialog.getByRole('button', { name: 'Advanced YAML', exact: true })).toBeVisible();
   } finally {
     releaseBoard();
-    await page.unroute('**/__studio/api/board');
+    await page.unroute('**/studio/api/board');
   }
 });

@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   DASHBOARD_REGISTRY_FILE, DASHBOARD_REGISTRY_MARKER, MAX_DASHBOARDS, MAX_REGISTRY_BYTES,
-  DashboardError, validateDashboardManifest, validateDashboardName, validateDashboardSlug, dashboardBasePath, migrateDashboardManifest, migratedManifests,
+  DashboardError, validateDashboardManifest, validateDashboardName, validateDashboardSlug, dashboardBasePath,
 } from './dashboard-paths.mjs';
 
 const copy = value => structuredClone(value);
@@ -27,7 +27,7 @@ async function readRegistry(file) {
     if (!stat.isFile() || stat.size > MAX_REGISTRY_BYTES) throw new Error('Invalid registry file');
     const text = await handle.readFile('utf8');
     if (Buffer.byteLength(text) > MAX_REGISTRY_BYTES) throw new Error('Oversized registry');
-    return validateDashboardManifest(migrateDashboardManifest(JSON.parse(text)));
+    return validateDashboardManifest(JSON.parse(text));
   } catch (error) {
     if (error.code === 'ENOENT') return null;
     if (error instanceof DashboardError) throw error;
@@ -107,13 +107,9 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
       let manifest = await readRegistry(registryFile);
       if (!manifest) {
         await assertFirstUse();
-        manifest = { version: 1, revision: randomUUID(), dashboards: [{ id: 'default', slug: 'home', name: 'Main dashboard', archived: false }] };
+        manifest = { version: 1, revision: randomUUID(), dashboards: [{ id: 'default', slug: '', name: 'Main dashboard', archived: false }] };
         await prepareDashboard(manifest.dashboards[0]);
         await publish(manifest);
-      } else if (migratedManifests.has(manifest)) {
-        const previous = manifest.revision;
-        manifest = { ...copy(manifest), revision: randomUUID() };
-        await publish(manifest, previous);
       }
       await ensureMarker();
       return copy(manifest);
@@ -144,6 +140,8 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
           if (!entry) missing();
           if (change.action === 'update') {
             entry.name = validateDashboardName(change.name);
+            // An address, once chosen, can change but cannot be removed.
+            if (change.slug === '') throw new DashboardError('Give the dashboard an address.', 'INVALID_DASHBOARD_SLUG');
             entry.slug = validateDashboardSlug(change.slug, entry.id);
             if (next.dashboards.some(item => item.id !== entry.id && item.slug === entry.slug)) throw new DashboardError('That address is already used by an active or archived dashboard.', 'DASHBOARD_SLUG_CONFLICT', 409);
           } else if (change.action === 'archive') {
@@ -180,7 +178,7 @@ export function resolveDashboardRoute(manifest, target) {
   try { decoded = decodeURIComponent(pathname); } catch { throw new DashboardError('Malformed dashboard address.', 'INVALID_DASHBOARD_PATH'); }
   if (/%(?:2f|5c|00)/i.test(pathname) || decoded.includes('\\') || decoded.split('/').some(part => part === '.' || part === '..') || /[\u0000-\u001f\u007f]/.test(decoded)) throw new DashboardError('Unsupported dashboard path.', 'INVALID_DASHBOARD_PATH');
   const primary = manifest.dashboards.find(entry => entry.id === 'default');
-  if (pathname === '/') return { dashboard: primary, path: target, redirect: primary.slug ? dashboardBasePath(primary) + target.slice(1) : null };
+  if (pathname === '/' && primary.slug) return { dashboard: primary, path: target, redirect: dashboardBasePath(primary) + target.slice(1) };
   const named = manifest.dashboards.find(entry => entry.slug && entry.slug === pathname.split('/')[1]);
   if (named) {
     if (named.archived) missing();
@@ -188,6 +186,5 @@ export function resolveDashboardRoute(manifest, target) {
     return { dashboard: named, path: remainder.startsWith('/') ? remainder : '/' + remainder, redirect: null };
   }
   if (sharedPublic(pathname)) return { dashboard: primary, path: target, shared: true, redirect: null };
-  if (!primary.slug && (pathname.startsWith('/api/') || pathname.startsWith('/__studio/') || pathname.startsWith('/_next/') || ['/site.webmanifest', '/browserconfig.xml', '/robots.txt'].includes(pathname))) return { dashboard: primary, path: target, redirect: null };
   missing();
 }

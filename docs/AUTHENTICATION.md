@@ -98,7 +98,7 @@ Studio also cancels a setup that was started but not finished.
 ## Inviting people and sharing dashboards
 
 Open **Administration** (from the account button in the dashboard's top bar,
-then **Administration**, or `/__studio/admin`).
+then **Administration**, or `/studio/admin`).
 
 - **People → Invite a person.** Enter a username, optionally a display name
   and email, and choose Member or Administrator. Studio makes a one-time
@@ -142,7 +142,7 @@ from that address and for that account (after five failures, waits double
 up to 15 minutes); they never lock the real owner out for good.
 
 Everyone can manage their own sign-in under **My account**
-(`/__studio/account`): change the password, add or remove passkeys and the
+(`/studio/account`): change the password, add or remove passkeys and the
 authenticator app, make new backup codes, see where they're signed in and sign
 other devices out. Studio insists on keeping a passkey, or a password with an
 authenticator app, so no one locks themselves out by accident.
@@ -180,7 +180,7 @@ with PKCE, checks state and nonce, and verifies the provider's signed tokens.
 ### Setting it up
 
 1. Create a confidential OpenID Connect client at the provider with the
-   redirect URI `https://<your Studio address>/__studio/auth/oidc/callback`,
+   redirect URI `https://<your Studio address>/studio/auth/oidc/callback`,
    and the scopes `openid`, `email`, `profile` and `offline_access`.
    [IDP-OTHERS.md](IDP-OTHERS.md) has the requirements and notes for common
    providers; [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md) is a full worked example
@@ -201,7 +201,7 @@ it. Many providers issue a refresh token only when the client asks for
 2024.2, the `offline_access` scope mapping must be selected). Without a refresh token, Studio can't check groups while someone is
 signed in, so provider sessions end at the first check (15 minutes by default)
 and people sign in again. The optional back-channel logout URI
-(`/__studio/auth/oidc/backchannel-logout`) lets signing out of the provider
+(`/studio/auth/oidc/backchannel-logout`) lets signing out of the provider
 end Studio sessions too.
 
 ### In Studio
@@ -367,7 +367,6 @@ or a backup code, so a mailbox alone can't take over an account.
 | `STUDIO_SMTP_PASSWORD_FILE` | `/run/secrets/studio_smtp_password` in the templates | The file holding the mail password, from the `studio_smtp_password` Docker secret. `off` (or an empty file) means no password |
 | `STUDIO_SMTP_FROM_ADDRESS` | (unset) | The sender address, required with `STUDIO_SMTP_HOST`. A plain address, such as `studio@example.test` |
 | `STUDIO_SMTP_FROM_NAME` | `Homepage Studio` | The sender name people see. Needs `STUDIO_SMTP_FROM_ADDRESS` |
-| `STUDIO_SMTP_FROM` | (unset) | The older single setting (an address, or `Name <address>`), still accepted instead of the two above. Not both |
 
 **Secrets as plain variables (not recommended).** Outside the templates, the
 four secrets can also be given directly as `STUDIO_AUTH_KEY`,

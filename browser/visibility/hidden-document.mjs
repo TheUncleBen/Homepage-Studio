@@ -71,7 +71,7 @@ try {
   const seeded = await seedPlayback(api, { intervalMs: dwellMs });
   const firstId = seeded.board.stacks[0].panelIds[0];
   const secondId = seeded.board.stacks[0].panelIds[1];
-  const backupsBefore = await studioApi(api, '/home/__studio/api/backups');
+  const backupsBefore = await studioApi(api, '/home/studio/api/backups');
   const nativeIdentity = await studioApi(api, '/home/api/studio/health');
   child = spawn(executable, [
     '--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check',
@@ -176,7 +176,7 @@ try {
   assert.ok(resumedAfterMs >= remainingMs - 300 && resumedAfterMs <= remainingMs + 1500, `Resume must preserve remaining time: expected ${remainingMs}ms, observed ${resumedAfterMs}ms`);
   assert.ok(followingDwellMs >= dwellMs - 300 && followingDwellMs <= dwellMs + 1500, `Next advance must use an ordinary dwell, not a catch-up burst: ${followingDwellMs}ms`);
   assert.equal(slides.length, 2);
-  assert.deepEqual(await studioApi(api, '/home/__studio/api/backups'), backupsBefore, 'Playback must not create snapshots');
+  assert.deepEqual(await studioApi(api, '/home/studio/api/backups'), backupsBefore, 'Playback must not create snapshots');
   assert.deepEqual(failures, [], 'No uncaught page exceptions or same-origin HTTP 5xx');
   evidence = {
     passed: true,

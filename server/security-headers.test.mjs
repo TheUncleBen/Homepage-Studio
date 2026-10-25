@@ -8,9 +8,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
 import { createStudioServer, parseFrameAncestors, securityHeaders } from './index.mjs';
+import { addressMainDashboard } from './fixtures/main-address.mjs';
 // The main dashboard lives at /home. Its own addresses (native API, editor
 // API, native data) move with it; Studio-wide addresses stay at the root.
-const onPrimary = target => (/^\/(?:api\/|__studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
 
 
 const HOST = 'frames.example.test:3000';
@@ -26,6 +27,7 @@ async function fixture(t, options = {}, nativeHeaders = {}) {
   const nativePort = await listen(native);
   const app = createStudioServer({ configDir: path.join(root, 'config'), stateDir: path.join(root, 'state'), rendererDir: path.join(root, 'renderer'), upstream: `http://127.0.0.1:${nativePort}`, allowedHosts: HOST, auth: 'off', ...options });
   const port = await listen(app.server);
+  await addressMainDashboard({ port, host: HOST, origin: 'http://' + HOST });
   t.after(async () => {
     await app.shutdown({ graceMs: 25 });
     native.closeAllConnections(); await new Promise(done => native.close(done));
@@ -48,7 +50,7 @@ function allValues(raw, name) {
 
 test('dashboard documents refuse foreign framing by default', async t => {
   const request = await fixture(t);
-  for (const target of ['/', '/__studio/health', '/robots.txt', '/__studio/api/missing']) {
+  for (const target of ['/', '/studio/health', '/robots.txt', '/studio/api/missing']) {
     const response = await request(target);
     assert.equal(response.headers['content-security-policy'], "frame-ancestors 'self'", target);
     assert.equal(response.headers['x-frame-options'], 'SAMEORIGIN', target);
@@ -68,7 +70,7 @@ test('a native response cannot remove or loosen the frame policy', async t => {
 
 test('STUDIO_FRAME_ANCESTORS replaces the default list and drops X-Frame-Options', async t => {
   const request = await fixture(t, { frameAncestors: "'self'  https://ha.example.test:8123\thttp://panel.example.test" }, { 'x-frame-options': 'DENY' });
-  for (const target of ['/', '/__studio/health']) {
+  for (const target of ['/', '/studio/health']) {
     const response = await request(target);
     assert.equal(response.headers['content-security-policy'], "frame-ancestors 'self' https://ha.example.test:8123 http://panel.example.test", target);
     assert.equal(response.headers['x-frame-options'], undefined, target);
@@ -105,7 +107,7 @@ test('an invalid STUDIO_FRAME_ANCESTORS value stops startup', async () => {
 
 test('every response is marked nosniff with a same-origin referrer policy that native responses cannot replace', async t => {
   const request = await fixture(t, {}, { 'x-content-type-options': 'sniff-anyway', 'referrer-policy': 'unsafe-url', 'x-powered-by': 'Next.js' });
-  for (const target of ['/', '/__studio/health', '/robots.txt', '/__studio/api/missing']) {
+  for (const target of ['/', '/studio/health', '/robots.txt', '/studio/api/missing']) {
     const response = await request(target);
     assert.deepEqual(allValues(response.raw, 'x-content-type-options'), ['nosniff'], target);
     assert.deepEqual(allValues(response.raw, 'referrer-policy'), ['same-origin'], target);

@@ -34,7 +34,7 @@ sharing are covered in [AUTHENTICATION.md](AUTHENTICATION.md).
 
 ### The Dashboards page
 
-**Dashboards** (`/__studio/dashboards`) lists every dashboard you can open,
+**Dashboards** (`/studio/dashboards`) lists every dashboard you can open,
 each with **Open**, and **Edit** and **Settings** when you may arrange it.
 Administrators and members see the same page, filtered to what each can open.
 **More actions** on a card has **Make my default** and, for administrators,
@@ -70,8 +70,8 @@ A dashboard has three addresses:
 | Address | What it is |
 | --- | --- |
 | `/<slug>` | The **live dashboard**: your widgets only, with no editing controls |
-| `/<slug>/__studio/edit` | The **editor**: add widgets, move, resize and stack them. **Done** saves and goes back to Dashboards |
-| `/<slug>/__studio/settings` | **Dashboard settings**: appearance, Homepage's settings, configuration files and snapshots. Closing it goes back to Dashboards |
+| `/<slug>/studio/edit` | The **editor**: add widgets, move, resize and stack them. **Done** saves and goes back to Dashboards |
+| `/<slug>/studio/settings` | **Dashboard settings**: appearance, Homepage's settings, configuration files and snapshots. Closing it goes back to Dashboards |
 
 **Edit** and **Settings** on the Dashboards page open the last two. People who
 may only view a dashboard are sent back to it from either address.
@@ -116,7 +116,7 @@ Adding a widget further down the list never renames the ones above it.
 ## Arranging the board
 
 Arranging happens in the editor (**Edit** on the Dashboards page, or
-`/<slug>/__studio/edit`). The live dashboard never turns into edit mode, so a
+`/<slug>/studio/edit`). The live dashboard never turns into edit mode, so a
 hold, right-click or drag there only does what the widget itself does.
 
 ### Touch

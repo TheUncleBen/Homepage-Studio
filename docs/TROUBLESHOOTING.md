@@ -28,7 +28,7 @@ Then find the symptom below. What the health endpoints mean is in
 | Log: `STUDIO_OIDC_CLIENT_SECRET_FILE ... is empty or says off` | Single sign-on is configured but its secret says `off`. Put the client secret in it ([DEPLOY.md step 5](DEPLOY.md#5-docker-secrets)), or remove `STUDIO_OIDC_ISSUER` and `STUDIO_OIDC_CLIENT_ID` |
 | Log: `... _FILE could not be read. Check the secret mount.` | Compose: a file is missing from `STUDIO_SECRETS_DIR`, or UID 1000 can't read it (`chown 1000:1000` the folder and files) |
 | `no basic auth credentials`, `denied` or `unauthorized` pulling from `ghcr.io` | The package isn't public yet: the bundle's `delivery-receipt.json` says `package-access-pending` ([VERSIONS.md](VERSIONS.md#checking-a-bundle)) |
-| The health check stays `unhealthy` (on Swarm the task keeps being replaced) | `/__studio/application-ready` fails: the dashboard registry is damaged or missing after initialization, a volume isn't writable by UID 1000, or the volumes don't match. The endpoint's JSON answer names the problem. Restore the volumes from a backup if the registry is gone ([OPERATIONS.md](OPERATIONS.md#restoring-the-volumes)) |
+| The health check stays `unhealthy` (on Swarm the task keeps being replaced) | `/studio/application-ready` fails: the dashboard registry is damaged or missing after initialization, a volume isn't writable by UID 1000, or the volumes don't match. The endpoint's JSON answer names the problem. Restore the volumes from a backup if the registry is gone ([OPERATIONS.md](OPERATIONS.md#restoring-the-volumes)) |
 | Permission errors on `/app/config` or `/app/state` | You replaced a named volume with a bind mount that UID 1000 can't write. `chown -R 1000:1000` that folder; Studio doesn't run as root to fix it |
 
 ## Sign-in
@@ -71,7 +71,7 @@ Then find the symptom below. What the health endpoints mean is in
 | *... contains invalid YAML at line N, column M.* | Fix the YAML at that spot. Also refused, with their own message: infinity-like values (`.inf`, `.nan`) and self-referencing aliases aren't accepted; quote them if they're meant as text |
 | *All dashboard renderers are busy ...* | More dashboards in use at once than `STUDIO_RENDERER_MAX_WORKERS`. Retry, or raise the limit ([OPERATIONS.md](OPERATIONS.md#workers-and-limits)) |
 | `config-ready` or `ready` answers `503` saying older snapshots could not be removed | Snapshot cleanup can't delete files: check the state volume's permissions and free space. Saves still work |
-| One dashboard answers with an error while the others work | Its own files are broken, for example an invalid `settings.yaml` edited outside Studio. `/<dashboard>/__studio/config-ready` returns the error. Fix that file in the config volume, or restore a volume backup. The other dashboards and the container's health aren't affected |
+| One dashboard answers with an error while the others work | Its own files are broken, for example an invalid `settings.yaml` edited outside Studio. `/<dashboard>/studio/config-ready` returns the error. Fix that file in the config volume, or restore a volume backup. The other dashboards and the container's health aren't affected |
 
 ## Gestures
 

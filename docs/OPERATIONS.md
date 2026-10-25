@@ -36,10 +36,10 @@ public origin (Studio refuses any other host):
 
 | Endpoint | Checks | Starts a worker? |
 | --- | --- | --- |
-| `/__studio/application-ready` | The dashboard registry, that both volumes are writable, and that the packaged native runtime is complete. Returns `version`, `buildRevision` (the source commit) and `upstreamCommit`. **This is the container's Docker health check** | No |
-| `/__studio/live`, `/__studio/health` | Only that the controller answers | No |
-| `/<dashboard>/__studio/config-ready` | That dashboard's files, journal and storage. `/__studio/config-ready` is the main dashboard | No |
-| `/<dashboard>/__studio/ready` | The same, plus that dashboard's native worker answers and matches this build. `/__studio/ready` is the main dashboard | Yes |
+| `/studio/application-ready` | The dashboard registry, that both volumes are writable, and that the packaged native runtime is complete. Returns `version`, `buildRevision` (the source commit) and `upstreamCommit`. **This is the container's Docker health check** | No |
+| `/studio/live`, `/studio/health` | Only that the controller answers | No |
+| `/<dashboard>/studio/config-ready` | That dashboard's files, journal and storage. `/studio/config-ready` is the main dashboard | No |
+| `/<dashboard>/studio/ready` | The same, plus that dashboard's native worker answers and matches this build. `/studio/ready` is the main dashboard | Yes |
 
 A problem in one dashboard, even the main one, doesn't fail the Docker health
 check, doesn't restart the container and doesn't stop the other dashboards

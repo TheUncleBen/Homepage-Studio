@@ -143,13 +143,13 @@ export default function StudioBoard({
     data: envelope,
     error: loadError,
     mutate,
-  } = useSWR("/__studio/api/board", studioRequest, {
+  } = useSWR("/studio/api/board", studioRequest, {
     refreshInterval: 30000,
     revalidateOnFocus: true,
   });
   // Studio sign-in decides what this person may change here. The controller
   // enforces the same levels; this only hides controls that would be refused.
-  const { data: access, error: accessError } = useSWR("/__studio/api/access", studioRequest, {
+  const { data: access, error: accessError } = useSWR("/studio/api/access", studioRequest, {
     revalidateOnFocus: true,
   });
   // Until the answer arrives every control stays disabled. A server without
@@ -439,7 +439,7 @@ export default function StudioBoard({
     setSaving(true);
     setError(null);
     try {
-      const saved = await studioRequest("/__studio/api/board", {
+      const saved = await studioRequest("/studio/api/board", {
         revision: draftSource?.revision,
         board,
       });
@@ -460,17 +460,17 @@ export default function StudioBoard({
 
   const loadEditorData = async (type) => {
     if ((type === "picker" || type === "content") && !catalogRequest.current) {
-      const request = studioRequest("/__studio/catalog.json");
+      const request = studioRequest("/studio/catalog.json");
       catalogRequest.current = request;
       request.catch(() => {
         if (catalogRequest.current === request) catalogRequest.current = null;
       });
     }
-    if (type === "appearance") return { appearance: await studioRequest("/__studio/api/appearance") };
+    if (type === "appearance") return { appearance: await studioRequest("/studio/api/appearance") };
     const [state, catalog, backups] = await Promise.all([
-      studioRequest("/__studio/api/state"),
+      studioRequest("/studio/api/state"),
       type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
-      type === "backups" ? studioRequest("/__studio/api/backups") : Promise.resolve([]),
+      type === "backups" ? studioRequest("/studio/api/backups") : Promise.resolve([]),
     ]);
     return { state, catalog, backups };
   };
@@ -882,6 +882,7 @@ export default function StudioBoard({
     <main className={`studio-app${editing ? " studio-edit-mode" : ""}`} aria-busy={saving || refreshing || undefined}>
       <StudioTopBar
         title={access?.dashboard?.name || settings?.title || "Dashboard"}
+        dashboardId={access?.dashboard?.id}
         access={access}
         onSearch={editing ? undefined : onSearch}
         searchDisabled={controlsDisabled}
@@ -1268,7 +1269,7 @@ export default function StudioBoard({
                   onRestore={async (id) => {
                     try {
                       await savedContent(
-                        await studioRequest("/__studio/api/discovery-visibility", {
+                        await studioRequest("/studio/api/discovery-visibility", {
                           revision: editorData.state.revision,
                           id,
                           hidden: false,

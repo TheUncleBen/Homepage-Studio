@@ -5,15 +5,15 @@ export const origin = process.env.STUDIO_BROWSER_ORIGIN;
 // The main dashboard's address. Its live page has no editing controls; the
 // editor and the settings dialog have addresses of their own.
 export const HOME = '/home';
-export const DASHBOARDS = '/__studio/dashboards';
+export const DASHBOARDS = '/studio/dashboards';
 
 export async function openEditor(page, base = HOME) {
-  await page.goto(`${base}/__studio/edit`);
+  await page.goto(`${base}/studio/edit`);
   await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
 }
 
 export async function openSettings(page, base = HOME) {
-  await page.goto(`${base}/__studio/settings`);
+  await page.goto(`${base}/studio/settings`);
   const dialog = page.getByRole('dialog', { name: 'Dashboard settings', exact: true });
   await expect(dialog).toBeVisible();
   return dialog;
@@ -30,8 +30,8 @@ export async function studioApi(request, route, body) {
 }
 
 export async function saveFiles(request, changes) {
-  const current = await studioApi(request, '/home/__studio/api/state');
-  const saved = await studioApi(request, '/home/__studio/api/save', {
+  const current = await studioApi(request, '/home/studio/api/state');
+  const saved = await studioApi(request, '/home/studio/api/save', {
     revision: current.revision,
     ...changes,
   });
@@ -137,7 +137,7 @@ export async function seedServicePanels(request, items) {
   });
   const board = state.board;
   for (const item of items) board.panels.find(panel => panel.title === item.name).rect = item.rect;
-  return studioApi(request, '/home/__studio/api/board', { revision: state.revision, board });
+  return studioApi(request, '/home/studio/api/board', { revision: state.revision, board });
 }
 
 export async function panelPixels(panel) {

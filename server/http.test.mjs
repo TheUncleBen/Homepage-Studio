@@ -7,9 +7,10 @@ import path from 'node:path';
 import { gzipSync, gunzipSync, brotliDecompressSync } from 'node:zlib';
 import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from './index.mjs';
 import { createConfigStore, MAX_IMPORT_BYTES } from './config.mjs';
+import { addressMainDashboard, seedMainAddress } from './fixtures/main-address.mjs';
 // The main dashboard lives at /home. Its own addresses (native API, editor
 // API, native data) move with it; Studio-wide addresses stay at the root.
-const onPrimary = target => (/^\/(?:api\/|__studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
 
 
 const HOST = 'dashboard.example.test:3001';
@@ -81,9 +82,13 @@ async function setup(t, serverOptions = {}) {
     res.end(JSON.stringify(echo));
   });
   const upstreamPort = await listen(upstream);
+  // Fixtures that break storage before startup get the main dashboard's
+  // address written ahead; the others set it through the API.
+  if (serverOptions.beforeServer) await seedMainAddress(configDir);
   await serverOptions.beforeServer?.({ configDir, stateDir });
   const { server, store, initialization } = createStudioServer({ configDir, stateDir, upstream: `http://127.0.0.1:${upstreamPort}`, allowedHosts: HOST, auth: 'off', ...serverOptions });
   const port = await listen(server);
+  if (!serverOptions.beforeServer) await addressMainDashboard({ port, host: HOST, origin: serverOptions.publicOrigin ?? ORIGIN });
   t.after(async () => {
     await close(server);
     await close(upstream);
@@ -180,13 +185,13 @@ test('native custom CSS and JS pass through unchanged without injecting the lega
 test('Host allowlist matches the exact hostname and port on both native and editor routes', async (t) => {
   const { request, upstreamCalls } = await setup(t);
   for (const host of ['dashboard.example.test', 'dashboard.example.test:3000', 'other.example.test:3001', `${HOST}.attacker.test`]) {
-    for (const target of ['/', '/__studio/api/state']) {
+    for (const target of ['/', '/studio/api/state']) {
       const result = await request(target, { headers: { host } });
       assert.equal(result.status, 403, `${target} must reject Host ${host}`);
     }
   }
   assert.equal(upstreamCalls.length, 0);
-  assert.equal((await request('/__studio/health', { headers: { host: HOST.toUpperCase() } })).status, 200);
+  assert.equal((await request('/studio/health', { headers: { host: HOST.toUpperCase() } })).status, 200);
 });
 
 test('editor reads reject cross-site, malformed, opaque and wrong-host origins', async (t) => {
@@ -199,14 +204,14 @@ test('editor reads reject cross-site, malformed, opaque and wrong-host origins',
     { origin: `ftp://${HOST}` },
     { 'sec-fetch-site': 'cross-site' },
     { origin: ORIGIN, 'sec-fetch-site': 'cross-site' },
-  ]) assert.equal((await request('/__studio/api/state', { headers })).status, 403);
-  assert.equal((await request('/__studio/api/state', { headers: { origin: ORIGIN, 'sec-fetch-site': 'same-origin' } })).status, 200);
-  assert.equal((await request('/__studio/api/state')).status, 200, 'Direct local clients without Origin are intentionally permitted.');
+  ]) assert.equal((await request('/studio/api/state', { headers })).status, 403);
+  assert.equal((await request('/studio/api/state', { headers: { origin: ORIGIN, 'sec-fetch-site': 'same-origin' } })).status, 200);
+  assert.equal((await request('/studio/api/state')).status, 200, 'Direct local clients without Origin are intentionally permitted.');
 });
 
 test('a same-host origin with a different scheme is not treated as same-origin', async (t) => {
   const { request } = await setup(t);
-  const response = await request('/__studio/api/state', { headers: { origin: `https://${HOST}`, 'x-forwarded-proto': 'https' } });
+  const response = await request('/studio/api/state', { headers: { origin: `https://${HOST}`, 'x-forwarded-proto': 'https' } });
   assert.equal(response.status, 403);
 });
 
@@ -232,87 +237,87 @@ test('native integration requests reject foreign browser contexts before dispatc
 
 test('an explicitly configured public HTTPS origin works without trusting forwarded protocol headers', async (t) => {
   const { request, post } = await setup(t, { publicOrigin: `https://${HOST}` });
-  const initial = await request('/__studio/api/state', { headers: { origin: `https://${HOST}`, 'x-forwarded-proto': 'http' } });
+  const initial = await request('/studio/api/state', { headers: { origin: `https://${HOST}`, 'x-forwarded-proto': 'http' } });
   assert.equal(initial.status, 200);
-  assert.equal((await request('/__studio/api/state', { headers: { origin: ORIGIN, 'x-forwarded-proto': 'https' } })).status, 403);
-  const saved = await post('/__studio/api/save', { revision: initial.json.revision, settingsYaml: 'title: TLS proxy dashboard\n' }, { headers: { origin: `https://${HOST}` } });
+  assert.equal((await request('/studio/api/state', { headers: { origin: ORIGIN, 'x-forwarded-proto': 'https' } })).status, 403);
+  const saved = await post('/studio/api/save', { revision: initial.json.revision, settingsYaml: 'title: TLS proxy dashboard\n' }, { headers: { origin: `https://${HOST}` } });
   assert.equal(saved.status, 200);
   assert.equal(saved.json.settingsYaml, 'title: TLS proxy dashboard\n');
 });
 
 test('write header is required and invalid requests do not modify configuration', async (t) => {
   const { request } = await setup(t);
-  const initial = (await request('/__studio/api/state')).json;
+  const initial = (await request('/studio/api/state')).json;
   for (const header of [undefined, 'true', '0']) {
     const headers = { 'content-type': 'application/json', origin: ORIGIN };
     if (header !== undefined) headers['x-studio-request'] = header;
-    const result = await request('/__studio/api/save', { method: 'POST', headers, body: JSON.stringify({ revision: initial.revision, settingsYaml: 'title: Must not be saved\n' }) });
+    const result = await request('/studio/api/save', { method: 'POST', headers, body: JSON.stringify({ revision: initial.revision, settingsYaml: 'title: Must not be saved\n' }) });
     assert.equal(result.status, 403);
   }
-  assert.equal((await request('/__studio/api/state')).json.revision, initial.revision);
+  assert.equal((await request('/studio/api/state')).json.revision, initial.revision);
 });
 
 test('JSON content type and body validation return practical errors without writing', async (t) => {
   const { request } = await setup(t);
-  const initial = (await request('/__studio/api/state')).json;
+  const initial = (await request('/studio/api/state')).json;
   for (const [body, contentType, status] of [
     ['revision=something', 'application/x-www-form-urlencoded', 415],
     ['not-json', 'application/json', 400],
     ['[]', 'application/json', 400],
     ['null', 'application/json', 400],
   ]) {
-    const result = await request('/__studio/api/save', { method: 'POST', headers: { 'content-type': contentType, origin: ORIGIN, 'x-studio-request': '1' }, body });
+    const result = await request('/studio/api/save', { method: 'POST', headers: { 'content-type': contentType, origin: ORIGIN, 'x-studio-request': '1' }, body });
     assert.equal(result.status, status);
     assert.equal(result.headers['cache-control'], 'no-store');
   }
-  assert.equal((await request('/__studio/api/state')).json.revision, initial.revision);
+  assert.equal((await request('/studio/api/state')).json.revision, initial.revision);
 });
 
 test('oversized JSON receives HTTP 413 and leaves state untouched', async (t) => {
   const { request } = await setup(t);
-  const before = (await request('/__studio/api/state')).json;
+  const before = (await request('/studio/api/state')).json;
   const body = JSON.stringify({ revision: before.revision, servicesYaml: ' '.repeat(2 * 1024 * 1024 + 1024) });
-  const result = await request('/__studio/api/save', {
+  const result = await request('/studio/api/save', {
     method: 'POST', body,
     headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), origin: ORIGIN, 'x-studio-request': '1' },
   });
   assert.equal(result.status, 413);
-  assert.equal((await request('/__studio/api/state')).json.revision, before.revision);
+  assert.equal((await request('/studio/api/state')).json.revision, before.revision);
 });
 
 test('complete dashboard import accepts JSON escaping overhead and retains the ordinary mutation request limit', async (t) => {
   const { request, post, store } = await setup(t);
-  const before = (await request('/__studio/api/state')).json;
-  const archive = (await request('/__studio/api/export')).json;
+  const before = (await request('/studio/api/state')).json;
+  const archive = (await request('/studio/api/export')).json;
   // A valid native text file below 2 MiB can exceed 2 MiB once JSON-escaped.
   const css = `/*${'"'.repeat(1100 * 1024)}*/`;
   archive.files['custom.css'] = css;
   const value = { revision: before.revision, archive };
   assert.ok(Buffer.byteLength(css) < 2 * 1024 * 1024);
   assert.ok(Buffer.byteLength(JSON.stringify(value)) > 2 * 1024 * 1024);
-  const ordinary = await post('/__studio/api/save', { revision: before.revision, customCss: css });
+  const ordinary = await post('/studio/api/save', { revision: before.revision, customCss: css });
   assert.equal(ordinary.status, 413);
   assert.equal((await store.listBackups()).length, 0);
   for (const headers of [
     { origin: 'https://other.example.test' },
     { 'x-studio-request': '' },
     { host: 'other.example.test' },
-  ]) assert.equal((await post('/__studio/api/import', value, { headers })).status, 403);
+  ]) assert.equal((await post('/studio/api/import', value, { headers })).status, 403);
   assert.equal((await store.listBackups()).length, 0);
-  const result = await post('/__studio/api/import', value);
+  const result = await post('/studio/api/import', value);
   assert.equal(result.status, 200);
   assert.equal(result.json.customCss, css);
   assert.equal(result.headers['cache-control'], 'no-store');
   assert.deepEqual(result.json.board, before.board);
   assert.equal((await store.listBackups()).length, 1);
-  assert.equal((await post('/__studio/api/import', value)).status, 409);
+  assert.equal((await post('/studio/api/import', value)).status, 409);
 });
 
 test('dashboard import rejects its aggregate request limit before creating a snapshot', async (t) => {
   const { request, store } = await setup(t);
-  const before = (await request('/__studio/api/state')).json;
+  const before = (await request('/studio/api/state')).json;
   const body = JSON.stringify({ revision: before.revision, archive: { padding: 'x'.repeat(MAX_IMPORT_BYTES) } });
-  const result = await request('/__studio/api/import', {
+  const result = await request('/studio/api/import', {
     method: 'POST', body,
     headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), origin: ORIGIN, 'x-studio-request': '1' },
   });
@@ -324,9 +329,9 @@ test('dashboard import rejects its aggregate request limit before creating a sna
 
 test('HTTP state, native service and info-widget mutations, stale revisions, backups and restore work end to end', async (t) => {
   const { request, post, upstreamCalls } = await setup(t);
-  const before = (await request('/__studio/api/state')).json;
+  const before = (await request('/studio/api/state')).json;
   assert.equal(before.services.length, 0);
-  let result = await post('/__studio/api/service', {
+  let result = await post('/studio/api/service', {
     revision: before.revision, action: 'add', name: 'Portainer', group: ['Infrastructure', 'Containers'],
     config: { href: 'https://portainer.example.test', widget: { type: 'portainer', url: 'http://portainer.internal', env: 1, key: '{{HOMEPAGE_FILE_PORTAINER_KEY}}' } },
   });
@@ -334,21 +339,21 @@ test('HTTP state, native service and info-widget mutations, stale revisions, bac
   assert.equal(result.json.services[0].name, 'Portainer');
   const tile = result.json.services[0];
   assert.deepEqual(tile.groupPath, ['Infrastructure', 'Containers']);
-  const stale = await post('/__studio/api/save', { revision: before.revision, settingsYaml: 'title: Stale edit\n' });
+  const stale = await post('/studio/api/save', { revision: before.revision, settingsYaml: 'title: Stale edit\n' });
   assert.equal(stale.status, 409);
   assert.equal(stale.json.code, 'REVISION_CONFLICT');
   assert.equal(stale.json.details.currentRevision, result.json.revision);
-  result = await post('/__studio/api/service', { revision: result.json.revision, action: 'update', id: tile.id, name: 'Container management', config: { description: 'Native integration' } });
+  result = await post('/studio/api/service', { revision: result.json.revision, action: 'update', id: tile.id, name: 'Container management', config: { description: 'Native integration' } });
   assert.equal(result.status, 200);
   assert.equal(result.json.services[0].id, tile.id);
   assert.equal(result.json.services[0].config.widget.key, '{{HOMEPAGE_FILE_PORTAINER_KEY}}');
-  result = await post('/__studio/api/info-widget', { revision: result.json.revision, action: 'add', type: 'datetime', config: { text_size: 'xl' } });
+  result = await post('/studio/api/info-widget', { revision: result.json.revision, action: 'add', type: 'datetime', config: { text_size: 'xl' } });
   assert.equal(result.status, 200);
   assert.equal(result.json.infoWidgets[0].type, 'datetime');
-  result = await post('/__studio/api/save', { revision: result.json.revision, layout: { version: 1, items: { [tile.id]: { x: 1, y: 3, w: 5, h: 4 } } } });
+  result = await post('/studio/api/save', { revision: result.json.revision, layout: { version: 1, items: { [tile.id]: { x: 1, y: 3, w: 5, h: 4 } } } });
   assert.equal(result.status, 200);
   assert.deepEqual(result.json.layout.items[tile.id], { x: 1, y: 3, w: 5, h: 4 });
-  const invalid = await post('/__studio/api/save', { revision: result.json.revision, servicesYaml: '- broken: [unterminated' });
+  const invalid = await post('/studio/api/save', { revision: result.json.revision, servicesYaml: '- broken: [unterminated' });
   assert.equal(invalid.status, 422);
   assert.equal(invalid.json.code, 'INVALID_YAML');
   assert.equal(invalid.json.details.file, 'services.yaml');
@@ -358,33 +363,33 @@ test('HTTP state, native service and info-widget mutations, stale revisions, bac
     assert.ok(Number.isInteger(detail.line) && Number.isInteger(detail.column));
   }
   const secretSource = '- Secret:\n    - App:\n        href: https://app.example.test\n        widget: { type: customapi, key: inline-secret-value, url: [unterminated\n';
-  const secretInvalid = await post('/__studio/api/save', { revision: result.json.revision, servicesYaml: secretSource });
+  const secretInvalid = await post('/studio/api/save', { revision: result.json.revision, servicesYaml: secretSource });
   assert.equal(secretInvalid.status, 422);
   assert.equal(secretInvalid.json.code, 'INVALID_YAML');
   assert.ok(secretInvalid.json.details.errors[0].line >= 1);
   assert.doesNotMatch(JSON.stringify(secretInvalid.json), /inline-secret-value|unterminated|app\.example\.test/, 'YAML error responses must carry positions only, never source text.');
-  assert.equal((await request('/__studio/api/state')).json.revision, result.json.revision);
-  const backups = await request('/__studio/api/backups');
+  assert.equal((await request('/studio/api/state')).json.revision, result.json.revision);
+  const backups = await request('/studio/api/backups');
   assert.equal(backups.status, 200);
   assert.equal(backups.json.length, 4);
   assert.ok(backups.json.every((backup) => !('before' in backup)), 'Listing must return metadata rather than raw backup credentials.');
   const first = backups.json.find((backup) => backup.revision === before.revision);
-  const restored = await post('/__studio/api/restore', { revision: result.json.revision, backupId: first.id });
+  const restored = await post('/studio/api/restore', { revision: result.json.revision, backupId: first.id });
   assert.equal(restored.status, 200);
   assert.equal(restored.json.servicesYaml, before.servicesYaml);
   assert.deepEqual(restored.json.services, []);
   assert.deepEqual(restored.json.infoWidgets, []);
   assert.deepEqual(restored.json.layout, before.layout);
-  assert.equal((await request('/__studio/api/backups')).json.length, 5);
+  assert.equal((await request('/studio/api/backups')).json.length, 5);
   assert.ok(upstreamCalls.length > 0);
   assert.ok(upstreamCalls.every((call) => call.method === 'GET' && call.url === '/api/studio/sources'), 'Editor mutations may read safe discovery metadata but must not invoke native mutation/integration endpoints.');
 });
 
 test('unknown editor endpoints are local 404s and do not fall through to Homepage', async (t) => {
   const { request, post, upstreamCalls } = await setup(t);
-  assert.equal((await request('/__studio/not-a-route')).status, 404);
-  assert.equal((await post('/__studio/api/not-a-route', {})).status, 404);
-  assert.equal((await request('/__studio/api/state', { method: 'DELETE', headers: { 'x-studio-request': '1', origin: ORIGIN } })).status, 404);
+  assert.equal((await request('/studio/not-a-route')).status, 404);
+  assert.equal((await post('/studio/api/not-a-route', {})).status, 404);
+  assert.equal((await request('/studio/api/state', { method: 'DELETE', headers: { 'x-studio-request': '1', origin: ORIGIN } })).status, 404);
   assert.equal(upstreamCalls.length, 0);
 });
 
@@ -394,18 +399,18 @@ test('a stopped native upstream produces a useful 502 while editor state remains
   const response = await request('/home');
   assert.equal(response.status, 502);
   assert.match(response.json.error, /dashboard renderer is temporarily unavailable/);
-  assert.equal((await request('/__studio/api/state')).status, 200);
+  assert.equal((await request('/studio/api/state')).status, 200);
 });
 
 test('a recovery-required response preserves safe recovery guidance and the external edit', async (t) => {
   const { request, post, configDir, stateDir } = await setup(t);
-  const initial = (await request('/__studio/api/state')).json;
-  const saved = await post('/__studio/api/save', { revision: initial.revision, settingsYaml: 'title: Intended change\n' });
+  const initial = (await request('/studio/api/state')).json;
+  const saved = await post('/studio/api/save', { revision: initial.revision, settingsYaml: 'title: Intended change\n' });
   assert.equal(saved.status, 200);
-  const [backup] = (await request('/__studio/api/backups')).json;
+  const [backup] = (await request('/studio/api/backups')).json;
   await fs.writeFile(path.join(configDir, 'settings.yaml'), 'title: External change after interruption\n');
   await fs.writeFile(path.join(stateDir, 'transaction.json'), JSON.stringify({ version: 1, backupId: backup.id }));
-  const response = await request('/__studio/api/state');
+  const response = await request('/studio/api/state');
   assert.equal(response.status, 503);
   assert.equal(response.json.code, 'RECOVERY_REQUIRED');
   assert.match(response.json.error, /interrupted|recovery|external file edits/i);
@@ -431,7 +436,7 @@ test('the first native request after restart cannot observe an interrupted multi
   assert.equal(native.text, before.servicesYaml);
   assert.equal(upstreamCalls.length, 1);
   await assert.rejects(fs.access(path.join(stateDir, 'transaction.json')), { code: 'ENOENT' });
-  assert.equal((await request('/__studio/api/state')).json.revision, before.revision);
+  assert.equal((await request('/studio/api/state')).json.revision, before.revision);
 });
 
 test('an unresolved startup recovery blocks HTTP and WebSocket proxy traffic while liveness stays available', async (t) => {
@@ -450,8 +455,8 @@ test('an unresolved startup recovery blocks HTTP and WebSocket proxy traffic whi
   assert.equal(native.json.code, 'RECOVERY_REQUIRED');
   // WebSocket upgrades are refused outright and never reach the native renderer.
   assert.equal((await request('/api/socket', { headers: { connection: 'Upgrade', upgrade: 'websocket' } })).status, 404);
-  assert.equal((await request('/__studio/live')).status, 200);
-  const readiness = await request('/__studio/ready');
+  assert.equal((await request('/studio/live')).status, 200);
+  const readiness = await request('/studio/ready');
   assert.equal(readiness.status, 503);
   assert.equal(readiness.json.code, 'RECOVERY_REQUIRED');
   assert.equal(upstreamCalls.length, 0);
@@ -461,7 +466,7 @@ test('an unresolved startup recovery blocks HTTP and WebSocket proxy traffic whi
 
 test('readiness verifies the matching native bridge while liveness remains independent', async (t) => {
   const { request, upstream, upstreamCalls } = await setup(t, { backupRetention: 3 });
-  const ready = await request('/__studio/ready');
+  const ready = await request('/studio/ready');
   assert.equal(ready.status, 200);
   const expectedVersion = (await fs.readFile(new URL('../VERSION', import.meta.url), 'utf8')).trim();
   assert.equal(ready.json.version, expectedVersion);
@@ -473,29 +478,29 @@ test('readiness verifies the matching native bridge while liveness remains indep
   assert.equal(upstreamCalls[0].url, '/api/studio/health');
   assert.equal(upstreamCalls[0].headers.host, HOST);
   await close(upstream);
-  const unavailable = await request('/__studio/ready');
+  const unavailable = await request('/studio/ready');
   assert.equal(unavailable.status, 503);
   assert.equal(unavailable.json.code, 'HOMEPAGE_UNREACHABLE');
-  const health = await request('/__studio/health');
+  const health = await request('/studio/health');
   assert.equal(health.json.check, 'liveness');
   assert.equal(health.json.version, expectedVersion);
-  assert.equal((await request('/__studio/api/state')).status, 200);
+  assert.equal((await request('/studio/api/state')).status, 200);
 });
 
 test('invalid startup YAML is unready and blocks native access; correcting it restores service without restarting Studio', async (t) => {
   const { request, configDir, upstreamCalls } = await setup(t, {
     beforeServer: ({ configDir }) => fs.writeFile(path.join(configDir, 'services.yaml'), '- invalid: [\n'),
   });
-  assert.equal((await request('/__studio/live')).status, 200);
-  assert.equal((await request('/__studio/api/state')).status, 422);
-  const ready = await request('/__studio/ready');
+  assert.equal((await request('/studio/live')).status, 200);
+  assert.equal((await request('/studio/api/state')).status, 422);
+  const ready = await request('/studio/ready');
   assert.equal(ready.status, 503);
   assert.equal(ready.json.code, 'INVALID_YAML');
   assert.equal((await request('/api/native-config')).status, 503);
   assert.equal(upstreamCalls.length, 0);
   await fs.writeFile(path.join(configDir, 'services.yaml'), '[]\n');
   assert.equal((await request('/api/native-config')).text, '[]\n');
-  assert.equal((await request('/__studio/ready')).status, 200);
+  assert.equal((await request('/studio/ready')).status, 200);
 });
 
 test('readiness verifies actual storage writes, leaves no probe files, and surfaces permission failures', async (t) => {
@@ -507,13 +512,13 @@ test('readiness verifies actual storage writes, leaves no probe files, and surfa
     return open.call(fs, file, ...args);
   };
   try {
-    const ready = await request('/__studio/ready');
+    const ready = await request('/studio/ready');
     assert.equal(ready.status, 503);
     assert.equal(ready.json.code, 'EACCES');
-    assert.equal((await request('/__studio/live')).status, 200);
+    assert.equal((await request('/studio/live')).status, 200);
     assert.equal(upstreamCalls.length, 0, 'Do not query native readiness with failed persistence.');
   } finally { fs.open = open; }
-  assert.equal((await request('/__studio/ready')).status, 200);
+  assert.equal((await request('/studio/ready')).status, 200);
   for (const directory of [configDir, stateDir, path.join(stateDir, 'backups')]) {
     assert.ok((await fs.readdir(directory)).every((name) => !name.startsWith('.homepage-studio-')), 'Readiness must clean its own temporary probes.');
   }
@@ -521,20 +526,20 @@ test('readiness verifies actual storage writes, leaves no probe files, and surfa
 
 test('an arbitrary upstream 200 response is not mistaken for the native Homepage health response', async (t) => {
   const { request } = await setup(t, { nativeHealthBody: '<html>Proxy fallback</html>' });
-  const ready = await request('/__studio/ready');
+  const ready = await request('/studio/ready');
   assert.equal(ready.status, 503);
   assert.equal(ready.json.code, 'HOMEPAGE_UNREACHABLE');
-  assert.equal((await request('/__studio/live')).status, 200);
+  assert.equal((await request('/studio/live')).status, 200);
 });
 
 test('configuration readiness can start the renderer without depending on native readiness', async (t) => {
   const { request, upstream, upstreamCalls } = await setup(t);
   await close(upstream);
-  const ready = await request('/__studio/config-ready');
+  const ready = await request('/studio/config-ready');
   assert.equal(ready.status, 200);
   assert.deepEqual(ready.json.checks, { configurationAndStorage: 'ok', nativeHttp: 'not_checked' });
   assert.deepEqual(upstreamCalls, []);
-  assert.equal((await request('/__studio/ready')).status, 503);
+  assert.equal((await request('/studio/ready')).status, 503);
 });
 
 test('native readiness rejects mismatched protocol, pinned source, and build revision', async (t) => {
@@ -542,35 +547,35 @@ test('native readiness rejects mismatched protocol, pinned source, and build rev
     await t.test(Object.keys(mismatch)[0], async (t) => {
       const health = { protocolVersion: NATIVE_PROTOCOL, upstreamCommit: UPSTREAM_COMMIT, buildRevision: 'unreleased', ...mismatch };
       const { request } = await setup(t, { nativeHealthBody: JSON.stringify(health) });
-      assert.equal((await request('/__studio/config-ready')).status, 200);
-      assert.equal((await request('/__studio/ready')).status, 503);
+      assert.equal((await request('/studio/config-ready')).status, 200);
+      assert.equal((await request('/studio/ready')).status, 503);
     });
   }
 });
 
 test('independent content, board, settings and private export endpoints work together with revision protection', async (t) => {
   const { request, post } = await setup(t);
-  let state = (await request('/__studio/api/state')).json;
-  let result = await post('/__studio/api/service-widget', { revision: state.revision, action: 'add', newService: { name: 'Media', group: 'Home' }, type: 'jellyfin', config: { url: 'http://media.example.test', key: 'synthetic-secret' } });
+  let state = (await request('/studio/api/state')).json;
+  let result = await post('/studio/api/service-widget', { revision: state.revision, action: 'add', newService: { name: 'Media', group: 'Home' }, type: 'jellyfin', config: { url: 'http://media.example.test', key: 'synthetic-secret' } });
   assert.equal(result.status, 200);
   state = result.json;
-  result = await post('/__studio/api/bookmark', { revision: state.revision, action: 'add', group: 'Reading', name: 'Docs', config: { href: 'https://gethomepage.dev' } });
+  result = await post('/studio/api/bookmark', { revision: state.revision, action: 'add', group: 'Reading', name: 'Docs', config: { href: 'https://gethomepage.dev' } });
   assert.equal(result.status, 200);
   state = result.json;
-  result = await post('/__studio/api/settings', { revision: state.revision, config: { title: 'Home' } });
+  result = await post('/studio/api/settings', { revision: state.revision, config: { title: 'Home' } });
   assert.equal(result.status, 200);
-  const board = (await request('/__studio/api/board')).json;
+  const board = (await request('/studio/api/board')).json;
   assert.equal(board.board.panels.length, 2);
   assert.doesNotMatch(JSON.stringify(board), /synthetic-secret|media\.example/);
   board.board.stacks.push({ id: 'stack', panelIds: board.board.panels.map((p) => p.id), rect: { x: 0, y: 0, w: 6, h: 5 }, playback: { mode: 'automatic', manualHoldMs: 30000 } });
-  result = await post('/__studio/api/board', board);
+  result = await post('/studio/api/board', board);
   assert.equal(result.status, 200);
   assert.equal(result.json.board.stacks[0].playback.manualHoldMs, 30000);
-  assert.equal((await post('/__studio/api/board', board)).status, 409);
-  const backup = (await request('/__studio/api/backups')).json[0];
-  assert.equal(Object.keys((await request(`/__studio/api/backups/${backup.id}`)).json.before).length, 10);
-  assert.equal(Object.keys((await request('/__studio/api/export')).json.files).length, 10);
-  assert.equal((await request('/__studio/api/export', { headers: { origin: 'https://unrelated.example' } })).status, 403);
+  assert.equal((await post('/studio/api/board', board)).status, 409);
+  const backup = (await request('/studio/api/backups')).json[0];
+  assert.equal(Object.keys((await request(`/studio/api/backups/${backup.id}`)).json.before).length, 10);
+  assert.equal(Object.keys((await request('/studio/api/export')).json.files).length, 10);
+  assert.equal((await request('/studio/api/export', { headers: { origin: 'https://unrelated.example' } })).status, 403);
 });
 
 test('discovered panels use read-only native metadata and explicit revision-protected hide/restore', async (t) => {
@@ -579,9 +584,9 @@ test('discovered panels use read-only native metadata and explicit revision-prot
   const { request, post, store, upstreamCalls, initialization } = await setup(t, { nativeDiscoveredSources: [source] });
   await initialization;
   assert.equal(upstreamCalls.length, 0);
-  assert.equal((await request('/__studio/config-ready')).status, 200);
+  assert.equal((await request('/studio/config-ready')).status, 200);
   assert.equal(upstreamCalls.length, 0);
-  const loaded = await request('/__studio/api/state', { headers: { cookie: 'private-session=synthetic-only', authorization: 'Bearer synthetic-only' } });
+  const loaded = await request('/studio/api/state', { headers: { cookie: 'private-session=synthetic-only', authorization: 'Bearer synthetic-only' } });
   assert.equal(loaded.status, 200);
   assert.equal(loaded.json.board.panels[0].id, id);
   assert.equal(loaded.json.discoveredSources[0].available, true);
@@ -591,18 +596,18 @@ test('discovered panels use read-only native metadata and explicit revision-prot
   assert.equal(lookup.headers.host, HOST);
   assert.equal(lookup.headers.cookie, undefined);
   assert.equal(lookup.headers.authorization, undefined);
-  const hidden = await post('/__studio/api/discovery-visibility', { revision: loaded.json.revision, id, hidden: true });
+  const hidden = await post('/studio/api/discovery-visibility', { revision: loaded.json.revision, id, hidden: true });
   assert.equal(hidden.status, 200);
   assert.deepEqual(hidden.json.board.panels, []);
   assert.deepEqual(hidden.json.hiddenDiscoveredIds, [id]);
   assert.equal(hidden.json.discoveredSources.length, 1);
   // Arrange-level actions answer with the board only, never configuration files.
   assert.equal(hidden.json.servicesYaml, undefined);
-  const stale = await post('/__studio/api/discovery-visibility', { revision: loaded.json.revision, id, hidden: false });
+  const stale = await post('/studio/api/discovery-visibility', { revision: loaded.json.revision, id, hidden: false });
   assert.equal(stale.status, 409);
-  const invalid = await post('/__studio/api/discovery-visibility', { revision: hidden.json.revision, id, hidden: 'false' });
+  const invalid = await post('/studio/api/discovery-visibility', { revision: hidden.json.revision, id, hidden: 'false' });
   assert.equal(invalid.status, 400);
-  const shown = await post('/__studio/api/discovery-visibility', { revision: hidden.json.revision, id, hidden: false });
+  const shown = await post('/studio/api/discovery-visibility', { revision: hidden.json.revision, id, hidden: false });
   assert.equal(shown.status, 200);
   assert.equal(shown.json.board.panels[0].id, id);
   assert.deepEqual(shown.json.hiddenDiscoveredIds, []);
@@ -617,15 +622,15 @@ test('structured configuration writes and restore complete while an explicit dis
     nativeDiscoveredSources: [source],
     beforeNativeDiscovery: async () => { if (hold) { entered.resolve(); await released.promise; } },
   });
-  let state = (await request('/__studio/api/state')).json;
+  let state = (await request('/studio/api/state')).json;
   const original = state;
   hold = true;
-  const refresh = request('/__studio/api/board');
+  const refresh = request('/studio/api/board');
   async function write(endpoint, change) {
     let timer;
     try {
       const result = await Promise.race([
-        post(`/__studio/api/${endpoint}`, { revision: state.revision, ...change }),
+        post(`/studio/api/${endpoint}`, { revision: state.revision, ...change }),
         new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${endpoint} waited for the held provider`)), 2000); }),
       ]);
       assert.equal(result.status, 200, result.text); state = result.json;
@@ -655,13 +660,13 @@ test('both complete-board save routes await fresh membership and reject an omitt
   };
   const options = { nativeDiscoveredSources: [source(1)] };
   const { request, post, store } = await setup(t, options);
-  const before = (await request('/__studio/api/state')).json;
+  const before = (await request('/studio/api/state')).json;
   options.nativeDiscoveredSources = [source(1), source(2)];
   for (const endpoint of ['board', 'save']) {
     const entered = Promise.withResolvers(), released = Promise.withResolvers();
     options.beforeNativeDiscovery = async () => { entered.resolve(); await released.promise; };
     let settled = false;
-    const pending = post(`/__studio/api/${endpoint}`, { revision: before.revision, board: before.board }).then(value => { settled = true; return value; });
+    const pending = post(`/studio/api/${endpoint}`, { revision: before.revision, board: before.board }).then(value => { settled = true; return value; });
     try {
       await entered.promise;
       assert.equal(settled, false, 'The board cannot commit before its source membership refresh.');
@@ -676,7 +681,7 @@ test('both complete-board save routes await fresh membership and reject an omitt
 test('the widget catalog is compressed, revalidated by strong ETag and never proxied', async (t) => {
   const { request, upstreamCalls } = await setup(t);
   const original = await fs.readFile(new URL('../public/catalog.json', import.meta.url));
-  const plain = await request('/__studio/catalog.json');
+  const plain = await request('/studio/catalog.json');
   assert.equal(plain.status, 200);
   assert.deepEqual(plain.buffer, original);
   assert.equal(plain.headers['content-encoding'], undefined);
@@ -688,40 +693,40 @@ test('the widget catalog is compressed, revalidated by strong ETag and never pro
   assert.equal(Number(plain.headers['content-length']), original.length);
   assert.match(plain.headers.etag, /^"[A-Za-z0-9_-]{32}-identity"$/);
 
-  const br = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'gzip, deflate, br' } });
+  const br = await request('/studio/catalog.json', { headers: { 'accept-encoding': 'gzip, deflate, br' } });
   assert.equal(br.headers['content-encoding'], 'br');
   assert.deepEqual(brotliDecompressSync(br.buffer), original);
   assert.ok(br.buffer.length < original.length / 5, `brotli catalog is ${br.buffer.length} bytes`);
   assert.equal(Number(br.headers['content-length']), br.buffer.length);
-  const gz = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'gzip, br;q=0.5' } });
+  const gz = await request('/studio/catalog.json', { headers: { 'accept-encoding': 'gzip, br;q=0.5' } });
   assert.equal(gz.headers['content-encoding'], 'gzip');
   assert.deepEqual(gunzipSync(gz.buffer), original);
   const etags = new Set([plain.headers.etag, br.headers.etag, gz.headers.etag]);
   assert.equal(etags.size, 3, 'Each encoding is a distinct representation.');
   assert.equal(new Set([...etags].map(tag => tag.replace(/-(?:identity|gzip|br)"$/, ''))).size, 1, 'All encodings share one content hash.');
-  assert.equal((await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'br' } })).headers.etag, br.headers.etag, 'The ETag is stable across requests.');
+  assert.equal((await request('/studio/catalog.json', { headers: { 'accept-encoding': 'br' } })).headers.etag, br.headers.etag, 'The ETag is stable across requests.');
 
-  const head = await request('/__studio/catalog.json', { method: 'HEAD', headers: { 'accept-encoding': 'br' } });
+  const head = await request('/studio/catalog.json', { method: 'HEAD', headers: { 'accept-encoding': 'br' } });
   assert.equal(head.status, 200);
   assert.equal(head.buffer.length, 0);
   assert.equal(head.headers.etag, br.headers.etag);
   assert.equal(Number(head.headers['content-length']), br.buffer.length);
 
-  const revalidated = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'br', 'if-none-match': `"other", ${br.headers.etag}` } });
+  const revalidated = await request('/studio/catalog.json', { headers: { 'accept-encoding': 'br', 'if-none-match': `"other", ${br.headers.etag}` } });
   assert.equal(revalidated.status, 304);
   assert.equal(revalidated.buffer.length, 0);
   assert.equal(revalidated.headers.etag, br.headers.etag);
   assert.equal(revalidated.headers['cache-control'], 'no-cache');
   assert.equal(revalidated.headers['content-encoding'], 'br');
-  const headRevalidated = await request('/__studio/catalog.json', { method: 'HEAD', headers: { 'if-none-match': plain.headers.etag } });
+  const headRevalidated = await request('/studio/catalog.json', { method: 'HEAD', headers: { 'if-none-match': plain.headers.etag } });
   assert.equal(headRevalidated.status, 304);
-  const otherEncoding = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'gzip', 'if-none-match': br.headers.etag } });
+  const otherEncoding = await request('/studio/catalog.json', { headers: { 'accept-encoding': 'gzip', 'if-none-match': br.headers.etag } });
   assert.equal(otherEncoding.status, 200, 'A Brotli validator does not validate the gzip representation.');
   assert.deepEqual(gunzipSync(otherEncoding.buffer), original);
 
-  const refused = await request('/__studio/catalog.json', { headers: { 'accept-encoding': 'identity;q=0' } });
+  const refused = await request('/studio/catalog.json', { headers: { 'accept-encoding': 'identity;q=0' } });
   assert.equal(refused.status, 406);
-  assert.equal((await request('/__studio/catalog.json', { method: 'DELETE', headers: { origin: ORIGIN, 'x-studio-request': '1' } })).status, 404);
+  assert.equal((await request('/studio/catalog.json', { method: 'DELETE', headers: { origin: ORIGIN, 'x-studio-request': '1' } })).status, 404);
   assert.equal(upstreamCalls.length, 0);
 });
 
@@ -730,43 +735,43 @@ test('each editor endpoint records its own fixed snapshot action code and never 
   const source = { id, kind: 'service', title: 'Discovered service', group: 'Lab', nativeLocator: { discovered: true, discoveryId: id, serviceId: id, groupPath: ['Lab'], name: 'Discovered service', origin: 'docker' } };
   const { request, post, stateDir, initialization } = await setup(t, { nativeDiscoveredSources: [source] });
   await initialization;
-  let revision = (await request('/__studio/api/state')).json.revision;
+  let revision = (await request('/studio/api/state')).json.revision;
   const recorded = [];
   async function expectAction(target, body, action) {
     const response = await post(target, { revision, ...body });
     assert.equal(response.status, 200, `${target} ${response.text}`);
     revision = response.json.revision;
-    const [latest] = (await request('/__studio/api/backups')).json;
+    const [latest] = (await request('/studio/api/backups')).json;
     assert.equal(latest.action, action, target);
     recorded.push(latest.id);
     return response.json;
   }
-  let state = await expectAction('/__studio/api/discovery-visibility', { id, hidden: true }, 'discovered-panel-hidden');
-  state = await expectAction('/__studio/api/discovery-visibility', { id, hidden: false }, 'discovered-panel-shown');
-  state = await expectAction('/__studio/api/service', { action: 'add', name: 'Router admin', group: 'Lab', config: { href: 'https://router.example.test' }, snapshotAction: 'arbitrary text' }, 'service-added');
+  let state = await expectAction('/studio/api/discovery-visibility', { id, hidden: true }, 'discovered-panel-hidden');
+  state = await expectAction('/studio/api/discovery-visibility', { id, hidden: false }, 'discovered-panel-shown');
+  state = await expectAction('/studio/api/service', { action: 'add', name: 'Router admin', group: 'Lab', config: { href: 'https://router.example.test' }, snapshotAction: 'arbitrary text' }, 'service-added');
   const service = state.services.find((entry) => entry.name === 'Router admin');
-  state = await expectAction('/__studio/api/service', { action: 'update', id: service.id, config: { description: 'Edited' } }, 'service-edited');
-  state = await expectAction('/__studio/api/service-widget', { action: 'add', serviceId: service.id, type: 'customapi', config: { url: 'http://api.example.test' } }, 'service-widget-added');
+  state = await expectAction('/studio/api/service', { action: 'update', id: service.id, config: { description: 'Edited' } }, 'service-edited');
+  state = await expectAction('/studio/api/service-widget', { action: 'add', serviceId: service.id, type: 'customapi', config: { url: 'http://api.example.test' } }, 'service-widget-added');
   const widget = state.serviceWidgets[0];
-  state = await expectAction('/__studio/api/service-widget', { action: 'update', id: widget.id, type: 'customapi', config: { url: 'http://api2.example.test' } }, 'service-widget-edited');
-  state = await expectAction('/__studio/api/service-widget', { action: 'delete', id: widget.id }, 'service-widget-deleted');
-  state = await expectAction('/__studio/api/info-widget', { action: 'add', type: 'datetime', config: {} }, 'info-widget-added');
+  state = await expectAction('/studio/api/service-widget', { action: 'update', id: widget.id, type: 'customapi', config: { url: 'http://api2.example.test' } }, 'service-widget-edited');
+  state = await expectAction('/studio/api/service-widget', { action: 'delete', id: widget.id }, 'service-widget-deleted');
+  state = await expectAction('/studio/api/info-widget', { action: 'add', type: 'datetime', config: {} }, 'info-widget-added');
   const info = state.infoWidgets[0];
-  state = await expectAction('/__studio/api/info-widget', { action: 'update', id: info.id, config: { format: { timeStyle: 'short' } } }, 'info-widget-edited');
-  state = await expectAction('/__studio/api/info-widget', { action: 'delete', id: info.id }, 'info-widget-deleted');
-  state = await expectAction('/__studio/api/bookmark', { action: 'add', group: 'Reading', name: 'Docs', config: { href: 'https://docs.example.test' } }, 'bookmark-added');
+  state = await expectAction('/studio/api/info-widget', { action: 'update', id: info.id, config: { format: { timeStyle: 'short' } } }, 'info-widget-edited');
+  state = await expectAction('/studio/api/info-widget', { action: 'delete', id: info.id }, 'info-widget-deleted');
+  state = await expectAction('/studio/api/bookmark', { action: 'add', group: 'Reading', name: 'Docs', config: { href: 'https://docs.example.test' } }, 'bookmark-added');
   const bookmark = state.bookmarks[0];
-  state = await expectAction('/__studio/api/bookmark', { action: 'update', id: bookmark.id, config: { abbr: 'DO' } }, 'bookmark-edited');
-  state = await expectAction('/__studio/api/bookmark', { action: 'delete', id: bookmark.id }, 'bookmark-deleted');
-  state = await expectAction('/__studio/api/settings', { config: { title: 'Renamed dashboard' } }, 'settings-saved');
-  state = await expectAction('/__studio/api/save', { customCss: '/* edited */', action: 'Free text from the request' }, 'files-saved');
+  state = await expectAction('/studio/api/bookmark', { action: 'update', id: bookmark.id, config: { abbr: 'DO' } }, 'bookmark-edited');
+  state = await expectAction('/studio/api/bookmark', { action: 'delete', id: bookmark.id }, 'bookmark-deleted');
+  state = await expectAction('/studio/api/settings', { config: { title: 'Renamed dashboard' } }, 'settings-saved');
+  state = await expectAction('/studio/api/save', { customCss: '/* edited */', action: 'Free text from the request' }, 'files-saved');
   const board = structuredClone(state.board);
   board.panels[0].rect = { ...board.panels[0].rect, x: board.panels[0].rect.x + 1 };
-  state = await expectAction('/__studio/api/board', { board }, 'arrangement-saved');
-  state = await expectAction('/__studio/api/service', { action: 'delete', id: service.id }, 'service-deleted');
-  state = await expectAction('/__studio/api/restore', { backupId: recorded[0] }, 'snapshot-restored');
-  const archive = (await request('/__studio/api/export')).json;
-  await expectAction('/__studio/api/import', { archive }, 'dashboard-imported');
+  state = await expectAction('/studio/api/board', { board }, 'arrangement-saved');
+  state = await expectAction('/studio/api/service', { action: 'delete', id: service.id }, 'service-deleted');
+  state = await expectAction('/studio/api/restore', { backupId: recorded[0] }, 'snapshot-restored');
+  const archive = (await request('/studio/api/export')).json;
+  await expectAction('/studio/api/import', { archive }, 'dashboard-imported');
   // Snapshot files and listings carry only fixed codes, never request strings.
   const names = await fs.readdir(path.join(stateDir, 'backups'));
   assert.equal(names.length, recorded.length);
@@ -774,6 +779,6 @@ test('each editor endpoint records its own fixed snapshot action code and never 
     const stored = JSON.parse(await fs.readFile(path.join(stateDir, 'backups', name), 'utf8'));
     assert.match(stored.action, /^[a-z][a-z-]+$/);
   }
-  const listed = JSON.stringify((await request('/__studio/api/backups')).json);
+  const listed = JSON.stringify((await request('/studio/api/backups')).json);
   assert.ok(!listed.includes('Free text') && !listed.includes('arbitrary text'));
 });

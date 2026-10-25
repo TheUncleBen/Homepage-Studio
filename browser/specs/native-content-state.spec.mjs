@@ -91,7 +91,7 @@ test('native calendar, chart and process list fit their minima at desktop and na
     await calendar.getByRole('button', { name: '>', exact: true }).click();
     await expect(calendar.getByRole('button', { name: 'November 2026', exact: true })).toBeVisible();
   }
-  const saved = await studioApi(request, '/home/__studio/api/board');
+  const saved = await studioApi(request, '/home/studio/api/board');
   expect(saved.board.panels.map(panel => panel.id).sort()).toEqual(seeded.board.panels.map(panel => panel.id).sort());
   expect(fixture.calls).toEqual(expect.arrayContaining([
     expect.objectContaining({ endpoint: 'Fixture calendar' }),

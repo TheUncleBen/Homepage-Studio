@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import net from 'node:net';
 import { deriveKey, passwordProblem } from './primitives.mjs';
+import { readDeploymentName } from '../branding.mjs';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -78,14 +79,15 @@ export function readAuthConfig(options = {}, rawEnv = process.env) {
   const mode = String(options.auth ?? env.STUDIO_AUTH ?? 'on').toLowerCase();
   if (!['on', 'off'].includes(mode)) throw new Error('STUDIO_AUTH must be "on" or "off".');
   if (mode === 'off') return { enabled: false };
+  const deploymentName = readDeploymentName(options.deploymentName ?? env.STUDIO_DEPLOYMENT_NAME);
   const originText = options.publicOrigin ?? env.STUDIO_PUBLIC_ORIGIN;
   if (!originText) throw new Error('Sign-in needs STUDIO_PUBLIC_ORIGIN, the exact https:// address people use to open Studio. Set STUDIO_AUTH=off only if another layer controls access.');
   const origin = new URL(originText);
   const local = LOCAL_HOSTS.has(origin.hostname.toLowerCase());
   // Owner decision D5 (23 Oct 2026): sign-in requires HTTPS, except a
   // loopback address used for testing.
-  // An upgraded deployment on plain HTTP starts locked rather than crash
-  // looping: every page explains the fix and no dashboard is served.
+  // A deployment on plain HTTP starts locked rather than crash looping:
+  // every page explains the fix and no dashboard is served.
   if (origin.protocol !== 'https:' && !(origin.protocol === 'http:' && local)) {
     return { enabled: true, blocked: 'Sign-in requires an https:// STUDIO_PUBLIC_ORIGIN. Passkeys and secure cookies do not work over plain HTTP. Put Studio behind HTTPS (for example a TLS reverse proxy) and update STUDIO_PUBLIC_ORIGIN, or set STUDIO_AUTH=off if another layer already controls access.' };
   }
@@ -119,17 +121,15 @@ export function readAuthConfig(options = {}, rawEnv = process.env) {
   let smtp = null;
   if (smtpHost) {
     // The sender's display name and address are separate settings, so mail
-    // shows a name rather than the bare address. STUDIO_SMTP_FROM (an address,
-    // or "Name <address>") still works on its own.
+    // shows a name rather than the bare address.
     const fromAddress = String(options.smtpFromAddress ?? env.STUDIO_SMTP_FROM_ADDRESS ?? '').trim();
     const fromName = String(options.smtpFromName ?? env.STUDIO_SMTP_FROM_NAME ?? '').trim();
-    const legacyFrom = String(options.smtpFrom ?? env.STUDIO_SMTP_FROM ?? '').trim();
-    if (fromAddress && legacyFrom) throw new Error('Set STUDIO_SMTP_FROM_ADDRESS or STUDIO_SMTP_FROM, not both.');
     if (fromAddress && !/^[^\s@<>"]+@[^\s@<>"]+$/.test(fromAddress)) throw new Error('STUDIO_SMTP_FROM_ADDRESS must be a plain email address, such as studio@example.com.');
     if (/[\u0000-\u001f\u007f<>"]/.test(fromName) || fromName.length > 100) throw new Error('STUDIO_SMTP_FROM_NAME must be a plain name of up to 100 characters.');
     if (fromName && !fromAddress) throw new Error('STUDIO_SMTP_FROM_NAME needs STUDIO_SMTP_FROM_ADDRESS.');
-    if (!fromAddress && !legacyFrom) throw new Error('Email needs STUDIO_SMTP_FROM_ADDRESS, the sender address.');
-    const from = fromAddress ? { name: fromName || 'Homepage Studio', address: fromAddress } : legacyFrom;
+    if (!fromAddress) throw new Error('Email needs STUDIO_SMTP_FROM_ADDRESS, the sender address.');
+    // Without a sender name, mail uses the deployment's name.
+    const from = { name: fromName || null, address: fromAddress };
     const port = Number(options.smtpPort ?? env.STUDIO_SMTP_PORT ?? 587);
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('STUDIO_SMTP_PORT must be a port number.');
     smtp = {
@@ -144,7 +144,7 @@ export function readAuthConfig(options = {}, rawEnv = process.env) {
     enabled: true,
     origin: origin.origin,
     rpID: origin.hostname,
-    rpName: options.rpName ?? 'Homepage Studio',
+    deploymentName,
     secure,
     cookieName: secure ? '__Host-studio_session' : 'studio_session',
     flowCookieName: secure ? '__Host-studio_flow' : 'studio_flow',

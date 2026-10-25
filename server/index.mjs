@@ -7,7 +7,7 @@ import { createConfigStore, ConfigError, MAX_IMPORT_BYTES } from './config.mjs';
 import { BoardError } from './board.mjs';
 import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute, sharedPublic } from './dashboards.mjs';
-import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath } from './dashboard-paths.mjs';
+import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
 import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
@@ -16,6 +16,7 @@ import { serveSharedAsset, acceptedEncodings, etagMatches } from './static-asset
 import { checkApplicationReadiness } from './application-health.mjs';
 import { renderRobotsPolicy } from './indexing-policy.mjs';
 import { readAuthConfig } from './auth/config.mjs';
+import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
 import { createAuthService } from './auth/service.mjs';
 import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendStudioAsset, sendStudioPage } from './auth/routes.mjs';
 import { atLeast, requiredLevel } from './auth/access.mjs';
@@ -92,7 +93,7 @@ function wantsHtmlPage(req) {
   if (!['GET', 'HEAD'].includes(req.method)) return false;
   const path = String(req.url || '').split('?')[0];
   // Editor and native API routes, at the root or under a dashboard address.
-  if (/^\/(?:[^/]+\/)?(?:api|__studio)(?:\/|$)/.test(path)) return false;
+  if (/^\/(?:[^/]+\/)?(?:api|studio)(?:\/|$)/.test(path)) return false;
   return String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html');
 }
 function renderUnavailablePage(status) {
@@ -122,7 +123,7 @@ a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
 <p class="status">Error ${code}</p>
 <h1>This dashboard isn&#39;t available</h1>
 <p>Its address may have changed, or it may have been archived. Choose the dashboard you need on the Dashboards page.</p>
-<a href="/__studio/dashboards">Open Dashboards</a>
+<a href="/studio/dashboards">Open Dashboards</a>
 </main>
 </body>
 </html>
@@ -386,7 +387,7 @@ function createDashboardHandlers(options = {}) {
     // Native integrations can perform actions as well as read data (for example
     // media playback controls and configured custom-API requests). Protect their
     // explicit routes too; CORS does not stop a foreign site's simple POST.
-    const editor = req.url.startsWith('/__studio/');
+    const editor = req.url.startsWith('/studio/');
     if ((editor || req.url.startsWith('/api/')) && !isAuthNavigation(req.method, req.url.split('?')[0])) {
       if (['cross-site', 'same-site'].includes(req.headers['sec-fetch-site'])) throw Object.assign(new Error('Open this request from your dashboard.'), { status: 403 });
       if (req.headers.origin) {
@@ -397,7 +398,7 @@ function createDashboardHandlers(options = {}) {
       }
       // The identity provider posts back-channel logout server to server, as
       // a form without the editor header; its signed logout token is checked.
-      const backchannel = req.url === '/__studio/auth/oidc/backchannel-logout' && req.method === 'POST';
+      const backchannel = req.url === '/studio/auth/oidc/backchannel-logout' && req.method === 'POST';
       if (editor && !backchannel && !['GET', 'HEAD'].includes(req.method) && req.headers['x-studio-request'] !== '1') throw Object.assign(new Error('The save request is missing its editor header.'), { status: 403 });
     }
   }
@@ -465,44 +466,44 @@ function createDashboardHandlers(options = {}) {
     try {
       checkRequest(req);
       const path = req.url.split('?')[0];
-      if ((path === '/__studio/health' || path === '/__studio/live') && req.method === 'GET') return json(res, 200, { status: 'ok', check: 'liveness', version: studioVersion });
-      if (path === '/__studio/ready' && req.method === 'GET') return await readiness(req, res, dashboard);
-      if (path === '/__studio/config-ready' && req.method === 'GET') return await readiness(req, res, dashboard, true);
-      if (!path.startsWith('/__studio/')) await prepareNative();
-      if (path === '/__studio/catalog.json' && ['GET', 'HEAD'].includes(req.method)) return await serveCatalog(req, res);
-      const saveChange = path === '/__studio/api/save' && req.method === 'POST' ? await readBody(req) : undefined;
+      if ((path === '/studio/health' || path === '/studio/live') && req.method === 'GET') return json(res, 200, { status: 'ok', check: 'liveness', version: studioVersion });
+      if (path === '/studio/ready' && req.method === 'GET') return await readiness(req, res, dashboard);
+      if (path === '/studio/config-ready' && req.method === 'GET') return await readiness(req, res, dashboard, true);
+      if (!path.startsWith('/studio/')) await prepareNative();
+      if (path === '/studio/catalog.json' && ['GET', 'HEAD'].includes(req.method)) return await serveCatalog(req, res);
+      const saveChange = path === '/studio/api/save' && req.method === 'POST' ? await readBody(req) : undefined;
       // Complete board replacements must validate against newly discovered
       // membership. Structured/native-file edits use their revision-checked
       // local sources and retained discovery identities, without a provider wait.
-      if ((req.method === 'GET' && ['/__studio/api/state', '/__studio/api/board', '/__studio/api/export'].includes(path)) ||
-          (req.method === 'POST' && (path === '/__studio/api/board' || (saveChange && Object.hasOwn(saveChange, 'board'))))) {
+      if ((req.method === 'GET' && ['/studio/api/state', '/studio/api/board', '/studio/api/export'].includes(path)) ||
+          (req.method === 'POST' && (path === '/studio/api/board' || (saveChange && Object.hasOwn(saveChange, 'board'))))) {
         await store.refreshDiscovery(String(req.headers.host).toLowerCase(), dashboard);
       }
-      if (path === '/__studio/api/state' && req.method === 'GET') return json(res, 200, await store.load());
-      if (path === '/__studio/api/board' && req.method === 'GET') return json(res, 200, await store.loadBoard());
-      if (path === '/__studio/api/board' && req.method === 'POST') return json(res, 200, await store.saveBoard(await readBody(req)));
-      if (path === '/__studio/api/export' && req.method === 'GET') return json(res, 200, await store.exportCurrent());
-      if (path === '/__studio/api/backups' && req.method === 'GET') return json(res, 200, await store.listBackups());
-      if (path.startsWith('/__studio/api/backups/') && req.method === 'GET') return json(res, 200, await store.exportBackup(path.slice('/__studio/api/backups/'.length)));
-      if (path === '/__studio/api/restore' && req.method === 'POST') return json(res, 200, await store.restoreBackup(await readBody(req)));
-      if (path === '/__studio/api/import' && req.method === 'POST') return json(res, 200, await store.importArchive(await readBody(req, MAX_IMPORT_BYTES)));
-      if (path === '/__studio/api/save' && req.method === 'POST') return json(res, 200, await store.save(saveChange));
-      if (path === '/__studio/api/service' && req.method === 'POST') return json(res, 200, await store.mutateService(await readBody(req)));
-      if (path === '/__studio/api/info-widget' && req.method === 'POST') return json(res, 200, await store.mutateInfoWidget(await readBody(req)));
-      if (path === '/__studio/api/service-widget' && req.method === 'POST') return json(res, 200, await store.mutateServiceWidget(await readBody(req)));
-      if (path === '/__studio/api/bookmark' && req.method === 'POST') return json(res, 200, await store.mutateBookmark(await readBody(req)));
-      if (path === '/__studio/api/settings' && req.method === 'POST') return json(res, 200, await store.mutateSettings(await readBody(req)));
+      if (path === '/studio/api/state' && req.method === 'GET') return json(res, 200, await store.load());
+      if (path === '/studio/api/board' && req.method === 'GET') return json(res, 200, await store.loadBoard());
+      if (path === '/studio/api/board' && req.method === 'POST') return json(res, 200, await store.saveBoard(await readBody(req)));
+      if (path === '/studio/api/export' && req.method === 'GET') return json(res, 200, await store.exportCurrent());
+      if (path === '/studio/api/backups' && req.method === 'GET') return json(res, 200, await store.listBackups());
+      if (path.startsWith('/studio/api/backups/') && req.method === 'GET') return json(res, 200, await store.exportBackup(path.slice('/studio/api/backups/'.length)));
+      if (path === '/studio/api/restore' && req.method === 'POST') return json(res, 200, await store.restoreBackup(await readBody(req)));
+      if (path === '/studio/api/import' && req.method === 'POST') return json(res, 200, await store.importArchive(await readBody(req, MAX_IMPORT_BYTES)));
+      if (path === '/studio/api/save' && req.method === 'POST') return json(res, 200, await store.save(saveChange));
+      if (path === '/studio/api/service' && req.method === 'POST') return json(res, 200, await store.mutateService(await readBody(req)));
+      if (path === '/studio/api/info-widget' && req.method === 'POST') return json(res, 200, await store.mutateInfoWidget(await readBody(req)));
+      if (path === '/studio/api/service-widget' && req.method === 'POST') return json(res, 200, await store.mutateServiceWidget(await readBody(req)));
+      if (path === '/studio/api/bookmark' && req.method === 'POST') return json(res, 200, await store.mutateBookmark(await readBody(req)));
+      if (path === '/studio/api/settings' && req.method === 'POST') return json(res, 200, await store.mutateSettings(await readBody(req)));
       // These two are open to people who may arrange a dashboard, so they answer
       // with the board only, never the configuration files.
-      if (path === '/__studio/api/discovery-visibility' && req.method === 'POST') return json(res, 200, boardView(await store.mutateDiscoveryVisibility(await readBody(req))));
+      if (path === '/studio/api/discovery-visibility' && req.method === 'POST') return json(res, 200, boardView(await store.mutateDiscoveryVisibility(await readBody(req))));
       // Appearance only: the display mode and Studio theme keys of settings.yaml,
       // for people allowed to arrange a dashboard but not to read its settings.
-      if (path === '/__studio/api/appearance' && req.method === 'GET') {
+      if (path === '/studio/api/appearance' && req.method === 'GET') {
         const current = await store.load();
         const settings = current.settingsConfig || {};
         return json(res, 200, { revision: current.revision, settings: Object.fromEntries(APPEARANCE_KEYS.filter(key => Object.hasOwn(settings, key)).map(key => [key, settings[key]])) });
       }
-      if (path === '/__studio/api/appearance' && req.method === 'POST') {
+      if (path === '/studio/api/appearance' && req.method === 'POST') {
         const change = await readBody(req);
         const config = change.config;
         const validTheme = value => value === null || value === 'dark' || value === 'light';
@@ -512,7 +513,7 @@ function createDashboardHandlers(options = {}) {
         }
         return json(res, 200, boardView(await store.mutateSettings({ revision: change.revision, config })));
       }
-      if (path.startsWith('/__studio/')) return json(res, 404, { error: 'This editor endpoint does not exist.' });
+      if (path.startsWith('/studio/')) return json(res, 404, { error: 'This editor endpoint does not exist.' });
       await proxy(req, res, dashboard);
     } catch (error) {
       const status = Number(error.status || error.statusCode) || 500;
@@ -548,9 +549,12 @@ export function createStudioServer(options = {}) {
   rendererPool ||= createRendererPool({ configRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision });
   // Studio sign-in (owner direction, 23 Oct 2026). On by default; STUDIO_AUTH=off
   // returns to external access control only.
+  const deploymentName = readDeploymentName(options.deploymentName ?? process.env.STUDIO_DEPLOYMENT_NAME);
   const authConfig = readAuthConfig(options);
   let registryForAuth;
   const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards }) : null;
+  // Administration's name for the deployment, else STUDIO_DEPLOYMENT_NAME.
+  const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
   const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards }) : null;
   const privateCookies = auth ? [authConfig.cookieName, authConfig.flowCookieName, authConfig.setupCookieName] : [];
   const handlers = new Map();
@@ -636,7 +640,7 @@ export function createStudioServer(options = {}) {
   // ---- Sign-in gate ---------------------------------------------------------
   function wantsNavigation(req) {
     return ['GET', 'HEAD'].includes(req.method) && String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html')
-      && (!/^\/(?:[^/]+\/)?(?:api|__studio)\//.test(String(req.url).split('?')[0]) || /^\/(?:[^/]+\/)?__studio\/(?:edit|settings)$/.test(String(req.url).split('?')[0]));
+      && (!/^\/(?:[^/]+\/)?(?:api|studio)\//.test(String(req.url).split('?')[0]) || /^\/(?:[^/]+\/)?studio\/(?:edit|settings)$/.test(String(req.url).split('?')[0]));
   }
   // The sign-in pages refuse to be framed, so a signed-out dashboard inside
   // another site (for example a Home Assistant panel) gets this page instead
@@ -645,7 +649,7 @@ export function createStudioServer(options = {}) {
   const escapeAttribute = value => String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   function framedSignIn(req, res) {
     const next = String(req.url);
-    const signIn = escapeAttribute(new URL('/__studio/auth/sign-in?next=' + encodeURIComponent(next), authConfig.origin).href);
+    const signIn = escapeAttribute(new URL('/studio/auth/sign-in?next=' + encodeURIComponent(next), authConfig.origin).href);
     const page = FRAMED_SIGN_IN.replace('SIGN_IN', () => signIn);
     const policy = res.getHeader('content-security-policy');
     res.writeHead(401, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-length': Buffer.byteLength(page), 'content-security-policy': [].concat(policy ?? [], UNAVAILABLE_PAGE_POLICY) });
@@ -654,14 +658,14 @@ export function createStudioServer(options = {}) {
   function toSignIn(req, res, code, status = 401) {
     if (wantsNavigation(req) && code !== 'SETUP_REQUIRED' && req.headers['sec-fetch-dest'] === 'iframe') return framedSignIn(req, res);
     if (wantsNavigation(req)) {
-      res.writeHead(302, { location: code === 'SETUP_REQUIRED' ? '/__studio/auth/setup' : '/__studio/auth/sign-in?next=' + encodeURIComponent(req.url), 'cache-control': 'no-store', 'content-length': 0 });
+      res.writeHead(302, { location: code === 'SETUP_REQUIRED' ? '/studio/auth/setup' : '/studio/auth/sign-in?next=' + encodeURIComponent(req.url), 'cache-control': 'no-store', 'content-length': 0 });
       return res.end();
     }
     return json(res, status, { error: code === 'SETUP_REQUIRED' ? 'Studio needs its first administrator. Open Studio in a browser to set it up.' : 'Sign in to continue.', code });
   }
   const isLoopback = address => /^(?:127\.|::1$|::ffff:127\.)/.test(String(address ?? ''));
   function authBlocked(req, res) {
-    if (pathOf(req) === '/__studio/application-ready' && req.method === 'GET') return json(res, 200, { status: 'ready' });
+    if (pathOf(req) === '/studio/application-ready' && req.method === 'GET') return json(res, 200, { status: 'ready' });
     if (wantsNavigation(req)) {
       const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>HTTPS needed</title><style>:root{color-scheme:dark}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:#111115;color:#eeecf1;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}main{max-width:34rem;padding:28px 24px;background:#1b1a20;border:1px solid #34303b;border-radius:12px}h1{margin:0 0 12px;font-size:1.375rem;font-weight:600}p{margin:0 0 12px;color:#b4aebc}code{color:#eeecf1}</style></head><body><main><h1>Studio needs HTTPS before anyone can sign in</h1><p>Sign-in is on, but this address uses plain HTTP. Passkeys and secure sign-in cookies only work over HTTPS, so no dashboard is shown until that is fixed.</p><p>Put Studio behind an HTTPS reverse proxy and set <code>STUDIO_PUBLIC_ORIGIN</code> to the https:// address, or set <code>STUDIO_AUTH=off</code> if another layer already controls who can open Studio. See docs/AUTHENTICATION.md.</p></main></body></html>`;
       const policy = res.getHeader('content-security-policy');
@@ -671,7 +675,7 @@ export function createStudioServer(options = {}) {
     return json(res, 503, { error: authConfig.blocked, code: 'HTTPS_REQUIRED' });
   }
   const pathOf = req => String(req.url).split('?')[0];
-  const STUDIO_PAGES = new Map([['/__studio/edit', '/studio-edit'], ['/__studio/settings', '/studio-settings']]);
+  const STUDIO_PAGES = new Map([['/studio/edit', '/studio-edit'], ['/studio/settings', '/studio-settings']]);
   const NATIVE_STUDIO_PAGE = /^\/(?:studio-(?:edit|settings)(?:\/|$)|_next\/data\/[^/]+\/studio-(?:edit|settings)\.json$)/;
   function forbidden(res, message = 'Your account does not have access to this.') {
     return json(res, 403, { error: message, code: 'FORBIDDEN' });
@@ -681,7 +685,9 @@ export function createStudioServer(options = {}) {
     try {
       original.checkRequest(req);
       const path = req.url.split('?')[0];
-      if (['/__studio/live', '/__studio/health'].includes(path)) return await original.handle(req, res);
+      if (['/studio/live', '/studio/health'].includes(path)) return await original.handle(req, res);
+      const brand = brandFile(path);
+      if (brand) return await sendBrandFile(req, res, brand);
       if (path === '/robots.txt') {
         if (!['GET', 'HEAD'].includes(req.method)) return json(res, 405, { error: 'Use GET or HEAD for the crawl policy.' });
         let status = 200, content;
@@ -704,7 +710,7 @@ export function createStudioServer(options = {}) {
         }
       }
       const manifest = await prepareRegistry();
-      if (path === '/__studio/application-ready') {
+      if (path === '/studio/application-ready') {
         if (req.method !== 'GET') return json(res, 405, { error: 'Use GET to check application readiness.' });
         if (applicationClosing) throw new DashboardError('The application is shutting down.', 'APPLICATION_SHUTTING_DOWN', 503);
         const checks = await checkApplicationReadiness({ configRoot, stateRoot, rendererDir });
@@ -730,7 +736,7 @@ export function createStudioServer(options = {}) {
         }
       }
       const isAdmin = !auth || current.user.role === 'admin';
-      if (path === '/__studio/api/dashboards') {
+      if (path === '/studio/api/dashboards') {
         if (req.method === 'GET') {
           if (isAdmin) return json(res, 200, manifest);
           return json(res, 200, { ...manifest, dashboards: manifest.dashboards.filter(entry => !entry.archived && current.level(entry.id) !== 'none') });
@@ -752,35 +758,51 @@ export function createStudioServer(options = {}) {
         }
         return json(res, 200, result);
       }
-      if (['/__studio/ready', '/__studio/config-ready'].includes(path)) {
+      if (['/studio/ready', '/studio/config-ready'].includes(path)) {
         if (!isAdmin) return forbidden(res);
         const primary = manifest.dashboards.find(entry => entry.id === 'default');
         return await forDashboard(primary).handle(req, res, primary);
       }
       // The Dashboards page lists what this person can open, with the actions
       // their level allows. It works with sign-in on or off.
-      if (path === '/__studio/api/overview') {
+      if (path === '/studio/api/overview') {
         if (req.method !== 'GET') return json(res, 405, { error: 'Use GET for the dashboard list.' });
         const level = entry => (auth ? current.level(entry.id) : 'admin');
-        const listed = manifest.dashboards.filter(entry => (isAdmin || !entry.archived) && level(entry) !== 'none');
+        // A main dashboard without an address can't be opened yet, so only
+        // administrators see it (and are asked to choose the address).
+        const listed = manifest.dashboards.filter(entry => (isAdmin || (!entry.archived && entry.slug)) && level(entry) !== 'none');
+        const primary = manifest.dashboards.find(entry => entry.id === 'default');
         return json(res, 200, {
+          deploymentName: siteName(),
+          mainNeedsAddress: isAdmin && !primary.slug,
+          suggestedSlug: isAdmin ? suggestedDashboardSlug(manifest.dashboards) : undefined,
           authEnabled: Boolean(auth),
           user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role, defaultDashboardId: current.user.defaultDashboardId ?? null } : null,
           landingId: auth ? current.landing(manifest.dashboards) : null,
           revision: isAdmin ? manifest.revision : undefined,
-          dashboards: listed.map(entry => ({ id: entry.id, name: entry.name, slug: entry.slug, path: dashboardBasePath(entry) || '/', archived: entry.archived, level: level(entry) })),
+          dashboards: await Promise.all(listed.map(async entry => ({
+            id: entry.id, name: entry.name, slug: entry.slug, path: dashboardBasePath(entry) || null, archived: entry.archived, level: level(entry),
+            lastChanged: await forDashboard(entry).store.lastChanged().catch(() => null),
+            audience: isAdmin && auth ? auth.audience(entry.id) : undefined,
+          }))),
         });
       }
-      if (!auth && path === '/__studio/dashboards' && ['GET', 'HEAD'].includes(req.method)) return sendStudioPage(res, 'dashboards');
-      if (!auth && req.method === 'GET' && path.startsWith('/__studio/auth/assets/')) return await sendStudioAsset(res, path);
+      if (!auth && path === '/studio/dashboards' && ['GET', 'HEAD'].includes(req.method)) return sendStudioPage(res, 'dashboards', siteName());
+      if (!auth && req.method === 'GET' && path.startsWith('/studio/auth/assets/')) return await sendStudioAsset(res, path);
       // The bare address: the person's landing dashboard, or the Dashboards page.
       if (path === '/' && ['GET', 'HEAD'].includes(req.method)) {
         const landing = auth ? manifest.dashboards.find(entry => entry.id === current.landing(manifest.dashboards)) : null;
-        const target = landing && dashboardBasePath(landing) ? dashboardBasePath(landing) + req.url.slice(1) : '/__studio/dashboards';
+        const target = landing && dashboardBasePath(landing) ? dashboardBasePath(landing) + req.url.slice(1) : '/studio/dashboards';
         res.writeHead(307, { location: target, 'cache-control': 'no-store', 'content-length': 0 });
         return res.end();
       }
       const route = resolveDashboardRoute(manifest, req.url);
+      // Until the main dashboard has an address, an administrator opening a
+      // dashboard page is sent to the Dashboards page, which asks for it.
+      if (isAdmin && !manifest.dashboards.find(entry => entry.id === 'default').slug && !route.shared && ['GET', 'HEAD'].includes(req.method) && !/^\/(?:api|studio\/api)\//.test(route.path) && String(req.headers.accept || '').includes('text/html')) {
+        res.writeHead(303, { location: '/studio/dashboards', 'cache-control': 'no-store', 'content-length': 0 });
+        return res.end();
+      }
       if (route.redirect) { res.writeHead(307, { location: route.redirect, 'cache-control': 'no-store' }); return res.end(); }
       req.url = route.path;
       if (route.shared) return await serveSharedAsset(req, res, rendererDir);
@@ -788,8 +810,8 @@ export function createStudioServer(options = {}) {
       const level = auth ? current.level(route.dashboard.id) : 'admin';
       // A dashboard you can't open looks exactly like one that doesn't exist.
       if (level === 'none') throw new DashboardError('That dashboard is unavailable. Its address may have changed or it may be archived.', 'DASHBOARD_NOT_FOUND', 404);
-      if (local === '/__studio/api/access' && req.method === 'GET') {
-        return json(res, 200, { authEnabled: Boolean(auth), level, dashboard: { id: route.dashboard.id, name: route.dashboard.name }, user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role } : null });
+      if (local === '/studio/api/access' && req.method === 'GET') {
+        return json(res, 200, { authEnabled: Boolean(auth), deploymentName: siteName(), level, dashboard: { id: route.dashboard.id, name: route.dashboard.name }, user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role } : null });
       }
       // The editor and settings pages open from the Dashboards page. They are
       // native pages behind Studio addresses; their native addresses stay closed
@@ -811,7 +833,7 @@ export function createStudioServer(options = {}) {
     } catch (error) {
       if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);
       // Editor API requests for any dashboard keep their diagnostic status.
-      const diagnostic = /^\/(?:[^/]+\/)?__studio\/api\//.test(req.url.split('?')[0]);
+      const diagnostic = /^\/(?:[^/]+\/)?studio\/api\//.test(req.url.split('?')[0]);
       const status = error instanceof ConfigError && !diagnostic ? 503 : Number(error.status || error.statusCode) || 500;
       json(res, status, { error: error instanceof DashboardError || error instanceof ConfigError || status < 500 ? error.message : 'The dashboard could not be opened. Check the application logs and persistent storage.', code: error.code || 'DASHBOARD_ERROR' });
     }

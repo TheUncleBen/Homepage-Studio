@@ -8,10 +8,11 @@ import path from 'node:path';
 import { once } from 'node:events';
 import { createStudioServer, NATIVE_BODY_LIMIT, NATIVE_BODY_BUDGET } from './index.mjs';
 import { createRendererPool } from './renderer-pool.mjs';
+import { addressMainDashboard } from './fixtures/main-address.mjs';
 
 // The main dashboard lives at /home. Its own addresses (native API, editor
 // API, native data) move with it; Studio-wide addresses stay at the root.
-const onPrimary = target => (/^\/(?:api\/|__studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
 const HOST = 'slow-body.example.test:3000';
 const ORIGIN = `http://${HOST}`;
 const BUILD = 'slow-body-test';
@@ -40,6 +41,7 @@ async function fixture(t, options = {}) {
   const app = createStudioServer({ configDir, stateDir, rendererDir, rendererPool, allowedHosts: HOST, buildRevision: BUILD, auth: 'off', ...options });
   app.server.listen(0, '127.0.0.1'); await once(app.server, 'listening');
   const port = app.server.address().port;
+  await addressMainDashboard({ port, host: HOST, origin: ORIGIN });
   const sockets = new Set();
   t.after(async () => {
     for (const socket of sockets) socket.destroy();
@@ -54,8 +56,8 @@ async function fixture(t, options = {}) {
     req.on('error', reject); req.setTimeout(8000, () => req.destroy(new Error('Slow-body fixture request timed out'))); req.end(body);
   });
   const create = async slug => {
-    const { json } = await request('/__studio/api/dashboards');
-    const result = await request('/__studio/api/dashboards', { method: 'POST', body: JSON.stringify({ revision: json.revision, action: 'create', name: slug, slug }), headers: { 'content-type': 'application/json', origin: ORIGIN, 'x-studio-request': '1' } });
+    const { json } = await request('/studio/api/dashboards');
+    const result = await request('/studio/api/dashboards', { method: 'POST', body: JSON.stringify({ revision: json.revision, action: 'create', name: slug, slug }), headers: { 'content-type': 'application/json', origin: ORIGIN, 'x-studio-request': '1' } });
     assert.equal(result.status, 200, result.text);
   };
   // Sends the headers and one byte of a 64-byte body, then stalls.
@@ -167,7 +169,7 @@ test('Expect: 100-continue is answered only for acceptable native uploads and is
   const echoed = JSON.parse(final.slice(final.indexOf('\r\n\r\n') + 4));
   assert.equal(echoed.body, '{"a":1}'); assert.equal(echoed.expect, null);
   // Editor routes still receive 100 Continue before their JSON body is read.
-  const editor = await f.rawHead(`POST /__studio/api/dashboards HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nOrigin: ${ORIGIN}\nX-Studio-Request: 1\nExpect: 100-continue\nContent-Length: 2\nConnection: close\n`);
+  const editor = await f.rawHead(`POST /studio/api/dashboards HTTP/1.1\nHost: ${HOST}\nContent-Type: application/json\nOrigin: ${ORIGIN}\nX-Studio-Request: 1\nExpect: 100-continue\nContent-Length: 2\nConnection: close\n`);
   await until(() => editor.response.includes('\r\n\r\n'));
   assert.match(editor.response, /^HTTP\/1\.1 100 Continue/);
   const editorClosed = once(editor.socket, 'close'); editor.socket.write('{}'); await editorClosed;

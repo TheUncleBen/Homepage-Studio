@@ -65,10 +65,10 @@ pool, not separate security principals or fully isolated operating systems.
 
 ## Health boundaries
 
-Global `/__studio/application-ready` checks a valid registry, writable shared
+Global `/studio/application-ready` checks a valid registry, writable shared
 storage and packaged standalone runtime files/assets without launching a worker.
-It is the Docker health command. Selected `/[slug]/__studio/config-ready` checks
-that dashboard's files and journal; `/[slug]/__studio/ready` adds its native
+It is the Docker health command. Selected `/[slug]/studio/config-ready` checks
+that dashboard's files and journal; `/[slug]/studio/ready` adds its native
 build/protocol handshake. Root diagnostic paths select the original dashboard.
 A damaged default settings file can make that selected dashboard unavailable
 without restarting the container or blocking healthy named dashboards, shared
@@ -118,10 +118,10 @@ use transient navigation direction while native hosts stay mounted.
 ## Input handling
 
 Pointer, touch and keyboard input share one arrangement model. Arranging
-happens only on the editor page (`/<slug>/__studio/edit`, served by the
+happens only on the editor page (`/<slug>/studio/edit`, served by the
 dashboard's worker as `/studio-edit`); the live dashboard has no hold,
 context-menu or long-press path into editing, and the settings page
-(`/<slug>/__studio/settings`, `/studio-settings`) opens the settings dialog
+(`/<slug>/studio/settings`, `/studio-settings`) opens the settings dialog
 over the live board. Both pages need the arrange level; below it the
 controller sends the visitor back to the live dashboard. Panel bodies use
 `touch-action: pan-y`, so vertical page and content scrolling stay native,
@@ -156,7 +156,7 @@ retained descriptors and reports unavailability. Refresh itself creates no
 snapshot or background persistent write.
 
 The following paths are relative to the selected dashboard's
-`/__studio/api/` prefix. Freshness is explicit, without a timer or TTL that writes
+`/studio/api/` prefix. Freshness is explicit, without a timer or TTL that writes
 configuration in the background:
 
 | Operation | Discovery policy |
@@ -219,14 +219,14 @@ unknown, renamed-away or archived dashboard address receive a small static
 `404` page with no script and no reflected request text; API and fetch callers
 keep the JSON error.
 
-Exact Host checks apply to requests. Both Studio `/__studio/` and native `/api/`
+Exact Host checks apply to requests. Both Studio `/studio/` and native `/api/`
 routes, after selecting the dashboard, reject browser Fetch Metadata contexts of
 `cross-site` or `same-site`; an Origin header must match the configured public
 origin and accepted host. Native actions retain same-origin and direct
 non-browser use without requiring the Studio-only write header. A direct client
 without Origin is not authenticated by these checks.
 
-GET `/__studio/api/board` provides safe panel metadata and geometry. GET `/__studio/api/state` is the trusted editor's full native configuration response and can contain secrets already present in the local files. POST endpoints for board, service, service-widget, info-widget, bookmark, settings, save, restore, import, and discovery-visibility require the current revision and the editor request header. Export and snapshot endpoints remain behind the same private deployment boundary.
+GET `/studio/api/board` provides safe panel metadata and geometry. GET `/studio/api/state` is the trusted editor's full native configuration response and can contain secrets already present in the local files. POST endpoints for board, service, service-widget, info-widget, bookmark, settings, save, restore, import, and discovery-visibility require the current revision and the editor request header. Export and snapshot endpoints remain behind the same private deployment boundary.
 
 Native `/api/studio/data` supplies sanitized rendering data. The writer and renderer expose the same nine-file configuration fingerprint, excluding layout-only state. The renderer verifies file bytes and local file identities before and after its native reads, returning a retryable private error if a write or rollback crosses that read. The file identity stamps stay server-local. The client renders only a matched board/native-data pair, preserving hidden, inert healthy hosts while refreshed data is unavailable. A saved response is adopted before refreshing widgets; Retry refresh never repeats a committed write. An arrangement draft retains the revision and source data it was created against, so an external edit reaches the existing conflict path instead of silently reinterpreting stale locators.
 
@@ -294,7 +294,7 @@ Studio sign-in ([AUTHENTICATION.md](AUTHENTICATION.md)), enforced in the
 controller in front of every worker: an anonymous request reaches only the
 sign-in pages and immutable build assets; a member reaches only dashboards
 shared with them, at view or arrange level; everything else under
-`/__studio/` needs an administrator (default deny), and raw file saves,
+`/studio/` needs an administrator (default deny), and raw file saves,
 imports, exports, restores and snapshot reads also need a recent sign-in. The
 session cookie is stripped before requests reach a worker, Homepage's own
 authentication stays off, and its MCP endpoint is refused. With

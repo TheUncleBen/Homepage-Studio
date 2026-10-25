@@ -194,7 +194,7 @@ Any OpenID Connect provider works. Register Studio with it like this:
 | Setting | Value |
 | --- | --- |
 | Client type | **Confidential**, with a client secret (authorization code flow) |
-| Redirect URI | exactly `https://homepage.example.test/__studio/auth/oidc/callback` |
+| Redirect URI | exactly `https://homepage.example.test/studio/auth/oidc/callback` |
 | Scopes | `openid`, `email`, `profile` and `offline_access`. Without `offline_access` (refresh tokens) people signed in through the provider are signed out of Studio after about 15 minutes |
 | Subject | a stable, per-person identifier. Never change it once people have signed in |
 | Groups | Optional but recommended: a `groups` claim listing the person's group names, so Studio can make administrators and decide who may sign in |
@@ -222,7 +222,7 @@ fails are in [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md). For other providers, see
    - Authorization flow: `default-provider-authorization-implicit-consent`.
    - Client type: **Confidential**.
    - Redirect URIs: one entry, matching mode **Strict**,
-     `https://homepage.example.test/__studio/auth/oidc/callback`.
+     `https://homepage.example.test/studio/auth/oidc/callback`.
    - Signing key: `authentik Self-signed Certificate` (or another certificate
      you manage). Don't leave it empty.
    - **Advanced protocol settings → Scopes**: `openid`, `email`, `profile`
@@ -476,7 +476,7 @@ redeployed after you added it, and that the forward hostname is right. From
 the node running the proxy:
 
 ```bash
-docker exec <proxy container> curl -s -H 'Host: homepage.example.test' http://homepage_studio:3000/__studio/application-ready
+docker exec <proxy container> curl -s -H 'Host: homepage.example.test' http://homepage_studio:3000/studio/application-ready
 # {"status":"ready"}
 ```
 
@@ -490,7 +490,7 @@ HOMEPAGE_ALLOWED_HOSTS*, which still proves the proxy can reach Studio.
 From any machine:
 
 ```bash
-curl -s https://homepage.example.test/__studio/application-ready
+curl -s https://homepage.example.test/studio/application-ready
 # {"status":"ready"}
 ```
 
@@ -632,7 +632,7 @@ variables with a short comment each.
 | `STUDIO_ADMIN_USERNAME`, `STUDIO_ADMIN_EMAIL` | (unset) | The first administrator, created once with the `studio_admin_password` secret ([AUTHENTICATION.md](AUTHENTICATION.md#first-start-the-administrator)) |
 | `STUDIO_OIDC_ADMIN_GROUPS`, `STUDIO_OIDC_ALLOWED_GROUPS` | (unset) | Comma-separated identity-provider groups for administrators and for who may sign in. Set here, they're read-only in Studio |
 | `STUDIO_OIDC_NAME`, `STUDIO_OIDC_SCOPES`, `STUDIO_OIDC_GROUPS_CLAIM`, `STUDIO_OIDC_REFRESH_MINUTES`, `STUDIO_OIDC_ALLOW_HTTP` | see [AUTHENTICATION.md](AUTHENTICATION.md#settings-reference) | Rarely changed |
-| `STUDIO_SMTP_HOST`, `STUDIO_SMTP_PORT`, `STUDIO_SMTP_SECURE`, `STUDIO_SMTP_USER`, `STUDIO_SMTP_FROM_ADDRESS`, `STUDIO_SMTP_FROM_NAME` (or the older `STUDIO_SMTP_FROM`) | (unset) | Email, plus the `studio_smtp_password` secret ([AUTHENTICATION.md](AUTHENTICATION.md#email)) |
+| `STUDIO_SMTP_HOST`, `STUDIO_SMTP_PORT`, `STUDIO_SMTP_SECURE`, `STUDIO_SMTP_USER`, `STUDIO_SMTP_FROM_ADDRESS`, `STUDIO_SMTP_FROM_NAME` | (unset) | Email, plus the `studio_smtp_password` secret ([AUTHENTICATION.md](AUTHENTICATION.md#email)) |
 | `STUDIO_FRAME_ANCESTORS` | empty | Space-separated `'self'` and exact origins allowed to show a dashboard in a frame ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) |
 | `STUDIO_BACKUP_RETENTION` | `25` | Snapshots kept per dashboard |
 | `STUDIO_RENDERER_MAX_WORKERS` | `8` | Dashboards with a running worker at once, 1 to 64 |

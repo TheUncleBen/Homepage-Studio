@@ -23,7 +23,7 @@ export default function AppearanceOnlyEditor({ appearance, onSaved, onClose, onR
     setPending(true);
     try {
       await onSaved(
-        await studioRequest("/__studio/api/appearance", {
+        await studioRequest("/studio/api/appearance", {
           revision: appearance.revision,
           config: patchFromDraft(original, draft),
         }),

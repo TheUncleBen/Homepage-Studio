@@ -9,7 +9,7 @@ test('native content focus, offscreen position and Quick Launch suspend the rema
   const input = page.locator('[data-panel-kind="informationWidget"][aria-label="Search"]').getByRole('combobox');
   await expect(input).toBeVisible();
   await stack.scrollIntoViewIfNeeded();
-  const before = await studioApi(request, '/home/__studio/api/backups');
+  const before = await studioApi(request, '/home/studio/api/backups');
   await page.clock.pauseAt(new Date('2026-10-20T13:00:00Z'));
   const firstId = await activePanel(page).getAttribute('data-panel-id');
   await stack.getByRole('button', { name: 'Play slideshow', exact: true }).click();
@@ -55,7 +55,7 @@ test('native content focus, offscreen position and Quick Launch suspend the rema
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', firstId);
   await page.clock.fastForward(1);
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', secondId);
-  expect(await studioApi(request, '/home/__studio/api/backups')).toEqual(before);
+  expect(await studioApi(request, '/home/studio/api/backups')).toEqual(before);
 });
 
 test.describe('reduced motion', () => {

@@ -169,7 +169,8 @@ function StudioDashboard({
         />
         <title>{settings.title || "Homepage Studio"}</title>
         <meta name="description" content={settings.description || "Your personal Homepage dashboard"} />
-        <link rel="icon" href={settings.favicon || "/homepage.ico"} />
+        <link rel="icon" href={settings.favicon || "/studio/brand/logo.svg"} />
+        <link rel="apple-touch-icon" href="/studio/brand/apple-touch-icon.png" />
         <link
           rel="stylesheet"
           href={dashboardPath(`/api/config/custom.css?v=${assetsVersion}`, studioDashboard.basePath)}

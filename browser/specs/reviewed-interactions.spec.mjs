@@ -9,7 +9,7 @@ async function seedStack(request, members = 3, transition = 'horizontal', overri
     id: 'reviewed-interactions', panelIds: saved.board.panels.map(panel => panel.id),
     rect: { x: 0, y: 0, w: 4, h: 3 }, playback: playback({ transition, transitionDurationMs: 500, ...overrides }),
   }];
-  return studioApi(request, '/home/__studio/api/board', { revision: saved.revision, board: saved.board });
+  return studioApi(request, '/home/studio/api/board', { revision: saved.revision, board: saved.board });
 }
 
 async function armWrapCapture(page, firstId) {
@@ -50,7 +50,7 @@ test('Quick Launch freezes the remaining playback interval and resumes without a
   await expect(stack).toBeVisible();
   await page.clock.pauseAt(new Date('2026-10-22T13:00:00Z'));
   const first = await activePanel(page).getAttribute('data-panel-id');
-  const snapshots = await studioApi(request, '/home/__studio/api/backups');
+  const snapshots = await studioApi(request, '/home/studio/api/backups');
   await stack.getByRole('button', { name: 'Play slideshow', exact: true }).click();
   await page.clock.fastForward(500);
   await page.getByRole('button', { name: 'Quick Launch', exact: true }).click();
@@ -63,7 +63,7 @@ test('Quick Launch freezes the remaining playback interval and resumes without a
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', first);
   await page.clock.fastForward(1);
   await expect(activePanel(page)).not.toHaveAttribute('data-panel-id', first);
-  expect(await studioApi(request, '/home/__studio/api/backups')).toEqual(snapshots);
+  expect(await studioApi(request, '/home/studio/api/backups')).toEqual(snapshots);
 });
 
 test('opening Quick Launch during a held stack title neither edits nor opens the picker', async ({ page, request }) => {
@@ -140,7 +140,7 @@ for (const input of ['pointer', 'keyboard']) {
     expect(await page.evaluate(() => window.__reviewedHost === document.querySelector('[data-panel-id][aria-label="Beta"]'))).toBe(true);
     await page.getByRole('button', { name: 'Save arrangement', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Save arrangement', exact: true })).toHaveCount(0);
-    const saved = await studioApi(request, '/home/__studio/api/board');
+    const saved = await studioApi(request, '/home/studio/api/board');
     expect(saved.board.panels.find(panel => panel.title === 'Beta').rect).toEqual({ x: 0, y: 0, w: 4, h: 3 });
     expect(saved.board.panels.find(panel => panel.title === 'Alpha').rect).toEqual({ x: 4, y: 0, w: 4, h: 3 });
     await page.setViewportSize({ width: 1440, height: 1080 });
@@ -168,7 +168,7 @@ test('at 8 columns Left and Right move a wrapped panel one reading position and 
   expect(beta.left).toBe(alpha.left);
   await page.getByRole('button', { name: 'Save arrangement', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save arrangement', exact: true })).toHaveCount(0);
-  const saved = await studioApi(request, '/home/__studio/api/board');
+  const saved = await studioApi(request, '/home/studio/api/board');
   const rect = name => saved.board.panels.find(item => item.title === name).rect;
   expect(rect('Alpha')).toEqual({ x: 0, y: 0, w: 4, h: 3 });
   expect(rect('Gamma')).toEqual({ x: 4, y: 0, w: 4, h: 3 });
@@ -215,7 +215,7 @@ test('a snapshot restore protects browser departure for the entire pending write
   let release;
   let pending = false;
   const gate = new Promise(resolve => { release = resolve; });
-  await page.route('**/__studio/api/restore', async route => { pending = true; await gate; await route.continue(); });
+  await page.route('**/studio/api/restore', async route => { pending = true; await gate; await route.continue(); });
   try {
     await page.getByRole('button', { name: 'Restore selected snapshot', exact: true }).click();
     await expect.poll(() => pending).toBe(true);

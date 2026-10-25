@@ -82,19 +82,19 @@ test('access levels default to administrator for anything not listed', () => {
   assert.deepEqual(requiredLevel('GET', '/'), { level: 'view' });
   assert.deepEqual(requiredLevel('POST', '/api/services/proxy'), { level: 'view' });
   assert.deepEqual(requiredLevel('GET', '/api/mcp'), { level: 'blocked' });
-  assert.deepEqual(requiredLevel('GET', '/__studio/api/board'), { level: 'view' });
-  assert.deepEqual(requiredLevel('POST', '/__studio/api/board'), { level: 'arrange' });
-  assert.deepEqual(requiredLevel('POST', '/__studio/api/discovery-visibility'), { level: 'arrange' });
-  assert.deepEqual(requiredLevel('POST', '/__studio/api/appearance'), { level: 'arrange' });
-  assert.deepEqual(requiredLevel('GET', '/__studio/api/state'), { level: 'admin', stepUp: false });
-  assert.deepEqual(requiredLevel('POST', '/__studio/api/service'), { level: 'admin', stepUp: false });
-  assert.deepEqual(requiredLevel('POST', '/__studio/api/save'), { level: 'admin', stepUp: true });
-  assert.deepEqual(requiredLevel('GET', '/__studio/api/export'), { level: 'admin', stepUp: true });
-  assert.deepEqual(requiredLevel('GET', '/__studio/api/backups/one.json'), { level: 'admin', stepUp: true });
-  assert.deepEqual(requiredLevel('GET', '/__studio/api/something-new'), { level: 'admin', stepUp: false });
-  assert.deepEqual(requiredLevel('GET', '/__studio/edit'), { level: 'arrange' });
-  assert.deepEqual(requiredLevel('GET', '/__studio/settings'), { level: 'arrange' });
-  assert.deepEqual(requiredLevel('POST', '/__studio/edit'), { level: 'admin', stepUp: false });
+  assert.deepEqual(requiredLevel('GET', '/studio/api/board'), { level: 'view' });
+  assert.deepEqual(requiredLevel('POST', '/studio/api/board'), { level: 'arrange' });
+  assert.deepEqual(requiredLevel('POST', '/studio/api/discovery-visibility'), { level: 'arrange' });
+  assert.deepEqual(requiredLevel('POST', '/studio/api/appearance'), { level: 'arrange' });
+  assert.deepEqual(requiredLevel('GET', '/studio/api/state'), { level: 'admin', stepUp: false });
+  assert.deepEqual(requiredLevel('POST', '/studio/api/service'), { level: 'admin', stepUp: false });
+  assert.deepEqual(requiredLevel('POST', '/studio/api/save'), { level: 'admin', stepUp: true });
+  assert.deepEqual(requiredLevel('GET', '/studio/api/export'), { level: 'admin', stepUp: true });
+  assert.deepEqual(requiredLevel('GET', '/studio/api/backups/one.json'), { level: 'admin', stepUp: true });
+  assert.deepEqual(requiredLevel('GET', '/studio/api/something-new'), { level: 'admin', stepUp: false });
+  assert.deepEqual(requiredLevel('GET', '/studio/edit'), { level: 'arrange' });
+  assert.deepEqual(requiredLevel('GET', '/studio/settings'), { level: 'arrange' });
+  assert.deepEqual(requiredLevel('POST', '/studio/edit'), { level: 'admin', stepUp: false });
 });
 
 test('the landing dashboard: own choice, then the first group in order with a default, then the Dashboards page', () => {
@@ -209,11 +209,11 @@ test('secrets come from mounted files, and an unused optional one says off', t =
   assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_AUTH_KEY_FILE: empty }), /STUDIO_AUTH_KEY_FILE .*required/);
   assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_AUTH_KEY_FILE: path.join(directory, 'missing') }), /could not be read/);
   // Single sign-on and email read their secrets, trimmed.
-  const sso = readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_AUTH_KEY_FILE: key, STUDIO_OIDC_ISSUER: 'https://id.example.test/application/o/studio/', STUDIO_OIDC_CLIENT_ID: 'studio', STUDIO_OIDC_CLIENT_SECRET_FILE: client, STUDIO_SMTP_HOST: 'smtp.example.test', STUDIO_SMTP_FROM: 'studio@example.test', STUDIO_SMTP_USER: 'studio', STUDIO_SMTP_PASSWORD_FILE: mail });
+  const sso = readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_AUTH_KEY_FILE: key, STUDIO_OIDC_ISSUER: 'https://id.example.test/application/o/studio/', STUDIO_OIDC_CLIENT_ID: 'studio', STUDIO_OIDC_CLIENT_SECRET_FILE: client, STUDIO_SMTP_HOST: 'smtp.example.test', STUDIO_SMTP_FROM_ADDRESS: 'studio@example.test', STUDIO_SMTP_USER: 'studio', STUDIO_SMTP_PASSWORD_FILE: mail });
   assert.equal(sso.oidc.clientSecret, 'client-secret');
   assert.equal(sso.smtp.password, 'mail-password');
   // Email without a password (an unauthenticated relay) is allowed.
-  assert.equal(readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_SMTP_HOST: 'smtp.example.test', STUDIO_SMTP_FROM: 'studio@example.test', STUDIO_SMTP_PASSWORD_FILE: off }).smtp.password, undefined);
+  assert.equal(readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_SMTP_HOST: 'smtp.example.test', STUDIO_SMTP_FROM_ADDRESS: 'studio@example.test', STUDIO_SMTP_PASSWORD_FILE: off }).smtp.password, undefined);
   // Single sign-on set up while its secret still says off names the secret.
   assert.throws(() => readAuthConfig({}, { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_OIDC_ISSUER: 'https://id.example.test/', STUDIO_OIDC_CLIENT_ID: 'studio', STUDIO_OIDC_CLIENT_SECRET_FILE: off }), /STUDIO_OIDC_CLIENT_SECRET_FILE .*says off/);
   // With sign-in off no secret is read at all.
@@ -228,14 +228,12 @@ test('the [hidden] attribute always hides, whatever a component class sets', asy
   assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
 });
 
-test('the email sender name and address are separate settings; the old single setting still works', () => {
+test('the email sender name and address are separate settings', () => {
   const origin = 'https://studio.example.test';
   const base = { STUDIO_PUBLIC_ORIGIN: origin, STUDIO_SMTP_HOST: 'smtp.example.test' };
   assert.deepEqual(readAuthConfig({}, { ...base, STUDIO_SMTP_FROM_ADDRESS: 'studio@example.test', STUDIO_SMTP_FROM_NAME: 'Family Dashboards' }).smtp.from, { name: 'Family Dashboards', address: 'studio@example.test' });
-  assert.deepEqual(readAuthConfig({}, { ...base, STUDIO_SMTP_FROM_ADDRESS: 'studio@example.test' }).smtp.from, { name: 'Homepage Studio', address: 'studio@example.test' });
-  assert.equal(readAuthConfig({}, { ...base, STUDIO_SMTP_FROM: 'Studio <studio@example.test>' }).smtp.from, 'Studio <studio@example.test>');
+  assert.deepEqual(readAuthConfig({}, { ...base, STUDIO_SMTP_FROM_ADDRESS: 'studio@example.test' }).smtp.from, { name: null, address: 'studio@example.test' });
   assert.throws(() => readAuthConfig({}, { ...base, STUDIO_SMTP_FROM_NAME: 'Name only' }), /needs STUDIO_SMTP_FROM_ADDRESS/);
   assert.throws(() => readAuthConfig({}, { ...base, STUDIO_SMTP_FROM_ADDRESS: 'Name <studio@example.test>' }), /plain email address/);
-  assert.throws(() => readAuthConfig({}, { ...base, STUDIO_SMTP_FROM_ADDRESS: 'a@example.test', STUDIO_SMTP_FROM: 'b@example.test' }), /not both/);
   assert.throws(() => readAuthConfig({}, base), /STUDIO_SMTP_FROM_ADDRESS/);
 });

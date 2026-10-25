@@ -39,22 +39,15 @@ export async function renderRobotsPolicy(manifest, readPolicy) {
     try { return { dashboard, disabled: !!(await readPolicy(dashboard)).disableIndexing }; }
     catch { return { dashboard, disabled: true }; }
   }));
-  const root = entries.find(entry => entry.dashboard.slug === '');
-  const rootDisabled = !!root?.disabled;
-  const lines = ['User-agent: *', rootDisabled ? 'Disallow: /' : 'Allow: /', 'Disallow: /__studio/'];
+  // The bare address is no dashboard: it leads each person to theirs.
+  const lines = ['User-agent: *', 'Allow: /', 'Disallow: /studio/'];
   for (const { dashboard, disabled } of entries) {
     // Archived dashboards answer 404 at their slug, so listing them would only
     // disclose retired (possibly private) names to anyone reading robots.txt.
-    // They remain disabled above, so a root-level opt-out still covers them.
+    // A main dashboard without an address yet isn't served anywhere.
     if (!dashboard.slug || dashboard.archived) continue;
     if (disabled) lines.push(...boundaryRules('Disallow', dashboard.slug));
-    else if (rootDisabled) lines.push(...boundaryRules('Allow', dashboard.slug));
-    lines.push(`Disallow: /${dashboard.slug}/__studio/`);
-  }
-  // Shared immutable resources must remain crawlable for an enabled sibling
-  // even when the original dashboard opts out of indexing.
-  if (rootDisabled && entries.some(entry => !entry.disabled)) {
-    for (const path of ['/_next/static/', '/images/', '/icons/', '/locales/', '/fonts/', '/assets/', '/homepage.ico$', '/favicon.ico$']) lines.push('Allow: ' + path);
+    lines.push(`Disallow: /${dashboard.slug}/studio/`);
   }
   return lines.join('\n') + '\n';
 }

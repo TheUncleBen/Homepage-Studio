@@ -5,7 +5,7 @@ export const DASHBOARD_REGISTRY_MARKER = 'studio-dashboards.initialized';
 export const MAX_DASHBOARDS = 64;
 export const MAX_REGISTRY_BYTES = 128 * 1024;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const reserved = new Set(['api', 'images', 'icons', 'locales', 'assets', 'public', 'fonts', 'config', 'dashboards']);
+const reserved = new Set(['api', 'images', 'icons', 'locales', 'assets', 'public', 'fonts', 'config', 'dashboards', 'studio']);
 export class DashboardError extends Error {
   constructor(message, code = 'INVALID_DASHBOARD', status = 400) {
     super(message); this.name = 'DashboardError'; this.code = code; this.status = status;
@@ -20,6 +20,8 @@ export function validateDashboardName(name) {
   return name.trim();
 }
 export function validateDashboardSlug(slug, id) {
+  // The main dashboard has no address until an administrator picks one.
+  if (slug === '' && id === 'default') return slug;
   if (typeof slug !== 'string' || slug.length > 64 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(slug) || reserved.has(slug)) throw new DashboardError('Use a unique address of 1 to 64 lowercase letters, numbers or internal hyphens, without a reserved application path.', 'INVALID_DASHBOARD_SLUG');
   return slug;
 }
@@ -39,19 +41,13 @@ export function validateDashboardManifest(value) {
   if (!ids.has('default')) invalid();
   return value;
 }
-// Before Dashboards had its own page the main dashboard lived at the bare
-// address with an empty slug. It now gets "home" (or "home-2", … when that
-// is taken); the bare address leads to each person's landing page instead.
-export const migratedManifests = new WeakSet();
-export function migrateDashboardManifest(value) {
-  const primary = Array.isArray(value?.dashboards) ? value.dashboards.find(entry => entry?.id === 'default') : null;
-  if (!primary || primary.slug !== '') return value;
-  const taken = new Set(value.dashboards.map(entry => entry?.slug));
-  let slug = 'home';
-  for (let n = 2; taken.has(slug); n++) slug = 'home-' + n;
-  primary.slug = slug;
-  migratedManifests.add(value);
-  return value;
+// The suggested address for a new dashboard: the lowest free of "dashboard",
+// "dashboard-2", "dashboard-3", …, counting archived dashboards as taken.
+export function suggestedDashboardSlug(dashboards) {
+  const taken = new Set(dashboards.map(entry => entry.slug));
+  let slug = 'dashboard';
+  for (let n = 2; taken.has(slug); n++) slug = 'dashboard-' + n;
+  return slug;
 }
 export const dashboardBasePath = entry => entry.slug ? '/' + validateDashboardSlug(entry.slug, entry.id) : '';
 export function dashboardConfigDir(root, id) {

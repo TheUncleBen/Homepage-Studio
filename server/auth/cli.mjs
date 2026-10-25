@@ -51,7 +51,7 @@ export async function run(argv, env = process.env, out = console) {
     const temporary = target + '.' + process.pid + '.tmp';
     await fs.writeFile(temporary, JSON.stringify(request), { mode: 0o600, flag: 'wx' });
     await fs.rename(temporary, target);
-    out.log(`One-time recovery link for ${user.username}${request.promote ? ' (will become an administrator)' : ''}, valid for ${LINK_MINUTES} minutes:\n\n  ${new URL('/__studio/auth/recovery#' + token, origin).href}\n\nIt signs in for one browser session and is recorded in the activity log. Running this again replaces the link.`);
+    out.log(`One-time recovery link for ${user.username}${request.promote ? ' (will become an administrator)' : ''}, valid for ${LINK_MINUTES} minutes:\n\n  ${new URL('/studio/auth/recovery#' + token, origin).href}\n\nIt signs in for one browser session and is recorded in the activity log. Running this again replaces the link.`);
     return;
   }
   usage();

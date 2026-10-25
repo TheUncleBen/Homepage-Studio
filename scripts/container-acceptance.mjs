@@ -156,15 +156,15 @@ async function crashWorker(container, record) {
     assert.ok(after && after.pid !== before.pid, 'A subsequent request must restart the crashed worker');
   }, 'Native child crash recovery');
   await assertDashboardsPersisted([record]);
-  assert.equal((await request('/__studio/application-ready')).json().status, 'ready');
+  assert.equal((await request('/studio/application-ready')).json().status, 'ready');
 }
 
 async function assertBadDefaultIsolation(container, record) {
   const settings = (await state()).settingsYaml;
   try {
     await docker(['exec', container, 'node', '-e', 'require("node:fs").writeFileSync("/app/config/settings.yaml", "invalid: [\\n")']);
-    await request('/__studio/ready', undefined, 503);
-    assert.equal((await request('/__studio/application-ready')).json().status, 'ready');
+    await request('/studio/ready', undefined, 503);
+    assert.equal((await request('/studio/application-ready')).json().status, 'ready');
     await assertDashboardsPersisted([record]);
     const page = await request(`/${record.dashboard.slug}/`);
     const sharedAsset = page.text.match(/(?:src|href)="([^" ]*\/_next\/static\/[^" ]+)"/);
@@ -203,9 +203,9 @@ async function swarmDiagnostics() {
           import https from 'node:https';
           const host = new URL(process.env.STUDIO_PUBLIC_ORIGIN).host;
           const targets = [
-            ['application', 'http://127.0.0.1:3000/__studio/application-ready'],
-            ['selected configuration', 'http://127.0.0.1:3000/__studio/config-ready'],
-            ['selected native readiness', 'http://127.0.0.1:3000/__studio/ready'],
+            ['application', 'http://127.0.0.1:3000/studio/application-ready'],
+            ['selected configuration', 'http://127.0.0.1:3000/studio/config-ready'],
+            ['selected native readiness', 'http://127.0.0.1:3000/studio/ready'],
           ];
           for (const [endpoint, url] of targets) {
             try {
@@ -256,7 +256,7 @@ try {
   console.log('PASS: real legacy-root volume adoption at /home, main-dashboard move to /admin, native CSS/JS, complete byte/history preservation and idempotent restart.');
   await docker([...composeArgs, 'up', '--detach', '--no-build', '--pull', 'never']);
   await composeHealth();
-  assert.equal((await request('/__studio/application-ready')).json().status, 'ready');
+  assert.equal((await request('/studio/application-ready')).json().status, 'ready');
   const composeFixture = await freshAndEdit();
   const dashboards = await multiDashboard();
   const application = await docker([...composeArgs, 'ps', '--quiet', 'studio']);
@@ -297,19 +297,19 @@ try {
   const committedRevisions = [];
   for (let index = 0; index < 26; index += 1) {
     committedRevisions.unshift(retainedState.revision);
-    retainedState = (await request(`${HOME}/__studio/api/save`, {
+    retainedState = (await request(`${HOME}/studio/api/save`, {
       revision: retainedState.revision, settingsYaml: `title: Retention qualification ${index}\n`,
     })).json();
     assert.deepEqual(retainedState.warnings, [], 'Every committed save must complete without a retention warning');
   }
-  const retainedHistory = (await request(`${HOME}/__studio/api/backups`)).json();
+  const retainedHistory = (await request(`${HOME}/studio/api/backups`)).json();
   assert.equal(retainedHistory.length, 25, 'The real state volume must retain exactly the newest25 snapshots');
   assert.deepEqual(retainedHistory.map(item => item.revision), committedRevisions.slice(0, 25), 'History must correspond to the newest25 exact pre-save revisions');
   const retainedFiles = JSON.parse(await docker([...composeArgs, 'exec', '-T', 'studio', 'node', '-e',
     'console.log(JSON.stringify(require("node:fs").readdirSync("/app/state/backups").filter(name => /^backup-.*\\.json$/.test(name)).sort()))',
   ]));
   assert.deepEqual(retainedFiles, retainedHistory.map(item => `${item.id}.json`).sort(), 'On-volume snapshot files must exactly match the API history');
-  assert.deepEqual((await request(`${HOME}/__studio/api/backups`)).json(), retainedHistory, 'Reading history must not change or resurrect entries');
+  assert.deepEqual((await request(`${HOME}/studio/api/backups`)).json(), retainedHistory, 'Reading history must not change or resurrect entries');
   console.log('PASS: real Docker volume retains the exact newest25 pre-save revisions after26 committed saves; API history and on-volume snapshot identities agree.');
   // Sign-in on, the default: the same volumes lock behind first-administrator
   // setup and the container health check still passes.
@@ -318,13 +318,13 @@ try {
   await composeHealth();
   const home = await fetch(new URL('/', origin), { headers: { accept: 'text/html' }, redirect: 'manual', signal: AbortSignal.timeout(35000) });
   assert.equal(home.status, 302);
-  assert.equal(home.headers.get('location'), '/__studio/auth/setup');
-  assert.equal((await request(`${HOME}/__studio/api/state`, undefined, 401)).json().code, 'SETUP_REQUIRED');
-  assert.deepEqual((await request('/__studio/application-ready')).json(), { status: 'ready' }, 'anonymous callers see readiness only');
-  const setupPage = await fetch(new URL('/__studio/auth/setup', origin), { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(35000) });
+  assert.equal(home.headers.get('location'), '/studio/auth/setup');
+  assert.equal((await request(`${HOME}/studio/api/state`, undefined, 401)).json().code, 'SETUP_REQUIRED');
+  assert.deepEqual((await request('/studio/application-ready')).json(), { status: 'ready' }, 'anonymous callers see readiness only');
+  const setupPage = await fetch(new URL('/studio/auth/setup', origin), { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(35000) });
   assert.equal(setupPage.status, 200);
   assert.match(setupPage.headers.get('content-security-policy') || '', /script-src 'self'/);
-  for (const asset of ['app.js', 'app.css', 'webauthn.js']) assert.equal((await fetch(new URL('/__studio/auth/assets/' + asset, origin), { signal: AbortSignal.timeout(35000) })).status, 200, asset);
+  for (const asset of ['app.js', 'app.css', 'webauthn.js']) assert.equal((await fetch(new URL('/studio/auth/assets/' + asset, origin), { signal: AbortSignal.timeout(35000) })).status, 200, asset);
   assert.match(await docker([...composeArgs, 'exec', '-T', 'studio', 'node', 'server/auth/cli.mjs', 'list'], { env: signInEnv }), /No accounts yet/);
   // Chromium with a virtual passkey: first-administrator setup, sign-out and
   // passkey sign-in against the real image.

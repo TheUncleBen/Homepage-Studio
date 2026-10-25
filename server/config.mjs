@@ -1028,6 +1028,16 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       const text = await safeRead(location('settings.yaml'));
       return readNativeIndexingPolicy(text, environment);
     }),
+    // When this dashboard's files last changed, for the Dashboards page. It
+    // reads file times only, so edits made outside Studio count too.
+    lastChanged: async () => {
+      let latest = 0;
+      for (const name of ALL_FILES) {
+        const stat = await fs.lstat(location(name)).catch(() => null);
+        if (stat?.isFile() && stat.mtimeMs > latest) latest = stat.mtimeMs;
+      }
+      return latest ? new Date(latest).toISOString() : null;
+    },
     checkReadiness: () => serialized(async () => {
       const current = await readCurrent();
       if (Object.values(FILES).some((file) => current.raw[file] === null)) {

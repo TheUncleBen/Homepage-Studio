@@ -100,7 +100,7 @@ export default function SettingsEditor({
     setPending(true);
     try {
       await onSaved(
-        await studioRequest("/__studio/api/settings", {
+        await studioRequest("/studio/api/settings", {
           revision: state.revision,
           config: patchFromDraft(original, draft),
         }),
@@ -184,7 +184,7 @@ export function FilesEditor({ state, onSaved, onClose, onReload }) {
     setPending(true);
     try {
       await onSaved(
-        await studioRequest("/__studio/api/save", {
+        await studioRequest("/studio/api/save", {
           revision: state.revision,
           ...Object.fromEntries(changed.map(([, key]) => [key, draft[key]])),
         }),
@@ -229,7 +229,7 @@ export function FilesEditor({ state, onSaved, onClose, onReload }) {
                 try {
                   downloadFile(
                     "homepage-studio-configuration.json",
-                    JSON.stringify(await studioRequest("/__studio/api/export"), null, 2),
+                    JSON.stringify(await studioRequest("/studio/api/export"), null, 2),
                   );
                 } catch (err) {
                   setError(err);
@@ -373,7 +373,7 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
     setPending(true);
     setError(null);
     try {
-      const restored = await studioRequest(archive ? "/__studio/api/import" : "/__studio/api/restore", {
+      const restored = await studioRequest(archive ? "/studio/api/import" : "/studio/api/restore", {
         revision: state.revision,
         ...(archive ? { archive: archive.content } : { backupId: chosen }),
       });
@@ -486,7 +486,7 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
             try {
               downloadFile(
                 `homepage-studio-snapshot-${chosen}.json`,
-                JSON.stringify(await studioRequest(`/__studio/api/backups/${encodeURIComponent(chosen)}`), null, 2),
+                JSON.stringify(await studioRequest(`/studio/api/backups/${encodeURIComponent(chosen)}`), null, 2),
               );
             } catch (err) {
               setError(err);
