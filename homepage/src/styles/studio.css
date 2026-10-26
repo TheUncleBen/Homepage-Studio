@@ -389,7 +389,11 @@ body {
 .studio-status-message {
   min-height: 22px;
   color: var(--studio-muted);
-  font-size: 11px;
+  font-size: 13px;
+}
+/* The canvas's dashed outline sits 9px outside it; keep the status clear of it. */
+.studio-edit-mode .studio-status-message {
+  margin-bottom: 14px;
 }
 .studio-canvas {
   position: relative;
@@ -1189,8 +1193,7 @@ body {
 .studio-field input:not([type="checkbox"]),
 .studio-field select,
 .studio-field textarea,
-.studio-file-toolbar select,
-.studio-position-fields input {
+.studio-file-toolbar select {
   width: 100%;
   background: var(--studio-input);
   border: 1px solid var(--studio-line-strong);
@@ -1376,81 +1379,6 @@ body {
 }
 .studio-import-confirm p {
   margin-top: 8px;
-}
-.studio-position-fields {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-.studio-position-fields .studio-field-error {
-  grid-column: 1 / -1;
-  margin-top: 0;
-}
-.studio-position-fields label {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  font-size: 11px;
-  color: var(--studio-muted);
-}
-.studio-stack-members {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  margin: 18px 0;
-}
-.studio-stack-member {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 12px;
-  border: 1px solid var(--studio-line-strong);
-  border-radius: 11px;
-  background: var(--studio-accent-soft);
-}
-.studio-member-number {
-  font-size: 10px;
-  color: var(--studio-accent);
-  width: 20px;
-  height: 20px;
-  min-width: 20px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--studio-line-strong);
-  border-radius: 7px;
-}
-.studio-member-title {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.studio-member-title strong {
-  color: var(--studio-text);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.studio-member-title small {
-  color: var(--studio-muted);
-  font-size: 10px;
-}
-.studio-member-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.studio-member-actions button {
-  display: grid;
-  place-items: center;
-  min-width: 30px;
-  height: 32px;
-  padding: 3px 8px;
-  border: 1px solid var(--studio-line-strong);
-  border-radius: 7px;
-  background: var(--studio-accent-soft);
-  color: var(--studio-accent);
-  font-size: 10px;
 }
 .studio-stack-candidates {
   margin: 15px 0;
@@ -1795,19 +1723,6 @@ body {
   .studio-tabs a {
     font-size: 10px;
     margin-top: 4px;
-  }
-  .studio-stack-member {
-    flex-wrap: wrap;
-  }
-  .studio-member-actions {
-    width: 100%;
-    padding-left: 32px;
-  }
-  .studio-member-actions button {
-    min-height: 40px;
-  }
-  .studio-position-fields {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .studio-appearance-layout {
     grid-template-columns: 1fr;
@@ -2161,6 +2076,10 @@ body {
 .studio-item-actions {
   margin-top: 30px;
 }
+/* .studio-action-row resets its border, so a row after another keeps its separator here. */
+.studio-group-body > * + .studio-action-row {
+  border-top: 1px solid var(--studio-line);
+}
 /* Visible fields: a switch per field; chosen fields carry their order. */
 .studio-choice {
   display: flex;
@@ -2219,6 +2138,23 @@ body {
 .studio-row-remove:hover {
   background: var(--studio-surface);
   color: var(--studio-text);
+}
+/* Stack members reuse the Visible fields row: number, name, controls. */
+.studio-member-title {
+  display: grid;
+  gap: 2px;
+}
+.studio-member-title small {
+  color: var(--studio-muted);
+  font-size: 13px;
+}
+.studio-choice-move > .studio-member-remove:hover:not(:disabled) {
+  color: var(--studio-danger-text);
+}
+.studio-empty-row {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--studio-muted);
 }
 /* Name/value pairs and simple lists. */
 .studio-pairs {
@@ -2402,6 +2338,18 @@ body {
   .studio-pair > .studio-row-remove {
     grid-column: 2;
     grid-row: 1 / span 2;
+  }
+  /* A stack member's controls go under its name, so the name keeps the width. */
+  .studio-stack-member {
+    flex-wrap: wrap;
+    row-gap: 2px;
+    padding-block: 8px;
+  }
+  .studio-stack-member > .studio-choice-label {
+    flex-basis: calc(100% - 32px);
+  }
+  .studio-stack-member > .studio-choice-move {
+    margin-left: auto;
   }
 }
 /* The widget picker: an iOS-style search field, category pills and list. */

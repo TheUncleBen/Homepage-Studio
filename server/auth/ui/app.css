@@ -407,6 +407,8 @@ dialog .segmented > button[aria-checked="true"] { background: var(--bg); }
 .action-row > svg { flex: none; }
 .action-row.danger { color: var(--danger-text); }
 .action-row:disabled { opacity: 0.45; }
+/* .action-row resets its border, so a row after another keeps its separator here. */
+.group-body > * + .action-row { border-top: 1px solid var(--line); }
 .item-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px; }
 .item-row .icon-button, .grant-row .icon-button, .reorder-buttons .icon-button { flex: none; }
 .empty-row { margin: 0; padding: 14px 16px; color: var(--muted); font-size: 0.875rem; }

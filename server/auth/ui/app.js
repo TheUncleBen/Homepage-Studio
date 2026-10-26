@@ -898,16 +898,18 @@
     }
     function profileSection(user) {
       const box = notice();
-      const name = h('input', { type: 'text', autocomplete: 'name', maxlength: 100, value: user.displayName ?? '' });
+      const name = h('input', { type: 'text', autocomplete: 'name', maxlength: 100, value: user.displayName ?? '', disabled: user.displayNameFromProvider });
+      const username = h('input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', maxlength: 64, value: user.username });
       const managed = user.source !== 'local' || user.emailFromProvider;
       const email = h('input', { type: 'email', autocomplete: 'email', maxlength: 254, value: user.email ?? '', disabled: managed });
       const save = pill('Save', { primary: true, type: 'submit', hidden: true });
-      const changed = () => { save.hidden = name.value === (user.displayName ?? '') && (managed || email.value === (user.email ?? '')); };
-      name.addEventListener('input', changed); email.addEventListener('input', changed);
+      const changed = () => { save.hidden = name.value === (user.displayName ?? '') && username.value.trim().toLowerCase() === user.username && (managed || email.value === (user.email ?? '')); };
+      for (const input of [name, username, email]) input.addEventListener('input', changed);
       const provider = view.oidc?.name ?? 'your identity provider';
-      return h('form', { onsubmit: event => { event.preventDefault(); return busy(save, 'Saving…', () => update(() => api('account/profile', { displayName: name.value, ...(managed ? {} : { email: email.value }) }), box, 'Profile saved.')); } },
+      return h('form', { onsubmit: event => { event.preventDefault(); return busy(save, 'Saving…', () => update(() => api('account/profile', { displayName: name.value, username: username.value, ...(managed ? {} : { email: email.value }) }), box, 'Profile saved.')); } },
         group({ title: 'Profile', aside: save, info: user.source === 'local' ? 'Your email is where password resets and security alerts go.' : `Managed by ${provider}. Changes there appear at your next sign-in.` },
-          row('Name', name),
+          row('Name', name, { info: user.displayNameFromProvider ? `Follows your ${view.oidc?.name ?? 'single sign-on'} account. Change it there.` : null }),
+          row('Username', username, { info: `${user.source === 'local' ? 'What you sign in with.' : 'Shown under your name in Studio.'} Changing it needs a recent confirmation${view.email && user.email ? ', and you get an email about it' : ''}.` }),
           row('Email', email, { info: user.emailFromProvider ? `Follows your ${view.oidc?.name ?? 'single sign-on'} account. Change it there; Studio picks it up at your next sign-in with it.` : view.email ? 'Changing it needs a recent confirmation.' : 'Email is not set up on this server, so nothing is sent yet.' })),
         box);
     }
@@ -1383,7 +1385,8 @@
         const box = notice();
         const self = user.id === view.currentUserId;
         const roleFromProvider = user.source === 'oidc' && view.settings.oidc.adminGroups.length > 0;
-        const displayName = h('input', { type: 'text', maxlength: 100, value: user.displayName ?? '' });
+        const displayName = h('input', { type: 'text', maxlength: 100, value: user.displayName ?? '', disabled: user.displayNameFromProvider });
+        const username = h('input', { type: 'text', autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false', maxlength: 64, value: user.username });
         const email = h('input', { type: 'email', maxlength: 254, value: user.email ?? '', disabled: user.source === 'oidc' });
         const role = segmented({ value: user.manualRole === 'admin' ? 'admin' : 'member', label: 'Role', disabled: roleFromProvider, options: [['member', 'Member'], ['admin', 'Administrator']] });
         const policy = h('select', {}, h('option', { value: '', text: 'From groups' }), view.policies.map(item => h('option', { value: item.id, text: item.name, selected: user.policyId === item.id })));
@@ -1414,13 +1417,15 @@
         const roleInfo = roleFromProvider ? `Set by ${provider()} groups.` : [self ? 'Studio always keeps at least one active administrator.' : '', user.source === 'local' && user.providerAdmin && view.settings.oidc.adminGroups.length ? `Their ${provider()} groups also make them an administrator while they sign in with it.` : ''].filter(Boolean).join(' ') || null;
         return h('form', { class: 'stack', onsubmit: async event => {
           event.preventDefault(); say(box, '');
-          const change = { id: user.id, displayName: displayName.value, policyId: policy.value || null, defaultDashboardId: defaultDashboard.value || null, groupIds: groupToggles.filter(item => item.input.checked).map(item => item.group.id) };
+          const change = { id: user.id, displayName: displayName.value, username: username.value, policyId: policy.value || null, defaultDashboardId: defaultDashboard.value || null, groupIds: groupToggles.filter(item => item.input.checked).map(item => item.group.id) };
           if (user.source !== 'oidc') change.email = email.value || null;
           if (!roleFromProvider) change.role = role.value;
           await busy(save, 'Saving…', async () => { if (await act(() => api('admin/update', change), box, 'Saved.')) close(); });
         } },
           h('div', { class: 'identity small-identity' }, avatar(name), h('div', {}, h('strong', { class: 'mono', text: user.username }), h('p', { class: 'small muted', text: `${signInKind(user)} · created ${new Date(user.createdAt).toLocaleDateString()}` }))),
-          group({}, row('Name', displayName), row('Email', email, { info: user.source === 'oidc' ? `Comes from ${provider()}.` : null })),
+          group({}, row('Name', displayName, { info: user.displayNameFromProvider ? `Comes from ${provider()}.` : null }),
+            row('Username', username, { info: `${user.source === 'local' ? 'What they sign in with.' : 'Shown under their name in Studio.'}${view.email && user.email ? ' They get an email when it changes.' : ''}` }),
+            row('Email', email, { info: user.source === 'oidc' ? `Comes from ${provider()}.` : null })),
           group({ title: 'Access' },
             row('Role', role, { info: roleInfo }),
             row('Session policy', policy, { info: 'A personal policy wins. Otherwise the strictest of their groups’ policies applies, or the default.' }),
@@ -1760,19 +1765,20 @@
     }
     function nameAndAddress(close, { entry, source } = {}) {
       const box = notice();
-      const name = h('input', { type: 'text', maxlength: 100, required: true, value: entry ? entry.name : source ? source.name + ' copy' : '' });
+      const name = h('input', { type: 'text', maxlength: 100, required: true, placeholder: 'Required', value: entry ? entry.name : source ? source.name + ' copy' : '' });
       // A new or duplicated dashboard starts at the lowest free of
       // dashboard, dashboard-2, …; the name doesn't change the address.
       const slug = h('input', { type: 'text', maxlength: 64, required: true, spellcheck: 'false', autocapitalize: 'off', value: entry ? entry.slug : view.suggestedSlug });
-      const copyAccess = h('input', { type: 'checkbox', checked: true });
+      const copyAccess = toggle({ checked: true, label: 'Share it with the same people' });
       const save = h('button', { type: 'submit', class: 'primary', text: entry ? 'Save' : source ? 'Duplicate' : 'Create dashboard' });
+      const addressRow = row('Address', slug, { detail: ' ', info: 'Lowercase letters, numbers and hyphens.' + (entry ? ' Changing it breaks bookmarks to the old address.' : '') });
       const form = h('form', { class: 'stack' },
-        field('Name', name),
-        field('Address', slug, `${location.origin}/${'…'} · lowercase letters, numbers and hyphens. Changing it breaks bookmarks to the old address.`),
-        source && view.authEnabled ? check('Share it with the same people', copyAccess) : null,
-        box, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
-      const hint = form.querySelector('.hint');
-      const showAddress = () => { hint.textContent = `${location.origin}/${slug.value || '…'} · lowercase letters, numbers and hyphens.` + (entry ? ' Changing it breaks bookmarks to the old address.' : ''); };
+        group({}, row('Name', name), addressRow),
+        source && view.authEnabled ? group({}, row('Share it with the same people', copyAccess, { info: `The copy gets the same sharing as ${source.name}.` })) : null,
+        box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
+      // The full address, as people will type it, under the label.
+      const preview = addressRow.querySelector('.row-detail');
+      const showAddress = () => { preview.textContent = `${location.host}/${slug.value || '…'}`; };
       slug.addEventListener('input', showAddress); showAddress();
       form.addEventListener('submit', event => {
         event.preventDefault();
@@ -1913,13 +1919,14 @@
         const box = notice();
         const slug = h('input', { type: 'text', maxlength: 64, required: true, spellcheck: 'false', autocapitalize: 'off', value: view.suggestedSlug });
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save address' });
+        const addressRow = row('Address', slug, { detail: ' ', info: 'Lowercase letters, numbers and hyphens. You can change it later from the Dashboards page.' });
         const form = h('form', { class: 'stack' },
-          h('p', { text: `${main.name} needs an address before anyone can open it. You can change it later from its card.` }),
-          field('Address', slug, '…'), box, h('div', { class: 'actions' },
+          h('p', { class: 'lede', text: `${main.name} needs an address before anyone can open it.` }),
+          group({}, addressRow), box, dialogActions(
             // The dialog stays open until an address is saved, so it carries its own way out.
             view.authEnabled ? h('button', { type: 'button', text: 'Sign out', onclick: event => signOut(event.currentTarget) }) : null, save));
-        const hint = form.querySelector('.hint');
-        const showAddress = () => { hint.textContent = `${location.origin}/${slug.value || '…'} · lowercase letters, numbers and hyphens.`; };
+        const preview = addressRow.querySelector('.row-detail');
+        const showAddress = () => { preview.textContent = `${location.host}/${slug.value || '…'}`; };
         slug.addEventListener('input', showAddress); showAddress();
         form.addEventListener('submit', event => {
           event.preventDefault();

@@ -19,7 +19,8 @@ in older entries below are history only.
 - **Studio's pages are iOS-style grouped lists.** My account, every
   Administration tab (People, Groups, Dashboard access, Session policies,
   Sign-in settings, Appearance, Backups, Activity), the widget dialog and
-  dashboard settings. Explanations sit behind info buttons; switches replace
+  dashboard settings, the widget stack editor, **Position & size** and the New
+  and Duplicate dashboard dialogs. Explanations sit behind info buttons; switches replace
   checkboxes; actions are buttons, not links. Studio's own pages follow the
   platform's default look.
 - **Top bar.** **All dashboards** and **Administration** are in the menu
@@ -46,8 +47,12 @@ in older entries below are history only.
 - **Single sign-on.** Only the administrator and allowed groups (and provider
   groups added by name) come over from the provider. A linked account takes
   the provider's name as well as its verified email. Everyone can change
-  their own username. Confirming it's you through the provider needs a fresh
-  sign-in there.
+  their own username in **My account**, and an administrator can change anyone's;
+  either way the person gets a security alert. Confirming it's you through the
+  provider needs a fresh sign-in there.
+- **Backups** are refused when Studio's files are larger than the 256 MiB a
+  backup in the app can hold, and restored files are always readable only by
+  Studio.
 - **`STUDIO_FRAME_ANCESTORS` adds origins** to `'self'` instead of replacing
   it, because Studio's own pages show dashboards in a frame.
 - **Docs.** Authentik sign-in policy and token lifetimes

@@ -198,7 +198,7 @@ To make one:
   cancel.
 
 Stacks are one level deep: a stack can't hold another stack. To take a panel
-back out, open the stack's edit button and use **Move out** next to it.
+back out, open the stack's edit button and use the **×** (Move out) next to it.
 Taking one of two panels out turns the other back into an ordinary panel.
 
 ### Changing slides
@@ -248,16 +248,19 @@ available in the editor.
 
 ### Slideshow settings
 
-In the editor, the stack's edit button opens **Edit widget stack**. Besides
-moving members earlier or later in the stack, configuring them and **Move
-out**, it has the slideshow settings for that stack:
+In the editor, the stack's edit button opens **Edit widget stack**. Under
+**Widgets** you move members earlier or later (the arrows), configure one (the
+pencil), take one out (**×**) or **Add existing panel**. **Size and position**
+sets the stack's place on the 12-column layout, and **Unstack all** at the
+bottom turns every member back into an ordinary panel. **Slideshow** has the
+timing for that stack:
 
 | Setting | Default | Range |
 | --- | --- | --- |
-| **Start behavior** | Manual: use Play to start | or *Start automatically* |
+| **Start behavior** | Manual (Play starts it) | or Automatic |
 | **Seconds per widget** | 10 | 1 to 3600 |
 | **Manual navigation delay (seconds)** | 30 | 1 to 3600 |
-| **Transition** | Horizontal slide | Vertical slide, Fade, No animation |
+| **Transition** | Horizontal | Vertical, Fade, None |
 | **Animation duration (ms)** | 250 | 0 to 2000 |
 | **Loop after the last widget** | On | |
 

@@ -115,22 +115,24 @@ then **Administration**, or `/studio/admin`).
 - **Groups** share a dashboard or apply a session policy to several people at
   once. Groups from your identity provider appear automatically.
 - When you duplicate a dashboard (**Dashboards → ⋯ → Duplicate**),
-  tick **Share it with the same people** to copy its access list (people and
+  turn on **Share it with the same people** to copy its access list (people and
   groups).
 - **Default dashboards.** Each person can pick their own (**My account →
-  Default dashboard**), and an administrator can set one for a person (**People
-  → Manage**) or a group (**Groups → Manage**). The bare address opens the
+  Default dashboard**), and an administrator can set one for a person (select them under
+  **People**) or a group (select it under **Groups**). The bare address opens the
   person's own default, else the first of their groups (in the order on the
   Groups page, changed by dragging a group by its handle or with **Move up**
   and **Move down**) that has a default
   they can open, else the Dashboards page. Administrators get the Dashboards
   page unless they choose their own.
 
-Under **People → Manage** you can change someone's role, groups and session
-policy, disable the account (which signs them out at once), sign them out
+Select someone under **People** to change their name, username, email, role,
+groups and session policy, disable the account (which signs them out at once), sign them out
 everywhere, reset their sign-in (which removes their password, passkeys,
 authenticator and backup codes and makes a new one-time link), or delete them.
-Studio always keeps at least one active administrator.
+Studio always keeps at least one active administrator. A person whose username
+you change gets a security alert by email, if they have an address and email is
+set up.
 
 ## Signing in
 

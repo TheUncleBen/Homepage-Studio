@@ -82,7 +82,7 @@ describe("Custom API empty mappings hint", () => {
 });
 
 describe("Content picker names", () => {
-  it("names the kind in All when an information and an integration widget share a name", () => {
+  it("tells apart an information and an integration widget that share a name by their subtitle", () => {
     render(
       <ContentPicker
         catalog={{
@@ -97,11 +97,15 @@ describe("Content picker names", () => {
         onRestore={vi.fn()}
       />,
     );
-    expect(screen.getByText("Custom API (information widget)")).toBeInTheDocument();
-    expect(screen.getByText("Custom API (integration widget)")).toBeInTheDocument();
+    // The name stays as it is; the subtitle tells the two apart.
+    const customApi = screen.getAllByRole("button", { name: /^Custom API/ });
+    expect(customApi.map((item) => item.textContent)).toEqual([
+      "Custom APIInformation widget",
+      "Custom APIIntegration widget",
+    ]);
+    expect(screen.queryByText(/\(information widget\)/)).not.toBeInTheDocument();
     expect(screen.getByText("Date & Time")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Information", exact: true }));
     expect(screen.getByText("Custom API")).toBeInTheDocument();
-    expect(screen.queryByText(/\(information widget\)/)).not.toBeInTheDocument();
   });
 });

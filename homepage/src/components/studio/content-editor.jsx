@@ -64,18 +64,17 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
     })),
   ];
   // In All, an information widget and an integration widget can share a name
-  // (Custom API, Glances, …); name the kind so the two can be told apart.
+  // (Custom API, Glances, …); their subtitle names the kind so the two can be
+  // told apart.
   const nameCounts = new Map();
   for (const entry of entries) {
     const key = (entry.name || entry.type).toLowerCase();
     nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
   }
-  const displayName = (entry) => {
-    const name = entry.name || entry.type;
-    return category === "all" && nameCounts.get(name.toLowerCase()) > 1
-      ? `${name} (${LABEL[entry.kind].toLowerCase()})`
-      : name;
-  };
+  const subtitle = (entry) =>
+    category === "all" && nameCounts.get((entry.name || entry.type).toLowerCase()) > 1
+      ? LABEL[entry.kind]
+      : entry.description || LABEL[entry.kind];
   const visible = entries.filter(
     (entry) =>
       (category === "all" || entry.kind === category) &&
@@ -156,8 +155,8 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
                   <StudioIcon name={entry.icon} size={20} />
                 </span>
                 <span>
-                  <strong>{displayName(entry)}</strong>
-                  <small>{entry.description || LABEL[entry.kind]}</small>
+                  <strong>{entry.name || entry.type}</strong>
+                  <small>{subtitle(entry)}</small>
                 </span>
                 <StudioIcon name="chevron" size={15} />
               </button>

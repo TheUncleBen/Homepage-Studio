@@ -559,8 +559,8 @@ group names below are the examples from step 4.
 2. **Share dashboards before anyone signs in.** The listed groups appear under
    **Administration → Groups** straight away; add any other provider group
    there by its exact name. Then share dashboards with those groups under
-   **Dashboard access**, and give each group a default dashboard under
-   **Groups → Manage**. People get them at their very first sign-in.
+   **Dashboard access**, and give each group a default dashboard by selecting
+   it under **Groups**. People get them at their very first sign-in.
 3. **Link your administrator account to the provider**, so either one signs
    you in and the local account is your way in when the provider is down:
    **My account → Link** (the button names your provider), sign in there, and
