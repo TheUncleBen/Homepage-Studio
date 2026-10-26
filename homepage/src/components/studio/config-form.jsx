@@ -466,7 +466,7 @@ function VisibleFields({ field, value, onChange }) {
           ? field.maxItems
             ? `${selected.length} of ${field.maxItems}`
             : `${selected.length} shown`
-          : "Default"
+          : undefined
       }
       info={`The widget shows its own default fields until you turn that off and pick the fields to show, in order. With none picked, it shows its default fields.${
         field.maxItems ? ` It can show up to ${field.maxItems}.` : ""
