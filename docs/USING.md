@@ -47,7 +47,7 @@ administrators, **Rename or change address**, **Duplicate**, **Who can open
 it** and **Archive**. Administrators also get **New dashboard** and the
 archived list.
 
-Previews load as their rows scroll into view, a couple at a time, and can't be
+Previews are drawn as their rows come near the screen, and can't be
 clicked or typed into. Administrators and members see the same page, filtered
 to what each can open.
 
