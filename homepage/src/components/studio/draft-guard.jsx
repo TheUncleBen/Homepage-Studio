@@ -27,10 +27,7 @@ export function useEditorDraft(dirty, pending = false, discard = null) {
       ...(heading ? { discard: { heading, description } } : {}),
     });
   }, [report, dirty, pending, heading, description]);
-  useLayoutEffect(
-    () => () => report?.({ dirty: false, pending: false }),
-    [report],
-  );
+  useLayoutEffect(() => () => report?.({ dirty: false, pending: false }), [report]);
 }
 
 export const editorFieldsetStyle = {

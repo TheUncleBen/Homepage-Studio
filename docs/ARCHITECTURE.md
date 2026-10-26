@@ -205,8 +205,8 @@ Appearance is an optional studioTheme namespace in settings.yaml. Dark, light, o
 
 ## API boundaries
 
-The controller adds `Content-Security-Policy: frame-ancestors 'self'` (or the
-`STUDIO_FRAME_ANCESTORS` list) with `X-Frame-Options: SAMEORIGIN` for the
+The controller adds `Content-Security-Policy: frame-ancestors 'self'` (plus the
+`STUDIO_FRAME_ANCESTORS` origins) with `X-Frame-Options: SAMEORIGIN` for the
 default, `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`
 to every response; a native response cannot replace them. Request bodies for
 native routes are received in full by the controller, bounded to 1 MiB (the

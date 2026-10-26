@@ -100,8 +100,11 @@ Studio also cancels a setup that was started but not finished.
 
 ## Inviting people and sharing dashboards
 
-Open **Administration** (from the account button in the dashboard's top bar,
-then **Administration**, or `/studio/admin`).
+Open **Administration** (from the menu under the name at the top left of
+every Studio page, or `/studio/admin`). Its sections are listed down the left;
+on a phone the page opens on that list, a section opens on its own, and
+**Administration** at its top returns to the list. A link such as
+`/studio/admin#access` opens one section directly.
 
 - **People → Invite a person.** Enter a username, optionally a display name
   and email, and choose Member or Administrator. Studio makes a one-time
@@ -114,23 +117,25 @@ then **Administration**, or `/studio/admin`).
   have access.
 - **Groups** share a dashboard or apply a session policy to several people at
   once. Groups from your identity provider appear automatically.
-- When you duplicate a dashboard (**Dashboards → More actions → Duplicate**),
-  tick **Share it with the same people** to copy its access list (people and
+- When you duplicate a dashboard (**Dashboards → ⋯ → Duplicate**),
+  turn on **Share it with the same people** to copy its access list (people and
   groups).
 - **Default dashboards.** Each person can pick their own (**My account →
-  Default dashboard**), and an administrator can set one for a person (**People
-  → Manage**) or a group (**Groups → Manage**). The bare address opens the
+  Default dashboard**), and an administrator can set one for a person (select them under
+  **People**) or a group (select it under **Groups**). The bare address opens the
   person's own default, else the first of their groups (in the order on the
   Groups page, changed by dragging a group by its handle or with **Move up**
   and **Move down**) that has a default
   they can open, else the Dashboards page. Administrators get the Dashboards
   page unless they choose their own.
 
-Under **People → Manage** you can change someone's role, groups and session
-policy, disable the account (which signs them out at once), sign them out
+Select someone under **People** to change their name, username, email, role,
+groups and session policy, disable the account (which signs them out at once), sign them out
 everywhere, reset their sign-in (which removes their password, passkeys,
 authenticator and backup codes and makes a new one-time link), or delete them.
-Studio always keeps at least one active administrator.
+Studio always keeps at least one active administrator. A person whose username
+you change gets a security alert by email, if they have an address and email is
+set up.
 
 ## Signing in
 
@@ -146,7 +151,8 @@ from that address and for that account (after five failures, waits double
 up to 15 minutes); they never lock the real owner out for good.
 
 Everyone can manage their own sign-in under **My account**
-(`/studio/account`): change the password, add or remove passkeys and the
+(`/studio/account`): change their name, email and username (a username change
+needs a recent sign-in, and a security alert goes out), change the password, add or remove passkeys and the
 authenticator app, make new backup codes, see where they're signed in and sign
 other devices out. Studio insists on keeping a passkey, or a password with an
 authenticator app, so no one locks themselves out by accident.
@@ -156,6 +162,8 @@ administrator actions such as raw file saves, imports, exports and restores
 ask you to **confirm it's you** if you signed in more than a short while ago
 (15 minutes by default). In the dashboard editor, the confirmation opens in a
 new tab so unsaved changes stay put; confirm there, come back and save again.
+People signed in through an identity provider confirm by signing in there
+again; a sign-in the provider remembers from earlier doesn't count.
 
 Dashboards shown inside another site's frame (`STUDIO_FRAME_ANCESTORS`) need
 the viewer signed in. That only carries into the frame when both sites share a
@@ -240,12 +248,13 @@ stack. While one is set, it's shown read-only here and only the deployment
 changes it, so the stack and Studio can't disagree. Unset, the list is edited
 on this page; it keeps the last value the deployment gave it.
 
-**Sharing before anyone signs in.** A provider group appears under
-**Administration → Groups** when someone in it signs in, and every group named
-in the two lists is there from the start. Add any other provider group by its
-exact name with **Add <provider> group** (the button uses `STUDIO_OIDC_NAME`). Share dashboards with these groups
-under **Dashboard access**, and people get them at their first sign-in, with
-the role their groups give them.
+**Which provider groups Studio keeps.** Only the groups in the two lists, and
+any you add by exact name with **Groups → New group**, kind <provider> (the label
+uses `STUDIO_OIDC_NAME`). A person's other groups at the provider are neither
+stored nor shown. Groups in the two lists are under **Administration →
+Groups** from the start, so you can share dashboards with them under
+**Dashboard access** before anyone signs in; people get them at their first
+sign-in, with the role their groups give them.
 
 ### Linking a local account and a provider account
 
@@ -269,8 +278,9 @@ what will change; nothing changes until you click **Link accounts**:
 - Either account signs you in to the same Studio account from then on. The
   local password, passkeys, authenticator and backup codes stay exactly as
   they were.
-- The local email takes the provider's **verified** email, and follows it at
-  every provider sign-in; it's read-only in Studio while linked. An email the
+- The local name takes the provider's name, and the local email the
+  provider's **verified** email. Both follow the provider at every provider
+  sign-in and are read-only in Studio while linked. An email the
   provider doesn't mark as verified is never used (with Authentik, see
   [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md#email-addresses)), and **Sign-in
   settings** warns when the last sign-in sent one.
@@ -281,9 +291,9 @@ what will change; nothing changes until you click **Link accounts**:
   alert goes to the old and the new email address.
 
 Nobody, administrators included, can link someone else's accounts.
-**Unlink** on the same page (or **More actions → Unlink** for an administrator
-on the People page) removes the link and ends the provider sessions; the
-email becomes editable again. An administrator's **Reset sign-in** also
+**Unlink** on the same page (or **Unlink** in the person's dialog on the
+People page, for an administrator) removes the link and ends the provider
+sessions; the name and email become editable again. An administrator's **Reset sign-in** also
 removes it.
 
 A linked local account is an administrator through provider groups only
@@ -315,6 +325,11 @@ security alerts (for example when a passkey is added or a backup code is
 used) and, if an administrator allows it, sign-in codes. Without it,
 administrators send invitation links themselves and reset accounts from
 **People**.
+
+Each email carries the deployment's name and the Studio logo, a button in the
+platform's accent colour (**Administration → Appearance**) with the link
+written out underneath, and a plain-text copy for mail apps that don't show
+HTML. Security alerts link to **My account**.
 
 ```env
 STUDIO_SMTP_HOST=smtp.example.test
@@ -444,6 +459,7 @@ sensitive.
 can view and change every dashboard, so access control must come from your
 reverse proxy ([REVERSE-PROXY.md](REVERSE-PROXY.md#access-control)). The first
 person to open Studio chooses the main dashboard's address, and
-**Administration** has only **Appearance**, the platform's default look. Accounts
+**Administration** has only **Appearance**, the platform's default look, and
+**Backups** ([OPERATIONS.md](OPERATIONS.md#backups-in-the-app)). Accounts
 and sharing are kept in the state volume and come back if you turn sign-in on
 again.

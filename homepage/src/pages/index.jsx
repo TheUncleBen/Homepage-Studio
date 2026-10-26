@@ -13,6 +13,7 @@ import { flattenServices } from "components/studio/native-adapter.mjs";
 import useSystemTheme from "components/studio/use-system-theme";
 import { withPageAuth } from "utils/auth";
 import { getDashboardData } from "utils/config/dashboard";
+import { readPlatformDefaults } from "utils/config/platform";
 import { ColorContext } from "utils/contexts/color";
 import { SettingsContext } from "utils/contexts/settings";
 import { StudioRevisionContext } from "utils/contexts/studio-revision";
@@ -21,7 +22,9 @@ import { ThemeContext } from "utils/contexts/theme";
 export const getServerSideProps = withPageAuth(async ({ res } = {}) => {
   const data = await getDashboardData();
   if (data.initialSettings?.disableIndexing) res?.setHeader("X-Robots-Tag", "noindex, nofollow");
-  return { props: { ...data, studioDashboard: dashboardContext() } };
+  return {
+    props: { ...data, platformRevision: readPlatformDefaults()?.revision ?? null, studioDashboard: dashboardContext() },
+  };
 });
 
 export default function HomepageStudio(props) {
@@ -37,6 +40,7 @@ export default function HomepageStudio(props) {
 function StudioDashboard({
   initialSettings,
   fallback,
+  platformRevision = null,
   studioDashboard = { id: "default", basePath: "" },
   studioMode = "live",
 }) {
@@ -52,6 +56,7 @@ function StudioDashboard({
       widgets: fallback["/api/widgets"],
       bookmarks: fallback["/api/bookmarks"],
       protocolVersion: 1,
+      platformRevision,
     },
     refreshInterval: 30000,
   });
@@ -59,6 +64,14 @@ function StudioDashboard({
   const [interactionBlocked, setInteractionBlocked] = useState(true);
   const [searchString, setSearchString] = useState("");
   const [assetsVersion, setAssetsVersion] = useState(0);
+  // Saving the default look in Administration tells this browser's open
+  // dashboards at once; other devices see it on their next refresh.
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return undefined;
+    const channel = new BroadcastChannel("studio-platform");
+    channel.onmessage = () => mutate();
+    return () => channel.close();
+  }, [mutate]);
   const systemDark = useSystemTheme();
   const settings = data?.settings || initialSettings;
   const displayMode = appearanceTokens(settings, systemDark).mode;
@@ -173,7 +186,12 @@ function StudioDashboard({
         <link rel="apple-touch-icon" href="/studio/brand/apple-touch-icon.png" />
         {/* The platform CSS from Administration loads first; this dashboard's
             own custom.css adds to it. A dashboard can switch it off. */}
-        {settings.studioTheme?.platformCss !== false && <link rel="stylesheet" href="/studio/platform.css" />}
+        {settings.studioTheme?.platformCss !== false && (
+          <link
+            rel="stylesheet"
+            href={`/studio/platform.css${data?.platformRevision ? `?v=${encodeURIComponent(data.platformRevision)}` : ""}`}
+          />
+        )}
         <link
           rel="stylesheet"
           href={dashboardPath(`/api/config/custom.css?v=${assetsVersion}`, studioDashboard.basePath)}

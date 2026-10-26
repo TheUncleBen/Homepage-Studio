@@ -13,6 +13,8 @@ and `homepage_state`.
 - [Logs and health](#logs-and-health)
 - [Where the data lives](#where-the-data-lives)
 - [Backups](#backups)
+  - [Backups in the app](#backups-in-the-app)
+  - [Backups from the command line](#backups-from-the-command-line)
   - [Backing up the volumes](#backing-up-the-volumes)
   - [Restoring the volumes](#restoring-the-volumes)
   - [Per-dashboard exports](#per-dashboard-exports)
@@ -55,7 +57,7 @@ and three retries.
 | Volume path | Holds |
 | --- | --- |
 | `/app/config` | The main dashboard's nine native files, and the dashboard registry (`studio-dashboards.json`) with its initialization marker |
-| `/app/state` | The main dashboard's layout and stacks, its journal and its snapshots (`backups/`) |
+| `/app/state` | The main dashboard's layout and stacks, its journal and its snapshots (`backups/`); sign-in settings, people and sessions (`auth/`); Studio backups (`studio-backups/`) |
 | `/app/config/dashboards/<id>/` | Each other dashboard's nine native files |
 | `/app/state/dashboards/<id>/` | Each other dashboard's layout, discovery state, journal and snapshots |
 
@@ -69,22 +71,83 @@ with an empty list.
 
 ## Backups
 
-There are two kinds, and they do different jobs:
+There are three kinds, and they do different jobs:
 
 | Kind | Covers | Use it for |
 | --- | --- | --- |
-| A copy of both volumes | Every dashboard, the registry, layouts and snapshot history | Disaster recovery, rollback after an upgrade, moving to another node |
-| **Export saved dashboard** in the app | One dashboard: its nine files, panels, layout and stacks | Copying a design elsewhere, a personal backup of one dashboard |
+| **Administration → Backups** in the app | All of Studio: every dashboard, the dashboard list, the default look, people, groups, access and sign-in settings | Everyday backups, rollback after a change or an upgrade, moving to another node |
+| A copy of both volumes | The same, plus logs and everyone's current sign-ins | When Studio won't start, or a backup made outside Studio |
+| **Export dashboard** in the app | One dashboard: its nine files, panels, layout and stacks | Copying a design elsewhere, a personal backup of one dashboard |
 
-Neither includes environment variables, Docker secrets, mounted secret files
-or sockets: keep your stack's environment file with your own records, and the
-`studio_auth_key` value in your password manager. Swarm can't show a secret's
-value again once it's created, and a restored state volume needs the same key
-for authenticator apps and single sign-on sessions to keep working.
+None of them includes environment variables, Docker secrets, mounted secret
+files or sockets: keep your stack's environment file with your own records,
+and the `studio_auth_key` value in your password manager. Swarm can't show a
+secret's value again once it's created, and restored sign-in settings need the
+same key for authenticator apps and single sign-on to keep working.
+
+### Backups in the app
+
+**Administration → Backups** (administrators only) lists the backups Studio
+holds. **Create backup** makes one now; select a backup to download it,
+restore it or delete it; **Upload** adds a backup file you downloaded
+earlier, from this deployment or another one. Everything except looking at
+the list asks you to confirm it's you if you haven't signed in recently.
+
+Backups are kept in the state volume, in `studio-backups/`, one
+`studio-backup-<date>-<time>.json.gz` file each, readable only by Studio. They
+aren't copied anywhere else, so a backup that only lives there is lost with
+the volume: download the ones you want to keep and store them off the node.
+Studio doesn't delete old backups itself. A backup leaves out logs, everyone's
+current sign-ins, any unused recovery link and the backups folder itself.
+
+**Restoring** replaces everything in Studio with the backup. Studio restarts
+and, as it starts, saves what's there now as a backup marked *Before restore*,
+applies the backup, and everyone signs in again. The restart relies on the
+stack's restart policy (`restart: unless-stopped` in
+`portainer-compose.yml`, `restart_policy: condition: any` in
+`portainer-swarm.yml`); keep it if you change the stack. If the backup turns
+out to be missing or damaged, Studio changes nothing, logs *was not restored*
+with the reason and starts normally. If writing it fails part-way, Studio
+logs *could not be written* and puts the *Before restore* backup back. If
+what's there now can't be saved first, Studio changes nothing and logs *was
+not restored* with the reason. Restored files are always readable and
+writable only by Studio, whatever the backup recorded.
+
+A backup in the app can be at most 256 MiB, for creating, uploading and
+restoring alike. When Studio's files are larger than that, **Create backup**
+says so and nothing is saved; back up the volumes instead
+([Backing up the volumes](#backing-up-the-volumes)).
+
+A backup holds everything in the dashboards' files, including any password
+or API key written straight into them, and the sign-in settings. Store a
+downloaded backup like a secret.
+
+### Backups from the command line
+
+The same backups are available from a shell on the node, for example when
+nobody can sign in. Run the commands inside Studio's container:
+
+```bash
+# Studio's container on this node. With Compose you can also use
+# docker compose exec studio node server/backups.mjs ...
+STUDIO=$(docker ps --quiet --filter name=homepage_studio)
+
+docker exec "$STUDIO" node server/backups.mjs list
+docker exec "$STUDIO" node server/backups.mjs create
+docker cp "$STUDIO":/app/state/studio-backups/studio-backup-YYYYMMDD-HHMMSS.json.gz .
+
+# Restore: checks the backup, then applies it when Studio next starts.
+docker exec "$STUDIO" node server/backups.mjs restore studio-backup-YYYYMMDD-HHMMSS.json.gz
+docker service update --force homepage_studio      # Compose: docker compose restart studio
+```
+
+To restore a backup file that isn't on the node yet, copy it into
+`/app/state/studio-backups/` first (`docker cp`, then make sure UID 1000 can
+read it), or use **Upload** in the app.
 
 ### Backing up the volumes
 
-Stop Studio first so nothing writes while you copy, then copy, then start it
+A copy of the volumes works even when Studio won't start. Stop Studio first so nothing writes while you copy, then copy, then start it
 again. On the node that holds the volumes:
 
 ```bash
@@ -135,8 +198,8 @@ change ownership itself and doesn't run as root.
 
 ### Per-dashboard exports
 
-**Dashboard settings → Configuration files → Export saved dashboard**
-downloads one dashboard; **Snapshots & restore → Choose dashboard backup →
+**Dashboard settings → Configuration files → Export dashboard**
+downloads one dashboard; **Snapshots & restore → Choose a backup file →
 Import dashboard** puts it back, on the same or another deployment
 ([USING.md](USING.md#snapshots-export-and-import)). An import keeps a
 snapshot of what it replaces.

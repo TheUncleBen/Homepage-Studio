@@ -99,7 +99,7 @@ export async function chooseContent(page, name, category) {
 
 export async function addInformation(page, name, yaml) {
   const dialog = await chooseContent(page, name, 'Information');
-  await dialog.getByRole('button', { name: 'Advanced YAML', exact: true }).click();
+  await dialog.getByRole('radio', { name: 'YAML', exact: true }).click();
   await dialog.getByRole('textbox', { name: 'Item configuration YAML' }).fill(yaml);
   await dialog.getByRole('button', { name: 'Add to dashboard', exact: true }).click();
   await expect(dialog).toHaveCount(0);

@@ -5,7 +5,9 @@ import AppearanceEditor from "./appearance-editor";
 import ConfigForm, { SETTINGS_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
+import StudioIcon from "./icons";
 import { patchFromDraft } from "./native-adapter.mjs";
+import { ActionRow, Group, Row, Switch } from "./ui";
 
 const buildRevision = process.env.NEXT_PUBLIC_REVISION;
 const sourceUrl = `https://github.com/TheUncleBen/Homepage-Studio${/^[a-f0-9]{40}$/i.test(buildRevision || "") ? `/tree/${buildRevision}` : ""}`;
@@ -119,16 +121,6 @@ export default function SettingsEditor({
       <div className="studio-dialog-body">
         <ErrorMessage error={error} onReload={onReload} />
         <fieldset disabled={pending} style={editorFieldsetStyle}>
-          <div className="studio-settings-shortcuts">
-            <button type="button" onClick={onOpenFiles}>
-              <strong>Configuration files</strong>
-              <span>All nine native files, with YAML and code editing</span>
-            </button>
-            <button type="button" onClick={onOpenBackups}>
-              <strong>Snapshots & restore</strong>
-              <span>{state.backupRetention || 25} pre-change snapshots retained</span>
-            </button>
-          </div>
           <fieldset disabled={!valid} style={editorFieldsetStyle}>
             <AppearanceEditor
               settings={draft}
@@ -138,23 +130,28 @@ export default function SettingsEditor({
               onChange={setDraft}
               onValidity={setAppearanceValid}
             />
-            <label className="studio-checkbox-field">
-              <input
-                type="checkbox"
-                checked={draft.studioTheme?.platformCss !== false}
-                onChange={(event) => {
-                  const studioTheme = { ...(draft.studioTheme && typeof draft.studioTheme === "object" ? draft.studioTheme : {}) };
-                  if (event.target.checked) delete studioTheme.platformCss;
-                  else studioTheme.platformCss = false;
-                  const next = { ...draft, studioTheme };
-                  if (!Object.keys(studioTheme).length) delete next.studioTheme;
-                  setDraft(next);
-                }}
-              />
-              <span>Load the platform CSS (Administration → Appearance) before this dashboard&apos;s custom.css</span>
-            </label>
+            <Group>
+              <Row
+                label="Platform CSS"
+                info="The CSS an administrator sets for every dashboard in Administration → Appearance. It loads before this dashboard's own custom.css."
+              >
+                <Switch
+                  label="Load the platform CSS"
+                  checked={draft.studioTheme?.platformCss !== false}
+                  onChange={(on) => {
+                    const studioTheme = {
+                      ...(draft.studioTheme && typeof draft.studioTheme === "object" ? draft.studioTheme : {}),
+                    };
+                    if (on) delete studioTheme.platformCss;
+                    else studioTheme.platformCss = false;
+                    const next = { ...draft, studioTheme };
+                    if (!Object.keys(studioTheme).length) delete next.studioTheme;
+                    setDraft(next);
+                  }}
+                />
+              </Row>
+            </Group>
           </fieldset>
-          <h3 className="studio-settings-heading">Homepage settings</h3>
           <ConfigForm
             value={draft}
             onChange={setDraft}
@@ -162,22 +159,31 @@ export default function SettingsEditor({
             knownKeys={["theme", "studioTheme"]}
             onValidity={setValid}
             docs="https://gethomepage.dev/configs/settings/"
+            name="Homepage settings"
+            grouped={false}
+            title="Homepage settings"
+            info="Homepage's own settings for this dashboard. Studio places and sizes the panels, so Homepage's layout options (tabs, columns, equal heights) are kept but don't change this board."
           />
-          <p className="studio-note">
-            Studio owns panel size, position, stacking and dashboard appearance. Native group tabs, column counts,
-            collapse and equal-height layout options are preserved in YAML; they do not control this board. Native
-            status colors, providers, targets and widget behavior remain Homepage settings.
-          </p>
-          <div className="studio-about">
-            <strong>Homepage Studio</strong>
-            <span>
-              Homepage 2.6.0
-              {buildRevision ? ` · Studio build ${buildRevision.slice(0, 8)}` : " · Development build"}
-            </span>
-            <a href={sourceUrl} target="_blank" rel="noreferrer">
-              Source code & license ↗
+          <Group title="Files and history">
+            <ActionRow icon="code" onClick={onOpenFiles}>
+              Configuration files
+            </ActionRow>
+            <ActionRow icon="clock" detail={`${state.backupRetention || 25} kept`} onClick={onOpenBackups}>
+              Snapshots & restore
+            </ActionRow>
+          </Group>
+          <Group title="About">
+            <Row label="Homepage">
+              <span className="studio-row-value">2.6.0</span>
+            </Row>
+            <Row label="Studio build">
+              <span className="studio-row-value">{buildRevision ? buildRevision.slice(0, 8) : "Development"}</span>
+            </Row>
+            <a className="studio-action-row" href={sourceUrl} target="_blank" rel="noreferrer">
+              <StudioIcon name="external" size={17} />
+              <span className="studio-action-label">Source code & license</span>
             </a>
-          </div>
+          </Group>
         </fieldset>
       </div>
       <footer className="studio-dialog-footer">
@@ -241,15 +247,16 @@ export function FilesEditor({ state, onSaved, onClose, onReload }) {
             </select>
             <button
               type="button"
-              className="studio-text-button"
+              className="studio-pill-button"
               onClick={() => downloadFile(FILES.find(([, key]) => key === selected)[0], draft[selected], "text/plain")}
             >
-              Export file
+              Download file
             </button>
             <button
               type="button"
-              className="studio-text-button"
+              className="studio-pill-button"
               disabled={Boolean(changed.length)}
+              title={changed.length ? "Save or cancel your changes first" : undefined}
               onClick={async () => {
                 try {
                   downloadFile(
@@ -261,13 +268,12 @@ export function FilesEditor({ state, onSaved, onClose, onReload }) {
                 }
               }}
             >
-              Export saved dashboard
+              Export dashboard
+            </button>
+            <button type="button" className="studio-pill-button" onClick={() => filePicker.current?.click()}>
+              Replace from a file
             </button>
           </div>
-          <p className="studio-note">
-            These are your complete local native files. Secret references remain literal text. Save validates the draft
-            and creates one recovery snapshot for the transaction.
-          </p>
           <textarea
             className="studio-code-editor studio-full-file"
             aria-label={FILES.find(([, key]) => key === selected)[0]}
@@ -281,36 +287,30 @@ export function FilesEditor({ state, onSaved, onClose, onReload }) {
             spellCheck={false}
             wrap="off"
           />
-          <div className="studio-file-import">
-            <button type="button" className="studio-button studio-quiet" onClick={() => filePicker.current?.click()}>
-              Import into this file
-            </button>
-            <input
-              ref={filePicker}
-              type="file"
-              hidden
-              aria-label="Import configuration file"
-              accept=".yaml,.yml,.css,.js,.txt"
-              onChange={async (event) => {
-                const input = event.target;
-                const file = input.files?.[0];
-                if (!file) return;
-                setError(null);
-                setImporting(true);
-                try {
-                  if (file.size > 2 * 1024 * 1024) throw new Error("Choose a file no larger than 2 MiB.");
-                  const text = await file.text();
-                  setDraft((current) => ({ ...current, [selected]: text }));
-                } catch (err) {
-                  setError(err);
-                } finally {
-                  input.value = "";
-                  setImporting(false);
-                }
-              }}
-            />
-            <span className="studio-muted">The imported file stays a draft until Save.</span>
-          </div>
+          <input
+            ref={filePicker}
+            type="file"
+            hidden
+            aria-label="Import configuration file"
+            accept=".yaml,.yml,.css,.js,.txt"
+            onChange={async (event) => {
+              const input = event.target;
+              const file = input.files?.[0];
+              if (!file) return;
+              setError(null);
+              setImporting(true);
+              try {
+                if (file.size > 2 * 1024 * 1024) throw new Error("Choose a file no larger than 2 MiB.");
+                const text = await file.text();
+                setDraft((current) => ({ ...current, [selected]: text }));
+              } catch (err) {
+                setError(err);
+              } finally {
+                input.value = "";
+                setImporting(false);
+              }
+            }}
+          />
         </fieldset>
       </div>
       <footer className="studio-dialog-footer">
@@ -368,7 +368,7 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
         content = JSON.parse(await file.text());
       } catch {
         throw new Error(
-          "This file could not be read as a dashboard JSON backup. Choose an exported dashboard or pre-save snapshot.",
+          "This file could not be read as a dashboard JSON backup. Choose an exported dashboard or a downloaded snapshot.",
         );
       }
       const files = content?.files || content?.before;
@@ -415,51 +415,10 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
     <>
       <div className="studio-dialog-body">
         <ErrorMessage error={error} onReload={onReload} />
-        <section className="studio-dashboard-import" aria-labelledby="studio-dashboard-import-heading">
-          <h3 id="studio-dashboard-import-heading">Import a dashboard</h3>
-          <p className="studio-note">
-            Restore an exported dashboard or downloaded snapshot, including widgets, layout, appearance and custom
-            files.
-          </p>
-          <button
-            type="button"
-            className="studio-button studio-quiet"
-            disabled={busy}
-            onClick={() => filePicker.current?.click()}
-          >
-            {reading ? "Reading backup…" : "Choose dashboard backup"}
-          </button>
-          <input
-            ref={filePicker}
-            type="file"
-            accept=".json,application/json"
-            aria-label="Dashboard backup file"
-            hidden
-            disabled={busy}
-            onChange={selectArchive}
-          />
-          {archive && (
-            <div className="studio-import-confirm" role="status">
-              <strong>Replace this dashboard with {archive.name}?</strong>
-              <p>
-                This replaces all current configuration and the saved arrangement. A recovery snapshot is created before
-                replacement. Nothing changes until you select Import dashboard.
-              </p>
-              <p className="studio-note">
-                Environment variables, mounted files and external services must also be available to this deployment.
-              </p>
-              <button type="button" className="studio-text-button" disabled={busy} onClick={() => setArchive(null)}>
-                Clear selected backup
-              </button>
-            </div>
-          )}
-        </section>
-        <h3>Saved snapshots</h3>
-        <p className="studio-note">
-          Snapshots capture configuration before a successful change. Slideshow playback creates no snapshots. Restoring
-          also preserves a snapshot of the current configuration.
-        </p>
-        <div className="studio-snapshots">
+        <Group
+          title="Saved snapshots"
+          info="Studio keeps a copy of this dashboard before every saved change. Restoring one keeps a copy of the current state too."
+        >
           {backups.map((backup) => {
             const created = new Date(backup.createdAt);
             const exact = Number.isFinite(created.getTime()) ? created.toLocaleString() : "";
@@ -468,6 +427,7 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
             const files = backup.changedFiles?.join(", ") || backup.id;
             return (
               <button
+                type="button"
                 className={`studio-snapshot${chosen === backup.id ? " studio-snapshot-selected" : ""}`}
                 key={backup.id}
                 aria-pressed={chosen === backup.id}
@@ -479,33 +439,65 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
                   setArchive(null);
                 }}
               >
-                <strong>
-                  {label}
-                  {age && (
-                    <>
-                      {" · "}
-                      <time dateTime={backup.createdAt} title={exact}>
-                        {age}
-                      </time>
-                    </>
-                  )}
-                </strong>
-                {exact && <small>{exact}</small>}
-                <small>{files}</small>
+                <span className="studio-snapshot-text">
+                  <strong>
+                    {label}
+                    {age && (
+                      <>
+                        {" · "}
+                        <time dateTime={backup.createdAt} title={exact}>
+                          {age}
+                        </time>
+                      </>
+                    )}
+                  </strong>
+                  {exact && <small>{exact}</small>}
+                  <small>{files}</small>
+                </span>
+                {chosen === backup.id && <StudioIcon name="check" size={18} />}
               </button>
             );
           })}
-        </div>
-        {!backups.length && <p className="studio-muted">Your first saved change will appear here.</p>}
+          {!backups.length && <p className="studio-group-message">Your first saved change will appear here.</p>}
+        </Group>
+        <Group
+          title="Import"
+          info="Replace this dashboard with an exported dashboard or a downloaded snapshot: widgets, layout, appearance and custom files. Environment variables, mounted files and outside services must exist on this deployment too."
+        >
+          <ActionRow icon="plus" disabled={busy} onClick={() => filePicker.current?.click()}>
+            {reading ? "Reading backup…" : "Choose a backup file"}
+          </ActionRow>
+          <input
+            ref={filePicker}
+            type="file"
+            accept=".json,application/json"
+            aria-label="Dashboard backup file"
+            hidden
+            disabled={busy}
+            onChange={selectArchive}
+          />
+        </Group>
+        {archive && (
+          <div className="studio-callout studio-import-confirm" role="status">
+            <strong>Replace this dashboard with {archive.name}?</strong>
+            <p>
+              Everything on this dashboard is replaced, and a snapshot of it is kept first. Nothing changes until you
+              choose Import dashboard.
+            </p>
+            <button type="button" className="studio-pill-button" disabled={busy} onClick={() => setArchive(null)}>
+              Clear selected backup
+            </button>
+          </div>
+        )}
         {chosen && (
-          <p className="studio-note">
-            Restore the selected snapshot? This replaces the current native configuration and saved arrangement.
+          <p className="studio-callout" role="status">
+            Restoring replaces this dashboard&apos;s configuration and layout with the selected snapshot.
           </p>
         )}
       </div>
       <footer className="studio-dialog-footer">
         <button
-          className="studio-text-button"
+          className="studio-button studio-quiet"
           disabled={!chosen || busy}
           onClick={async () => {
             try {
@@ -518,7 +510,7 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
             }
           }}
         >
-          Export pre-save snapshot
+          Download snapshot
         </button>
         <span className="studio-footer-spacer" />
         <button className="studio-button studio-quiet" disabled={busy} onClick={onClose}>

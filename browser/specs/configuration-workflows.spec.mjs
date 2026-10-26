@@ -3,7 +3,7 @@ import { downloadText, fileText, NATIVE_FILES, openFiles, playback, seedNative }
 
 test('guided settings and nine-file import/export preserve drafts, literal options and one validated transaction', async ({ page, request }) => {
   let dialog = await openSettings(page);
-  await dialog.getByRole('button', { name: 'Advanced YAML', exact: true }).click();
+  await dialog.getByRole('radio', { name: 'YAML', exact: true }).click();
   await dialog.getByRole('textbox', { name: 'Item configuration YAML' }).fill([
     'title: Original settings title',
     'target: _self',
@@ -15,7 +15,7 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
     '  literal: "{{HOMEPAGE_VAR_BROWSER_FIXTURE}}"',
     '',
   ].join('\n'));
-  await dialog.getByRole('button', { name: 'Options', exact: true }).click();
+  await dialog.getByRole('radio', { name: 'Options', exact: true }).click();
   await dialog.getByLabel(/^Dashboard title/).fill('Configured through settings');
   await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
   // Saved settings return to the Dashboards page.
@@ -27,7 +27,7 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
   const widgets = '- greeting:\n    text: Imported native greeting\n';
   await fileText(dialog, 'widgets.yaml');
   const fileChooser = page.waitForEvent('filechooser');
-  await dialog.getByRole('button', { name: 'Import into this file', exact: true }).focus();
+  await dialog.getByRole('button', { name: 'Replace from a file', exact: true }).focus();
   await page.keyboard.press('Enter');
   await (await fileChooser).setFiles({ name: 'widgets.yaml', mimeType: 'application/yaml', buffer: Buffer.from(widgets) });
   await expect(dialog.getByRole('textbox', { name: 'widgets.yaml', exact: true })).toHaveValue(widgets);
@@ -55,9 +55,9 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
   dialog = await openFiles(page);
   for (const [name, key] of NATIVE_FILES) await (await fileText(dialog, name)).fill(drafts[key]);
   await expect(dialog.getByText('9 modified files', { exact: true })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Export saved dashboard', exact: true })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Export dashboard', exact: true })).toBeDisabled();
   await fileText(dialog, 'services.yaml');
-  const draftExport = await downloadText(page, () => dialog.getByRole('button', { name: 'Export file', exact: true }).click());
+  const draftExport = await downloadText(page, () => dialog.getByRole('button', { name: 'Download file', exact: true }).click());
   expect(draftExport).toEqual({ name: 'services.yaml', text: drafts.servicesYaml });
 
   const historyBefore = await studioApi(request, '/dashboard/studio/api/backups');
@@ -84,7 +84,7 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
   await expect(page.locator('[data-panel-kind="informationWidget"]')).toContainText('Imported native greeting');
 
   dialog = await openFiles(page);
-  const exported = await downloadText(page, () => dialog.getByRole('button', { name: 'Export saved dashboard', exact: true }).click());
+  const exported = await downloadText(page, () => dialog.getByRole('button', { name: 'Export dashboard', exact: true }).click());
   expect(exported.name).toBe('homepage-studio-configuration.json');
   const payload = JSON.parse(exported.text);
   expect(Object.keys(payload.files).sort()).toEqual([...NATIVE_FILES.map(([name]) => name), 'state.json'].sort());
@@ -143,7 +143,7 @@ test('snapshot download and restore recover exact native source identities, stac
   await (await openSettings(page)).getByRole('button', { name: /Snapshots & restore/ }).click();
   const dialog = page.getByRole('dialog');
   await dialog.locator('.studio-snapshot').nth(index).click();
-  const downloaded = await downloadText(page, () => dialog.getByRole('button', { name: 'Export pre-save snapshot', exact: true }).click());
+  const downloaded = await downloadText(page, () => dialog.getByRole('button', { name: 'Download snapshot', exact: true }).click());
   const snapshot = JSON.parse(downloaded.text);
   expect(snapshot.revision).toBe(previous.revision);
   expect(snapshot.before['widgets.yaml']).toContain('Second duplicate');

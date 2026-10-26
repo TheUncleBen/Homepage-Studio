@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // This replaces the stock composition tests because Studio owns the approved main-page layout.
 // Native SSR/auth/config behavior and the new no-reload/independent-host contract remain tested.
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -220,6 +220,40 @@ describe("Studio main-page composition", () => {
     expect(state.script.src).toBe("/family/api/config/custom.js");
     // Without Homepage's own favicon setting the tab shows the dashboard's logo.
     expect(document.querySelector('link[rel="icon"]').getAttribute("href")).toBe("/family/studio/logo");
+  });
+
+  it("reloads the platform look at once when Administration saves it in this browser", async () => {
+    const channels = [];
+    const original = globalThis.BroadcastChannel;
+    globalThis.BroadcastChannel = class {
+      constructor(name) {
+        this.name = name;
+        this.closed = false;
+        channels.push(this);
+      }
+      close() {
+        this.closed = true;
+      }
+    };
+    nativeMutate.mockClear();
+    state.data = { settings: { title: "Family" }, services: [], widgets: [], bookmarks: [], platformRevision: "r 2" };
+    try {
+      await mount({ title: "Family" });
+      // A new revision gives the platform CSS a new address, so it reloads.
+      expect(document.querySelector('link[href^="/studio/platform.css"]').getAttribute("href")).toBe(
+        "/studio/platform.css?v=r%202",
+      );
+      const channel = channels.find((item) => item.name === "studio-platform" && !item.closed);
+      await act(async () => {
+        await channel.onmessage({ data: "r 3" });
+      });
+      expect(nativeMutate).toHaveBeenCalledTimes(1);
+      cleanup();
+      expect(channel.closed).toBe(true);
+    } finally {
+      state.data = null;
+      globalThis.BroadcastChannel = original;
+    }
   });
 
   it("keeps Homepage's favicon setting and lets a dashboard switch the platform CSS off", async () => {

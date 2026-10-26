@@ -18,7 +18,13 @@ const boardState = {
     version: 2,
     columns: 12,
     panels: [
-      { id: "clock", title: "Clock", group: "Information", kind: "informationWidget", rect: { x: 0, y: 0, w: 4, h: 3 } },
+      {
+        id: "clock",
+        title: "Clock",
+        group: "Information",
+        kind: "informationWidget",
+        rect: { x: 0, y: 0, w: 4, h: 3 },
+      },
       {
         id: "found",
         title: "Found",
@@ -84,8 +90,11 @@ describe("dashboard controls follow the sign-in access level", () => {
       for (const name of ["Edit dashboard", "Add widget", "Done"]) expect(screen.queryByText(name)).toBeNull();
       expect(screen.queryByLabelText("Dashboard settings")).toBeNull();
       expect(screen.queryByLabelText("Edit Found")).toBeNull();
-      expect(screen.getAllByRole("link", { name: "Dashboards" })[0]).toHaveAttribute("href", "/studio/dashboards");
-      expect(Boolean(screen.queryAllByRole("link", { name: "Administration" }).length)).toBe(access.level === "admin");
+      fireEvent.click(screen.getByRole("button", { name: "Family. Open the menu" }));
+      expect(screen.getByRole("menuitem", { name: "All dashboards" })).toHaveAttribute("href", "/studio/dashboards");
+      expect(Boolean(screen.queryAllByRole("menuitem", { name: "Administration" }).length)).toBe(
+        access.level === "admin",
+      );
       fireEvent.click(screen.getByLabelText("Account: Sam"));
       expect(screen.getByRole("menuitem", { name: "My account" })).toHaveAttribute("href", "/studio/account");
       expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
@@ -118,6 +127,6 @@ describe("dashboard controls follow the sign-in access level", () => {
     await waitFor(() => expect(screen.getByText("Widgets", { selector: "button" })).toBeEnabled());
     expect(screen.getByLabelText("Edit Clock")).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Account/)).toBeNull();
-    expect(screen.getByText("Dashboards", { selector: ".studio-top-link" })).toHaveAttribute("href", "/studio/dashboards");
+    expect(screen.queryByText("Dashboards", { selector: "a" })).toBeNull();
   });
 });

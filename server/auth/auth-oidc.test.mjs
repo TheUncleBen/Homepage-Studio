@@ -590,6 +590,8 @@ test('linking from a provider session claims the local account, merges the provi
   assert.equal(account.user.username, 'admin');
   assert.equal(account.user.email, 'ben@sso.test');
   assert.equal(account.user.emailFromProvider, true);
+  assert.equal(account.user.displayName, 'Ben', 'the provider name replaces the local one, like the email');
+  assert.equal(account.user.displayNameFromProvider, true);
   assert.equal(account.method, 'oidc');
   assert.equal((await ctx.request('/studio/auth/account', { cookie: sso.cookie })).status, 401, 'the merged account’s session ended');
   assert.equal((await ctx.request('/studio/auth/account', { cookie: admin.cookie })).status, 401, 'other sessions of the local account ended');
@@ -602,6 +604,8 @@ test('linking from a provider session claims the local account, merges the provi
   // The password never changed, and the email can't be edited while linked.
   assert.equal((await ctx.post('/studio/auth/account/profile', { displayName: 'Ben', email: 'elsewhere@example.test' }, { cookie: local })).json.code, 'EMAIL_FROM_PROVIDER');
   assert.equal((await ctx.post('/studio/auth/admin/update', { id: account.user.id, email: 'elsewhere@example.test' }, { cookie: local })).json.code, 'EMAIL_FROM_PROVIDER');
+  assert.equal((await ctx.post('/studio/auth/account/profile', { displayName: 'Someone else' }, { cookie: local })).json.code, 'NAME_FROM_PROVIDER');
+  assert.equal((await ctx.post('/studio/auth/admin/update', { id: account.user.id, displayName: 'Someone else' }, { cookie: local })).json.code, 'NAME_FROM_PROVIDER');
 
   // Later sign-ins keep the email in step, but only with a verified email.
   ctx.provider.state.user.email = 'ben@new.test';
@@ -710,4 +714,73 @@ test('claiming a local account with a backup code sends an alert', async t => {
   await waitFor(() => ctx.mail.length > before);
   assert.equal(ctx.mail.at(-1).to, 'admin@example.test');
   assert.match(ctx.mail.at(-1).text, /backup code was used/);
+});
+
+test('only the administrator and allowed groups come over from the provider', async t => {
+  const ctx = await setup(t);
+  const admin = await createAdmin(ctx);
+  await ctx.post('/studio/auth/admin/settings', { oidc: { adminGroups: ['studio-admins'], allowedGroups: ['family'], autoCreate: true } }, { cookie: admin.cookie });
+  ctx.provider.state.user = { sub: 'sub-9', preferred_username: 'carol', name: 'Carol', email: 'carol@example.test', groups: ['family', 'authentik Admins', 'vpn-users'] };
+  const signedIn = await oidcSignIn(ctx);
+  assert.ok(signedIn.cookie, signedIn.response.headers.location);
+  const overview = (await ctx.request('/studio/auth/admin/overview', { cookie: admin.cookie })).json;
+  assert.deepEqual(overview.groups.filter(group => group.kind === 'idp').map(group => group.name).sort(), ['family', 'studio-admins']);
+  assert.deepEqual(overview.users.find(user => user.username === 'carol').oidcGroups, ['family']);
+  // A provider group an administrator lists by hand is matched too.
+  assert.equal((await ctx.post('/studio/auth/admin/group', { action: 'create', kind: 'idp', name: 'vpn-users' }, { cookie: admin.cookie })).status, 200);
+  assert.ok((await oidcSignIn(ctx)).cookie);
+  const after = (await ctx.request('/studio/auth/admin/overview', { cookie: admin.cookie })).json;
+  assert.deepEqual(after.users.find(user => user.username === 'carol').oidcGroups.sort(), ['family', 'vpn-users']);
+  // The provider's name is cleaned like one typed here, and one left empty by
+  // cleaning keeps the name already there.
+  ctx.provider.state.user = { ...ctx.provider.state.user, name: '  Caro\u0007l\u0301 ' + 'x'.repeat(200) };
+  assert.ok((await oidcSignIn(ctx)).cookie);
+  const cleaned = (await ctx.request('/studio/auth/admin/overview', { cookie: admin.cookie })).json.users.find(user => user.username === 'carol').displayName;
+  assert.equal(cleaned, ('Carol\u0301'.normalize('NFC') + ' ' + 'x'.repeat(200)).slice(0, 100));
+  ctx.provider.state.user = { ...ctx.provider.state.user, name: ' \u0000\u001f ' };
+  assert.ok((await oidcSignIn(ctx)).cookie);
+  assert.equal((await ctx.request('/studio/auth/admin/overview', { cookie: admin.cookie })).json.users.find(user => user.username === 'carol').displayName, cleaned);
+});
+
+test('people can change their own username after a recent sign-in, and names stay unique', async t => {
+  const ctx = await setup(t);
+  const admin = await createAdmin(ctx);
+  const member = await invite(ctx, admin.cookie, 'member', { email: 'member@example.test' });
+  assert.equal((await ctx.post('/studio/auth/account/profile', { username: 'Admin' }, { cookie: admin.cookie })).status, 200, 'the same name in capitals is no change');
+  assert.equal((await ctx.post('/studio/auth/account/profile', { username: 'member' }, { cookie: admin.cookie })).json.code, 'USERNAME_TAKEN');
+  assert.equal((await ctx.post('/studio/auth/account/profile', { username: 'not valid!' }, { cookie: admin.cookie })).json.code, 'INVALID_USERNAME');
+  const renamed = await ctx.post('/studio/auth/account/profile', { username: 'ben' }, { cookie: admin.cookie });
+  assert.equal(renamed.status, 200, renamed.text);
+  assert.equal(renamed.json.user.username, 'ben');
+  assert.equal((await ctx.post('/studio/auth/password', { username: 'admin', password: PASSWORD })).status, 401, 'the old name no longer signs in');
+  assert.ok(await localSignIn(ctx, 'ben', admin.backupCodes[0]));
+  // An administrator can rename someone else.
+  assert.equal((await ctx.post('/studio/auth/admin/update', { id: member.id, username: 'ben' }, { cookie: admin.cookie })).json.code, 'USERNAME_TAKEN');
+  const mails = ctx.mail.length;
+  assert.equal((await ctx.post('/studio/auth/admin/update', { id: member.id, username: 'kid' }, { cookie: admin.cookie })).status, 200);
+  assert.equal(ctx.mail.length, mails + 1, 'someone renamed by an administrator is told');
+  assert.equal(ctx.mail.at(-1).to, 'member@example.test');
+  assert.match(ctx.mail.at(-1).text, /An administrator changed your Studio username from "member" to "kid"/);
+  assert.equal((await ctx.post('/studio/auth/admin/update', { id: member.id, username: 'kid' }, { cookie: admin.cookie })).status, 200);
+  assert.equal(ctx.mail.length, mails + 1, 'no change, no email');
+});
+
+test('confirming it is you through the provider needs a sign-in that just happened there', async t => {
+  const ctx = await setup(t);
+  const admin = await createAdmin(ctx);
+  await ctx.post('/studio/auth/admin/settings', { oidc: { adminGroups: ['studio-admins'], allowedGroups: ['studio-users'] } }, { cookie: admin.cookie });
+  ctx.provider.state.user.groups = ['studio-users'];
+  const sso = await oidcSignIn(ctx);
+  assert.ok(sso.cookie, sso.response.text);
+  // A provider session remembered from earlier doesn't count.
+  ctx.provider.state.authTime = Math.floor(Date.now() / 1000) - 600;
+  const stale = await oidcSignIn(ctx, { intent: 'reauth', cookie: sso.cookie });
+  assert.equal(ctx.provider.state.lastPrompt, 'login');
+  assert.equal(ctx.provider.state.lastMaxAge, '300');
+  assert.match(stale.response.headers.location, /error=OIDC_FAILED/);
+  ctx.provider.state.authTime = undefined;
+  const fresh = await oidcSignIn(ctx, { intent: 'reauth', cookie: sso.cookie });
+  assert.equal(fresh.response.headers.location, '/studio/account');
+  const { events } = (await ctx.request('/studio/auth/admin/audit', { cookie: admin.cookie })).json;
+  assert.ok(events.some(event => event.type === 'reauthenticated' && event.method === 'oidc'));
 });

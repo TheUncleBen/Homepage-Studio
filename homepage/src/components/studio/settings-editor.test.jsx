@@ -34,12 +34,10 @@ describe("Appearance settings save", () => {
         onClose={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
-    fireEvent.change(screen.getByLabelText("Display mode"), {
-      target: { value: "light" },
-    });
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Light" }));
     expect(screen.getByLabelText("Item configuration YAML").value).toContain("mode: light");
-    fireEvent.click(screen.getByLabelText(/Use the platform accent color/));
+    fireEvent.click(screen.getByRole("button", { name: "Graphite", exact: true }));
     fireEvent.change(screen.getByLabelText("Accent color"), {
       target: { value: "#nothex" },
     });
@@ -236,7 +234,7 @@ describe("Local configuration file imports", () => {
     const chooser = screen.getByLabelText("Import configuration file");
     const open = vi.spyOn(chooser, "click");
     const button = screen.getByRole("button", {
-      name: "Import into this file",
+      name: "Replace from a file",
     });
     button.focus();
     expect(button).toHaveFocus();
@@ -436,7 +434,7 @@ describe("Snapshot action and age", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name }));
-    fireEvent.click(screen.getByRole("button", { name: "Export pre-save snapshot" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download snapshot" }));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
     expect(fetch.mock.calls[0][0]).toBe("/studio/api/backups/backup-1");
     expect(JSON.parse(await createObjectURL.mock.calls[0][0].text())).toEqual(archive);

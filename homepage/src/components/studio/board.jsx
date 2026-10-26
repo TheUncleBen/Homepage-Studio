@@ -900,9 +900,6 @@ export default function StudioBoard({
           <div>
             <p className="studio-eyebrow">Editing</p>
             <h1>{access?.dashboard?.name || settings?.title || "Dashboard"}</h1>
-            <p className="studio-subtitle">
-              Move, resize and stack widgets. Done saves and takes you back to Dashboards.
-            </p>
           </div>
           <div className="studio-header-actions">
             <button

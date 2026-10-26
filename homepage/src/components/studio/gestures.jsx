@@ -193,13 +193,7 @@ export function useStackGestures({ controller, disabled, onManual, onDrag }) {
   return {
     onPointerDown(event) {
       cancelActive.current?.();
-      if (
-        disabled ||
-        event.button !== 0 ||
-        event.isPrimary === false ||
-        touchesNativeContent(event)
-      )
-        return;
+      if (disabled || event.button !== 0 || event.isPrimary === false || touchesNativeContent(event)) return;
       drag.current = {
         id: event.pointerId,
         x: event.clientX,

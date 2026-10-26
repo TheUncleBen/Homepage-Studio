@@ -57,7 +57,7 @@ describe("Custom API empty mappings hint", () => {
     const save = screen.getByRole("button", { name: /^(Add|Save)/ });
     expect(save).toBeEnabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Advanced YAML" }));
+    fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
     fireEvent.change(screen.getByLabelText("Item configuration YAML"), {
       target: {
         value: "url: http://api.example.test/status\nmappings:\n  - field: status\n    label: Status\n",
@@ -82,11 +82,14 @@ describe("Custom API empty mappings hint", () => {
 });
 
 describe("Content picker names", () => {
-  it("names the kind in All when an information and an integration widget share a name", () => {
+  it("tells apart an information and an integration widget that share a name by their subtitle", () => {
     render(
       <ContentPicker
         catalog={{
-          info: [{ type: "customapi", name: "Custom API" }, { type: "datetime", name: "Date & Time" }],
+          info: [
+            { type: "customapi", name: "Custom API" },
+            { type: "datetime", name: "Date & Time" },
+          ],
           service: [{ type: "customapi", name: "Custom API" }],
         }}
         state={{ hiddenDiscoveredIds: [] }}
@@ -94,11 +97,15 @@ describe("Content picker names", () => {
         onRestore={vi.fn()}
       />,
     );
-    expect(screen.getByText("Custom API (information widget)")).toBeInTheDocument();
-    expect(screen.getByText("Custom API (integration widget)")).toBeInTheDocument();
+    // The name stays as it is; the subtitle tells the two apart.
+    const customApi = screen.getAllByRole("button", { name: /^Custom API/ });
+    expect(customApi.map((item) => item.textContent)).toEqual([
+      "Custom APIInformation widget",
+      "Custom APIIntegration widget",
+    ]);
+    expect(screen.queryByText(/\(information widget\)/)).not.toBeInTheDocument();
     expect(screen.getByText("Date & Time")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Information", exact: true }));
     expect(screen.getByText("Custom API")).toBeInTheDocument();
-    expect(screen.queryByText(/\(information widget\)/)).not.toBeInTheDocument();
   });
 });

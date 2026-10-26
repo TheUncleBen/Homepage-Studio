@@ -9,12 +9,12 @@ function nativeFiles(state) {
   }));
 }
 
-const card = (page, name) => page.locator('.dashboard-card').filter({ has: page.getByRole('heading', { name, exact: true }) });
+const card = (page, name) => page.locator('.dashboard-row').filter({ has: page.getByRole('heading', { name, exact: true }) });
 
 async function moreAction(page, name, action) {
   const entry = card(page, name);
-  await entry.locator('summary', { hasText: 'More actions' }).click();
-  await entry.getByRole('button', { name: action, exact: true }).click();
+  await entry.getByRole('button', { name: `More for ${name}`, exact: true }).click();
+  await entry.getByRole('menuitem', { name: action, exact: true }).click();
 }
 
 async function nameAndAddress(page, title, name, slug, submit) {

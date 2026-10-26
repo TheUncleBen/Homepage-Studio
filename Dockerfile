@@ -60,6 +60,7 @@ COPY package.json LICENSE VERSION upstream.lock.json ./
 COPY homepage/LICENSE ./homepage/LICENSE
 COPY homepage/src/utils/config/environment.mjs ./homepage/src/utils/config/environment.mjs
 COPY homepage/src/utils/config/yaml-parser.mjs ./homepage/src/utils/config/yaml-parser.mjs
+COPY homepage/src/components/studio/appearance.mjs ./homepage/src/components/studio/appearance.mjs
 COPY --from=controller-source /src/server ./server
 COPY public ./public
 COPY third-party ./third-party

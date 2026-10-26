@@ -234,6 +234,8 @@ fails are in [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md). For other providers, see
      ([IDP-AUTHENTIK.md section 4](IDP-AUTHENTIK.md#email-addresses)). Since
      Authentik 2025.10 the built-in mapping says they aren't, and Studio then
      ignores them.
+   - Token validity: keep Authentik's defaults. Studio's own **Session
+     policies** decide how long people stay signed in.
    - Note the **Client ID**.
 3. **Applications → Applications → Create**: name `Homepage Studio`, slug
    `homepage-studio`, provider `Homepage Studio`, launch URL
@@ -243,6 +245,10 @@ fails are in [IDP-AUTHENTIK.md](IDP-AUTHENTIK.md). For other providers, see
 4. Open the provider again and copy the **OpenID Configuration Issuer**. With
    slug `homepage-studio` it's
    `https://idp.example.test/application/o/homepage-studio/`.
+5. Require a second factor in the authentication flow people use to reach
+   Studio: Studio doesn't ask for its own after an Authentik sign-in. What to
+   set, and why the token lifetimes can stay as they are, is in
+   [Sign-in policy and token lifetimes](IDP-AUTHENTIK.md#sign-in-policy-and-token-lifetimes).
 
 ## 5. Docker secrets
 
@@ -509,7 +515,7 @@ the open setup page is off:
    somewhere safe.
 3. Studio opens **Dashboards** and asks for the **main dashboard's address**,
    suggesting `dashboard` (`https://homepage.example.test/dashboard`). Save
-   it; you can change it later from the dashboard's card.
+   it; you can change it later from the dashboard’s row on the Dashboards page (**⋯ → Rename or change address**).
 4. From then on the bare address, `https://homepage.example.test/`, opens
    **Dashboards**: the list of dashboards, where you open, edit and set up
    each one. **Administration** is in the top bar.
@@ -553,8 +559,8 @@ group names below are the examples from step 4.
 2. **Share dashboards before anyone signs in.** The listed groups appear under
    **Administration → Groups** straight away; add any other provider group
    there by its exact name. Then share dashboards with those groups under
-   **Dashboard access**, and give each group a default dashboard under
-   **Groups → Manage**. People get them at their very first sign-in.
+   **Dashboard access**, and give each group a default dashboard by selecting
+   it under **Groups**. People get them at their very first sign-in.
 3. **Link your administrator account to the provider**, so either one signs
    you in and the local account is your way in when the provider is down:
    **My account → Link** (the button names your provider), sign in there, and
@@ -639,7 +645,7 @@ variables with a short comment each.
 | `STUDIO_OIDC_ADMIN_GROUPS`, `STUDIO_OIDC_ALLOWED_GROUPS` | (unset) | Comma-separated identity-provider groups for administrators and for who may sign in. Set here, they're read-only in Studio |
 | `STUDIO_OIDC_NAME`, `STUDIO_OIDC_SCOPES`, `STUDIO_OIDC_GROUPS_CLAIM`, `STUDIO_OIDC_REFRESH_MINUTES`, `STUDIO_OIDC_ALLOW_HTTP` | see [AUTHENTICATION.md](AUTHENTICATION.md#settings-reference) | Rarely changed |
 | `STUDIO_SMTP_HOST`, `STUDIO_SMTP_PORT`, `STUDIO_SMTP_SECURE`, `STUDIO_SMTP_USER`, `STUDIO_SMTP_FROM_ADDRESS`, `STUDIO_SMTP_FROM_NAME` | (unset) | Email, plus the `studio_smtp_password` secret ([AUTHENTICATION.md](AUTHENTICATION.md#email)) |
-| `STUDIO_FRAME_ANCESTORS` | empty | Space-separated `'self'` and exact origins allowed to show a dashboard in a frame ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) |
+| `STUDIO_FRAME_ANCESTORS` | empty | Space-separated exact origins also allowed to show a dashboard in a frame (`'self'` always is) ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) |
 | `STUDIO_BACKUP_RETENTION` | `25` | Snapshots kept per dashboard |
 | `STUDIO_RENDERER_MAX_WORKERS` | `8` | Dashboards with a running worker at once, 1 to 64 |
 | `STUDIO_RENDERER_IDLE_SECONDS` | `600` | Seconds before an idle dashboard's worker stops, up to 86400 |

@@ -150,5 +150,6 @@ test('Studio controls use one focus style while native widgets keep their own', 
   await page.getByRole('button', { name: 'Widgets', exact: true }).click();
   const find = page.getByRole('dialog').getByRole('textbox', { name: 'Find a tile or widget', exact: true });
   await find.click();
-  expect(await focusStyle(find)).toEqual(expected);
+  // The search field draws the ring around the whole field, icon included.
+  expect(await focusStyle(find.locator('xpath=ancestor::label[contains(@class, "studio-search")]'))).toEqual(expected);
 });

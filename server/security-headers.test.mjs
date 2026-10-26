@@ -68,7 +68,7 @@ test('a native response cannot remove or loosen the frame policy', async t => {
   assert.deepEqual(allValues(response.raw, 'content-security-policy'), ["default-src 'self'", "frame-ancestors 'self'"]);
 });
 
-test('STUDIO_FRAME_ANCESTORS replaces the default list and drops X-Frame-Options', async t => {
+test('STUDIO_FRAME_ANCESTORS adds to the default list and drops X-Frame-Options', async t => {
   const request = await fixture(t, { frameAncestors: "'self'  https://ha.example.test:8123\thttp://panel.example.test" }, { 'x-frame-options': 'DENY' });
   for (const target of ['/', '/studio/health']) {
     const response = await request(target);
@@ -79,11 +79,12 @@ test('STUDIO_FRAME_ANCESTORS replaces the default list and drops X-Frame-Options
 
 test('frame ancestor configuration accepts only self and exact http(s) origins', () => {
   for (const blank of [undefined, null, '', '   ', '\n']) assert.equal(parseFrameAncestors(blank), null);
-  assert.deepEqual(parseFrameAncestors("https://HA.Example.test:8123/ 'self'"), ['https://ha.example.test:8123', "'self'"]);
-  assert.deepEqual(parseFrameAncestors('https://ha.example.test:443'), ['https://ha.example.test']);
+  assert.deepEqual(parseFrameAncestors("https://HA.Example.test:8123/ 'self'"), ["'self'", 'https://ha.example.test:8123']);
+  // 'self' always stays: Studio's own pages frame dashboards for previews.
+  assert.deepEqual(parseFrameAncestors('https://ha.example.test:443'), ["'self'", 'https://ha.example.test']);
   // .env files and shells drop the quotes, so a bare self means 'self'.
-  assert.deepEqual(parseFrameAncestors('self https://ha.example.test:8123'), ["'self'", 'https://ha.example.test:8123']);
-  assert.deepEqual(parseFrameAncestors('https://[::1]:8123 http://192.0.2.7'), ['https://[::1]:8123', 'http://192.0.2.7']);
+  assert.deepEqual(parseFrameAncestors('self https://ha.example.test:8123 self'), ["'self'", 'https://ha.example.test:8123']);
+  assert.deepEqual(parseFrameAncestors('https://[::1]:8123 http://192.0.2.7'), ["'self'", 'https://[::1]:8123', 'http://192.0.2.7']);
   for (const invalid of ['https://a.test;script-src', "https://a.test;script-src'unsafe-inline'", "https://a'b.test", 'https://a_b.test', 'https://a"b.test',
     'https://a.test%3Bx', 'https://a.test!', 'https://a.test$x', "'SELF'", 'SELF', 'selfx', "'none'", '*', 'https://*.example.test', 'ha.example.test', 'https:ha.example.test', 'ftp://ha.example.test',
     'https://ha.example.test/path', 'https://ha.example.test?x=1', 'https://ha.example.test#x', 'https://user:pass@ha.example.test',
@@ -92,7 +93,7 @@ test('frame ancestor configuration accepts only self and exact http(s) origins',
   }
   const common = { 'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin' };
   assert.deepEqual(securityHeaders(null), { 'content-security-policy': "frame-ancestors 'self'", 'x-frame-options': 'SAMEORIGIN', ...common });
-  assert.deepEqual(securityHeaders(['https://ha.example.test']), { 'content-security-policy': 'frame-ancestors https://ha.example.test', ...common });
+  assert.deepEqual(securityHeaders(["'self'", 'https://ha.example.test']), { 'content-security-policy': "frame-ancestors 'self' https://ha.example.test", ...common });
 });
 
 test('an invalid STUDIO_FRAME_ANCESTORS value stops startup', async () => {

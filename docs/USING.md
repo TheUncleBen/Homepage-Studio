@@ -34,19 +34,27 @@ sharing are covered in [AUTHENTICATION.md](AUTHENTICATION.md).
 
 ### The Dashboards page
 
-**Dashboards** (`/studio/dashboards`) lists every dashboard you can open,
-each with **Open**, and **Edit** and **Settings** when you may arrange it.
-Administrators and members see the same page, filtered to what each can open.
-**More actions** on a card has **Make my default** and, for administrators,
-**Rename or change address**, **Duplicate**, **Who can open it** and
-**Archive**. Administrators also get **New dashboard** and the archived list.
-Each card shows when the dashboard last changed and, for administrators, who
-can open it.
+**Dashboards** (`/studio/dashboards`) lists every dashboard you can open, one
+row each, all the same size. A row shows a preview of the dashboard, its
+name and address, when it last changed and, for administrators, who can open
+it. The preview is a drawing of the dashboard's saved layout in its own
+colours, with each tile's name and icon; it shows no live data and doesn't
+start the dashboard. Icons Homepage loads from its icon CDN appear there too;
+icons given as a full address or a file of the dashboard show as the name
+only. **Open** is on every row, and **Edit** and **Settings** when you may
+arrange it. The row's **⋯** menu has **Make my default** and, for
+administrators, **Rename or change address**, **Duplicate**, **Who can open
+it** and **Archive**. Administrators also get **New dashboard** and the
+archived list.
+
+Previews are drawn as their rows come near the screen, and can't be
+clicked or typed into. Administrators and members see the same page, filtered
+to what each can open.
 
 The bare address (`https://homepage.example.test/`) opens:
 
 - your own **default dashboard**, if you chose one (**My account → Default
-  dashboard**, or **Make my default** on its card);
+  dashboard**, or **Make my default** in its row’s **⋯** menu);
 - otherwise, for a member, the default dashboard of the first of their groups
   that has one (administrators set the order under **Administration →
   Groups**);
@@ -61,14 +69,11 @@ Every page, dashboards and administration alike, has the same bar:
 
 - On Studio's own pages (Dashboards, My account, Administration), the logo and
   the deployment's name. On a dashboard, that dashboard's logo and name.
-- The name opens the **dashboard switcher**: **All dashboards**, then every
-  dashboard you can open, to jump straight to one.
+- The name opens Studio's menu: **All dashboards**, **Administration** for
+  administrators, then every dashboard you can open, to jump straight to one.
 - **Quick Launch** on a dashboard (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> +
   <kbd>K</kbd>, Homepage's own search across your services and bookmarks).
-- **Dashboards**, **Administration** for administrators, and your account
-  menu (**My account**, **Sign out**).
-
-On a phone, Dashboards and Administration move into the account menu.
+- Your account menu: **My account** and **Sign out**.
 
 The deployment's name is `STUDIO_DEPLOYMENT_NAME` (default *Homepage
 Studio*); an administrator can change it in **Administration → Sign-in
@@ -93,7 +98,7 @@ may only view a dashboard are sent back to it from either address.
 On a new deployment the main dashboard has no address yet. The first time an
 administrator opens Studio (with sign-in off, whoever opens it first), the
 Dashboards page asks for one, suggesting `dashboard`, and nothing else opens
-until it's saved. You can change it later from the dashboard's card.
+until it's saved. You can change it later with **⋯ → Rename or change address** in its row.
 
 A new dashboard is empty. In the editor it shows a short note, *A clean
 slate*, and an **Add your first widget** button. Group buttons (**All
@@ -121,8 +126,11 @@ In the editor, **Widgets** opens *Add to your dashboard*. Search, or pick a cate
 | **Services** | A service tile: a link to an app, with Homepage's status and statistics |
 | **Bookmarks** | A compact link |
 
-Pick one, fill in its options (the form lists what the native widget accepts,
-with a link to Homepage's documentation), and save. The panel appears in the
+Pick one, fill in its options, and save. The form lists what the native
+widget accepts, with an info button on any setting that needs explaining and
+**Setting up …** underneath: what the service needs, from Homepage's
+documentation. The [widget reference](widgets/README.md) has the same for
+every widget, in one place. The panel appears in the
 first free spot on the board, and the save makes a snapshot you can go back to.
 
 Information widgets are titled by their native name, numbered when you have
@@ -194,7 +202,7 @@ To make one:
   cancel.
 
 Stacks are one level deep: a stack can't hold another stack. To take a panel
-back out, open the stack's edit button and use **Move out** next to it.
+back out, open the stack's edit button and use the **×** (Move out) next to it.
 Taking one of two panels out turns the other back into an ordinary panel.
 
 ### Changing slides
@@ -244,16 +252,19 @@ available in the editor.
 
 ### Slideshow settings
 
-In the editor, the stack's edit button opens **Edit widget stack**. Besides
-moving members earlier or later in the stack, configuring them and **Move
-out**, it has the slideshow settings for that stack:
+In the editor, the stack's edit button opens **Edit widget stack**. Under
+**Widgets** you move members earlier or later (the arrows), configure one (the
+pencil), take one out (**×**) or **Add existing panel**. **Size and position**
+sets the stack's place on the 12-column layout, and **Unstack all** at the
+bottom turns every member back into an ordinary panel. **Slideshow** has the
+timing for that stack:
 
 | Setting | Default | Range |
 | --- | --- | --- |
-| **Start behavior** | Manual: use Play to start | or *Start automatically* |
+| **Start behavior** | Manual (Play starts it) | or Automatic |
 | **Seconds per widget** | 10 | 1 to 3600 |
 | **Manual navigation delay (seconds)** | 30 | 1 to 3600 |
-| **Transition** | Horizontal slide | Vertical slide, Fade, No animation |
+| **Transition** | Horizontal | Vertical, Fade, None |
 | **Animation duration (ms)** | 250 | 0 to 2000 |
 | **Loop after the last widget** | On | |
 
@@ -264,9 +275,15 @@ used after a manual change.
 
 In the editor, a panel's **edit** button opens it with two tabs:
 
-- **Options**: a form for the common native options, with a link to
-  Homepage's documentation for that widget.
-- **Advanced YAML**: the same panel as YAML, for everything else the widget
+- **Options**: the connection (address, key, version), the fields it shows,
+  and the common native options. **Visible fields** starts with one switch,
+  **Use the widget's default fields**, turned on. Turn it off to pick which of
+  the widget's fields to show and set their order; turning it back on clears
+  your picks. **Version**, on widgets
+  that speak to more than one release of their app, is a choice between the
+  releases Homepage documents, such as *Before 2025.8.0* and *2025.8.0 or
+  later*; leaving it as it is keeps Homepage's default.
+- **YAML**: the same panel as YAML, for everything else the widget
   supports.
 
 Both edit one draft. Options you don't touch, including ones Studio doesn't
@@ -274,7 +291,7 @@ know about, `null` values and `{{HOMEPAGE_VAR_...}}` or
 `{{HOMEPAGE_FILE_...}}` references, are left exactly as they were.
 
 If the YAML has a mistake, the editor says where: *Invalid YAML at line 4,
-column 9: ...* in the YAML tab, and *services.yaml contains invalid YAML at
+column 9: ...* in the **YAML** view, and *services.yaml contains invalid YAML at
 line 12, column 3.* when a save is refused. The message never repeats the text
 of the line, so a secret on that line doesn't end up on screen or in a log. A
 draft with a mistake stays open for you to fix; the saved file isn't touched.
@@ -291,9 +308,10 @@ this dashboard directly: `services.yaml`, `widgets.yaml`, `bookmarks.yaml`,
 
 - **Save configuration** saves every file you changed in one go, after
   checking all of them. One snapshot covers the lot.
-- **Export file** downloads the file you're looking at; **Import into this
-  file**, below the editor, loads a file (up to 2 MiB) into the editor as a
-  draft until you save.
+- **Download file** downloads the file you're looking at; **Replace from a
+  file** loads a file (up to 2 MiB) into the editor as a draft until you save.
+  **Export dashboard** downloads a backup of the whole saved dashboard; it
+  waits until your changes are saved.
 - After you change or restore `custom.js`, Studio offers **Reload dashboard**,
   because a script that already ran can't be un-run in place.
 - Native settings that lay out Homepage's own page (group tabs, column counts,
@@ -330,15 +348,15 @@ Playing slideshows, opening dialogs and exporting never make snapshots.
   the dialog is open. Snapshots made before Studio recorded this read *Saved
   change*. **Restore selected snapshot** puts back the files, the panels and
   their layout as they were.
-- **Export pre-save snapshot** downloads the selected snapshot as a file.
-- **Choose dashboard backup** stages an exported dashboard or a downloaded
+- **Download snapshot** downloads the selected snapshot as a file.
+- **Choose a backup file** stages an exported dashboard or a downloaded
   snapshot (up to 40 MiB). Nothing changes until you press **Import
   dashboard**, which checks the whole file, keeps a snapshot of the current
   dashboard first, and then replaces it. Closing the dialog while a backup is
   staged asks first and names the file, for example **Discard the staged
   backup dashboard.json?**, with **Keep editing** selected.
 
-**Configuration files → Export saved dashboard** downloads this dashboard as
+**Configuration files → Export dashboard** downloads this dashboard as
 it was last saved, as one file: all nine native files, the panels, the layout
 and the stacks. (It's unavailable while that dialog holds unsaved changes.) Use it
 to copy a dashboard to another deployment, or as a backup you keep yourself.
@@ -357,10 +375,10 @@ Administrators manage dashboards from the **Dashboards** page.
 | **New dashboard** | Pick a **Name** and an **Address** (suggested: the first free of `dashboard`, `dashboard-2`, `dashboard-3`, …); it starts empty. To start from an existing dashboard, use **Duplicate** |
 | **Open** | Goes to the live dashboard |
 | **Edit** / **Settings** | The editor and the dashboard settings ([Start here](#live-editor-and-settings-pages)) |
-| **More actions → Rename or change address** | Its widgets, layout and snapshots stay with it |
-| **More actions → Duplicate** | Makes an independent copy of everything, logo included, at the next suggested address; changing one never changes the other. **Share it with the same people** copies who can open it |
-| **More actions → Who can open it** | Opens **Administration → Dashboard access** |
-| **More actions → Archive** | Takes it off line after you confirm. Its files and snapshots are kept and its address stays reserved |
+| **⋯ → Rename or change address** | Its widgets, layout and snapshots stay with it |
+| **⋯ → Duplicate** | Makes an independent copy of everything, logo included, at the next suggested address; changing one never changes the other. **Share it with the same people** copies who can open it |
+| **⋯ → Who can open it** | Opens **Administration → Dashboard access** |
+| **⋯ → Archive** | Takes it off line after you confirm. Its files and snapshots are kept and its address stays reserved |
 | **Restore** (under *Archived*) | Brings an archived dashboard back as it was |
 
 - An address is one path segment of 1 to 64 lowercase letters, numbers and

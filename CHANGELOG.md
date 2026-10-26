@@ -14,6 +14,61 @@ the volumes and follow [docs/DEPLOY.md](docs/DEPLOY.md) from the start. Studio
 carries no conversions for data from earlier candidates, and the upgrade notes
 in older entries below are history only.
 
+### Polished Studio pages, backups in the app, email in Studio's look
+
+- **Studio's pages are iOS-style grouped lists.** My account, every
+  Administration section (People, Groups, Dashboard access, Session policies,
+  Sign-in settings, Appearance, Backups, Activity), the widget dialog and
+  dashboard settings, the widget stack editor, **Position & size** and the New
+  and Duplicate dashboard dialogs. Explanations sit behind info buttons; switches replace
+  checkboxes; actions are buttons, not links. Studio's own pages follow the
+  platform's default look.
+- **Visible fields** starts as one switch, **Use the widget's default
+  fields**, turned on; turning it off shows the fields to pick and order.
+- **Administration lists its sections down the left**, like macOS System
+  Settings. On a phone it opens on a grouped list of the sections, like iOS
+  Settings: tap one to open it, and **Administration** at the top (or the
+  phone's back gesture) returns to the list.
+- **Top bar.** **All dashboards** and **Administration** are in the menu
+  under the name at the top left; the account menu stays on its own.
+- **Dashboards page** is a list of equal rows, each with a preview drawn from
+  the dashboard's saved layout, colours, tile names and icons. It shows no
+  live data and never starts the dashboard, so the page stays fast with any
+  number of dashboards. Studio's pages may load icons from Homepage's icon CDN
+  (`cdn.jsdelivr.net`). Less common actions are in each row's **⋯**
+  menu.
+- **Saving the default look** shows at once in open dashboards and Studio's
+  pages, with no cache clearing.
+- **Backups and restore in Administration → Backups**: create, download,
+  upload, restore and delete whole-deployment backups, kept in the state
+  volume. A restore saves a *before restore* backup, restarts Studio and signs
+  everyone out. `node server/backups.mjs` does the same from a shell
+  ([docs/OPERATIONS.md](docs/OPERATIONS.md#backups-in-the-app)).
+- **Widget Version field** is a choice between the releases each widget's
+  documentation lists, such as *Before 2025.8.0* and *2025.8.0 or later* for
+  Authentik, with Homepage's default chosen until you pick another.
+- **Visible fields** in the widget dialog is a list of switches you can
+  reorder, and each widget has a **Setting up …** guide. The
+  [widget reference](docs/widgets/README.md) lists every widget.
+- **Email** is HTML in Studio's look, with the logo, one button (the link is
+  written out underneath too) and a plain-text copy. Subjects are in title
+  case, and each security alert says what happened in its subject.
+- **Single sign-on.** Only the administrator and allowed groups (and provider
+  groups added by name) come over from the provider. A linked account takes
+  the provider's name as well as its verified email. Everyone can change
+  their own username in **My account**, and an administrator can change anyone's;
+  either way the person gets a security alert. Confirming it's you through the
+  provider needs a fresh sign-in there.
+- **Backups** are refused when Studio's files are larger than the 256 MiB a
+  backup in the app can hold, and restored files are always readable only by
+  Studio.
+- **`STUDIO_FRAME_ANCESTORS` adds origins** to `'self'` instead of replacing
+  it, so pages on Studio's own address can always frame a dashboard.
+- **Docs.** Authentik sign-in policy and token lifetimes
+  ([docs/IDP-AUTHENTIK.md](docs/IDP-AUTHENTIK.md#sign-in-policy-and-token-lifetimes)),
+  framing explained with Home Assistant as an example
+  ([docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md#framing)).
+
 ### Studio at /studio, a deployment name and logo, a platform default look
 
 - **Studio's own pages are under `/studio`**: Dashboards at

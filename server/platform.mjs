@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { appearanceTokens } from '../homepage/src/components/studio/appearance.mjs';
 
 // The platform default look, set in Administration → Appearance. Each
 // dashboard follows each of these settings until it sets its own:
@@ -15,6 +16,25 @@ export const PLATFORM_CSS_FILE = 'studio-platform.css';
 export const MAX_PLATFORM_CSS_BYTES = 256 * 1024;
 const MAX_PLATFORM_BYTES = 16 * 1024;
 export const DEFAULT_PLATFORM = Object.freeze({ mode: 'dark', accent: '#b299be', background: null });
+
+// Studio's own pages (sign-in, Dashboards, My account, Administration) wear
+// the platform look too: the same tokens a dashboard computes, under the
+// pages' own variable names (server/auth/ui/app.css). Only validated mode and
+// hex values reach this stylesheet.
+// The success and warning colors exist only on Studio's pages, so they follow
+// the chosen scheme here rather than the device's.
+const STATUS_TOKENS = {
+  dark: { 'ok-text': '#b8e0c6', 'ok-bg': '#1d2b23', 'ok-line': '#5f8f72', 'warn-text': '#f0d9a8', 'warn-bg': '#30291b', 'warn-line': '#9c8455' },
+  light: { 'ok-text': '#1f5a37', 'ok-bg': '#e8f4ec', 'ok-line': '#5f8f72', 'warn-text': '#5e4710', 'warn-bg': '#fbf3e0', 'warn-line': '#9c8455' },
+};
+export function studioThemeCss({ mode, accent } = DEFAULT_PLATFORM) {
+  const settings = { studioTheme: { mode, accent } };
+  const block = dark => {
+    const { mode: scheme, tokens } = appearanceTokens(settings, dark);
+    return `:root{color-scheme:${scheme};${Object.entries({ ...tokens, ...STATUS_TOKENS[scheme] }).map(([name, value]) => `--${name}:${value};`).join('')}}`;
+  };
+  return mode === 'system' ? `${block(true)}\n@media (prefers-color-scheme: light){${block(false)}}\n` : `${block(true)}\n`;
+}
 
 export class PlatformError extends Error {
   constructor(message, code = 'INVALID_PLATFORM_APPEARANCE', status = 400) {

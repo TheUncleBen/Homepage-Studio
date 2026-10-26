@@ -36,7 +36,7 @@ test('different-size fit preview cancels safely, then add/reorder/unstack preser
   await page.getByRole('checkbox', { name: 'Select Second member', exact: true }).check();
   await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
   let dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText('These panels have different sizes');
+  await expect(dialog).toContainText('These widgets have different sizes. They will all be 5 × 4.');
   await expect(dialog.getByRole('spinbutton', { name: 'Width', exact: true })).toHaveValue('5');
   await expect(dialog.getByRole('spinbutton', { name: 'Height', exact: true })).toHaveValue('4');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -48,13 +48,13 @@ test('different-size fit preview cancels safely, then add/reorder/unstack preser
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
   dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Add existing panel', exact: true }).click();
-  await dialog.locator('.studio-stack-candidates button').filter({ hasText: 'Third member' }).click();
+  await dialog.locator('.studio-action-row').filter({ hasText: 'Third member' }).click();
   await dialog.getByRole('button', { name: 'Move Third member earlier in stack', exact: true }).click();
   await dialog.getByRole('button', { name: 'Move Third member earlier in stack', exact: true }).click();
-  await dialog.getByLabel('Start behavior', { exact: true }).selectOption('automatic');
-  await dialog.getByLabel('Transition', { exact: true }).selectOption('vertical');
+  await dialog.getByRole('radiogroup', { name: 'Start behavior' }).getByRole('radio', { name: 'Automatic', exact: true }).click();
+  await dialog.getByRole('radiogroup', { name: 'Transition' }).getByRole('radio', { name: 'Vertical', exact: true }).click();
   await dialog.getByLabel('Animation duration (ms)', { exact: true }).fill('400');
-  await dialog.getByLabel('Loop after the last widget', { exact: true }).uncheck();
+  await dialog.getByRole('switch', { name: 'Loop after the last widget', exact: true }).click();
   await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();
   await finishArrangement(page);
   const idByName = Object.fromEntries(seeded.board.panels.map(panel => [panel.title, panel.id]));
@@ -68,7 +68,7 @@ test('different-size fit preview cancels safely, then add/reorder/unstack preser
   await openEditor(page);
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
   dialog = page.getByRole('dialog');
-  await expect(dialog.locator('.studio-member-title strong')).toHaveText(['Third member', 'First member', 'Second member']);
+  await expect(dialog.locator('.studio-member-title > span')).toHaveText(['Third member', 'First member', 'Second member']);
   await dialog.getByRole('button', { name: 'Unstack all', exact: true }).click();
   await finishArrangement(page);
   const unstacked = await studioApi(request, '/dashboard/studio/api/state');

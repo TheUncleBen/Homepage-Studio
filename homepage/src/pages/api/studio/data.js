@@ -9,6 +9,7 @@ import {
   widgetsResponse,
 } from "utils/config/api-response";
 import { CONF_DIR, getSettings } from "utils/config/config";
+import { readPlatformDefaults } from "utils/config/platform";
 
 class NativeSnapshotChanged extends Error {}
 
@@ -93,6 +94,8 @@ async function handler(req, res) {
       settings,
       protocolVersion: 1,
       configurationRevision: after.revision,
+      // Open dashboards reload the platform CSS when the default look changes.
+      platformRevision: readPlatformDefaults()?.revision ?? null,
     });
   } catch (error) {
     res.setHeader("Retry-After", "1");

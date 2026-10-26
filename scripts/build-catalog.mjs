@@ -87,6 +87,93 @@ export function documentedFields(markdown) {
   return result;
 }
 
+// Setup guidance for the widget dialog and the widget reference: a page's
+// prose, lists, tables, notes and shell commands, as plain blocks. YAML
+// examples are left out (the dialog's fields and Advanced YAML cover them),
+// as are images and, when the field picker lists them, "Allowed fields".
+// Inline Markdown (`code`, **bold**, [links]) stays in the text; links are
+// made absolute against the documentation site.
+export function guideBlocks(markdown, folderUrl, { dropAllowedFields = false } = {}) {
+  const lines = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').split(/\r?\n/);
+  const absolute = text => text.replace(/\]\((?!https?:|#)([^)\s]+)\)/g, (_, href) => `](${new URL(href.replace(/\.md(?=#|$)/, '/').replace(/(^|\/)index\/$/, '$1'), folderUrl).href})`);
+  const clean = text => absolute(text.replace(/<br\s*\/?>/gi, ' ').replace(/<img\b[^>]*>/gi, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\s+/g, ' ').trim());
+  const blocks = [];
+  const parse = (source, into) => {
+    let index = 0;
+    let paragraph = [];
+    const flush = () => {
+      const text = clean(paragraph.join(' '));
+      paragraph = [];
+      if (text && !(dropAllowedFields && /^Allowed fields/i.test(text))) into.push({ type: 'p', text });
+    };
+    while (index < source.length) {
+      const line = source[index];
+      const fence = /^\s*```\s*([\w-]*)/.exec(line);
+      if (fence) {
+        flush();
+        const body = [];
+        index += 1;
+        while (index < source.length && !/^\s*```/.test(source[index])) body.push(source[index++]);
+        index += 1;
+        if (/^ya?ml$/i.test(fence[1])) {
+          // "For version 2:" introduces an example that isn't shown.
+          if (into.at(-1)?.type === 'p' && into.at(-1).text.endsWith(':')) into.pop();
+          continue;
+        }
+        const code = body.join('\n').trim();
+        if (code) into.push({ type: 'code', text: code });
+        continue;
+      }
+      const note = /^!!!\s+(\w+)/.exec(line);
+      if (note) {
+        flush();
+        const body = [];
+        index += 1;
+        while (index < source.length && (/^\s{4}/.test(source[index]) || !source[index].trim())) body.push(source[index++].replace(/^ {4}/, ''));
+        const children = [];
+        parse(body, children);
+        if (children.length) into.push({ type: 'note', tone: note[1].toLowerCase() === 'warning' ? 'warning' : 'note', blocks: children });
+        continue;
+      }
+      const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+      if (heading) { flush(); into.push({ type: 'heading', text: clean(heading[2]) }); index += 1; continue; }
+      if (/^\s*\|/.test(line)) {
+        flush();
+        const rows = [];
+        while (index < source.length && /^\s*\|/.test(source[index])) {
+          const cells = source[index++].trim().replace(/^\||\|$/g, '').split('|').map(cell => clean(cell));
+          if (!cells.every(cell => /^:?-+:?$/.test(cell))) rows.push(cells);
+        }
+        if (rows.length) into.push({ type: 'table', rows });
+        continue;
+      }
+      const item = /^(\s*)(?:[-*]|\d+\.)\s+(.*)$/.exec(line);
+      if (item && !item[1]) {
+        flush();
+        const ordered = /^\d+\./.test(line.trim());
+        const items = [];
+        while (index < source.length) {
+          const current = /^(?:[-*]|\d+\.)\s+(.*)$/.exec(source[index]);
+          if (current) { items.push(current[1]); index += 1; continue; }
+          if (/^\s+\S/.test(source[index]) && items.length) { items[items.length - 1] += ' ' + source[index].trim().replace(/^(?:[-*]|\d+\.)\s+/, ''); index += 1; continue; }
+          break;
+        }
+        const kept = items.map(clean).filter(text => text && !(dropAllowedFields && /^Allowed fields/i.test(text)));
+        if (kept.length) into.push({ type: ordered ? 'ol' : 'ul', items: kept });
+        continue;
+      }
+      if (!line.trim()) { flush(); index += 1; continue; }
+      if (/^\s*<img\b[^>]*>\s*$/i.test(line) || /^\s*!\[[^\]]*\]\([^)]*\)\s*$/.test(line)) { index += 1; continue; }
+      paragraph.push(line.trim());
+      index += 1;
+    }
+    flush();
+  };
+  parse(lines, blocks);
+  // A heading left with nothing under it (its examples were removed) goes too.
+  return blocks.filter((block, position) => block.type !== 'heading' || (blocks[position + 1] && blocks[position + 1].type !== 'heading'));
+}
+
 function applyReviewedCorrections(byType) {
   const set = (kind, type, key, types, metadata = {}) => {
     const item = byType[kind].get(type);
@@ -115,7 +202,42 @@ function applyReviewedCorrections(byType) {
   set('info', 'resources', 'network', ['boolean', 'string'], { description: 'false disables network; true uses the default interface; a string selects an interface. A named host interface requires the documented read-only /sys mount.' });
   for (const key of ['username', 'password']) set('service', 'rutorrent', key, ['string', 'boolean'], { description: 'Use a credential string, omit when unnecessary, or use the native boolean false to disable it. Boolean true is not a credential.' });
   set('service', 'peanut', 'key', ['string'], { label: 'UPS name', sensitive: false, description: 'The UPS name, not an API credential. The documented default is ups.' });
-  set('service', 'komga', 'version', ['number'], { choices: [1, 2], description: 'Native API mode: 1 (omitted default) or numeric 2. Choose for your Komga API version; no server version is detected.', source: `${SOURCE_BASE}src/widgets/komga/proxy.js` });
+  // Widgets that speak to more than one release of their app. Homepage
+  // can't tell which release it is talking to, so the version field is a
+  // choice between the documented releases. Labels follow each widget's
+  // documentation; the first choice is the native default, used when the
+  // field is left out. Checked against the widgets' own code in the fork.
+  const versions = (kinds, type, app, choices, extra = '', lead = `Which ${app} you run, so the widget uses the matching API`) => {
+    for (const kind of kinds) {
+      const item = byType[kind].get(type);
+      if (!item) continue;
+      set(kind, type, 'version', ['number'], {
+        label: `${app} version`,
+        choices: choices.map(([value]) => value),
+        defaultChoice: choices[0][0],
+        choiceLabels: Object.fromEntries(choices.map(([value, text]) => [String(value), text])),
+        description: `${lead}. Homepage can't detect it.${extra ? ' ' + extra : ''}`,
+      });
+    }
+  };
+  versions(['service'], 'authentik', 'Authentik', [[1, 'Before 2025.8.0'], [2, '2025.8.0 or later']], 'Version 2 also shows authorizations.');
+  versions(['service'], 'beszel', 'Beszel', [[1, 'Before 0.9.0'], [2, '0.9.0 or later']]);
+  versions(['service'], 'fileflows', 'FileFlows', [[1, 'Before 26.10'], [2, '26.10 or later']], 'Version 2 reads the Fenrus Dashboard Endpoint, which must be turned on in FileFlows; use the token it shows as the key. It shows Failed instead of Time.');
+  versions(['service', 'info'], 'glances', 'Glances', [[3, 'Glances 3'], [4, 'Glances 4 or later']]);
+  versions(['service'], 'gluetun', 'Gluetun', [[1, 'Before 3.40.1'], [2, '3.40.1 or later']]);
+  versions(['service'], 'grafana', 'Grafana', [[1, '10.4 or earlier'], [2, 'Later than 10.4']]);
+  versions(['service'], 'immich', 'Immich', [[1, 'Before 1.118'], [2, '1.118 or later']]);
+  versions(['service'], 'jellyfin', 'Jellyfin', [[1, 'Before 10.12'], [2, '10.12 or later']]);
+  versions(['service'], 'komga', 'Komga API', [[1, 'Before v2'], [2, 'v2 or later']], '', 'Which Komga API version your server offers, so the widget uses the matching API');
+  versions(['service'], 'mealie', 'Mealie', [[1, 'Mealie 1'], [2, 'Later than 1']]);
+  versions(['service'], 'netalertx', 'NetAlertX', [[1, 'Before 26.1.17'], [2, 'After 26.1.17']], 'With version 2, the address is the NetAlertX backend port.');
+  versions(['service'], 'pfsense', 'pfSense REST API', [[1, 'API v1'], [2, 'API v2']], 'Version 1 uses an API token and version 2 an API key; see the setup guide.', 'Which version of the pfSense REST API package you run, so the widget uses the matching API');
+  versions(['service'], 'pihole', 'Pi-hole', [[5, 'Pi-hole 5'], [6, 'Pi-hole 6 or later']], 'With Pi-hole 6 the key can be your password or an app password.');
+  versions(['service'], 'pulse', 'Pulse', [[1, 'Before Pulse 6'], [2, 'Pulse 6']]);
+  versions(['service'], 'speedtest', 'Speedtest Tracker', [[1, 'Before 1.2.1'], [2, '1.2.1 or later']], 'These are alexjustesen/speedtest-tracker releases. henrywhitaker3/Speedtest-Tracker (1.12.0 or earlier) works only with version 1. Version 2 needs an API key.');
+  versions(['service'], 'truenas', 'TrueNAS API', [[1, 'REST API'], [2, 'WebSocket API']], 'Homepage’s documentation lists version 1 for TrueNAS before 26.04 and version 2 for TrueNAS after 25.04.', 'Which of TrueNAS’s APIs the widget uses');
+  versions(['service'], 'vikunja', 'Vikunja', [[1, 'Before 1.0.0-rc4'], [2, '1.0.0-rc4 or later']]);
+  versions(['service'], 'wgeasy', 'wg-easy', [[1, 'Before 15'], [2, '15 or later']]);
   note('service', 'komga', 'Username plus password takes precedence over key. Clear both when choosing API-key authentication.');
   // These documented credentials have deliberately blank examples, which do
   // not prove a type. Their pinned native proxies confirm string credentials.
@@ -209,7 +331,7 @@ export async function buildCatalog(sourceDirectory) {
           }
         }
       }
-      docRecords.push({ kind, markdown, docs, types: [...typesInPage] });
+      docRecords.push({ kind, folder, markdown, docs, types: [...typesInPage] });
     }
   }
 
@@ -228,6 +350,14 @@ export async function buildCatalog(sourceDirectory) {
     }
   }
   applyReviewedCorrections(byType);
+  for (const doc of docRecords) {
+    for (const type of doc.types) {
+      const item = byType[doc.kind].get(type);
+      if (!item || item.guide) continue;
+      const guide = guideBlocks(doc.markdown, `https://gethomepage.dev/widgets/${doc.folder}/`, { dropAllowedFields: Boolean(item.fields.find(field => field.key === 'fields')?.choices) });
+      if (guide.length) item.guide = guide;
+    }
+  }
 
   for (const kind of ['service', 'info']) {
     for (const type of registry[kind]) {

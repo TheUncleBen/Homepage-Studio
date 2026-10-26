@@ -381,7 +381,7 @@ test('the native Custom API widget renders an actual private proxy response', as
   const dialog = await chooseContent(page, 'Custom API', 'Integrations');
   await dialog.getByLabel('Name', { exact: true }).fill('Native API fixture');
   await dialog.getByLabel('Group', { exact: true }).fill('Fixtures');
-  await dialog.getByRole('button', { name: 'Advanced YAML', exact: true }).click();
+  await dialog.getByRole('radio', { name: 'YAML', exact: true }).click();
   const fixtureUrl = process.env.STUDIO_BROWSER_WIDGET_FIXTURE_URL || 'http://studio:3000/studio/config-ready';
   await dialog.getByRole('textbox', { name: 'Item configuration YAML' }).fill([
     `url: ${JSON.stringify(fixtureUrl)}`,

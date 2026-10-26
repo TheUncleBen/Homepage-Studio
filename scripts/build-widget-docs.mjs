@@ -1,0 +1,114 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Writes the widget reference (docs/widgets/) from public/catalog.json: one
+// page per widget with what it needs, every setting Studio knows, the
+// documented examples and the source. Run after `npm run catalog`:
+//   node scripts/build-widget-docs.mjs
+// The test in server/widget-docs.test.mjs fails when the pages are stale.
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const KIND = { service: 'Integration', info: 'Information widget' };
+const TYPE = { string: 'Text', number: 'Number', boolean: 'On/off', array: 'List', object: 'Settings (name: value)' };
+
+export const pageName = (kind, type) => `${kind === 'info' ? 'info-' : ''}${type}.md`;
+const cell = text => String(text ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+const code = value => '`' + String(value).replace(/`/g, "'") + '`';
+
+function blocksToMarkdown(blocks, quote = '') {
+  const out = [];
+  for (const block of blocks) {
+    if (block.type === 'heading') out.push(`#### ${block.text}`);
+    else if (block.type === 'ul') out.push(block.items.map(item => `- ${item}`).join('\n'));
+    else if (block.type === 'ol') out.push(block.items.map((item, index) => `${index + 1}. ${item}`).join('\n'));
+    else if (block.type === 'table') {
+      const [head, ...rows] = block.rows;
+      out.push([`| ${head.map(cell).join(' | ')} |`, `| ${head.map(() => '---').join(' | ')} |`, ...rows.map(row => `| ${row.map(cell).join(' | ')} |`)].join('\n'));
+    } else if (block.type === 'code') out.push('```\n' + block.text + '\n```');
+    else if (block.type === 'note') out.push(`> **${block.tone === 'warning' ? 'Warning' : 'Note'}**\n>\n` + blocksToMarkdown(block.blocks).split('\n').map(line => (line ? `> ${line}` : '>')).join('\n'));
+    else out.push(block.text);
+  }
+  return out.map(text => text.split('\n').map(line => quote + line).join('\n')).join('\n\n');
+}
+
+function settingNotes(field) {
+  const notes = [];
+  if (field.sensitive) notes.push('Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference.');
+  const choiceList = Boolean(field.choiceLabels && field.choices?.length);
+  if (choiceList) notes.push(`A choice in the dialog: ${field.choices.map(choice => `${field.choiceLabels[String(choice)]} (${code(choice)}${choice === field.defaultChoice ? ', the default when left out' : ''})`).join(', ')}.`);
+  else if (field.choices?.length) notes.push(`Choices: ${field.choices.map(code).join(', ')}. The widget shows them in the order you list them${field.maxItems ? `, up to ${field.maxItems}` : ''}. Leave unset for its usual fields.`);
+  if (field.optionGroups?.length) notes.push(field.optionGroups.map(group => `${group.context}: ${(group.choices || []).map(code).join(', ')}`).join('. ') + '.');
+  if (field.description && (choiceList || !field.choices?.length)) notes.push(field.description);
+  if (!choiceList && field.exampleValue !== null && field.exampleValue !== undefined && !field.sensitive && typeof field.exampleValue !== 'object') notes.push(`Example: ${code(field.exampleValue)}.`);
+  return notes.join(' ');
+}
+
+export function widgetPage(kind, widget) {
+  const lines = [`# ${widget.name}`, '', `${KIND[kind]} · type ${code(widget.type)} · [Homepage documentation](${widget.docs})`, ''];
+  lines.push('[All widgets](README.md)', '');
+  if (widget.documentationStatus !== 'documented-example') {
+    lines.push('> **Set up in YAML.** Homepage has no complete documented example for this widget, so Studio shows no form for it. Add it, then write its options in the dialog\'s YAML view.', '');
+  }
+  if (widget.setupNotes?.length || widget.guide?.length) {
+    lines.push('## What it needs', '');
+    for (const note of widget.setupNotes || []) lines.push(`> **Studio note:** ${note}`, '');
+    if (widget.guide?.length) lines.push(blocksToMarkdown(widget.guide), '');
+  }
+  const fields = (widget.fields || []).filter(field => field.key !== 'type');
+  if (fields.length) {
+    lines.push('## Settings', '', 'What the widget dialog shows. Anything else the widget accepts goes in the dialog\'s YAML view.', '');
+    lines.push('| Setting | YAML key | Type | Notes |', '| --- | --- | --- | --- |');
+    for (const field of fields) lines.push(`| ${cell(field.label)} | ${code(field.key)} | ${cell((field.valueTypes || [field.type]).map(type => TYPE[type] || type).join(' or '))} | ${cell(settingNotes(field))} |`);
+    lines.push('');
+  }
+  if (widget.examples?.length) {
+    lines.push('## Examples', '', 'From Homepage\'s documentation. Values are examples, not defaults.', '');
+    for (const example of widget.examples) lines.push('```yaml', example, '```', '');
+  }
+  lines.push('## Source', '');
+  for (const source of widget.sources || []) lines.push(`- [${source.path}](${source.url})`);
+  lines.push('', '<!-- Generated by scripts/build-widget-docs.mjs from public/catalog.json. Do not edit by hand. -->', '');
+  return lines.join('\n');
+}
+
+export function indexPage(catalog) {
+  const lines = [
+    '# Widget reference',
+    '',
+    `Every widget Studio can add, generated from Homepage ${catalog.homepageVersion}'s own documentation. Each page lists what the service needs, the settings the widget dialog shows, Homepage's examples and the source. How the widget dialog works is in [USING.md](../USING.md#changing-what-a-panel-shows); how to keep API keys out of the files is in [DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets).`,
+    '',
+  ];
+  for (const kind of ['service', 'info']) {
+    lines.push(`## ${kind === 'service' ? 'Integrations' : 'Information widgets'}`, '', '| Widget | Needs | Settings in the dialog |', '| --- | --- | --- |');
+    for (const widget of catalog[kind]) {
+      const keys = (widget.fields || []).filter(field => field.key !== 'type');
+      const needs = keys.filter(field => ['url', 'key', 'username', 'password', 'token'].includes(field.key)).map(field => field.label);
+      lines.push(`| [${cell(widget.name)}](${pageName(kind, widget.type)}) | ${cell(needs.join(', ') || '—')} | ${widget.documentationStatus === 'documented-example' ? keys.length : 'YAML only'} |`);
+    }
+    lines.push('');
+  }
+  lines.push('<!-- Generated by scripts/build-widget-docs.mjs from public/catalog.json. Do not edit by hand. -->', '');
+  return lines.join('\n');
+}
+
+export function widgetDocs(catalog) {
+  const files = new Map([['README.md', indexPage(catalog)]]);
+  for (const kind of ['service', 'info']) for (const widget of catalog[kind]) files.set(pageName(kind, widget.type), widgetPage(kind, widget));
+  return files;
+}
+
+export async function writeWidgetDocs(root = process.cwd()) {
+  const catalog = JSON.parse(await readFile(join(root, 'public/catalog.json'), 'utf8'));
+  const directory = join(root, 'docs/widgets');
+  const files = widgetDocs(catalog);
+  await mkdir(directory, { recursive: true });
+  // Pages for widgets that left the catalog go too.
+  for (const name of await readdir(directory)) if (name.endsWith('.md') && !files.has(name)) await rm(join(directory, name));
+  for (const [name, text] of files) await writeFile(join(directory, name), text);
+  return files;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const files = await writeWidgetDocs(process.argv[2] || process.cwd());
+  console.log(`Wrote ${files.size} pages to docs/widgets/.`);
+}

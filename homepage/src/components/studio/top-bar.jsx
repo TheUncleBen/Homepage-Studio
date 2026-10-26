@@ -53,9 +53,10 @@ function useDismiss(open, setOpen, holder) {
   }, [open, setOpen, holder]);
 }
 
-// The name at the top left opens a list of the dashboards this person can
-// open, with "All dashboards" (the Dashboards page) first.
-function DashboardSwitcher({ name, currentId }) {
+// The name at the top left opens Studio's one navigation menu: All
+// dashboards, Administration for administrators, then the dashboards this
+// person can open.
+function DashboardSwitcher({ name, currentId, isAdmin }) {
   const [open, setOpen] = useState(false);
   const [list, setList] = useState(null);
   const [failed, setFailed] = useState(false);
@@ -75,7 +76,7 @@ function DashboardSwitcher({ name, currentId }) {
         className="studio-switcher-button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`${name}. Switch dashboard`}
+        aria-label={`${name}. Open the menu`}
         onClick={() => setOpen((value) => !value)}
       >
         <span className="studio-switcher-name">{name}</span>
@@ -84,11 +85,18 @@ function DashboardSwitcher({ name, currentId }) {
       {open && (
         <div className="studio-switcher-popover" role="menu">
           <a role="menuitem" href={DASHBOARDS_PAGE}>
-            All dashboards
+            <StudioIcon name="grid" size={16} />
+            <span>All dashboards</span>
           </a>
+          {isAdmin && (
+            <a role="menuitem" href={ADMIN_PAGE}>
+              <StudioIcon name="settings" size={16} />
+              <span>Administration</span>
+            </a>
+          )}
           <hr />
           {!list && !failed && <p className="studio-switcher-note">Loading…</p>}
-          {failed && <p className="studio-switcher-note">The list could not load. Use All dashboards.</p>}
+          {failed && <p className="studio-switcher-note">Couldn’t load your dashboards.</p>}
           {list?.map((entry) => (
             <a
               key={entry.id}
@@ -96,7 +104,8 @@ function DashboardSwitcher({ name, currentId }) {
               href={entry.path}
               aria-current={entry.id === currentId ? "page" : undefined}
             >
-              {entry.name}
+              <span>{entry.name}</span>
+              {entry.id === currentId && <StudioIcon name="check" size={16} />}
             </a>
           ))}
         </div>
@@ -117,7 +126,7 @@ export default function StudioTopBar({ title, dashboardId, logo, access, onSearc
       <a className="studio-brand" href={DASHBOARDS_PAGE} aria-label="All dashboards">
         <img className="studio-brand-logo" src={logo || STUDIO_LOGO} alt="" width={30} height={30} />
       </a>
-      <DashboardSwitcher name={title} currentId={dashboardId} />
+      <DashboardSwitcher name={title} currentId={dashboardId} isAdmin={isAdmin} />
       <nav className="studio-top-actions" aria-label="Studio">
         {onSearch && (
           <button
@@ -131,41 +140,6 @@ export default function StudioTopBar({ title, dashboardId, logo, access, onSearc
           >
             <StudioIcon name="search" size={17} />
           </button>
-        )}
-        <a className="studio-top-link studio-wide-only" href={DASHBOARDS_PAGE}>
-          Dashboards
-        </a>
-        {isAdmin && (
-          <a className="studio-top-link studio-wide-only" href={ADMIN_PAGE}>
-            Administration
-          </a>
-        )}
-        {/* On a phone the links fold into the account menu; with sign-in
-            off, into a menu of their own. */}
-        {!user && (
-          <div className="studio-account-menu studio-narrow-only" ref={menu}>
-            <button
-              type="button"
-              className="studio-icon-button"
-              aria-haspopup="menu"
-              aria-expanded={open}
-              aria-label="Menu"
-              title="Menu"
-              onClick={() => setOpen((value) => !value)}
-            >
-              <StudioIcon name="menu" size={17} />
-            </button>
-            {open && (
-              <div className="studio-account-popover" role="menu">
-                <a role="menuitem" href={DASHBOARDS_PAGE}>
-                  Dashboards
-                </a>
-                <a role="menuitem" href={ADMIN_PAGE}>
-                  Administration
-                </a>
-              </div>
-            )}
-          </div>
         )}
         {user && (
           <div className="studio-account-menu" ref={menu}>
@@ -183,14 +157,6 @@ export default function StudioTopBar({ title, dashboardId, logo, access, onSearc
             {open && (
               <div className="studio-account-popover" role="menu">
                 <p className="studio-account-name">{name}</p>
-                <a role="menuitem" className="studio-menu-narrow" href={DASHBOARDS_PAGE}>
-                  Dashboards
-                </a>
-                {isAdmin && (
-                  <a role="menuitem" className="studio-menu-narrow" href={ADMIN_PAGE}>
-                    Administration
-                  </a>
-                )}
                 <a role="menuitem" href={ACCOUNT_PAGE}>
                   My account
                 </a>

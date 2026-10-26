@@ -188,6 +188,36 @@ The controller limit matches Homepage's own native body limit (Next.js's
 
 ## Framing
 
+Framing means showing a Studio dashboard inside another site's page, in an
+`<iframe>`: a dashboard as a panel in Home Assistant, or as a tab in a start
+page. Studio decides which sites may do it; the other site only needs a way
+to show a web page.
+
+| Who | Needs |
+| --- | --- |
+| Studio | The other site's origin (scheme, host and port, such as `https://ha.example.test:8123`) in `STUDIO_FRAME_ANCESTORS`, below |
+| The other site | The dashboard's address, such as `https://dashboard.example.test/kitchen`. If the other site is HTTPS, Studio must be HTTPS too, or the browser blocks the frame. If the other site sends its own `Content-Security-Policy`, its `frame-src` must allow Studio's address |
+| The viewer, with sign-in on | A browser that sends Studio's sign-in cookie into the frame, which needs both sites on one domain ([Framing with sign-in on](#framing-with-sign-in-on)) |
+
+**General example.** Any page can frame a dashboard with one element, once
+Studio allows that page's origin:
+
+```html
+<iframe src="https://dashboard.example.test/kitchen" title="Kitchen" style="border:0;width:100%;height:100vh"></iframe>
+```
+
+**Home Assistant.** Add a **Webpage** dashboard (**Settings → Dashboards →
+Add dashboard**) or a **Webpage** card on an existing dashboard, with the
+dashboard's address as its URL. Then allow Home Assistant's origin:
+`STUDIO_FRAME_ANCESTORS="'self' https://ha.example.test"`. (Menu names are
+Home Assistant's at the time of writing; Studio's tests don't cover them.)
+
+**Start pages and portals** that show other sites as framed tabs work the
+same way: the dashboard's address in the tab, the portal's origin in
+`STUDIO_FRAME_ANCESTORS`.
+
+### Allowing a site
+
 By default, only pages on the same origin can show a dashboard in a frame.
 Every page and response carries:
 
@@ -200,12 +230,13 @@ The native runtime doesn't send `X-Powered-By`, and Studio removes it from
 native responses anyway. A native widget response can't replace or loosen
 these headers. Don't strip them at the proxy.
 
-To show a dashboard inside another site, for example a Home Assistant panel,
-set `STUDIO_FRAME_ANCESTORS` to the allowed origins, **separated by spaces,
+To let another site frame a dashboard, set `STUDIO_FRAME_ANCESTORS` to the
+allowed origins, **separated by spaces,
 not commas**. Each entry is `'self'` or an exact `http://` or `https://`
 origin with an optional port, and no path, query, wildcard or credentials.
-The list replaces the default, so include `'self'` to keep same-origin
-framing. In a `.env` file or a shell, put double quotes around the whole
+The origins are added to the default `'self'`, which always stays, so pages
+on Studio's own address can always frame a dashboard; writing `'self'` in the
+list as well is allowed. In a `.env` file or a shell, put double quotes around the whole
 value so the spaces and the single quotes survive (a bare `self` is also
 accepted):
 

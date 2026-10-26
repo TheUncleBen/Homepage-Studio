@@ -11,7 +11,7 @@ import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from '../index.m
 import { base32Decode, hotp, totpStep } from './primitives.mjs';
 // The main dashboard lives at /home. Its own addresses (native API, editor
 // API, native data) move with it; Studio-wide addresses stay at the root.
-const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview|platform)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview|preview|platform|backups)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
 
 
 const HOST = 'localhost:3001';
@@ -276,6 +276,15 @@ test('the bare address, the Dashboards page and the editor pages follow each per
   assert.deepEqual(overview.dashboards.map(entry => [entry.name, entry.path, entry.level]), [['Main dashboard', '/home', 'view'], ['Media', '/media', 'view']]);
   assert.equal(overview.landingId, 'default');
   assert.equal(overview.revision, undefined, 'members do not get the registry revision');
+  // Previews are drawn from saved files, for dashboards the person can open,
+  // without reaching the dashboard renderer.
+  const callsBefore = upstreamCalls.length;
+  const drawn = await request('/studio/api/preview/default', { cookie: member.cookie });
+  assert.equal(drawn.status, 200, drawn.text);
+  assert.ok(Array.isArray(drawn.json.units) && drawn.json.columns === 12);
+  assert.equal((await request('/studio/api/preview/' + other.id, { cookie: member.cookie })).status, 404, 'an unshared dashboard has no preview');
+  assert.equal((await request('/studio/api/preview/nope', { cookie: member.cookie })).status, 404);
+  assert.equal(upstreamCalls.length, callsBefore, 'no preview starts a dashboard');
 
   // Editing opens only from Studio addresses, for people who can arrange.
   const viewEdit = await request('/home/studio/edit', { cookie: member.cookie, headers: html });
@@ -549,6 +558,22 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   const css = await request('/studio/platform.css', { cookie: member.cookie });
   assert.equal(css.text, 'body { --platform: 1; }');
   assert.equal((await request('/studio/platform.css')).status === 200, false, 'signed-out visitors get nothing');
+  // Studio's own pages wear the look before anyone signs in: only the mode
+  // and accent, as colors, never the platform CSS.
+  const theme = await request('/studio/theme.css');
+  assert.equal(theme.status, 200);
+  assert.equal(theme.headers['content-type'], 'text/css; charset=utf-8');
+  assert.match(theme.text, /^:root\{color-scheme:light;/);
+  assert.match(theme.text, /--focus:#[0-9a-f]{6};/);
+  assert.doesNotMatch(theme.text, /--platform|@media/);
+  const dashboardsPage = await request('/studio/dashboards', { cookie: member.cookie });
+  assert.match(dashboardsPage.text, /<link rel="stylesheet" href="\/studio\/theme.css" id="studio-theme">/);
+  // The Dashboards page draws its previews (no frames), loads tile icons from
+  // this origin and Homepage's icon CDN only, and can't be framed itself.
+  const pagePolicy = String(dashboardsPage.headers['content-security-policy']);
+  assert.match(pagePolicy, /img-src 'self' data: https:\/\/cdn\.jsdelivr\.net;/);
+  assert.doesNotMatch(pagePolicy, /frame-src/);
+  assert.match(pagePolicy, /frame-ancestors 'none'/);
   assert.deepEqual((await request('/home/studio/api/appearance', { cookie: member.cookie })).json.platform, { mode: 'light', accent: '#91b09e', background: null });
   // Switching the platform CSS off for one dashboard is an administrator's call.
   const appearance = (await request('/home/studio/api/appearance', { cookie: member.cookie })).json;
@@ -570,4 +595,44 @@ test('saving the platform look needs a recent sign-in, as a dashboard custom.css
   assert.equal(stale.status, 401);
   assert.equal(stale.json.code, 'REAUTH_REQUIRED');
   assert.equal((await request('/studio/api/platform', { cookie: admin.cookie })).json.revision, platform.json.revision, 'nothing was saved');
+});
+
+test('backups are for administrators, need a recent sign-in, download as files and stage a restart to restore', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  let restarts = 0;
+  const context = await setup(t, { onRestoreStaged: () => { restarts++; } });
+  const { request, post, stateDir } = context;
+  const admin = await createAdmin(context);
+  const member = await inviteMember(context, admin.cookie);
+  assert.equal((await request('/studio/api/backups', { cookie: member.cookie })).status, 403);
+  assert.equal((await post('/studio/api/backups', { action: 'create' }, { cookie: member.cookie })).status, 403);
+  assert.equal((await request('/studio/api/backups')).status === 200, false, 'signed-out visitors get nothing');
+  const made = await post('/studio/api/backups', { action: 'create' }, { cookie: admin.cookie });
+  assert.equal(made.status, 200, made.text);
+  const listed = await request('/studio/api/backups', { cookie: admin.cookie });
+  assert.deepEqual(listed.json.backups.map(item => item.name), [made.json.name]);
+  const file = await request('/studio/api/backups/file/' + made.json.name, { cookie: admin.cookie });
+  assert.equal(file.status, 200);
+  assert.equal(file.headers['content-type'], 'application/gzip');
+  assert.match(file.headers['content-disposition'], /^attachment; filename="studio-backup-/);
+  assert.equal((await request('/studio/api/backups/file/..%2Fauth%2Fauth.json', { cookie: admin.cookie })).status, 404);
+  // Uploading needs the editor header like every other change.
+  const raw = await fs.readFile(path.join(stateDir, 'studio-backups', made.json.name));
+  assert.equal((await request('/studio/api/backups/upload', { method: 'POST', cookie: admin.cookie, body: raw, headers: { 'content-type': 'application/gzip', origin: ORIGIN } })).status, 403);
+  const uploaded = await request('/studio/api/backups/upload', { method: 'POST', cookie: admin.cookie, body: raw, headers: { 'content-type': 'application/gzip', origin: ORIGIN, 'x-studio-request': '1' } });
+  assert.equal(uploaded.status, 200, uploaded.text);
+  assert.equal((await request('/studio/api/backups/upload', { method: 'POST', cookie: admin.cookie, body: 'nope', headers: { 'content-type': 'application/gzip', origin: ORIGIN, 'x-studio-request': '1' } })).status, 400);
+  assert.equal((await post('/studio/api/backups', { action: 'restore', name: made.json.name }, { cookie: admin.cookie })).status, 400, 'a restore must be confirmed');
+  const restore = await post('/studio/api/backups', { action: 'restore', name: made.json.name, confirmed: true }, { cookie: admin.cookie });
+  assert.equal(restore.status, 202, restore.text);
+  assert.equal(restore.json.restarting, true);
+  assert.equal(restarts, 1);
+  assert.equal(JSON.parse(await fs.readFile(path.join(stateDir, 'studio-restore.json'), 'utf8')).name, made.json.name);
+  // Later, without a recent sign-in, only the list is open.
+  t.mock.timers.tick(30 * 60000);
+  assert.equal((await request('/studio/api/backups', { cookie: admin.cookie })).status, 200);
+  for (const stale of [await post('/studio/api/backups', { action: 'create' }, { cookie: admin.cookie }), await request('/studio/api/backups/file/' + made.json.name, { cookie: admin.cookie }), await post('/studio/api/backups', { action: 'delete', name: made.json.name }, { cookie: admin.cookie })]) {
+    assert.equal(stale.status, 401);
+    assert.equal(stale.json.code, 'REAUTH_REQUIRED');
+  }
 });

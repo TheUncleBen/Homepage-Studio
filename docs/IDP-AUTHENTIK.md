@@ -47,7 +47,7 @@ This comes from Studio's sign-in code (`server/auth/oidc.mjs`,
 | Groups | Reads the `groups` claim (`STUDIO_OIDC_GROUPS_CLAIM`) from the ID token, or from the userinfo endpoint when the ID token has none | Authentik's `profile` scope mapping includes `groups` |
 | Stable identity | Knows an Authentik account by the issuer and its `sub` only, never by email or username | Provider → **Subject mode**: `Based on the User's hashed ID` (the default) |
 | Email | Uses the `email` claim only when `email_verified` is `true`: as the address of an Authentik account, and as the address of a local account linked to it | An `email` scope mapping that marks addresses verified ([Email addresses](#email-addresses)). The built-in mapping says `false` since Authentik 2025.10, and Studio then leaves the email alone |
-| Fresh sign-in for linking | When someone links accounts, asks Authentik to sign them in again (`prompt=login`, `max_age=300`) and checks the ID token's `auth_time` | Nothing to set |
+| Fresh sign-in | When someone links accounts, or confirms it's them before a sensitive change, asks Authentik to sign them in again (`prompt=login`, `max_age=300`) and checks the ID token's `auth_time`. A remembered Authentik session doesn't count | Nothing to set |
 | Staying in sync | Every 15 minutes (`STUDIO_OIDC_REFRESH_MINUTES`) uses the refresh token to check the person's groups again. Someone taken out of the groups is signed out at the next check | The `offline_access` scope mapping. Without it Authentik issues no refresh token, and Authentik sessions in Studio end at the first check |
 | Signing out | **Sign out** in Studio ends the Studio session and, when Authentik publishes an end-session endpoint, sends the browser there to end the Authentik session too, asking it to return to `https://homepage.example.test/studio/auth/sign-in?signedOut=1` | Nothing required. Optional: the back-channel logout URI (section 4), so signing out of Authentik also ends Studio sessions |
 
@@ -103,7 +103,7 @@ have to match.
 | Subject mode | **Based on the User's hashed ID** (the default) | A stable, opaque `sub`. Never a username or email mode: people can change those themselves, and whoever picks up an old value would inherit that Studio account. Don't change it after the first sign-in, or everyone becomes a new account |
 | Include claims in id_token | on (the default) | Studio reads the groups from the ID token, so it doesn't need an extra request |
 | Issuer mode | **Each provider has a different issuer, based on the application slug** (the default) | Gives the issuer in section 6 |
-| Token validity | the defaults | Studio renews Authentik's access token with the refresh token when it runs out |
+| Token validity | the defaults | See [Sign-in policy and token lifetimes](#sign-in-policy-and-token-lifetimes) |
 
 Optional: **back-channel logout**. If your Authentik version offers a
 back-channel logout URI on the provider, set it to
@@ -151,6 +151,28 @@ someone could point Studio's security alerts at an address they own. To do it:
 Authentik's page linked above has a variant that reads a per-user attribute
 instead of always saying `True`. This page hasn't been checked against every
 Authentik version; if your mapping editor differs, follow Authentik's page.
+
+### Sign-in policy and token lifetimes
+
+Studio keeps its own session for everyone, including people who sign in
+through Authentik, so **Administration → Session policies** in Studio decides
+how long they stay signed in (7 days without activity, 30 days at most, by
+default). Authentik decides who may sign in and how. Recommended:
+
+| Authentik setting | Recommended | What it does for Studio |
+| --- | --- | --- |
+| Provider → **Authentication flow** if your version shows it, otherwise the brand's default authentication flow | A flow whose **Authenticator Validation** stage requires TOTP or WebAuthn | Studio doesn't ask for its own second factor after an Authentik sign-in, so this is the second factor for Authentik accounts |
+| Provider → **Refresh Token validity** | Keep the default, `days=30` | How long someone can go without using Studio before Authentik stops renewing their session. Studio renews it at every check (every 15 minutes while they use Studio), so with the default, Studio's own inactivity limit (7 days) ends sessions first. Set it shorter only if you want Authentik to decide |
+| Provider → **Refresh Token threshold** | Keep the default, `seconds=0` | Authentik issues a new refresh token at every check, so active people stay signed in |
+| Provider → **Access Token validity** | Keep the default, `hours=1` | Studio uses the access token only during a check, so its length doesn't matter |
+| Provider → **Access code validity** | Keep the default, `minutes=1` | The time between Authentik's redirect and Studio collecting the code |
+| Flow's **User Login** stage → **Session duration** | Your choice. The default, `seconds=0`, lasts until the browser closes | Only the Authentik session. While it lasts, signing in to Studio again goes straight through; it never extends a Studio session. Confirming it's you in Studio always asks for a fresh Authentik sign-in |
+
+The defaults above are Authentik's, as found in its source (`authentik/providers/oauth2/models.py` and
+`authentik/stages/user_login/models.py`) on 25 October 2026. Older versions can
+differ, and the fields sit under **Advanced protocol settings** in recent
+versions. Removing someone from your groups ends their Studio session at the
+next check whatever these values are.
 
 ## 5. Create the application and bind the groups
 
@@ -304,10 +326,8 @@ Studio access, and administrators can change every dashboard and read the
 secrets written into them. So the groups, and the passwords behind them, are
 what protect Studio. Recommended:
 
-- **Require a second factor in Authentik.** Studio doesn't ask for its own
-  second factor after an Authentik sign-in. Give the provider an
-  authentication flow whose **Authenticator Validation** stage requires TOTP
-  or WebAuthn, or require it on the default authentication flow.
+- **Require a second factor in Authentik**
+  ([Sign-in policy and token lifetimes](#sign-in-policy-and-token-lifetimes)).
 - **Nothing adds people to the groups by itself.** Enrollment flows,
   invitations and sources (Google, GitHub and so on) must not put anyone into
   `Homepage Studio Users` or `Homepage Studio Admins` unless the link is single
