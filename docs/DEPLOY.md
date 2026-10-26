@@ -645,7 +645,7 @@ variables with a short comment each.
 | `STUDIO_OIDC_ADMIN_GROUPS`, `STUDIO_OIDC_ALLOWED_GROUPS` | (unset) | Comma-separated identity-provider groups for administrators and for who may sign in. Set here, they're read-only in Studio |
 | `STUDIO_OIDC_NAME`, `STUDIO_OIDC_SCOPES`, `STUDIO_OIDC_GROUPS_CLAIM`, `STUDIO_OIDC_REFRESH_MINUTES`, `STUDIO_OIDC_ALLOW_HTTP` | see [AUTHENTICATION.md](AUTHENTICATION.md#settings-reference) | Rarely changed |
 | `STUDIO_SMTP_HOST`, `STUDIO_SMTP_PORT`, `STUDIO_SMTP_SECURE`, `STUDIO_SMTP_USER`, `STUDIO_SMTP_FROM_ADDRESS`, `STUDIO_SMTP_FROM_NAME` | (unset) | Email, plus the `studio_smtp_password` secret ([AUTHENTICATION.md](AUTHENTICATION.md#email)) |
-| `STUDIO_FRAME_ANCESTORS` | empty | Space-separated `'self'` and exact origins allowed to show a dashboard in a frame ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) |
+| `STUDIO_FRAME_ANCESTORS` | empty | Space-separated exact origins also allowed to show a dashboard in a frame (`'self'` always is) ([REVERSE-PROXY.md](REVERSE-PROXY.md#framing)) |
 | `STUDIO_BACKUP_RETENTION` | `25` | Snapshots kept per dashboard |
 | `STUDIO_RENDERER_MAX_WORKERS` | `8` | Dashboards with a running worker at once, 1 to 64 |
 | `STUDIO_RENDERER_IDLE_SECONDS` | `600` | Seconds before an idle dashboard's worker stops, up to 86400 |

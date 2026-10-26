@@ -43,14 +43,15 @@ const NATIVE_BODY_RETRY_AFTER_SECONDS = 5;
 // X-Powered-By is dropped as well, so a native response never advertises its framework.
 const CONTROLLER_HEADERS = ['x-frame-options', 'x-content-type-options', 'referrer-policy', 'x-powered-by'];
 
-// STUDIO_FRAME_ANCESTORS replaces the default `frame-ancestors 'self'` list.
-// Unset or blank keeps the default. Each whitespace-separated entry must be
-// 'self' (quoted, or bare because .env files and shells drop the quotes) or an
-// exact http(s) origin; anything else stops startup.
+// STUDIO_FRAME_ANCESTORS adds origins to the default `frame-ancestors 'self'`
+// list. 'self' always stays, because Studio's own pages frame dashboards for
+// their previews. Unset or blank keeps the default. Each whitespace-separated
+// entry must be 'self' (quoted, or bare because .env files and shells drop the
+// quotes) or an exact http(s) origin; anything else stops startup.
 export function parseFrameAncestors(value) {
   const text = String(value ?? '').trim();
   if (!text) return null;
-  return text.split(/\s+/).map(token => {
+  return [...new Set(["'self'", ...text.split(/\s+/).map(token => {
     if (token === "'self'" || token === 'self') return "'self'";
     let url;
     try { url = /^https?:\/\//i.test(token) && !token.includes('*') ? new URL(token) : undefined; } catch { /* Rejected below. */ }
@@ -62,7 +63,7 @@ export function parseFrameAncestors(value) {
       throw new Error(`STUDIO_FRAME_ANCESTORS entry "${token}" is not 'self' or an exact http(s) origin such as https://home.example.test:8123.`);
     }
     return url.origin;
-  });
+  })])];
 }
 
 export function securityHeaders(frameAncestors) {

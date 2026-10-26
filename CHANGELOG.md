@@ -48,6 +48,8 @@ in older entries below are history only.
   the provider's name as well as its verified email. Everyone can change
   their own username. Confirming it's you through the provider needs a fresh
   sign-in there.
+- **`STUDIO_FRAME_ANCESTORS` adds origins** to `'self'` instead of replacing
+  it, because Studio's own pages show dashboards in a frame.
 - **Docs.** Authentik sign-in policy and token lifetimes
   ([docs/IDP-AUTHENTIK.md](docs/IDP-AUTHENTIK.md#sign-in-policy-and-token-lifetimes)),
   framing explained with Home Assistant as an example
