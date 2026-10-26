@@ -620,6 +620,11 @@
     upload: 'M12 16V5M7 10l5-5 5 5M5 20h14',
     archive: 'M3 4h18v4H3zM5 8v12h14V8M10 12h4',
     restore: 'M3 12a9 9 0 1 0 2.6-6.4L3 8M3 3v5h5',
+    back: 'm15 6-6 6 6 6',
+    shield: 'M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6Z',
+    clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5l3 2',
+    lock: 'M6 11h12v10H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
+    palette: 'M12 3a9 9 0 0 0 0 18c1.1 0 1.5-.8 1.5-1.6 0-1.2-1-1.6-1-2.6 0-.9.7-1.3 1.6-1.3H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5ZM7.5 11h.01M10 7.5h.01M15 7.5h.01',
   };
   function icon(name, size = 17) {
     const ns = 'http://www.w3.org/2000/svg';
@@ -703,7 +708,7 @@
     for (const item of popovers) if (!item.popover.hidden) { item.close(); item.button.focus(); }
   });
   function pageChrome(current, user, ...body) {
-    return [topBar(current, user), h('div', { class: 'page-body' + (current === '/studio/dashboards' ? '' : ' narrow') }, ...body)];
+    return [topBar(current, user), h('div', { class: 'page-body' + (current === '/studio/dashboards' || current === '/studio/admin' ? '' : ' narrow') }, ...body)];
   }
   function section(title, description, ...children) {
     return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('div', {}, h('h2', { text: title }), description ? h('p', { class: 'small muted', text: description }) : null)), ...children);
@@ -1270,47 +1275,69 @@
     // With sign-in off, Administration only holds the dashboards' default look.
     const overview = await call('/studio/api/overview');
     if (!overview.authEnabled) {
-      render(...pageChrome('/studio/admin', null, h('h1', { text: 'Administration' }), await platformAppearance(), backupsPanel()));
+      render(...pageChrome('/studio/admin', null, h('div', { class: 'admin-plain' }, h('h1', { text: 'Administration' }), await platformAppearance(), backupsPanel())));
       return;
     }
     let view = await api('admin/overview');
     const state = await api('state');
     const me = state.user;
     const message = notice();
-    const tabs = [['people', 'People'], ['groups', 'Groups'], ['access', 'Dashboard access'], ['policies', 'Session policies'], ['sign-in', 'Sign-in settings'], ['appearance', 'Appearance'], ['backups', 'Backups'], ['activity', 'Activity']];
-    let tab = tabs.some(([key]) => key === location.hash.slice(1)) ? location.hash.slice(1) : 'people';
-    const panel = h('div', { class: 'stack', role: 'tabpanel', id: 'admin-panel' });
-    const tabList = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Administration sections' });
+    // The sections, as a list down the side like macOS System Settings (owner
+    // decision, 26 Oct 2026). On a phone the page opens on that list, like iOS
+    // Settings: tapping a section opens it, and Back returns to the list.
+    const tabs = [['people', 'People', 'user'], ['groups', 'Groups', 'people'], ['access', 'Dashboard access', 'grid'], ['policies', 'Session policies', 'clock'], ['sign-in', 'Sign-in settings', 'lock'], ['appearance', 'Appearance', 'palette'], ['backups', 'Backups', 'archive'], ['activity', 'Activity', 'shield']];
+    const hashed = () => tabs.some(([key]) => key === location.hash.slice(1)) ? location.hash.slice(1) : null;
+    let tab = hashed() ?? 'people';
+    const narrow = window.matchMedia('(max-width: 760px)');
+    let listing = narrow.matches && !hashed();
+    const panel = h('div', { class: 'stack', id: 'admin-panel' });
+    const tabList = h('nav', { class: 'admin-sections', 'aria-label': 'Administration sections' });
+    const sectionTitle = h('h2', { class: 'admin-section-title' });
+    const back = h('button', { type: 'button', class: 'admin-back', onclick: () => showList() }, icon('back'), h('span', { text: 'Administration' }));
+    const layout = h('div', { class: 'admin-layout' });
+    const pageTitle = h('h1', { class: 'admin-title', text: 'Administration' });
     function drawTabs() {
-      put(tabList, ...tabs.map(([key, label]) => h('button', { type: 'button', role: 'tab', id: 'tab-' + key, 'aria-controls': 'admin-panel', 'aria-selected': String(key === tab), tabindex: key === tab ? '0' : '-1', onclick: () => select(key), text: label })));
-      panel.setAttribute('aria-labelledby', 'tab-' + tab);
-      tabList.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+      const showing = !(listing && narrow.matches);
+      put(tabList, ...tabs.map(([key, label, iconName]) => h('button', { type: 'button', class: 'admin-section', 'aria-current': showing && key === tab ? 'page' : undefined, onclick: () => select(key, true) },
+        h('span', { class: 'admin-section-icon' }, icon(iconName)), h('span', { class: 'admin-section-label', text: label }), icon('chevron', 15))));
+      layout.classList.toggle('listing', listing);
+      pageTitle.classList.toggle('in-section', !listing);
+      sectionTitle.textContent = tabs.find(([key]) => key === tab)[1];
     }
-    tabList.addEventListener('keydown', event => {
-      const index = tabs.findIndex(([key]) => key === tab);
-      const move = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
-      if (move === undefined && event.key !== 'Home' && event.key !== 'End') return;
-      event.preventDefault();
-      const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + move + tabs.length) % tabs.length;
-      select(tabs[nextIndex][0]);
-      tabList.querySelector('[aria-selected="true"]')?.focus();
-    });
+    narrow.addEventListener('change', drawTabs);
     // Dashboards whose access list has changes that are not saved yet.
     const unsavedAccess = new Set();
     window.addEventListener('beforeunload', event => { if (unsavedAccess.size) event.preventDefault(); });
-    function select(key) {
+    // On a phone, opening a section from the list adds a history entry, so the
+    // phone's own back gesture returns to the list too.
+    function select(key, fromList = false) {
+      const opening = listing && narrow.matches && fromList;
       if (key !== tab && unsavedAccess.size && !window.confirm('Dashboard access has unsaved changes. Leave without saving?')) return;
-      tab = key; history.replaceState(null, '', '#' + key); drawTabs(); drawPanel();
+      const changed = key !== tab;
+      tab = key; listing = false;
+      if (opening) history.pushState({ adminSection: key }, '', '#' + key); else history.replaceState(null, '', '#' + key);
+      drawTabs();
+      // Going back to the list keeps the section as it was, unsaved changes included.
+      if (changed || !opening) drawPanel();
+      if (opening) { window.scrollTo(0, 0); back.focus(); }
+    }
+    function showList() {
+      if (history.state?.adminSection) { history.back(); return; }
+      listing = true; history.replaceState(null, '', location.pathname + location.search); drawTabs(); window.scrollTo(0, 0);
     }
     // A link to another section of this page, such as /studio/admin#access,
-    // opens that section.
-    window.addEventListener('hashchange', () => {
+    // opens that section; going back to the page's address shows the list.
+    function followAddress() {
       const key = location.hash.slice(1);
-      if (key === tab || !tabs.some(([item]) => item === key)) return;
+      if (!key) { if (narrow.matches && !listing) { listing = true; drawTabs(); } return; }
+      if (!tabs.some(([item]) => item === key)) return;
+      if (key === tab) { if (listing) { listing = false; drawTabs(); } return; }
       const before = tab;
       select(key);
-      if (tab === before) history.replaceState(null, '', '#' + before);
-    });
+      if (tab === before) history.replaceState(history.state, '', '#' + before);
+    }
+    window.addEventListener('hashchange', followAddress);
+    window.addEventListener('popstate', followAddress);
     async function act(work, box, success) {
       try { const next = await work(); if (next?.users) view = next; else view = await api('admin/overview'); drawPanel(); if (success) say(message, success, 'ok'); return true; }
       catch (error) { failure(box ?? message, error); return false; }
@@ -1731,7 +1758,8 @@
 
     drawTabs();
     drawPanel();
-    render(...pageChrome('/studio/admin', me, h('h1', { text: 'Administration' }), freshBanner(view.fresh), message, tabList, panel));
+    put(layout, tabList, h('div', { class: 'admin-content' }, back, sectionTitle, freshBanner(view.fresh), message, panel));
+    render(...pageChrome('/studio/admin', me, pageTitle, layout));
   }
 
   // ---- Dashboards -------------------------------------------------------------

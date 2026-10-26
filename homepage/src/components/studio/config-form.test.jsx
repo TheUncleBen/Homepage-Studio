@@ -105,8 +105,15 @@ describe("Coherent native option drafts", () => {
     );
     expect(changed).not.toHaveBeenCalled();
     expect(screen.getByTestId("config-value")).toHaveTextContent("{}");
-    // Nothing chosen means the widget's own default fields.
+    // Nothing chosen means the widget's own default fields: one switch, on,
+    // and no field switches until it is turned off.
     expect(screen.getByText("Default")).toBeInTheDocument();
+    const useDefault = screen.getByRole("switch", { name: "Use the widget's default fields" });
+    expect(useDefault).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("switch", { name: "Total" })).not.toBeInTheDocument();
+    fireEvent.click(useDefault);
+    expect(useDefault).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByTestId("config-value")).toHaveTextContent("{}");
     fireEvent.click(screen.getByRole("switch", { name: "Total" }));
     fireEvent.click(screen.getByRole("switch", { name: "Healthy" }));
     expect(JSON.parse(screen.getByTestId("config-value").textContent)).toEqual({
@@ -121,6 +128,22 @@ describe("Coherent native option drafts", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Total" }));
     fireEvent.click(screen.getByRole("switch", { name: "Healthy" }));
     expect(screen.getByTestId("config-value")).toHaveTextContent("{}");
+    // Turning the default back on clears any picked fields and hides the list.
+    fireEvent.click(screen.getByRole("switch", { name: "Total" }));
+    fireEvent.click(useDefault);
+    expect(screen.getByTestId("config-value")).toHaveTextContent("{}");
+    expect(useDefault).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("switch", { name: "Total" })).not.toBeInTheDocument();
+  });
+  it("opens picked fields with the default switch off", () => {
+    render(
+      <Fixture
+        initial={{ fields: ["total"] }}
+        fields={[{ key: "fields", label: "Visible fields", type: "array", choices: ["healthy", "total"] }]}
+      />,
+    );
+    expect(screen.getByRole("switch", { name: "Use the widget's default fields" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: "Total" })).toHaveAttribute("aria-checked", "true");
   });
   it("shows a widget's versions as a choice, with the default chosen and nothing written until another is picked", () => {
     const versionField = {

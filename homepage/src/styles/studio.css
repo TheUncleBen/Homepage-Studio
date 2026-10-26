@@ -2324,6 +2324,17 @@ body {
     justify-self: start;
     margin-bottom: 8px;
   }
+  /* A switch stays beside its label, as in iOS Settings. */
+  .studio-row-main:has(> .studio-row-control > .studio-switch:only-child) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    min-height: 48px;
+    padding: 6px 0;
+  }
+  .studio-row-main:has(> .studio-row-control > .studio-switch:only-child) .studio-row-label {
+    color: inherit;
+    font-size: inherit;
+  }
   .studio-row-control > select,
   .studio-row-control > input,
   .studio-row-control .studio-input-line input {

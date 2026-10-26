@@ -17,12 +17,18 @@ in older entries below are history only.
 ### Polished Studio pages, backups in the app, email in Studio's look
 
 - **Studio's pages are iOS-style grouped lists.** My account, every
-  Administration tab (People, Groups, Dashboard access, Session policies,
+  Administration section (People, Groups, Dashboard access, Session policies,
   Sign-in settings, Appearance, Backups, Activity), the widget dialog and
   dashboard settings, the widget stack editor, **Position & size** and the New
   and Duplicate dashboard dialogs. Explanations sit behind info buttons; switches replace
   checkboxes; actions are buttons, not links. Studio's own pages follow the
   platform's default look.
+- **Visible fields** starts as one switch, **Use the widget's default
+  fields**, turned on; turning it off shows the fields to pick and order.
+- **Administration lists its sections down the left**, like macOS System
+  Settings. On a phone it opens on a grouped list of the sections, like iOS
+  Settings: tap one to open it, and **Administration** at the top (or the
+  phone's back gesture) returns to the list.
 - **Top bar.** **All dashboards** and **Administration** are in the menu
   under the name at the top left; the account menu stays on its own.
 - **Dashboards page** is a list of equal rows, each with a preview drawn from

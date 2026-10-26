@@ -390,10 +390,15 @@ function ListEditor({ label, value, onChange }) {
   );
 }
 
-// Which of a widget's fields it shows, in order. With none chosen the widget
-// shows its own default fields, and nothing is written.
+// Which of a widget's fields it shows, in order. Until someone picks fields
+// the section is one switch, "Use the widget's default fields", turned on
+// (owner decision, 26 Oct 2026). Turning it off shows the field switches;
+// nothing is written until a field is turned on, and turning it back on
+// clears the list so the widget shows its own default fields again.
 function VisibleFields({ field, value, onChange }) {
   const selected = Array.isArray(value) ? value.map(String) : [];
+  const [picking, setPicking] = useState(selected.length > 0);
+  const usingDefault = !picking && !selected.length;
   const contexts = field.choices?.length
     ? [{ choices: field.choices }]
     : (field.optionGroups || []).map((group, index) => ({
@@ -463,17 +468,28 @@ function VisibleFields({ field, value, onChange }) {
             : `${selected.length} shown`
           : "Default"
       }
-      info={`Turn on the fields to show, in order. With none on, the widget shows its usual fields.${
+      info={`The widget shows its own default fields until you turn that off and pick the fields to show, in order. With none picked, it shows its default fields.${
         field.maxItems ? ` It can show up to ${field.maxItems}.` : ""
       }${contexts.length > 1 ? " Each set belongs to a different mode of the widget; choose from one set." : ""}`}
       className="studio-visible-fields"
     >
-      {contexts.map((context, index) => (
-        <div key={index} className="studio-choice-set">
-          {context.title && <p className="studio-choice-set-title">{context.title}</p>}
-          {ordered(context.choices.map(String)).map(choiceRow)}
-        </div>
-      ))}
+      <Row label="Use the widget's default fields">
+        <Switch
+          label="Use the widget's default fields"
+          checked={usingDefault}
+          onChange={(next) => {
+            setPicking(!next);
+            if (next) set([]);
+          }}
+        />
+      </Row>
+      {!usingDefault &&
+        contexts.map((context, index) => (
+          <div key={index} className="studio-choice-set">
+            {context.title && <p className="studio-choice-set-title">{context.title}</p>}
+            {ordered(context.choices.map(String)).map(choiceRow)}
+          </div>
+        ))}
     </Group>
   );
 }

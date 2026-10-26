@@ -276,8 +276,10 @@ used after a manual change.
 In the editor, a panel's **edit** button opens it with two tabs:
 
 - **Options**: the connection (address, key, version), the fields it shows,
-  and the common native options. **Visible fields** turns each of the
-  widget's fields on or off and sets their order. **Version**, on widgets
+  and the common native options. **Visible fields** starts with one switch,
+  **Use the widget's default fields**, turned on. Turn it off to pick which of
+  the widget's fields to show and set their order; turning it back on clears
+  your picks. **Version**, on widgets
   that speak to more than one release of their app, is a choice between the
   releases Homepage documents, such as *Before 2025.8.0* and *2025.8.0 or
   later*; leaving it as it is keeps Homepage's default.

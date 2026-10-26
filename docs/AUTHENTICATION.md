@@ -100,8 +100,11 @@ Studio also cancels a setup that was started but not finished.
 
 ## Inviting people and sharing dashboards
 
-Open **Administration** (from the account button in the dashboard's top bar,
-then **Administration**, or `/studio/admin`).
+Open **Administration** (from the menu under the name at the top left of
+every Studio page, or `/studio/admin`). Its sections are listed down the left;
+on a phone the page opens on that list, a section opens on its own, and
+**Administration** at its top returns to the list. A link such as
+`/studio/admin#access` opens one section directly.
 
 - **People → Invite a person.** Enter a username, optionally a display name
   and email, and choose Member or Administrator. Studio makes a one-time

@@ -172,11 +172,33 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .section.link-confirm { border-color: var(--accent); background: var(--accent-soft); }
 .section-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; justify-content: space-between; }
 .section-head > div { display: grid; gap: 4px; }
-.tabs { display: flex; gap: 6px; overflow-x: auto; padding: 2px; margin: 0 -2px; scrollbar-width: none; }
-.tabs::-webkit-scrollbar { display: none; }
-.tabs button { flex: none; min-height: 34px; padding: 6px 14px; border: 0; border-radius: 999px; background: var(--surface); color: var(--muted); font: inherit; font-size: 0.875rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
-.tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent-line, var(--accent)); }
-.tabs button:hover { color: var(--text); }
+/* Administration: a list of sections down the side, like macOS System
+   Settings; on a phone, a grouped list that opens one section at a time, like
+   iOS Settings. */
+.admin-plain { width: 100%; max-width: 52rem; margin: 0 auto; display: grid; gap: 20px; }
+.admin-title { margin: 0; }
+.admin-layout { display: grid; grid-template-columns: 15rem minmax(0, 52rem); justify-content: center; align-items: start; gap: 28px; }
+.admin-sections { position: sticky; top: 16px; display: grid; gap: 2px; }
+.admin-section { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 6px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: 0.9375rem; font-weight: 550; text-align: left; cursor: pointer; }
+.admin-section:hover { background: var(--raised); }
+.admin-section[aria-current="page"] { background: var(--accent-soft); font-weight: 650; }
+.admin-section-icon { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: var(--raised); color: var(--accent); }
+.admin-section-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-section > svg { flex: none; display: none; color: var(--muted); }
+.admin-content { display: grid; gap: 20px; min-width: 0; }
+.admin-back, .admin-section-title { display: none; }
+@media (max-width: 760px) {
+  .admin-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .admin-sections { position: static; gap: 0; overflow: hidden; border-radius: 14px; background: var(--surface); }
+  .admin-section { min-height: 48px; padding: 8px 14px; border-radius: 0; }
+  .admin-section + .admin-section { border-top: 1px solid var(--line); }
+  .admin-section[aria-current="page"] { background: transparent; font-weight: 550; }
+  .admin-section > svg { display: block; }
+  .admin-layout.listing .admin-content, .admin-layout:not(.listing) .admin-sections, .admin-title.in-section { display: none; }
+  .admin-back { display: inline-flex; align-items: center; gap: 2px; justify-self: start; min-height: 36px; margin: -4px 0 -8px -6px; padding: 4px 8px 4px 2px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: 0.9375rem; font-weight: 550; cursor: pointer; }
+  .admin-back:hover { background: var(--raised); }
+  .admin-section-title { display: block; margin: 0; font-size: 1.5rem; }
+}
 
 /* Forms */
 label, .label { display: grid; gap: 6px; font-weight: 550; }
