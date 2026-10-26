@@ -2416,7 +2416,7 @@ body {
 }
 .studio-search:focus-within {
   outline: 2px solid var(--studio-focus);
-  outline-offset: 2px;
+  outline-offset: 4px;
 }
 .studio-picker-tabs {
   flex-wrap: nowrap;

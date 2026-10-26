@@ -43,7 +43,7 @@ test('startup controls wait for the first board response and the settings page o
     const dialog = page.getByRole('dialog', { name: 'Dashboard settings', exact: true });
     await expect(dialog).toHaveCount(0);
     releaseAgain();
-    await expect(dialog.getByRole('button', { name: 'Advanced YAML', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('radio', { name: 'YAML', exact: true })).toBeVisible();
   } finally {
     releaseBoard();
     await page.unroute('**/studio/api/board');

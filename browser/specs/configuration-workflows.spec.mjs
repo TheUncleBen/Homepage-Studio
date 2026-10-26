@@ -3,7 +3,7 @@ import { downloadText, fileText, NATIVE_FILES, openFiles, playback, seedNative }
 
 test('guided settings and nine-file import/export preserve drafts, literal options and one validated transaction', async ({ page, request }) => {
   let dialog = await openSettings(page);
-  await dialog.getByRole('button', { name: 'Advanced YAML', exact: true }).click();
+  await dialog.getByRole('radio', { name: 'YAML', exact: true }).click();
   await dialog.getByRole('textbox', { name: 'Item configuration YAML' }).fill([
     'title: Original settings title',
     'target: _self',
@@ -15,7 +15,7 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
     '  literal: "{{HOMEPAGE_VAR_BROWSER_FIXTURE}}"',
     '',
   ].join('\n'));
-  await dialog.getByRole('button', { name: 'Options', exact: true }).click();
+  await dialog.getByRole('radio', { name: 'Options', exact: true }).click();
   await dialog.getByLabel(/^Dashboard title/).fill('Configured through settings');
   await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
   // Saved settings return to the Dashboards page.

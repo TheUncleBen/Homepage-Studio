@@ -62,7 +62,7 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await expect(tile).toContainText('Edited through the real dashboard');
 
   dialog = await choose(page, 'greeting');
-  await dialog.getByRole('button', { name: 'Advanced YAML', exact: true }).click();
+  await dialog.getByRole('radio', { name: 'YAML', exact: true }).click();
   await dialog.getByRole('textbox', { name: 'Item configuration YAML' }).fill('text: Browser fixture greeting\ntext_size: xl\n');
   await dialog.getByRole('button', { name: 'Add to dashboard', exact: true }).click();
   const greeting = page.locator('[data-panel-kind="informationWidget"][aria-label="Greeting"]');

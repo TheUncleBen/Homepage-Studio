@@ -36,7 +36,7 @@ export async function seedPlayback(request, overrides = {}) {
 
 export async function openFiles(page, base) {
   const settings = await openSettings(page, base);
-  await settings.getByRole('button', { name: /Configuration files All nine native files/ }).click();
+  await settings.getByRole('button', { name: 'Configuration files', exact: true }).click();
   return page.getByRole('dialog');
 }
 

@@ -16,10 +16,9 @@ test('appearance persists, follows device changes and preserves native state and
   });
   await page.emulateMedia({ colorScheme: 'light' });
   let dialog = await openSettings(page);
-  await dialog.getByLabel('Display mode', { exact: true }).selectOption('system');
+  await dialog.getByRole('radiogroup', { name: 'Display mode', exact: true }).getByRole('radio', { name: 'Auto', exact: true }).click();
   // The accent follows the platform until the dashboard chooses its own.
-  await dialog.getByLabel(/Use the platform accent color/).uncheck();
-  await dialog.getByRole('button', { name: 'Ocean', exact: true }).click();
+  await dialog.getByRole('group', { name: 'Accent', exact: true }).getByRole('button', { name: 'Ocean', exact: true }).click();
   await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
   await backToLive(page);
   const search = page.locator('[data-panel-kind="informationWidget"]').getByRole('combobox');

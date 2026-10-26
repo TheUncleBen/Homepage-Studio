@@ -48,7 +48,7 @@ async function textContrast(page, testInfo, name) {
 
 async function setMode(page, mode) {
   const dialog = await openSettings(page);
-  await dialog.getByLabel('Display mode', { exact: true }).selectOption(mode);
+  await dialog.getByRole('radiogroup', { name: 'Display mode', exact: true }).getByRole('radio', { name: { dark: 'Dark', light: 'Light', system: 'Auto' }[mode], exact: true }).click();
   await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
   await page.waitForURL(`**${DASHBOARDS}`);
   await page.goto('/dashboard');
