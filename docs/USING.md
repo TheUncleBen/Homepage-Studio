@@ -35,9 +35,13 @@ sharing are covered in [AUTHENTICATION.md](AUTHENTICATION.md).
 ### The Dashboards page
 
 **Dashboards** (`/studio/dashboards`) lists every dashboard you can open, one
-row each, all the same size. A row shows a live preview of the dashboard, its
+row each, all the same size. A row shows a preview of the dashboard, its
 name and address, when it last changed and, for administrators, who can open
-it. **Open** is on every row, and **Edit** and **Settings** when you may
+it. The preview is a drawing of the dashboard's saved layout in its own
+colours, with each tile's name and icon; it shows no live data and doesn't
+start the dashboard. Icons Homepage loads from its icon CDN appear there too;
+icons given as a full address or a file of the dashboard show as the name
+only. **Open** is on every row, and **Edit** and **Settings** when you may
 arrange it. The row's **⋯** menu has **Make my default** and, for
 administrators, **Rename or change address**, **Duplicate**, **Who can open
 it** and **Archive**. Administrators also get **New dashboard** and the

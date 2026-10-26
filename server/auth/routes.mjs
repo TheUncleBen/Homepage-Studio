@@ -15,7 +15,9 @@ const MAX_BODY = 64 * 1024;
 // Pages that need no session; everything else in the auth UI does.
 const PUBLIC_PAGES = new Set(['/studio/auth/sign-in', '/studio/auth/setup', '/studio/auth/enroll', '/studio/auth/recover', '/studio/auth/recovery']);
 const SIGNED_IN_PAGES = new Set(['/studio/dashboards', '/studio/account', '/studio/admin']);
-export const AUTH_PAGE_POLICY = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-src 'self'; frame-ancestors 'none'";
+// Images also come from the icon CDN Homepage uses, for the tile icons in the
+// Dashboards page's previews (server/dashboard-preview.mjs).
+export const AUTH_PAGE_POLICY = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 
 let assets;
 async function loadAssets() {

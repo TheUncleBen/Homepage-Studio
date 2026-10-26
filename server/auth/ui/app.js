@@ -1870,43 +1870,60 @@
       list.addEventListener('click', event => { if (event.target.closest('[role=menuitem]')) close(); });
       return holder;
     }
-    // Live previews: the dashboard itself, drawn at desktop size and scaled
-    // down, so it stays sharp. A preview loads only when its row is near the
-    // screen, two at a time, and fades in once the dashboard has drawn.
-    const PREVIEW_WIDTH = 1280, PREVIEW_HEIGHT = 800;
-    const previewQueue = [];
-    let previewsLoading = 0;
-    function pumpPreviews() {
-      while (previewsLoading < 2 && previewQueue.length) {
-        const frame = previewQueue.shift();
-        if (!frame.isConnected) continue;
-        previewsLoading++;
-        let released = false;
-        const release = () => { if (released) return; released = true; previewsLoading--; pumpPreviews(); };
-        frame.addEventListener('load', () => { setTimeout(() => frame.closest('.preview')?.classList.add('ready'), 400); release(); }, { once: true });
-        setTimeout(release, 15000);
-        frame.src = frame.dataset.src;
+    // Previews are drawings of each dashboard's saved layout, in its own look,
+    // with each tile's icon and name (server/dashboard-preview.mjs). They're
+    // drawn at desktop size and scaled down, and fetched as rows come near
+    // the screen; the dashboards themselves aren't started.
+    const PREVIEW_WIDTH = 1280, PREVIEW_HEIGHT = 800, PREVIEW_PAD = 32, PREVIEW_BAR = 56, ROW = 72, GAP = 16;
+    const prefersLight = window.matchMedia?.('(prefers-color-scheme: light)');
+    async function drawPreview(holder, entry) {
+      let model;
+      try { model = await call('/studio/api/preview/' + encodeURIComponent(entry.id)); } catch { return; }
+      if (!holder.isConnected) return;
+      const scheme = model.tokens.dark && model.tokens.light ? (prefersLight?.matches ? 'light' : 'dark') : Object.keys(model.tokens)[0];
+      const colors = model.tokens[scheme];
+      const canvas = h('div', { class: 'preview-canvas' });
+      for (const [name, value] of Object.entries(colors)) canvas.style.setProperty('--p-' + name, value);
+      canvas.append(h('div', { class: 'preview-bar' }, h('span', { text: entry.name })));
+      const column = (PREVIEW_WIDTH - 2 * PREVIEW_PAD + GAP) / model.columns;
+      for (const unit of model.units) {
+        const top = PREVIEW_BAR + PREVIEW_PAD + unit.y * (ROW + GAP);
+        if (top >= PREVIEW_HEIGHT) continue;
+        const tile = h('div', { class: 'preview-tile' + (unit.count > 1 ? ' stacked' : '') });
+        Object.assign(tile.style, { left: PREVIEW_PAD + unit.x * column + 'px', top: top + 'px', width: Math.max(0, unit.w * column - GAP) + 'px', height: unit.h * (ROW + GAP) - GAP + 'px' });
+        const head = h('div', { class: 'preview-tile-head' });
+        if (unit.icon?.mask) {
+          const mark = h('span', { class: 'preview-icon mask' });
+          mark.style.maskImage = mark.style.webkitMaskImage = `url("${unit.icon.src}")`;
+          head.append(mark);
+        } else if (unit.icon) {
+          const image = h('img', { class: 'preview-icon', alt: '', src: unit.icon.src, referrerpolicy: 'no-referrer', loading: 'lazy', decoding: 'async' });
+          image.addEventListener('error', () => image.remove(), { once: true });
+          head.append(image);
+        }
+        head.append(h('span', { text: unit.title }));
+        tile.append(head);
+        if (unit.count > 1) tile.append(h('span', { class: 'preview-dots' }, Array.from({ length: Math.min(unit.count, 5) }, (_, index) => h('i', { class: index ? '' : 'on' }))));
+        canvas.append(tile);
       }
+      holder.append(canvas);
+      holder.classList.add('ready');
     }
     const previewObserver = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
       for (const item of entries) {
         if (!item.isIntersecting) continue;
         previewObserver.unobserve(item.target);
-        previewQueue.push(item.target.querySelector('iframe'));
+        drawPreview(item.target, item.target.previewEntry);
       }
-      pumpPreviews();
     }, { rootMargin: '200px 0px' }) : null;
     const previewSizer = 'ResizeObserver' in window ? new ResizeObserver(entries => {
       for (const item of entries) item.target.style.setProperty('--preview-scale', String(item.contentRect.width / PREVIEW_WIDTH));
     }) : null;
     function preview(entry) {
       const holder = h('div', { class: 'preview', 'aria-hidden': 'true' }, h('span', { class: 'preview-placeholder' }, avatar(entry.name)));
-      if (entry.archived || !entry.path || !previewObserver) return holder;
-      // Decorative and out of reach: no focus, no pointer, no screen reader.
-      const frame = h('iframe', { title: '', tabindex: '-1', referrerpolicy: 'same-origin', width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT, 'data-src': entry.path });
-      frame.inert = true;
-      holder.append(frame);
-      previewObserver.observe(holder);
+      if (entry.archived || !entry.path) return holder;
+      holder.previewEntry = entry;
+      if (previewObserver) previewObserver.observe(holder); else drawPreview(holder, entry);
       previewSizer?.observe(holder);
       return holder;
     }

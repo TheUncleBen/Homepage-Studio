@@ -25,8 +25,11 @@ in older entries below are history only.
   platform's default look.
 - **Top bar.** **All dashboards** and **Administration** are in the menu
   under the name at the top left; the account menu stays on its own.
-- **Dashboards page** is a list of equal rows, each with a live preview that
-  loads as it scrolls into view. Less common actions are in each row's **⋯**
+- **Dashboards page** is a list of equal rows, each with a preview drawn from
+  the dashboard's saved layout, colours, tile names and icons. It shows no
+  live data and never starts the dashboard, so the page stays fast with any
+  number of dashboards. Studio's pages may load icons from Homepage's icon CDN
+  (`cdn.jsdelivr.net`). Less common actions are in each row's **⋯**
   menu.
 - **Saving the default look** shows at once in open dashboards and Studio's
   pages, with no cache clearing.
@@ -54,7 +57,7 @@ in older entries below are history only.
   backup in the app can hold, and restored files are always readable only by
   Studio.
 - **`STUDIO_FRAME_ANCESTORS` adds origins** to `'self'` instead of replacing
-  it, because Studio's own pages show dashboards in a frame.
+  it, so pages on Studio's own address can always frame a dashboard.
 - **Docs.** Authentik sign-in policy and token lifetimes
   ([docs/IDP-AUTHENTIK.md](docs/IDP-AUTHENTIK.md#sign-in-policy-and-token-lifetimes)),
   framing explained with Home Assistant as an example

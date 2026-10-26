@@ -11,7 +11,7 @@ import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from '../index.m
 import { base32Decode, hotp, totpStep } from './primitives.mjs';
 // The main dashboard lives at /home. Its own addresses (native API, editor
 // API, native data) move with it; Studio-wide addresses stay at the root.
-const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview|platform|backups)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview|preview|platform|backups)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
 
 
 const HOST = 'localhost:3001';
@@ -276,6 +276,15 @@ test('the bare address, the Dashboards page and the editor pages follow each per
   assert.deepEqual(overview.dashboards.map(entry => [entry.name, entry.path, entry.level]), [['Main dashboard', '/home', 'view'], ['Media', '/media', 'view']]);
   assert.equal(overview.landingId, 'default');
   assert.equal(overview.revision, undefined, 'members do not get the registry revision');
+  // Previews are drawn from saved files, for dashboards the person can open,
+  // without reaching the dashboard renderer.
+  const callsBefore = upstreamCalls.length;
+  const drawn = await request('/studio/api/preview/default', { cookie: member.cookie });
+  assert.equal(drawn.status, 200, drawn.text);
+  assert.ok(Array.isArray(drawn.json.units) && drawn.json.columns === 12);
+  assert.equal((await request('/studio/api/preview/' + other.id, { cookie: member.cookie })).status, 404, 'an unshared dashboard has no preview');
+  assert.equal((await request('/studio/api/preview/nope', { cookie: member.cookie })).status, 404);
+  assert.equal(upstreamCalls.length, callsBefore, 'no preview starts a dashboard');
 
   // Editing opens only from Studio addresses, for people who can arrange.
   const viewEdit = await request('/home/studio/edit', { cookie: member.cookie, headers: html });
@@ -559,9 +568,12 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.doesNotMatch(theme.text, /--platform|@media/);
   const dashboardsPage = await request('/studio/dashboards', { cookie: member.cookie });
   assert.match(dashboardsPage.text, /<link rel="stylesheet" href="\/studio\/theme.css" id="studio-theme">/);
-  // The Dashboards page frames each dashboard as its preview, from this
-  // origin only, and can't be framed itself.
-  assert.match(String(dashboardsPage.headers['content-security-policy']), /frame-src 'self'; frame-ancestors 'none'/);
+  // The Dashboards page draws its previews (no frames), loads tile icons from
+  // this origin and Homepage's icon CDN only, and can't be framed itself.
+  const pagePolicy = String(dashboardsPage.headers['content-security-policy']);
+  assert.match(pagePolicy, /img-src 'self' data: https:\/\/cdn\.jsdelivr\.net;/);
+  assert.doesNotMatch(pagePolicy, /frame-src/);
+  assert.match(pagePolicy, /frame-ancestors 'none'/);
   assert.deepEqual((await request('/home/studio/api/appearance', { cookie: member.cookie })).json.platform, { mode: 'light', accent: '#91b09e', background: null });
   // Switching the platform CSS off for one dashboard is an administrator's call.
   const appearance = (await request('/home/studio/api/appearance', { cookie: member.cookie })).json;

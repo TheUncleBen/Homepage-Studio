@@ -234,9 +234,9 @@ To let another site frame a dashboard, set `STUDIO_FRAME_ANCESTORS` to the
 allowed origins, **separated by spaces,
 not commas**. Each entry is `'self'` or an exact `http://` or `https://`
 origin with an optional port, and no path, query, wildcard or credentials.
-The origins are added to the default `'self'`, which always stays because
-Studio's own pages show dashboards in a frame for their previews; writing
-`'self'` in the list as well is allowed. In a `.env` file or a shell, put double quotes around the whole
+The origins are added to the default `'self'`, which always stays, so pages
+on Studio's own address can always frame a dashboard; writing `'self'` in the
+list as well is allowed. In a `.env` file or a shell, put double quotes around the whole
 value so the spaces and the single quotes survive (a bare `self` is also
 accepted):
 

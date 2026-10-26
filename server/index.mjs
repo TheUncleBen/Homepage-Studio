@@ -20,6 +20,7 @@ import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
 import { createLogoStore } from './dashboard-logo.mjs';
 import { createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
+import { dashboardPreview } from './dashboard-preview.mjs';
 import { createAuthService } from './auth/service.mjs';
 import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendStudioAsset, sendStudioPage } from './auth/routes.mjs';
 import { atLeast, requiredLevel } from './auth/access.mjs';
@@ -44,8 +45,8 @@ const NATIVE_BODY_RETRY_AFTER_SECONDS = 5;
 const CONTROLLER_HEADERS = ['x-frame-options', 'x-content-type-options', 'referrer-policy', 'x-powered-by'];
 
 // STUDIO_FRAME_ANCESTORS adds origins to the default `frame-ancestors 'self'`
-// list. 'self' always stays, because Studio's own pages frame dashboards for
-// their previews. Unset or blank keeps the default. Each whitespace-separated
+// list. 'self' always stays, so adding another site never stops pages on
+// Studio's own address framing a dashboard. Unset or blank keeps the default. Each whitespace-separated
 // entry must be 'self' (quoted, or bare because .env files and shells drop the
 // quotes) or an exact http(s) origin; anything else stops startup.
 export function parseFrameAncestors(value) {
@@ -822,6 +823,16 @@ export function createStudioServer(options = {}) {
             audience: isAdmin && auth ? auth.audience(entry.id) : undefined,
           }))),
         });
+      }
+      // A drawing of one dashboard for its Dashboards-page row, read from its
+      // saved files; the dashboard itself isn't started.
+      if (path.startsWith('/studio/api/preview/')) {
+        if (req.method !== 'GET') return json(res, 405, { error: 'Use GET for a dashboard preview.' });
+        const id = decodeURIComponent(path.slice('/studio/api/preview/'.length));
+        const entry = manifest.dashboards.find(item => item.id === id && !item.archived);
+        if (!entry || (auth && current.level(entry.id) === 'none')) return json(res, 404, { error: 'That dashboard is unavailable.', code: 'DASHBOARD_NOT_FOUND' });
+        const preview = dashboardPreview(await forDashboard(entry).store.load(), await platform.read());
+        return json(res, 200, preview);
       }
       // The platform default look: administrators change it in Administration
       // → Appearance; every dashboard page loads its CSS.
