@@ -100,15 +100,23 @@ the volume: download the ones you want to keep and store them off the node.
 Studio doesn't delete old backups itself. A backup leaves out logs, everyone's
 current sign-ins, any unused recovery link and the backups folder itself.
 
-**Restoring** replaces everything in Studio with the backup. Studio first saves
-what's there now as a backup marked *Before restore*, then restarts, applies
-the backup as it starts, and everyone signs in again. The restart relies on the
+**Restoring** replaces everything in Studio with the backup. Studio restarts
+and, as it starts, saves what's there now as a backup marked *Before restore*,
+applies the backup, and everyone signs in again. The restart relies on the
 stack's restart policy (`restart: unless-stopped` in
 `portainer-compose.yml`, `restart_policy: condition: any` in
 `portainer-swarm.yml`); keep it if you change the stack. If the backup turns
 out to be missing or damaged, Studio changes nothing, logs *was not restored*
 with the reason and starts normally. If writing it fails part-way, Studio
-logs *could not be written* and puts the *Before restore* backup back.
+logs *could not be written* and puts the *Before restore* backup back. If
+what's there now can't be saved first, Studio changes nothing and logs *was
+not restored* with the reason. Restored files are always readable and
+writable only by Studio, whatever the backup recorded.
+
+A backup in the app can be at most 256 MiB, for creating, uploading and
+restoring alike. When Studio's files are larger than that, **Create backup**
+says so and nothing is saved; back up the volumes instead
+([Backing up the volumes](#backing-up-the-volumes)).
 
 A backup holds everything in the dashboards' files, including any password
 or API key written straight into them, and the sign-in settings. Store a

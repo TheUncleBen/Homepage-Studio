@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { createBackupStore, applyPendingRestore, parseBackup, run, RESTORE_MARKER } from './backups.mjs';
+import { createBackupStore, applyPendingRestore, parseBackup, run, RESTORE_MARKER, MAX_BACKUP_BYTES } from './backups.mjs';
 
 async function deployment(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-backups-'));
@@ -108,6 +108,39 @@ test('a staged restore of a missing or damaged backup changes nothing', async t 
   assert.match(errors[0], /was not restored/);
   assert.equal(await fs.readFile(path.join(configRoot, 'services.yaml'), 'utf8'), '- Media: []\n');
   await assert.rejects(fs.access(path.join(stateRoot, RESTORE_MARKER)), 'the marker is cleared so the next start is normal');
+});
+
+test('restored files are always Studio\'s own to read and write, whatever mode the backup recorded', async t => {
+  const { configRoot, stateRoot } = await deployment(t);
+  const store = createBackupStore({ configRoot, stateRoot });
+  const data = text => Buffer.from(text).toString('base64');
+  const uploaded = await store.upload(gzipJson({ format: 'homepage-studio-backup', version: 1, files: [
+    { volume: 'config', path: 'studio-dashboards.json', mode: 0o777, data: data('{"dashboards":[]}') },
+    { volume: 'config', path: 'services.yaml', mode: 0, data: data('restored\n') },
+  ] }));
+  await store.stageRestore(uploaded.name);
+  assert.equal((await applyPendingRestore({ configRoot, stateRoot, log: quiet })).restored, uploaded.name);
+  for (const file of ['studio-dashboards.json', 'services.yaml']) assert.equal((await fs.stat(path.join(configRoot, file))).mode & 0o777, 0o600, file);
+  assert.equal(await fs.readFile(path.join(configRoot, 'services.yaml'), 'utf8'), 'restored\n');
+});
+
+test('files too large for a backup in the app are refused before anything is written, and then a restore changes nothing', async t => {
+  const { configRoot, stateRoot } = await deployment(t);
+  const store = createBackupStore({ configRoot, stateRoot });
+  const small = await store.create();
+  await store.stageRestore(small.name);
+  await fs.writeFile(path.join(configRoot, 'services.yaml'), 'changed\n');
+  // A sparse file: large to read, quick to make.
+  const large = path.join(configRoot, 'large.bin');
+  await fs.writeFile(large, '');
+  await fs.truncate(large, MAX_BACKUP_BYTES + 1);
+  await assert.rejects(store.create(), { code: 'BACKUP_TOO_LARGE', status: 413 });
+  assert.deepEqual((await store.list()).map(item => item.name), [small.name], 'nothing half made is kept');
+  const errors = [];
+  assert.equal(await applyPendingRestore({ configRoot, stateRoot, log: { log() {}, error: message => errors.push(message) } }), null);
+  assert.match(errors[0], /couldn't be saved first/);
+  assert.equal(await fs.readFile(path.join(configRoot, 'services.yaml'), 'utf8'), 'changed\n', 'what is there now is left as it is');
+  await fs.access(large);
 });
 
 test('the command line lists, creates and stages a restore', async t => {

@@ -25,6 +25,7 @@ export const BACKUP_DIR = 'studio-backups';
 export const RESTORE_MARKER = 'studio-restore.json';
 export const BACKUP_FORMAT = 'homepage-studio-backup';
 export const MAX_BACKUP_BYTES = 256 * 1024 * 1024;
+const tooLarge = () => new BackupError(`Studio's files are too large for a backup in the app (at most ${MAX_BACKUP_BYTES / (1024 * 1024)} MiB). Back up the volumes instead, as docs/OPERATIONS.md describes.`, 'BACKUP_TOO_LARGE', 413);
 const MAX_BACKUP_FILES = 20000;
 const NAME = /^studio-backup-\d{8}-\d{6}(?:-(?:uploaded|before-restore))?(?:-\d+)?\.json\.gz$/;
 // Never part of a backup: the backups, a staged restore, sessions and the
@@ -82,16 +83,23 @@ export function createBackupStore({ configRoot, stateRoot, buildRevision = 'unre
     await fs.writeFile(temporary, bytes, { mode: 0o600, flag: 'wx' });
     await fs.rename(temporary, join(directory, name));
   }
+  // Every backup Studio makes can be restored: the files together stay
+  // within the same limit an upload or a restore accepts.
   async function archive() {
     const files = [];
+    let total = 0;
     for (const [volume, root, skipped] of [['config', configRoot, SKIPPED_CONFIG], ['state', stateRoot, SKIPPED_STATE]]) {
       for (const path of await walk(root, skipped)) {
         const full = join(root, path);
         const [data, stat] = await Promise.all([fs.readFile(full), fs.stat(full)]);
+        total += data.length;
+        if (total > MAX_BACKUP_BYTES) throw tooLarge();
         files.push({ volume, path, mode: stat.mode & 0o777, data: data.toString('base64') });
       }
     }
-    return gzip(Buffer.from(JSON.stringify({ format: BACKUP_FORMAT, version: 1, createdAt: new Date().toISOString(), buildRevision, files })));
+    const bytes = await gzip(Buffer.from(JSON.stringify({ format: BACKUP_FORMAT, version: 1, createdAt: new Date().toISOString(), buildRevision, files })));
+    if (bytes.length > MAX_BACKUP_BYTES) throw tooLarge();
+    return bytes;
   }
   return {
     directory,
@@ -168,7 +176,10 @@ async function writeFiles(roots, files) {
     const target = resolve(roots[file.volume], ...file.path.split('/'));
     if (!target.startsWith(resolve(roots[file.volume]) + sep)) throw new BackupError('This backup is damaged.');
     await fs.mkdir(dirname(target), { recursive: true, mode: 0o700 });
-    await fs.writeFile(target, Buffer.from(file.data, 'base64'), { mode: Number.isInteger(file.mode) ? file.mode & 0o777 : 0o600 });
+    // Restored files are Studio's own to read and write, whatever mode the
+    // backup recorded.
+    await fs.writeFile(target, Buffer.from(file.data, 'base64'), { mode: 0o600 });
+    await fs.chmod(target, 0o600);
   }
 }
 
@@ -185,7 +196,9 @@ export async function applyPendingRestore({ configRoot, stateRoot, buildRevision
   let backup;
   try { backup = await parseBackup(await store.read(request.name)); }
   catch (error) { log.error(`Studio restore: ${request.name} was not restored: ${error.message}`); return null; }
-  const before = await store.create('before-restore');
+  let before;
+  try { before = await store.create('before-restore'); }
+  catch (error) { log.error(`Studio restore: ${request.name} was not restored: what is there now couldn't be saved first (${error.message})`); return null; }
   const roots = { config: configRoot, state: stateRoot };
   const keep = { config: SKIPPED_CONFIG, state: new Set([BACKUP_DIR]) };
   try {
