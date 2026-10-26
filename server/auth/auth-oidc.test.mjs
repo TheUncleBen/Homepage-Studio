@@ -731,12 +731,21 @@ test('only the administrator and allowed groups come over from the provider', as
   assert.ok((await oidcSignIn(ctx)).cookie);
   const after = (await ctx.request('/studio/auth/admin/overview', { cookie: admin.cookie })).json;
   assert.deepEqual(after.users.find(user => user.username === 'carol').oidcGroups.sort(), ['family', 'vpn-users']);
+  // The provider's name is cleaned like one typed here, and one left empty by
+  // cleaning keeps the name already there.
+  ctx.provider.state.user = { ...ctx.provider.state.user, name: '  Caro\u0007l\u0301 ' + 'x'.repeat(200) };
+  assert.ok((await oidcSignIn(ctx)).cookie);
+  const cleaned = (await ctx.request('/studio/auth/admin/overview', { cookie: admin.cookie })).json.users.find(user => user.username === 'carol').displayName;
+  assert.equal(cleaned, ('Carol\u0301'.normalize('NFC') + ' ' + 'x'.repeat(200)).slice(0, 100));
+  ctx.provider.state.user = { ...ctx.provider.state.user, name: ' \u0000\u001f ' };
+  assert.ok((await oidcSignIn(ctx)).cookie);
+  assert.equal((await ctx.request('/studio/auth/admin/overview', { cookie: admin.cookie })).json.users.find(user => user.username === 'carol').displayName, cleaned);
 });
 
 test('people can change their own username after a recent sign-in, and names stay unique', async t => {
   const ctx = await setup(t);
   const admin = await createAdmin(ctx);
-  const member = await invite(ctx, admin.cookie, 'member');
+  const member = await invite(ctx, admin.cookie, 'member', { email: 'member@example.test' });
   assert.equal((await ctx.post('/studio/auth/account/profile', { username: 'Admin' }, { cookie: admin.cookie })).status, 200, 'the same name in capitals is no change');
   assert.equal((await ctx.post('/studio/auth/account/profile', { username: 'member' }, { cookie: admin.cookie })).json.code, 'USERNAME_TAKEN');
   assert.equal((await ctx.post('/studio/auth/account/profile', { username: 'not valid!' }, { cookie: admin.cookie })).json.code, 'INVALID_USERNAME');
@@ -747,7 +756,13 @@ test('people can change their own username after a recent sign-in, and names sta
   assert.ok(await localSignIn(ctx, 'ben', admin.backupCodes[0]));
   // An administrator can rename someone else.
   assert.equal((await ctx.post('/studio/auth/admin/update', { id: member.id, username: 'ben' }, { cookie: admin.cookie })).json.code, 'USERNAME_TAKEN');
+  const mails = ctx.mail.length;
   assert.equal((await ctx.post('/studio/auth/admin/update', { id: member.id, username: 'kid' }, { cookie: admin.cookie })).status, 200);
+  assert.equal(ctx.mail.length, mails + 1, 'someone renamed by an administrator is told');
+  assert.equal(ctx.mail.at(-1).to, 'member@example.test');
+  assert.match(ctx.mail.at(-1).text, /An administrator changed your Studio username from "member" to "kid"/);
+  assert.equal((await ctx.post('/studio/auth/admin/update', { id: member.id, username: 'kid' }, { cookie: admin.cookie })).status, 200);
+  assert.equal(ctx.mail.length, mails + 1, 'no change, no email');
 });
 
 test('confirming it is you through the provider needs a sign-in that just happened there', async t => {

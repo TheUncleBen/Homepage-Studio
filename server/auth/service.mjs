@@ -43,6 +43,13 @@ function cleanText(value, max, label, { optional = false } = {}) {
   if (!text || text.length > max || /[\u0000-\u001f\u007f]/.test(text)) fail(`Enter ${label} of 1 to ${max} characters.`, 'INVALID_FIELD');
   return text;
 }
+// A name from the identity provider gets the same cleaning as one typed here.
+// It never fails a sign-in: a name that can't be used is left out.
+function providerName(value) {
+  if (typeof value !== 'string') return null;
+  const text = value.normalize('NFC').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 100).trim();
+  return text || null;
+}
 export function normalizeUsername(value) {
   const name = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (!USERNAME.test(name)) fail('Use a username of 1 to 64 lowercase letters, numbers, dots, hyphens, underscores or @, starting with a letter or number.', 'INVALID_USERNAME');
@@ -1146,6 +1153,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     async update(current, body) {
       requireAdmin(current);
       const defaultDashboardId = body?.defaultDashboardId === undefined ? undefined : await checkDefaultDashboard(body.defaultDashboardId);
+      let renamed = null;
       await store.mutate(data => {
         const user = findUser(data, body?.id);
         if (!user) fail('That user no longer exists.', 'NOT_FOUND', 404);
@@ -1157,6 +1165,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         if (body.username !== undefined) {
           const username = normalizeUsername(body.username);
           if (data.users.some(item => item.username === username && item.id !== user.id)) fail('That username is taken.', 'USERNAME_TAKEN', 409);
+          if (username !== user.username) renamed = { from: user.username, user };
           user.username = username;
         }
         if (body.email !== undefined) {
@@ -1184,6 +1193,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       });
       if (body.disabled === true) await store.sessions.remove(item => item.userId === body.id);
       await audit('user-updated', { userId: body.id, by: current.user.id, fields: Object.keys(body).filter(key => key !== 'id') });
+      // Someone renamed by an administrator hears about it like a rename of their own.
+      if (renamed) await notify(renamed.user, 'Your username was changed', `An administrator changed your Studio username from "${renamed.from}" to "${renamed.user.username}". Use the new one to sign in.`);
       return admin.overview(current);
     },
     async reset(current, body) {
@@ -1425,7 +1436,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     const flow = pending.get(key);
     pending.delete(key);
     if (!flow || flow.expiresAt <= now()) fail('This sign-in took too long or was started in another browser. Try again.', 'FLOW_EXPIRED', 410);
-    const result = await oidc.finish(new URL(req.url, config.origin), flow);
+    const finished = await oidc.finish(new URL(req.url, config.origin), flow);
+    const result = { ...finished, name: providerName(finished.name) };
     let data = store.read();
     const findLinked = draft => draft.users.find(user => user.oidc && user.oidc.issuer === result.issuer && user.oidc.subject === result.subject);
     if (flow.intent === 'link') {
@@ -1465,7 +1477,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         let username = normalizeCandidate(result.username ?? result.email ?? 'user');
         const base = username;
         for (let index = 2; draft.users.some(item => item.username === username); index++) username = (base.slice(0, 58) + '-' + index);
-        target = { id: randomUUID(), username, displayName: (result.name ?? username).slice(0, 100), email: result.email ?? null, role: 'member', status: 'active', disabled: false, source: 'oidc', createdAt: now(), groupIds: [], oidcGroups: [], policyId: null, oidc: { issuer: result.issuer, subject: result.subject }, password: null, totp: null, passkeys: [], backupCodes: [], webauthnUserId: randomBytes(32).toString('base64url') };
+        target = { id: randomUUID(), username, displayName: result.name ?? username, email: result.email ?? null, role: 'member', status: 'active', disabled: false, source: 'oidc', createdAt: now(), groupIds: [], oidcGroups: [], policyId: null, oidc: { issuer: result.issuer, subject: result.subject }, password: null, totp: null, passkeys: [], backupCodes: [], webauthnUserId: randomBytes(32).toString('base64url') };
         draft.users.push(target);
       }
       const applied = applyProviderGroups(draft, target, result.groups).user;
@@ -1473,7 +1485,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       target.providerAdmin = applied.providerAdmin;
       // The name follows the provider like the email, for provider accounts
       // and linked local accounts alike.
-      if (result.name) { target.displayName = result.name.slice(0, 100); target.displayNameFromProvider = true; }
+      if (result.name) { target.displayName = result.name; target.displayNameFromProvider = true; }
       // Owner decision L4: the email follows the provider's verified email,
       // for provider accounts and linked local accounts alike.
       if (result.email) {
@@ -1577,7 +1589,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       }
       Object.assign(target, applyProviderGroups(draft, target, entry.groups).user, { oidc: { ...entry.identity } });
       ensureConfiguredGroups(draft, entry.groups);
-      if (entry.displayName) { target.displayName = entry.displayName.slice(0, 100); target.displayNameFromProvider = true; }
+      if (entry.displayName) { target.displayName = entry.displayName; target.displayNameFromProvider = true; }
       if (entry.email) {
         oldEmail = target.email ?? null;
         target.email = entry.email;
