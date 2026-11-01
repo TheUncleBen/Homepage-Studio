@@ -8,6 +8,7 @@ import { studioRequest } from "components/studio/api.mjs";
 import { appearanceStyles, appearanceTokens } from "components/studio/appearance.mjs";
 import StudioBoard from "components/studio/board";
 import { dashboardContext, dashboardPath } from "components/studio/dashboard-path.mjs";
+import { keepsUpdatingHidden } from "components/studio/look.mjs";
 import { PreferencesContext, viewedSettings } from "components/studio/preferences";
 import useSystemTheme from "components/studio/use-system-theme";
 import { withPageAuth } from "utils/auth";
@@ -30,7 +31,7 @@ export default function HomepageStudio(props) {
   // Native children such as Quick Launch read their original SWR keys during
   // SSR. Keep Homepage's sanitized fallback available to the whole page.
   return (
-    <SWRConfig value={{ fallback: props.fallback }}>
+    <SWRConfig value={{ fallback: props.fallback, refreshWhenHidden: keepsUpdatingHidden(props.initialSettings) }}>
       <StudioDashboard {...props} />
     </SWRConfig>
   );

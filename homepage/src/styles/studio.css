@@ -2897,18 +2897,18 @@ a.studio-card-identity:hover .studio-card-name strong {
   background: var(--studio-muted);
 }
 .studio-status-up .studio-status-dot {
-  background: #3fb27f;
+  background: var(--studio-status-good, #3fb27f);
 }
 .studio-status-down .studio-status-dot {
-  background: #e5604f;
+  background: var(--studio-status-problem, #e5604f);
 }
 .studio-status-pending .studio-status-dot {
   opacity: 0.4;
 }
 /* A card whose check fails turns to the alert look by itself. */
 .studio-panel:has(.studio-card[data-alert]) {
-  border-color: #c4554d;
-  --card-bg: color-mix(in srgb, #c4554d 12%, var(--studio-surface));
+  border-color: var(--studio-status-problem, #c4554d);
+  --card-bg: color-mix(in srgb, var(--studio-status-problem, #c4554d) 12%, var(--studio-surface));
 }
 .studio-card-name .studio-card-note,
 .studio-status-down .studio-status-text {
@@ -3906,4 +3906,27 @@ a.studio-card-identity:hover .studio-card-name strong {
 }
 .studio-discovered-note .studio-button {
   margin-left: auto;
+}
+
+/* Dashboard settings › Status colours. */
+.studio-status-colours {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 16px;
+}
+.studio-status-colour {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.studio-status-colour input[type="color"] {
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--studio-line-strong);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
 }

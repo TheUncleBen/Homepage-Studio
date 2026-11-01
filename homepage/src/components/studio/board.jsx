@@ -45,7 +45,7 @@ import {
   updatePage,
 } from "./geometry.mjs";
 import StudioIcon from "./icons";
-import { readLook } from "./look.mjs";
+import { readLook, statusColours } from "./look.mjs";
 import Menu from "./menu";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
@@ -1719,6 +1719,9 @@ export default function StudioBoard({
     <main
       className={`studio-app${editing ? " studio-edit-mode" : ""}${editing && selection.length ? " studio-has-bulk" : ""}`}
       data-glass={(pageBackground && settings?.studioTheme?.glass) || undefined}
+      style={Object.fromEntries(
+        Object.entries(statusColours(settings)).map(([key, colour]) => [`--studio-status-${key}`, colour]),
+      )}
       aria-busy={saving || refreshing || undefined}
     >
       {pageBackground && <CardBackground className="studio-page-bg" background={pageBackground} tokens={cardTheme} />}

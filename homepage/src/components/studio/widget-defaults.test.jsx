@@ -54,4 +54,19 @@ describe("dashboard widget defaults", () => {
     pick("Opens on", "First page");
     expect(onChange).toHaveBeenLastCalledWith({});
   });
+
+  it("keeps status colours and background updates sparse", () => {
+    const onChange = vi.fn();
+    render(<Draft initial={{}} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("Problem"), { target: { value: "#ff8800" } });
+    expect(onChange).toHaveBeenLastCalledWith({ studioDefaults: { statusColours: { problem: "#ff8800" } } });
+    pick("Background updates", "Keep updating");
+    expect(onChange.mock.lastCall[0].studioDefaults).toEqual({
+      statusColours: { problem: "#ff8800" },
+      updates: "keep",
+    });
+    fireEvent.change(screen.getByLabelText("Problem"), { target: { value: "#e5604f" } });
+    pick("Background updates", "Pause when hidden");
+    expect(onChange).toHaveBeenLastCalledWith({});
+  });
 });

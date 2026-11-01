@@ -32,6 +32,23 @@ export const BEHAVIOUR_OPTIONS = Object.freeze({
   status: ["web", "ping", "off"],
 });
 
+// Dashboard-wide status colours (Dashboard settings › Widget defaults). Only
+// a colour that differs from these is stored, in studioDefaults.statusColours.
+export const STATUS_COLOURS = Object.freeze({ good: "#3fb27f", problem: "#e5604f" });
+export function statusColours(settings) {
+  const raw = settings?.studioDefaults?.statusColours;
+  const out = {};
+  if (!plain(raw)) return out;
+  for (const key of Object.keys(STATUS_COLOURS)) {
+    const colour = hexColor(raw[key]);
+    if (colour && colour !== STATUS_COLOURS[key]) out[key] = colour;
+  }
+  return out;
+}
+// Background updates: widgets pause while the tab is hidden unless the
+// dashboard says to keep updating.
+export const keepsUpdatingHidden = (settings) => settings?.studioDefaults?.updates === "keep";
+
 export const REFRESH_MS = Object.freeze({ "10s": 10000, "30s": 30000, "1m": 60000, "5m": 300000 });
 
 // What a widget gets when neither the dashboard nor the default look says otherwise.

@@ -1,5 +1,5 @@
 import { dashboardBehaviour } from "./card-look";
-import { BUILT_IN_BEHAVIOUR, setOverride } from "./look.mjs";
+import { BUILT_IN_BEHAVIOUR, STATUS_COLOURS, keepsUpdatingHidden, setOverride, statusColours } from "./look.mjs";
 import { Group, Row, Segmented } from "./ui";
 
 const plain = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -25,6 +25,17 @@ export default function WidgetDefaults({ settings, onChange, pageCount = 1 }) {
     if (value === "same") next.target = "_self";
     else delete next.target;
     onChange(next);
+  };
+  const colours = statusColours(settings);
+  const setColour = (key, value) => {
+    const { statusColours: _old, ...rest } = own;
+    const next = { ...colours, [key]: value };
+    if (value.toLowerCase() === STATUS_COLOURS[key]) delete next[key];
+    write(Object.keys(next).length ? { ...rest, statusColours: next } : rest);
+  };
+  const setUpdates = (value) => {
+    const { updates: _old, ...rest } = own;
+    write(value === "keep" ? { ...rest, updates: "keep" } : rest);
   };
   const setOpensOn = (value) => {
     const { opensOn: _old, ...rest } = own;
@@ -95,6 +106,40 @@ export default function WidgetDefaults({ settings, onChange, pageCount = 1 }) {
             options={[
               ["show", "Show"],
               ["hide", "Hide"],
+            ]}
+          />
+        </Row>
+        <Row
+          label="Status colours"
+          info="For the whole dashboard: the status dot, and the alert look a card takes when its check fails."
+        >
+          <div className="studio-status-colours">
+            {[
+              ["good", "Good"],
+              ["problem", "Problem"],
+            ].map(([key, label]) => (
+              <label key={key} className="studio-status-colour">
+                <input
+                  type="color"
+                  value={colours[key] || STATUS_COLOURS[key]}
+                  onChange={(event) => setColour(key, event.target.value)}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </Row>
+        <Row
+          label="Background updates"
+          info="Pausing while the tab is in the background saves API calls and battery. Widgets catch up when you come back."
+        >
+          <Segmented
+            label="Background updates"
+            value={keepsUpdatingHidden(settings) ? "keep" : "pause"}
+            onChange={setUpdates}
+            options={[
+              ["pause", "Pause when hidden"],
+              ["keep", "Keep updating"],
             ]}
           />
         </Row>
