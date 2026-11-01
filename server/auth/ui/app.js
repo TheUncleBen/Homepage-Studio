@@ -872,7 +872,9 @@
   async function accountPage() {
     let view = await api('account');
     const { dashboards: shared } = await api('dashboards');
-    let preferences = (await api('account/preferences')).preferences;
+    const preferenceData = await api('account/preferences');
+    let preferences = preferenceData.preferences;
+    const languages = Array.isArray(preferenceData.languages) ? preferenceData.languages : [];
     const message = notice();
     if (params.has('linked')) say(message, `Your ${view.oidc?.name ?? 'single sign-on'} account is linked.`, 'ok');
     if (params.has('confirmed')) say(message, 'Confirmed. You can close this tab and go back to your change.', 'ok');
@@ -940,7 +942,7 @@
       const box = notice();
       const ENGINES = [['google', 'Google'], ['duckduckgo', 'DuckDuckGo'], ['bing', 'Bing'], ['brave', 'Brave'], ['startpage', 'Startpage'], ['kagi', 'Kagi'], ['custom', 'Custom']];
       const SUGGESTS = new Set(['google', 'duckduckgo', 'bing', 'brave']);
-      const DEFAULTS = { searchEngine: 'google', searchSuggestions: true, searchDescriptions: true, searchAddresses: true, searchOpens: 'new', mode: 'dashboard', motion: 'system', clock: 'dashboard', temperature: 'dashboard' };
+      const DEFAULTS = { searchEngine: 'google', searchSuggestions: true, searchDescriptions: true, searchAddresses: true, searchOpens: 'new', mode: 'dashboard', motion: 'system', language: 'dashboard', clock: 'dashboard', temperature: 'dashboard' };
       const read = key => preferences[key] ?? DEFAULTS[key];
       async function save(change) {
         const next = { ...preferences, ...change };
@@ -972,11 +974,21 @@
         rows.push(row('Open results', segmented({ label: 'Open results', value: read('searchOpens'), options: [['new', 'New tab'], ['same', 'This tab']], onChange: choice => save({ searchOpens: choice }) })));
         return group({ title: 'Search', info: 'Search opens with / or Ctrl K on any dashboard, or when you start typing. It finds widgets on every page and searches the web with your engine.' }, rows);
       }
+      // Each language named in itself, so anyone can find their own.
+      function languageRow() {
+        const name = code => { try { return new Intl.DisplayNames([code], { type: 'language' }).of(code) || code; } catch { return code; } };
+        const current = read('language');
+        const select = h('select', { 'aria-label': 'Language' }, [h('option', { value: 'dashboard', text: 'Dashboard’s language', selected: current === 'dashboard' }),
+          ...languages.map(code => [code, name(code)]).sort((a, b) => a[1].localeCompare(b[1])).map(([code, label]) => h('option', { value: code, text: label, selected: code === current }))]);
+        select.addEventListener('change', () => save({ language: select.value }));
+        return row('Language', select, { info: 'Words, numbers and dates on dashboards you view. Reload a dashboard to see the change.' });
+      }
       function drawDisplay() {
         const choice = (label, key, options, info) => row(label, segmented({ label, value: read(key), options, onChange: next => save({ [key]: next }) }), { info, stacked: true });
         return group({ title: 'Display', info: 'These apply while you view a dashboard. Editing always shows the dashboard as it is set up.' },
           choice('Light or dark', 'mode', [['dashboard', 'Dashboard’s choice'], ['system', 'Follow device'], ['dark', 'Dark'], ['light', 'Light']]),
           choice('Motion', 'motion', [['system', 'Follow device'], ['reduced', 'Reduced'], ['full', 'Full']]),
+          languageRow(),
           choice('Clock', 'clock', [['dashboard', 'Dashboard’s choice'], ['24', '24-hour'], ['12', '12-hour']], 'For date and time widgets.'),
           choice('Temperature', 'temperature', [['dashboard', 'Dashboard’s choice'], ['c', '°C'], ['f', '°F']], 'For weather, Glances and system resource widgets.'));
       }

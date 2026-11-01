@@ -22,6 +22,7 @@ import { createImageLibrary, ImageError, imageUsage, validImageId } from './imag
 import { ConnectionError, createConnectionStore, publicConnection, SECRET_FIELDS } from './connections.mjs';
 const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'];
 import { createPersonalStore } from './personal.mjs';
+import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
 import { createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
@@ -458,6 +459,7 @@ function createDashboardHandlers(options = {}) {
       if (kept.length) headers.cookie = kept.join('; '); else delete headers.cookie;
     }
     if (body) headers['content-length'] = String(body.length);
+    if (viewerLanguage(req.studioLanguage)) headers['x-studio-language'] = req.studioLanguage;
     try {
       upstreamRequest = transport.request(upstream, { method: req.method, path: req.url, headers, timeout: 60000 }, response => {
         upstreamResponse = response;
@@ -1079,6 +1081,13 @@ export function createStudioServer(options = {}) {
       }
       if (local === '/studio/api/preferences' || local.startsWith('/studio/api/my-images')) return await handlePersonal(req, res, local, current, route.dashboard);
       if (local === '/studio/api/my-connections' || local === '/studio/api/my-connections/use') return await handlePersonalConnections(req, res, local, current, route.dashboard);
+      // A signed-in viewer's own language (Preferences › Display) reaches the
+      // dashboard page as a header the controller sets; any such header from
+      // the browser was already dropped.
+      if (auth && current?.user && wantsHtmlPage(req) && !/^\/(?:api|_next|studio)(?:\/|$)/.test(local)) {
+        const language = viewerLanguage((await personal.forUser(current.user.id).preferences.read()).language);
+        if (language) req.studioLanguage = language;
+      }
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
       if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);

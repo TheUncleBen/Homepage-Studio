@@ -2,6 +2,7 @@
 // plus the /studio/account and /studio/admin pages. The controller has
 // already checked Host, Origin, Fetch Metadata and the editor write header.
 import { readFile } from 'node:fs/promises';
+import { LANGUAGES } from '../../homepage/src/components/studio/languages.mjs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -164,7 +165,7 @@ export function createAuthRoutes(auth, { listDashboards, preferences }) {
       // Your own preferences (server/personal.mjs), edited on the account page.
       if (method === 'GET' && path === '/studio/auth/account/preferences') {
         if (!current) return json(res, 401, { error: 'Sign in first.', code: 'AUTH_REQUIRED' });
-        return json(res, 200, { preferences: await preferences.read(current.user.id) });
+        return json(res, 200, { preferences: await preferences.read(current.user.id), languages: LANGUAGES });
       }
       if (method === 'GET' && path === '/studio/auth/dashboards') {
         if (!current) return json(res, 401, { error: 'Sign in first.', code: 'AUTH_REQUIRED' });

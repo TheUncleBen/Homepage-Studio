@@ -8,6 +8,7 @@ import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
 import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
+import { dashboardLanguage, LANGUAGES } from "./languages.mjs";
 import { patchFromDraft } from "./native-adapter.mjs";
 import { ActionRow, Group, Row, Switch } from "./ui";
 import WidgetDefaults from "./widget-defaults";
@@ -87,6 +88,18 @@ export function downloadFile(name, text, type = "application/json") {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// Each language named in itself, so anyone can find their own.
+function languageOptions() {
+  const named = LANGUAGES.map((code) => {
+    try {
+      return [code, new Intl.DisplayNames([code], { type: "language" }).of(code) || code];
+    } catch {
+      return [code, code];
+    }
+  });
+  return named.sort((a, b) => a[1].localeCompare(b[1]));
+}
+
 // How the dashboard appears in a browser tab, on a home screen and to search
 // engines. Uses Homepage's own settings (title, favicon, pwa, disableIndexing).
 export function BrowserSettings({ settings, onChange }) {
@@ -106,7 +119,24 @@ export function BrowserSettings({ settings, onChange }) {
     set({ pwa: Object.keys(next).length ? next : undefined });
   };
   return (
-    <Group title="Browser and phone">
+    <Group title="Language, browser and phone">
+      <Row
+        label="Language"
+        htmlFor="studio-language"
+        info="Words, numbers and dates on this dashboard. Signed-in people can pick their own in Preferences."
+      >
+        <select
+          id="studio-language"
+          value={dashboardLanguage(settings)}
+          onChange={(event) => set({ language: event.target.value === "en" ? undefined : event.target.value })}
+        >
+          {languageOptions().map(([code, label]) => (
+            <option key={code} value={code}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </Row>
       <Row label="Tab title" htmlFor="studio-tab-title">
         <input
           id="studio-tab-title"
@@ -254,7 +284,7 @@ export default function SettingsEditor({
           <ConfigForm
             value={draft}
             onChange={setDraft}
-            fields={SETTINGS_FIELDS.filter((field) => !["theme", "target", "title"].includes(field.key))}
+            fields={SETTINGS_FIELDS.filter((field) => !["theme", "target", "title", "language"].includes(field.key))}
             knownKeys={[
               "theme",
               "studioTheme",

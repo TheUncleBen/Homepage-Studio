@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createImageLibrary } from './image-library.mjs';
 import { createConnectionStore } from './connections.mjs';
+import { LANGUAGES } from '../homepage/src/components/studio/languages.mjs';
 
 // Each signed-in person's own things, kept apart from every dashboard:
 // - images: logos and backgrounds uploaded "Just me". Only that person sees
@@ -13,7 +14,7 @@ import { createConnectionStore } from './connections.mjs';
 //   (server/connections.mjs). Using one on a dashboard copies it there, as
 //   with images.
 // - preferences: how that person likes to see dashboards (search engine,
-//   light or dark, motion, clock, temperature).
+//   light or dark, motion, language, clock, temperature).
 // Stored under <state>/people/<user id>/ and removed with the account.
 export const PEOPLE_DIR = 'people';
 const USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -42,6 +43,7 @@ export const PREFERENCE_CHOICES = Object.freeze({
   searchOpens: ['new', 'same'],
   mode: ['dashboard', 'system', 'dark', 'light'],
   motion: ['system', 'reduced', 'full'],
+  language: ['dashboard', ...LANGUAGES],
   clock: ['dashboard', '24', '12'],
   temperature: ['dashboard', 'c', 'f'],
 });

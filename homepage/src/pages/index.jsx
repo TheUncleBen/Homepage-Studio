@@ -1,4 +1,5 @@
 import { useTranslation } from "next-i18next/pages";
+import { serverSideTranslations } from "next-i18next/pages/serverSideTranslations";
 import Head from "next/head";
 import Script from "next/script";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
@@ -9,6 +10,7 @@ import { appearanceStyles, appearanceTokens } from "components/studio/appearance
 import StudioBoard from "components/studio/board";
 import { dashboardContext, dashboardPath } from "components/studio/dashboard-path.mjs";
 import { iconHref } from "components/studio/icon-source.mjs";
+import { dashboardLanguage, viewerLanguage } from "components/studio/languages.mjs";
 import { keepsUpdatingHidden } from "components/studio/look.mjs";
 import { PreferencesContext, viewedSettings } from "components/studio/preferences";
 import useSystemTheme from "components/studio/use-system-theme";
@@ -20,11 +22,20 @@ import { SettingsContext } from "utils/contexts/settings";
 import { StudioRevisionContext } from "utils/contexts/studio-revision";
 import { ThemeContext } from "utils/contexts/theme";
 
-export const getServerSideProps = withPageAuth(async ({ res } = {}) => {
+export const getServerSideProps = withPageAuth(async ({ req, res } = {}) => {
   const data = await getDashboardData();
   if (data.initialSettings?.disableIndexing) res?.setHeader("X-Robots-Tag", "noindex, nofollow");
+  // The viewer's own language, set by the Studio controller from their
+  // preferences; the dashboard's language otherwise.
+  const language = viewerLanguage(req?.headers?.["x-studio-language"]);
+  const own = language && language !== dashboardLanguage(data.initialSettings) ? language : null;
   return {
-    props: { ...data, platformRevision: readPlatformDefaults()?.revision ?? null, studioDashboard: dashboardContext() },
+    props: {
+      ...data,
+      ...(own ? { ...(await serverSideTranslations(own)), viewerLocale: own } : {}),
+      platformRevision: readPlatformDefaults()?.revision ?? null,
+      studioDashboard: dashboardContext(),
+    },
   };
 });
 
@@ -40,6 +51,7 @@ export default function HomepageStudio(props) {
 
 function StudioDashboard({
   initialSettings,
+  viewerLocale = null,
   fallback,
   platformRevision = null,
   studioDashboard = { id: "default", basePath: "" },
@@ -101,9 +113,9 @@ function StudioDashboard({
     setColor(settings.color || "slate");
     document.documentElement.classList.toggle("font-plex", settings.font === "plex");
     document.documentElement.classList.toggle("font-plex-data", settings.font === "plex-data");
-    const language = settings.language?.toLowerCase() === "zh-cn" ? "zh-Hans" : settings.language || "en";
+    const language = viewerLocale || dashboardLanguage(settings);
     if (i18n.changeLanguage && i18n.language !== language) i18n.changeLanguage(language);
-  }, [settings, displayMode, setSettings, setTheme, setColor, i18n]);
+  }, [settings, displayMode, setSettings, setTheme, setColor, i18n, viewerLocale]);
   useEffect(() => {
     const root = document.documentElement;
     if (preferences.motion === "reduced" || preferences.motion === "full") root.dataset.motion = preferences.motion;

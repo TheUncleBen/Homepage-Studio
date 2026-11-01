@@ -707,6 +707,17 @@ test('each person keeps their own images and preferences; using an image copies 
   assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'custom' } }, { cookie: member.cookie })).status, 400, 'custom needs an address');
   assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'custom', searchUrl: 'javascript:alert(1)//%s' } }, { cookie: member.cookie })).status, 400);
   assert.deepEqual((await request('/home/studio/api/preferences', { cookie: admin.cookie })).json.preferences, {}, 'preferences belong to one person');
+  // A viewer's own language reaches the dashboard page as the controller's
+  // header; one sent by the browser never does.
+  const pageCalls = () => context.upstreamCalls.filter(call => call.url === '/home' || call.url === '/home/' || call.url === '/');
+  await request('/home/', { cookie: member.cookie, headers: { ...html, 'x-studio-language': 'fr' } });
+  assert.equal(pageCalls().at(-1)?.headers['x-studio-language'], undefined);
+  assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'duckduckgo', mode: 'dark', language: 'xx' } }, { cookie: member.cookie })).status, 400);
+  assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'duckduckgo', mode: 'dark', language: 'de' } }, { cookie: member.cookie })).status, 200);
+  await request('/home/', { cookie: member.cookie, headers: { ...html, 'x-studio-language': 'fr' } });
+  assert.equal(pageCalls().at(-1)?.headers['x-studio-language'], 'de');
+  assert.ok((await request('/studio/auth/account/preferences', { cookie: member.cookie })).json.languages.includes('de'));
+  assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'duckduckgo', mode: 'dark' } }, { cookie: member.cookie })).status, 200);
   // The account page reads and saves the same preferences.
   assert.deepEqual((await request('/studio/auth/account/preferences', { cookie: member.cookie })).json.preferences, { searchEngine: 'duckduckgo', mode: 'dark' });
   const fromAccount = await post('/studio/auth/account/preferences', { preferences: { searchEngine: 'kagi' } }, { cookie: member.cookie });
