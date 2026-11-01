@@ -202,7 +202,8 @@ export function appearanceStyles(settings = {}) {
 
 // A dashboard follows each platform default (Administration → Appearance)
 // until its own settings.yaml sets it: display mode (studioTheme.mode, or
-// the native theme), accent colour (studioTheme.accent) and background.
+// the native theme), accent colour (studioTheme.accent), base and page
+// background (studioTheme.pageBackground).
 export function ownAppearance(settings = {}) {
   const raw = settings.studioTheme;
   const own = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
@@ -210,7 +211,7 @@ export function ownAppearance(settings = {}) {
     mode: ["dark", "light", "system"].includes(own.mode) || ["dark", "light"].includes(settings.theme),
     accent: Boolean(hexColor(own.accent)),
     base: Object.hasOwn(BASES, own.base),
-    background: settings.background !== undefined,
+    background: own.pageBackground !== undefined,
   };
 }
 
@@ -227,6 +228,19 @@ export function applyPlatformDefaults(settings = {}, platform = null) {
   }
   if (!own.accent && hexColor(platform.accent)) studioTheme.accent = hexColor(platform.accent);
   if (!own.base && Object.hasOwn(BASES, platform.base)) studioTheme.base = platform.base;
-  if (!own.background && platform.background) effective.background = platform.background;
+  if (!own.background && platform.background?.source === "builtin") studioTheme.pageBackground = platform.background;
   return effective;
 }
+
+// Homepage's own widgets colour some text from a Tailwind palette. Studio
+// picks it from the base (owner direction, 1 Nov 2026), so settings.color is
+// not read: cool bases take slate, neutral ones zinc, warm ones stone.
+const NATIVE_PALETTE = Object.freeze({
+  graphite: "zinc",
+  slate: "slate",
+  midnight: "slate",
+  forest: "stone",
+  sand: "stone",
+  eggplant: "zinc",
+});
+export const nativePalette = (settings) => NATIVE_PALETTE[appearanceConfig(settings).base] || "zinc";

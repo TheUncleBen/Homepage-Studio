@@ -292,6 +292,11 @@ export default function SettingsEditor({
               "target",
               "title",
               "language",
+              // Studio decides these (Page background, and the base for
+              // Homepage's widget palette), so they are not read or shown.
+              "color",
+              "background",
+              "backgroundOpacity",
               "favicon",
               "pwa",
               "disableIndexing",

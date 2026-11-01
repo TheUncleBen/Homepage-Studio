@@ -20,14 +20,6 @@ body {
   color: var(--studio-text);
   font-size: 14px;
 }
-.studio-native-background {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  background-size: cover;
-  background-position: center;
-  pointer-events: none;
-}
 .studio-app *,
 .studio-dialog * {
   box-sizing: border-box;

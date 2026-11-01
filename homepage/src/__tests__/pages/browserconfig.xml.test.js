@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import themes from "utils/styles/themes";
+import { appearanceTokens } from "components/studio/appearance.mjs";
 
 const { getSettings } = vi.hoisted(() => ({
   getSettings: vi.fn(),
@@ -21,8 +21,8 @@ function createMockRes() {
 }
 
 describe("pages/browserconfig.xml", () => {
-  it("writes a browserconfig xml response using the selected theme color", async () => {
-    getSettings.mockReturnValueOnce({ color: "slate", theme: "dark" });
+  it("writes a browserconfig xml response using the Studio base colour", async () => {
+    getSettings.mockReturnValueOnce({ color: "red", theme: "dark", studioTheme: { base: "forest" } });
     const res = createMockRes();
 
     await getServerSideProps({ res });
@@ -33,7 +33,9 @@ describe("pages/browserconfig.xml", () => {
     const xml = res.write.mock.calls[0][0];
     expect(xml).toContain('<?xml version="1.0" encoding="utf-8"?>');
     expect(xml).toContain('<square150x150logo src="/mstile-150x150.png?v=2"/>');
-    expect(xml).toContain(`<TileColor>${themes.slate.dark}</TileColor>`);
+    expect(xml).toContain(
+      `<TileColor>${appearanceTokens({ studioTheme: { base: "forest" } }, true).tokens.bg}</TileColor>`,
+    );
   });
 
   it("exports a placeholder component", () => {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import themes from "utils/styles/themes";
+import { appearanceTokens } from "components/studio/appearance.mjs";
 
 const { checkAndCopyConfig, getSettings } = vi.hoisted(() => ({
   checkAndCopyConfig: vi.fn(),
@@ -29,8 +29,9 @@ describe("pages/site.webmanifest", () => {
     getSettings.mockReturnValueOnce({
       title: "My Homepage",
       startUrl: "/start",
-      color: "slate",
+      color: "red",
       theme: "dark",
+      studioTheme: { base: "sand" },
       pwa: {
         icons: [{ src: "/i.png", sizes: "1x1", type: "image/png" }],
         shortcuts: [{ name: "One", url: "/one" }],
@@ -51,8 +52,10 @@ describe("pages/site.webmanifest", () => {
     expect(manifest.start_url).toBe("/start");
     expect(manifest.icons).toEqual([{ src: "/i.png", sizes: "1x1", type: "image/png" }]);
     expect(manifest.shortcuts).toEqual([{ name: "One", url: "/one" }]);
-    expect(manifest.theme_color).toBe(themes.slate.dark);
-    expect(manifest.background_color).toBe(themes.slate.dark);
+    // The colour follows the Studio base, not Homepage's own palette.
+    const sand = appearanceTokens({ studioTheme: { base: "sand" } }, true).tokens.bg;
+    expect(manifest.theme_color).toBe(sand);
+    expect(manifest.background_color).toBe(sand);
   });
 
   it("names the app from Install as app, and has no manifest when it is off", async () => {
@@ -79,8 +82,8 @@ describe("pages/site.webmanifest", () => {
     expect(manifest.short_name).toBe("Homepage");
     expect(manifest.start_url).toBe("/");
     expect(manifest.display).toBe("standalone");
-    expect(manifest.theme_color).toBe(themes.slate.dark);
-    expect(manifest.background_color).toBe(themes.slate.dark);
+    expect(manifest.theme_color).toBe(appearanceTokens({}, true).tokens.bg);
+    expect(manifest.background_color).toBe(appearanceTokens({}, true).tokens.bg);
 
     // Default icon set is used when pwa.icons is not set.
     expect(manifest.icons).toEqual(
@@ -150,10 +153,10 @@ describe("pages/site.webmanifest", () => {
     expect(other.start_url).toBe("/work/?tab=one");
   });
 
-  it("uses a valid fallback color for system or unknown theme names", async () => {
+  it("uses the default base colour whatever the native color and theme say", async () => {
     getSettings.mockReturnValueOnce({ color: "unknown", theme: "system" });
     const res = createMockRes();
     await getServerSideProps({ res });
-    expect(JSON.parse(res.write.mock.calls[0][0]).theme_color).toBe(themes.slate.dark);
+    expect(JSON.parse(res.write.mock.calls[0][0]).theme_color).toBe(appearanceTokens({}, true).tokens.bg);
   });
 });

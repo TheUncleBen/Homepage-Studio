@@ -3,10 +3,11 @@ import { constants } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { appearanceTokens, BASES, DEFAULT_BASE } from '../homepage/src/components/studio/appearance.mjs';
+import { ABSTRACT, builtInFamily, PATTERNS, SCENES } from '../homepage/src/components/studio/backgrounds.mjs';
 
 // The platform default look, set in Administration → Appearance. Each
 // dashboard follows each of these settings until it sets its own:
-// - studio-platform.json: display mode, accent colour and background image;
+// - studio-platform.json: display mode, accent colour and default page background;
 // - studio-platform.css: CSS loaded on every dashboard before its own
 //   custom.css, unless the dashboard turns it off.
 // The renderer reads the JSON file (STUDIO_PLATFORM_FILE) when it loads a
@@ -43,23 +44,17 @@ export class PlatformError extends Error {
 }
 const invalid = message => { throw new PlatformError(message); };
 
-// A background is an image address, optionally with the native Homepage
-// filters (blur, saturate, brightness, opacity).
+// The default page background: one of Studio's built-in backgrounds, which
+// every dashboard and page without its own uses (as Page background does).
+export const BACKGROUND_CHOICES = Object.freeze([
+  ...SCENES.map(({ id, name }) => ({ id, name, family: 'Scenes' })),
+  ...ABSTRACT.map(({ id, name }) => ({ id, name, family: 'Abstract' })),
+  ...PATTERNS.map(({ id, name }) => ({ id, name, family: 'Patterns' })),
+]);
 function validBackground(value) {
   if (value === null) return null;
-  const image = typeof value === 'string' ? value : value?.image;
-  if (typeof image !== 'string' || !image.trim() || image.length > 2048 || /[\u0000-\u001f\u007f"'()\\]/.test(image)) invalid('Give the background as an image address without quotes or brackets.');
-  if (!/^(?:https?:\/\/|\/)/i.test(image.trim())) invalid('The background image address starts with https://, http:// or /.');
-  if (typeof value === 'string') return image.trim();
-  if (!value || typeof value !== 'object' || Array.isArray(value)) invalid('Invalid background.');
-  const out = { image: image.trim() };
-  for (const [key, allowed] of [['blur', ['sm', 'md', 'xl']], ['saturate', null], ['brightness', null], ['opacity', null]]) {
-    if (value[key] === undefined || value[key] === null) continue;
-    if (allowed ? !allowed.includes(value[key]) : !(Number.isInteger(value[key]) && value[key] >= 0 && value[key] <= 200)) invalid(`Invalid background ${key}.`);
-    out[key] = value[key];
-  }
-  if (Object.keys(value).some(key => !['image', 'blur', 'saturate', 'brightness', 'opacity'].includes(key))) invalid('Unexpected background fields.');
-  return out;
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['source', 'id'].includes(key)) || value.source !== 'builtin' || typeof value.id !== 'string' || !builtInFamily(value.id)) invalid('Choose one of the built-in backgrounds, or none.');
+  return { source: 'builtin', id: value.id };
 }
 export function validatePlatform(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) invalid('Invalid platform appearance.');

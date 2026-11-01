@@ -69,20 +69,23 @@ describe("appearance settings", () => {
 });
 
 describe("platform defaults", () => {
-  const platform = { mode: "light", accent: "#91b09e", background: "https://example.test/bg.jpg" };
+  const platform = { mode: "light", accent: "#91b09e", background: { source: "builtin", id: "dunes" } };
 
   it("fills in only what the dashboard does not set itself", () => {
     expect(applyPlatformDefaults({ title: "A" }, platform)).toEqual({
       title: "A",
       theme: "light",
-      background: "https://example.test/bg.jpg",
-      studioTheme: { mode: "light", accent: "#91b09e" },
+      studioTheme: { mode: "light", accent: "#91b09e", pageBackground: { source: "builtin", id: "dunes" } },
     });
-    const own = { theme: "dark", background: "own.jpg", studioTheme: { mode: "dark", accent: "#81a8c8" } };
+    const own = {
+      theme: "dark",
+      studioTheme: { mode: "dark", accent: "#81a8c8", pageBackground: { source: "none" } },
+    };
     expect(applyPlatformDefaults(own, platform)).toEqual(own);
     expect(applyPlatformDefaults({ studioTheme: { accent: "#81a8c8" } }, platform).studioTheme).toEqual({
       accent: "#81a8c8",
       mode: "light",
+      pageBackground: { source: "builtin", id: "dunes" },
     });
   });
 

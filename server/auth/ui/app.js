@@ -1211,8 +1211,10 @@
         hexRow.hidden = isPreset(color) && !typed;
       }
       pick(platform.accent);
-      const backgroundImage = typeof platform.background === 'string' ? platform.background : platform.background?.image ?? '';
-      const background = h('input', { type: 'url', maxlength: 2048, value: backgroundImage, placeholder: 'https://… or /images/…', spellcheck: 'false' });
+      const chosen = platform.background?.source === 'builtin' ? platform.background.id : '';
+      const families = [...new Set((platform.backgroundChoices || []).map(item => item.family))];
+      const background = h('select', { 'aria-label': 'Page background' }, h('option', { value: '', text: 'None', selected: !chosen }),
+        families.map(family => h('optgroup', { label: family }, platform.backgroundChoices.filter(item => item.family === family).map(item => h('option', { value: item.id, text: item.name, selected: item.id === chosen })))));
       const css = h('textarea', { rows: 10, class: 'mono code', spellcheck: 'false', 'aria-label': 'Platform CSS', placeholder: '/* Loaded on every dashboard */', text: platform.css });
       const save = h('button', { type: 'submit', class: 'primary', text: 'Save default look' });
       const form = h('form', { class: 'stack' },
@@ -1221,7 +1223,7 @@
           row('Base', base, { stacked: true, info: 'The page, cards and lines on every dashboard and on these pages. Each base has a dark and a light version.' }),
           row('Accent', h('div', { class: 'swatches', role: 'group', 'aria-label': 'Accent' }, presets, custom, picker), { stacked: true }),
           hexRow,
-          row('Background', background, { info: 'Optional. An image address; dashboards without a background of their own use it.' })),
+          row('Page background', background, { info: 'One of Studio’s built-in backgrounds. Every dashboard and page without its own Page background uses it.' })),
         group({ title: 'Platform CSS', info: 'Loaded on every dashboard before its own custom.css, which can override it. An administrator can switch it off for one dashboard in its settings.' },
           h('div', { class: 'code-row' }, css)),
         box, h('div', { class: 'actions' }, save));
@@ -1230,10 +1232,8 @@
         busy(save, 'Saving…', async () => {
           const color = String(accent).trim().toLowerCase();
           if (!/^#[\da-f]{6}$/.test(color)) return say(box, 'Use a hex color such as #b299be.');
-          const image = background.value.trim();
-          const keepFilters = platform.background && typeof platform.background === 'object' ? platform.background : {};
           try {
-            platform = await call('/studio/api/platform', { revision: platform.revision, mode: mode.value, accent: color, base: base.value, background: image ? (Object.keys(keepFilters).length ? { ...keepFilters, image } : image) : null, css: css.value });
+            platform = await call('/studio/api/platform', { revision: platform.revision, mode: mode.value, accent: color, base: base.value, background: background.value ? { source: 'builtin', id: background.value } : null, css: css.value });
             // This page, other Studio pages and open dashboards in this browser
             // update at once.
             refreshTheme(platform.revision);

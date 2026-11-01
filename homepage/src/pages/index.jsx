@@ -6,7 +6,7 @@ import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import useSWR, { SWRConfig, useSWRConfig } from "swr";
 
 import { studioRequest } from "components/studio/api.mjs";
-import { appearanceStyles, appearanceTokens } from "components/studio/appearance.mjs";
+import { appearanceStyles, appearanceTokens, nativePalette } from "components/studio/appearance.mjs";
 import StudioBoard from "components/studio/board";
 import { dashboardContext, dashboardPath } from "components/studio/dashboard-path.mjs";
 import { iconHref } from "components/studio/icon-source.mjs";
@@ -91,26 +91,10 @@ function StudioDashboard({
   const systemDark = useSystemTheme();
   const settings = viewedSettings(data?.settings || initialSettings, preferences, studioMode !== "live");
   const displayMode = appearanceTokens(settings, systemDark).mode;
-  const background = settings.background;
-  const backgroundImage = typeof background === "string" ? background : background?.image;
-  const backgroundOpacity =
-    typeof background === "object" && background?.opacity !== undefined
-      ? 1 - Number(background.opacity) / 100
-      : Number(settings.backgroundOpacity ?? 0);
-  const blur = {
-    none: "0",
-    sm: "4px",
-    "": "8px",
-    md: "12px",
-    lg: "16px",
-    xl: "24px",
-    "2xl": "40px",
-    "3xl": "64px",
-  };
   useEffect(() => {
     setSettings(settings);
     setTheme(displayMode);
-    setColor(settings.color || "slate");
+    setColor(nativePalette(settings));
     document.documentElement.classList.toggle("font-plex", settings.font === "plex");
     document.documentElement.classList.toggle("font-plex-data", settings.font === "plex-data");
     const language = viewerLocale || dashboardLanguage(settings);
@@ -161,25 +145,6 @@ function StudioDashboard({
   };
   return (
     <StudioRevisionContext.Provider value={data?.configurationRevision || null}>
-      {backgroundImage && (
-        <div
-          className="studio-native-background"
-          aria-hidden="true"
-          style={{
-            backgroundImage: `linear-gradient(rgba(18, 16, 21, ${Math.max(0, Math.min(1, backgroundOpacity))}), rgba(18, 16, 21, ${Math.max(0, Math.min(1, backgroundOpacity))})), url(${JSON.stringify(backgroundImage)})`,
-            filter:
-              typeof background === "object"
-                ? [
-                    background.blur !== undefined && `blur(${blur[background.blur] || "8px"})`,
-                    background.saturate !== undefined && `saturate(${Number(background.saturate)}%)`,
-                    background.brightness !== undefined && `brightness(${Number(background.brightness)}%)`,
-                  ]
-                    .filter(Boolean)
-                    .join(" ") || undefined
-                : undefined,
-          }}
-        />
-      )}
       <Head>
         <meta name="studio-dashboard-id" content={studioDashboard.id} />
         <meta name="studio-dashboard-base" content={studioDashboard.basePath} />

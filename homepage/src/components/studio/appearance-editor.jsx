@@ -310,7 +310,13 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
               value={pageBackground}
               tokens={previewTheme}
               allowNone
-              onChange={(value) => change({ pageBackground: value })}
+              onChange={(value) =>
+                // Rule 2: the administrator's default background again follows it.
+                change({
+                  pageBackground:
+                    JSON.stringify(value ?? null) === JSON.stringify(platform?.background ?? null) ? undefined : value,
+                })
+              }
             />
             {pageBackground && (
               <Row label="Glass cards" info="Cards let the page background show through, softly blurred.">

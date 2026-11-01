@@ -24,7 +24,7 @@ const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'pass
 import { createPersonalStore } from './personal.mjs';
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
 import { LookError, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
-import { createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
+import { BACKGROUND_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
 import { createAuthService } from './auth/service.mjs';
@@ -1040,12 +1040,12 @@ export function createStudioServer(options = {}) {
       }
       if (path === '/studio/api/platform') {
         if (!isAdmin) return forbidden(res, 'Only administrators can change the platform appearance.');
-        if (req.method === 'GET') return json(res, 200, await platform.read());
+        if (req.method === 'GET') return json(res, 200, { ...(await platform.read()), backgroundChoices: BACKGROUND_CHOICES });
         if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST for the platform appearance.' });
         // Platform CSS reaches every dashboard, so saving it needs a recent
         // sign-in, as a dashboard's own custom.css does.
         if (auth && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
-        return json(res, 200, await platform.update(await readBody(req)));
+        return json(res, 200, { ...(await platform.update(await readBody(req))), backgroundChoices: BACKGROUND_CHOICES });
       }
       // Full backups (server/backups.mjs), for administrators. Everything but
       // the list needs a recent sign-in: a backup holds every secret Studio has.

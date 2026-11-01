@@ -374,12 +374,14 @@ describe("Studio main-page composition", () => {
       language: "zh-CN",
       favicon: "/local/icon.png",
       theme: "dark",
-      color: "slate",
+      color: "red",
+      studioTheme: { base: "sand" },
     });
     expect(screen.getByText(/Native widget data is temporarily unavailable/)).toBeInTheDocument();
     expect(screen.getByTestId("studio-board")).toBeInTheDocument();
     expect(setters.setTheme).toHaveBeenCalledWith("dark");
-    expect(setters.setColor).toHaveBeenCalledWith("slate");
+    // Homepage's palette follows the Studio base; settings.color is not read.
+    expect(setters.setColor).toHaveBeenCalledWith("stone");
     expect(i18n.changeLanguage).toHaveBeenCalledWith("zh-Hans");
     expect(document.title).toBe("Private workspace");
     expect(document.querySelector('link[rel="icon"]').getAttribute("href")).toBe("/local/icon.png");

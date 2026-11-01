@@ -39,18 +39,6 @@ export const SETTINGS_FIELDS = [
   },
   { key: "theme", label: "Native theme", type: "string", exampleValue: "dark" },
   {
-    key: "color",
-    label: "Native widget color palette",
-    type: "string",
-    exampleValue: "slate",
-  },
-  {
-    key: "background",
-    label: "Background",
-    type: "object",
-    valueTypes: ["string", "object"],
-  },
-  {
     key: "providers",
     label: "Native providers",
     type: "object",
