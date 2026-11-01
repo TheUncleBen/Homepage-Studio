@@ -274,6 +274,21 @@ export default function ContentEditor({
       : kind === "bookmark"
         ? [...LINK_FIELDS, { key: "abbr", label: "Abbreviation", type: "string" }]
         : selectedEntry?.fields || [];
+  const lookProps = boardPanel
+    ? {
+        kind,
+        look,
+        behaviour,
+        inheritedLook: resolvedLook(settings, null),
+        inheritedBehaviour: resolvedBehaviour(settings, null),
+        fields: widgetFields.get(boardPanel.id) || [],
+        pages: pagesOf(wholeBoard),
+        pageId: page,
+        onLook: setLook,
+        onBehaviour: setBehaviour,
+        onPage: stacked ? undefined : setPage,
+      }
+    : null;
   const changedGroup = source?.group === group ? source?.groupPath || group : group;
   const submit = async (action = source ? "update" : "add") => {
     if (pending) return;
@@ -328,190 +343,181 @@ export default function ContentEditor({
         submit();
       }}
     >
-      <div className="studio-dialog-body">
-        <ErrorMessage error={error} onReload={onReload} />
+      <div className={`studio-dialog-body${boardPanel && renderPreview ? " studio-widget-layout" : ""}`}>
         {boardPanel && renderPreview && (
-          <div className="studio-look-preview" aria-live="off">
-            <span className="studio-look-preview-label">Preview</span>
+          <aside className="studio-look-preview" aria-label="Preview">
+            <span className="studio-look-preview-label" aria-hidden="true">
+              Preview
+            </span>
             {renderPreview({
               ...boardPanel,
               look,
               behaviour,
               title: kind === "service" || kind === "bookmark" ? name || boardPanel.title : boardPanel.title,
             })}
-          </div>
+          </aside>
         )}
-        <fieldset disabled={pending} style={editorFieldsetStyle}>
-          {((kind === "serviceWidget" && !source) || requiresName) && (
-            <Group>
-              {kind === "serviceWidget" && !source && (
-                <Row
-                  label="Service"
-                  htmlFor="studio-service-context"
-                  info="An integration lives in a service tile. Add it to one you have, or to a new tile that shows only this widget."
-                >
-                  <select
-                    id="studio-service-context"
-                    value={serviceId}
-                    onChange={(event) => setServiceId(event.target.value)}
+        <div className="studio-widget-settings">
+          <ErrorMessage error={error} onReload={onReload} />
+          <fieldset disabled={pending} style={editorFieldsetStyle}>
+            {((kind === "serviceWidget" && !source) || requiresName) && (
+              <Group>
+                {kind === "serviceWidget" && !source && (
+                  <Row
+                    label="Service"
+                    htmlFor="studio-service-context"
+                    info="An integration lives in a service tile. Add it to one you have, or to a new tile that shows only this widget."
                   >
-                    <option value="new">New service</option>
-                    {state.services?.map((service) => (
-                      <option key={service.id} value={service.id}>
-                        {service.group} / {service.name}
-                      </option>
-                    ))}
-                  </select>
-                </Row>
-              )}
-              {requiresName && (
-                <>
-                  <Row label="Name" htmlFor="studio-source-name">
-                    <input
-                      id="studio-source-name"
-                      autoFocus
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                      required
-                      maxLength={200}
-                      placeholder="Required"
-                    />
-                  </Row>
-                  <Row label="Group" htmlFor="studio-source-group">
-                    <input
-                      id="studio-source-group"
-                      list="studio-groups"
-                      value={group}
-                      onChange={(event) => setGroup(event.target.value)}
-                      required
-                      placeholder="Required"
-                    />
-                    <datalist id="studio-groups">
-                      {[
-                        ...new Set([
-                          ...(state.groups || []).map((item) => item.label || item.name),
-                          ...(state.bookmarks || []).map((item) => item.group),
-                        ]),
-                      ].map((item) => (
-                        <option value={item} key={item} />
+                    <select
+                      id="studio-service-context"
+                      value={serviceId}
+                      onChange={(event) => setServiceId(event.target.value)}
+                    >
+                      <option value="new">New service</option>
+                      {state.services?.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.group} / {service.name}
+                        </option>
                       ))}
-                    </datalist>
+                    </select>
                   </Row>
-                </>
-              )}
-            </Group>
-          )}
-          {parent && (
-            <Group>
-              <ActionRow
-                icon="link"
-                detail={`${parent.group} / ${parent.name}`}
-                disabled={pending}
-                onClick={() => onParent(parent)}
-              >
-                Service
-              </ActionRow>
-            </Group>
-          )}
-          <ConfigForm
-            value={draft}
-            onChange={setDraft}
-            fields={fields}
-            onValidity={setValid}
-            docs={selectedEntry?.docs}
-            guide={selectedEntry?.guide}
-            setupNotes={selectedEntry?.setupNotes}
-            name={selectedEntry?.name}
-          />
-          {(kind === "serviceWidget" || kind === "informationWidget") &&
-            customApiMappingsMissing(source?.type || entry?.type, draft) && (
-              <p className="studio-callout studio-callout-warn" role="status">
-                This Custom API widget has no <code>mappings</code> yet, so its panel will be empty. Add at least one in
-                YAML. You can still save it now.
-              </p>
+                )}
+                {requiresName && (
+                  <>
+                    <Row label="Name" htmlFor="studio-source-name">
+                      <input
+                        id="studio-source-name"
+                        autoFocus
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                        required
+                        maxLength={200}
+                        placeholder="Required"
+                      />
+                    </Row>
+                    <Row label="Group" htmlFor="studio-source-group">
+                      <input
+                        id="studio-source-group"
+                        list="studio-groups"
+                        value={group}
+                        onChange={(event) => setGroup(event.target.value)}
+                        required
+                        placeholder="Required"
+                      />
+                      <datalist id="studio-groups">
+                        {[
+                          ...new Set([
+                            ...(state.groups || []).map((item) => item.label || item.name),
+                            ...(state.bookmarks || []).map((item) => item.group),
+                          ]),
+                        ].map((item) => (
+                          <option value={item} key={item} />
+                        ))}
+                      </datalist>
+                    </Row>
+                  </>
+                )}
+              </Group>
             )}
-          {boardPanel && (
-            <LookEditor
-              kind={kind}
-              look={look}
-              behaviour={behaviour}
-              inheritedLook={resolvedLook(settings, null)}
-              inheritedBehaviour={resolvedBehaviour(settings, null)}
-              fields={widgetFields.get(boardPanel.id) || []}
-              pages={pagesOf(wholeBoard)}
-              pageId={page}
-              onLook={setLook}
-              onBehaviour={setBehaviour}
-              onPage={stacked ? undefined : setPage}
-            />
-          )}
-          {source && (
-            <Group className="studio-item-actions">
-              <ActionRow
-                icon="copy"
-                disabled={pending}
-                onClick={() => {
-                  // Duplicate the saved source. Switching away from an edited
-                  // source asks before discarding its local changes.
-                  const copy = structuredClone(initial);
-                  if (kind === "service" || kind === "bookmark") delete copy.id;
-                  onDuplicate({
-                    ...selectedEntry,
-                    kind,
-                    type: source.type || kind,
-                    name: selectedEntry?.name || LABEL[kind],
-                    defaults: copy,
-                    seed: {
-                      name: `${source.name || parent?.name || selectedEntry?.name || "Widget"} copy`,
-                      group: source.group || parent?.group || "Dashboard",
-                      serviceId: source.serviceId,
-                    },
-                  });
-                }}
-              >
-                Duplicate
-              </ActionRow>
-              <ActionRow
-                ref={deleteButton}
-                icon="trash"
-                danger
-                disabled={pending}
-                aria-expanded={deleting}
-                onClick={() => setDeleting(true)}
-              >
-                Delete
-              </ActionRow>
-            </Group>
-          )}
-          {deleting && (
-            <div ref={deleteConfirm} className="studio-delete-confirm" role="alert">
-              <strong>Delete {panel?.title || "this item"}?</strong>
-              <p>
-                {kind === "service"
-                  ? "This removes the service and its widgets. The rest of the dashboard stays."
-                  : "A snapshot is kept, so you can restore it from dashboard settings under Snapshots & restore."}
-              </p>
-              <div className="studio-inline-actions">
-                <button
-                  ref={keepButton}
-                  type="button"
-                  className="studio-button studio-quiet"
-                  onClick={() => setDeleting(false)}
-                >
-                  Keep it
-                </button>
-                <button
-                  type="button"
-                  className="studio-button studio-danger"
+            {parent && (
+              <Group>
+                <ActionRow
+                  icon="link"
+                  detail={`${parent.group} / ${parent.name}`}
                   disabled={pending}
-                  onClick={() => submit("delete")}
+                  onClick={() => onParent(parent)}
                 >
-                  Delete permanently
-                </button>
+                  Service
+                </ActionRow>
+              </Group>
+            )}
+            {boardPanel && <LookEditor part="top" {...lookProps} />}
+            <ConfigForm
+              value={draft}
+              onChange={setDraft}
+              fields={fields}
+              onValidity={setValid}
+              docs={selectedEntry?.docs}
+              guide={selectedEntry?.guide}
+              setupNotes={selectedEntry?.setupNotes}
+              name={selectedEntry?.name}
+            />
+            {(kind === "serviceWidget" || kind === "informationWidget") &&
+              customApiMappingsMissing(source?.type || entry?.type, draft) && (
+                <p className="studio-callout studio-callout-warn" role="status">
+                  This Custom API widget has no <code>mappings</code> yet, so its panel will be empty. Add at least one
+                  in YAML. You can still save it now.
+                </p>
+              )}
+            {boardPanel && <LookEditor part="bottom" {...lookProps} />}
+            {source && (
+              <Group className="studio-item-actions">
+                <ActionRow
+                  icon="copy"
+                  disabled={pending}
+                  onClick={() => {
+                    // Duplicate the saved source. Switching away from an edited
+                    // source asks before discarding its local changes.
+                    const copy = structuredClone(initial);
+                    if (kind === "service" || kind === "bookmark") delete copy.id;
+                    onDuplicate({
+                      ...selectedEntry,
+                      kind,
+                      type: source.type || kind,
+                      name: selectedEntry?.name || LABEL[kind],
+                      defaults: copy,
+                      seed: {
+                        name: `${source.name || parent?.name || selectedEntry?.name || "Widget"} copy`,
+                        group: source.group || parent?.group || "Dashboard",
+                        serviceId: source.serviceId,
+                      },
+                    });
+                  }}
+                >
+                  Duplicate
+                </ActionRow>
+                <ActionRow
+                  ref={deleteButton}
+                  icon="trash"
+                  danger
+                  disabled={pending}
+                  aria-expanded={deleting}
+                  onClick={() => setDeleting(true)}
+                >
+                  Delete
+                </ActionRow>
+              </Group>
+            )}
+            {deleting && (
+              <div ref={deleteConfirm} className="studio-delete-confirm" role="alert">
+                <strong>Delete {panel?.title || "this item"}?</strong>
+                <p>
+                  {kind === "service"
+                    ? "This removes the service and its widgets. The rest of the dashboard stays."
+                    : "A snapshot is kept, so you can restore it from dashboard settings under Snapshots & restore."}
+                </p>
+                <div className="studio-inline-actions">
+                  <button
+                    ref={keepButton}
+                    type="button"
+                    className="studio-button studio-quiet"
+                    onClick={() => setDeleting(false)}
+                  >
+                    Keep it
+                  </button>
+                  <button
+                    type="button"
+                    className="studio-button studio-danger"
+                    disabled={pending}
+                    onClick={() => submit("delete")}
+                  >
+                    Delete permanently
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
-        </fieldset>
+            )}
+          </fieldset>
+        </div>
       </div>
       <footer className="studio-dialog-footer">
         <span className="studio-footer-spacer" />

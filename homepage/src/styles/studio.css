@@ -498,7 +498,7 @@ body {
 .studio-native-content {
   min-height: 0;
   flex: 1;
-  padding: 12px 15px 16px;
+  padding: 12px 14px 12px;
   max-width: 100%;
   overflow: auto;
   scrollbar-width: thin;
@@ -2810,7 +2810,7 @@ body {
 .studio-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   min-height: 100%;
 }
 .studio-card-head {
@@ -2894,27 +2894,17 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-status-pending .studio-status-dot {
   opacity: 0.4;
 }
-.studio-status-down .studio-status-text {
-  color: #f08a7c;
-}
 /* A card whose check fails turns to the alert look by itself. */
 .studio-panel:has(.studio-card[data-alert]) {
   border-color: #c4554d;
   --card-bg: color-mix(in srgb, #c4554d 12%, var(--studio-surface));
 }
-.studio-card-offline {
-  display: grid;
-  gap: 2px;
+.studio-card-name .studio-card-note,
+.studio-status-down .studio-status-text {
+  color: var(--studio-danger-text);
 }
-.studio-card-offline strong {
-  color: #f08a7c;
-  font-size: 26px;
-  font-weight: 500;
-  line-height: 1.1;
-}
-.studio-card-offline span {
-  color: var(--card-muted-text);
-  font-size: 12.5px;
+.studio-status-down .studio-status-text {
+  font-weight: 600;
 }
 .studio-card-body {
   flex: 1;
@@ -2925,7 +2915,7 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-values {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
 }
 .studio-value {
@@ -2974,8 +2964,8 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-values-below {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
-  gap: 10px 18px;
-  padding-top: 12px;
+  gap: 8px 18px;
+  padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, var(--card-text) 14%, transparent);
 }
 .studio-value-below .studio-value-number {
@@ -3118,15 +3108,23 @@ a.studio-card-identity:hover .studio-card-name strong {
   border-radius: 8px;
   background: none;
 }
-.studio-look-preview {
-  position: sticky;
-  top: -1px;
-  z-index: 2;
+/* The widget dialog shows a live preview beside its settings on wide
+   screens (sticky under the dialog's header) and above them on narrow ones. */
+.studio-dialog:has(.studio-widget-layout) {
+  width: min(1040px, calc(100vw - 32px));
+}
+.studio-widget-layout {
   display: grid;
-  gap: 6px;
-  margin: 0 0 16px;
-  padding: 10px 0 12px;
-  background: var(--studio-surface);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.studio-widget-settings {
+  min-width: 0;
+}
+.studio-look-preview {
+  display: grid;
+  gap: 8px;
+  align-content: start;
 }
 .studio-look-preview-label {
   color: var(--studio-muted);
@@ -3138,9 +3136,24 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-card-preview.studio-panel {
   position: relative;
   inset: auto;
+  max-width: 100%;
   justify-self: center;
   overflow: hidden;
   pointer-events: none;
+}
+@media (min-width: 900px) {
+  .studio-widget-layout {
+    grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
+  }
+  .studio-look-preview {
+    position: sticky;
+    top: 100px;
+  }
+  .studio-card-preview.studio-panel {
+    justify-self: stretch;
+  }
 }
 .studio-value-list {
   display: grid;

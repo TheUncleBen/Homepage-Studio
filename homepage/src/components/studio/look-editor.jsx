@@ -174,8 +174,13 @@ export default function LookEditor({
   onLook,
   onBehaviour,
   onPage,
+  part = "all",
 }) {
   const show = lookSections(kind);
+  // The dialog puts Look and Status above the widget's own settings, and
+  // Show and Behaviour below them, as in the approved layout.
+  const top = part !== "bottom";
+  const bottom = part !== "top";
   const effective = { ...inheritedLook, ...look };
   const acts = { ...inheritedBehaviour, ...behaviour };
   const setLook = (key, value) => onLook(setOverride(look, key, value, inheritedLook));
@@ -185,155 +190,157 @@ export default function LookEditor({
   const named = effective.header === "logo-name" || effective.header === "name";
   return (
     <div className="studio-look-editor">
-      <Group title="Look">
-        {show.values && (
-          <>
-            <Choice
-              label="Layout"
-              value={effective.layout}
-              onChange={(value) => setLook("layout", value)}
-              options={[
-                ["hero", "Hero"],
-                ["quiet", "Quiet"],
-              ]}
-              info="Hero shows one value large with the rest below it. Quiet shows every value the same size."
-            />
-            {effective.layout === "hero" && (
-              <Dependent>
-                <Choice
-                  label="Hero size"
-                  value={effective.heroSize}
-                  onChange={(value) => setLook("heroSize", value)}
-                  options={[
-                    ["s", "S"],
-                    ["m", "M"],
-                    ["l", "L"],
-                    ["xl", "XL"],
-                  ]}
-                />
-              </Dependent>
-            )}
-          </>
-        )}
-        <Choice
-          label="Fill"
-          value={effective.fill === "picture" || effective.fill === "pattern" ? "plain" : effective.fill}
-          onChange={(value) => setLook("fill", value)}
-          options={[
-            ["plain", "Plain"],
-            ["tint", "Tint"],
-            ["solid", "Solid"],
-          ]}
-        />
-        {tinted && (
-          <Dependent>
-            <Row label="Colour">
-              <div className="studio-colour-choice">
-                <Segmented
-                  label="Colour"
-                  value={custom ? "custom" : "logo"}
-                  onChange={(value) =>
-                    setLook("colour", value === "logo" ? "logo" : hexOr(look.colour, inheritedLook.colour))
-                  }
-                  options={[
-                    ["logo", show.logo ? "From logo" : "Accent"],
-                    ["custom", "Custom"],
-                  ]}
-                />
-                {custom && (
-                  <input
-                    type="color"
-                    aria-label="Card colour"
-                    className="studio-colour-input"
-                    value={effective.colour}
-                    onChange={(event) => setLook("colour", event.target.value)}
+      {top && (
+        <Group title="Look">
+          {show.values && (
+            <>
+              <Choice
+                label="Layout"
+                value={effective.layout}
+                onChange={(value) => setLook("layout", value)}
+                options={[
+                  ["hero", "Hero"],
+                  ["quiet", "Quiet"],
+                ]}
+                info="Hero shows one value large with the rest below it. Quiet shows every value the same size."
+              />
+              {effective.layout === "hero" && (
+                <Dependent>
+                  <Choice
+                    label="Hero size"
+                    value={effective.heroSize}
+                    onChange={(value) => setLook("heroSize", value)}
+                    options={[
+                      ["s", "S"],
+                      ["m", "M"],
+                      ["l", "L"],
+                      ["xl", "XL"],
+                    ]}
                   />
-                )}
-              </div>
-            </Row>
-            <Choice
-              label="Strength"
-              value={effective.strength}
-              onChange={(value) => setLook("strength", value)}
-              options={[
-                ["soft", "Soft"],
-                ["medium", "Medium"],
-                ["strong", "Strong"],
-              ]}
-            />
-          </Dependent>
-        )}
-        <Choice
-          label="Edge"
-          value={effective.edge}
-          onChange={(value) => setLook("edge", value)}
-          options={[
-            ["line", "Line"],
-            ["shadow", "Shadow"],
-            ["both", "Both"],
-            ["none", "None"],
-          ]}
-        />
-        <Choice
-          label="Corners"
-          value={effective.corners}
-          onChange={(value) => setLook("corners", value)}
-          options={[
-            ["square", "Square"],
-            ["default", "Default"],
-            ["round", "Round"],
-          ]}
-        />
-        {show.logo && (
-          <>
-            <Choice
-              label="Header"
-              value={effective.header}
-              onChange={(value) => setLook("header", value)}
-              options={[
-                ["logo-name", "Logo and name"],
-                ["logo", "Logo"],
-                ["name", "Name"],
-                ["hidden", "None"],
-              ]}
-            />
-            {named && (
-              <Dependent>
-                <Choice
-                  label="Description"
-                  value={effective.description}
-                  onChange={(value) => setLook("description", value)}
-                  options={[
-                    ["show", "Show"],
-                    ["hide", "Hide"],
-                  ]}
-                />
-              </Dependent>
-            )}
-          </>
-        )}
-        {show.values && (
+                </Dependent>
+              )}
+            </>
+          )}
           <Choice
-            label="Numbers"
-            value={effective.numbers}
-            onChange={(value) => setLook("numbers", value)}
+            label="Fill"
+            value={effective.fill === "picture" || effective.fill === "pattern" ? "plain" : effective.fill}
+            onChange={(value) => setLook("fill", value)}
             options={[
-              ["sans", "Regular"],
-              ["mono", "Monospaced"],
+              ["plain", "Plain"],
+              ["tint", "Tint"],
+              ["solid", "Solid"],
             ]}
           />
-        )}
-        <Choice
-          label="Align"
-          value={effective.align}
-          onChange={(value) => setLook("align", value)}
-          options={[
-            ["left", "Left"],
-            ["centre", "Centre"],
-          ]}
-        />
-      </Group>
-      {show.status && (
+          {tinted && (
+            <Dependent>
+              <Row label="Colour">
+                <div className="studio-colour-choice">
+                  <Segmented
+                    label="Colour"
+                    value={custom ? "custom" : "logo"}
+                    onChange={(value) =>
+                      setLook("colour", value === "logo" ? "logo" : hexOr(look.colour, inheritedLook.colour))
+                    }
+                    options={[
+                      ["logo", show.logo ? "From logo" : "Accent"],
+                      ["custom", "Custom"],
+                    ]}
+                  />
+                  {custom && (
+                    <input
+                      type="color"
+                      aria-label="Card colour"
+                      className="studio-colour-input"
+                      value={effective.colour}
+                      onChange={(event) => setLook("colour", event.target.value)}
+                    />
+                  )}
+                </div>
+              </Row>
+              <Choice
+                label="Strength"
+                value={effective.strength}
+                onChange={(value) => setLook("strength", value)}
+                options={[
+                  ["soft", "Soft"],
+                  ["medium", "Medium"],
+                  ["strong", "Strong"],
+                ]}
+              />
+            </Dependent>
+          )}
+          <Choice
+            label="Edge"
+            value={effective.edge}
+            onChange={(value) => setLook("edge", value)}
+            options={[
+              ["line", "Line"],
+              ["shadow", "Shadow"],
+              ["both", "Both"],
+              ["none", "None"],
+            ]}
+          />
+          <Choice
+            label="Corners"
+            value={effective.corners}
+            onChange={(value) => setLook("corners", value)}
+            options={[
+              ["square", "Square"],
+              ["default", "Default"],
+              ["round", "Round"],
+            ]}
+          />
+          {show.logo && (
+            <>
+              <Choice
+                label="Header"
+                value={effective.header}
+                onChange={(value) => setLook("header", value)}
+                options={[
+                  ["logo-name", "Logo and name"],
+                  ["logo", "Logo"],
+                  ["name", "Name"],
+                  ["hidden", "None"],
+                ]}
+              />
+              {named && (
+                <Dependent>
+                  <Choice
+                    label="Description"
+                    value={effective.description}
+                    onChange={(value) => setLook("description", value)}
+                    options={[
+                      ["show", "Show"],
+                      ["hide", "Hide"],
+                    ]}
+                  />
+                </Dependent>
+              )}
+            </>
+          )}
+          {show.values && (
+            <Choice
+              label="Numbers"
+              value={effective.numbers}
+              onChange={(value) => setLook("numbers", value)}
+              options={[
+                ["sans", "Regular"],
+                ["mono", "Monospaced"],
+              ]}
+            />
+          )}
+          <Choice
+            label="Align"
+            value={effective.align}
+            onChange={(value) => setLook("align", value)}
+            options={[
+              ["left", "Left"],
+              ["centre", "Centre"],
+            ]}
+          />
+        </Group>
+      )}
+      {top && show.status && (
         <Group title="Status">
           <Choice
             label="Check by"
@@ -362,7 +369,7 @@ export default function LookEditor({
           )}
         </Group>
       )}
-      {show.values && fields.length > 0 && (
+      {bottom && show.values && fields.length > 0 && (
         <Group
           title="Show"
           info="The values this widget showed last. Pick the hero, hide what you don't need, rename a value or change how its number reads."
@@ -375,68 +382,70 @@ export default function LookEditor({
           />
         </Group>
       )}
-      <Group title="Behaviour">
-        {show.link && (
+      {bottom && (
+        <Group title="Behaviour">
+          {show.link && (
+            <Choice
+              label="On click"
+              value={acts.target}
+              onChange={(value) => setBehaviour("target", value)}
+              options={[
+                ["same", "Same tab"],
+                ["new", "New tab"],
+                ["none", "Nothing"],
+              ]}
+            />
+          )}
+          {pages.length > 1 && onPage && (
+            <Row label="Page" htmlFor="studio-widget-page">
+              <select id="studio-widget-page" value={pageId} onChange={(event) => onPage(event.target.value)}>
+                {pages.map((page) => (
+                  <option key={page.id} value={page.id}>
+                    {page.name}
+                  </option>
+                ))}
+              </select>
+            </Row>
+          )}
           <Choice
-            label="On click"
-            value={acts.target}
-            onChange={(value) => setBehaviour("target", value)}
+            label="On phones"
+            value={acts.phones}
+            onChange={(value) => setBehaviour("phones", value)}
             options={[
-              ["same", "Same tab"],
-              ["new", "New tab"],
-              ["none", "Nothing"],
+              ["show", "Show"],
+              ["hide", "Hide"],
             ]}
+            info="Hide keeps the widget off screens narrower than a tablet. It stays in place everywhere else."
           />
-        )}
-        {pages.length > 1 && onPage && (
-          <Row label="Page" htmlFor="studio-widget-page">
-            <select id="studio-widget-page" value={pageId} onChange={(event) => onPage(event.target.value)}>
-              {pages.map((page) => (
-                <option key={page.id} value={page.id}>
-                  {page.name}
-                </option>
-              ))}
-            </select>
-          </Row>
-        )}
-        <Choice
-          label="On phones"
-          value={acts.phones}
-          onChange={(value) => setBehaviour("phones", value)}
-          options={[
-            ["show", "Show"],
-            ["hide", "Hide"],
-          ]}
-          info="Hide keeps the widget off screens narrower than a tablet. It stays in place everywhere else."
-        />
-        {show.values && (
-          <>
-            <Choice
-              label="Refresh"
-              value={acts.refresh}
-              onChange={(value) => setBehaviour("refresh", value)}
-              options={[
-                ["auto", "Auto"],
-                ["10s", "10 s"],
-                ["30s", "30 s"],
-                ["1m", "1 min"],
-                ["5m", "5 min"],
-              ]}
-              info="Auto uses the integration's own refresh interval."
-            />
-            <Choice
-              label="Errors"
-              value={acts.errors}
-              onChange={(value) => setBehaviour("errors", value)}
-              options={[
-                ["link", "Show a fix link"],
-                ["hide", "Hide"],
-              ]}
-              info="Hide keeps the last values, greyed, with the time they were read."
-            />
-          </>
-        )}
-      </Group>
+          {show.values && (
+            <>
+              <Choice
+                label="Refresh"
+                value={acts.refresh}
+                onChange={(value) => setBehaviour("refresh", value)}
+                options={[
+                  ["auto", "Auto"],
+                  ["10s", "10 s"],
+                  ["30s", "30 s"],
+                  ["1m", "1 min"],
+                  ["5m", "5 min"],
+                ]}
+                info="Auto uses the integration's own refresh interval."
+              />
+              <Choice
+                label="Errors"
+                value={acts.errors}
+                onChange={(value) => setBehaviour("errors", value)}
+                options={[
+                  ["link", "Show a fix link"],
+                  ["hide", "Hide"],
+                ]}
+                info="Hide keeps the last values, greyed, with the time they were read."
+              />
+            </>
+          )}
+        </Group>
+      )}
     </div>
   );
 }

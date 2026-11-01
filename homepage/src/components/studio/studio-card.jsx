@@ -49,15 +49,14 @@ function StatusMark({ status, show }) {
           {t("common.ms", { value: status.ms, style: "unit", unit: "millisecond", maximumFractionDigits: 0 })}
         </span>
       )}
-      {show === "updown" && status.state !== "pending" && (
-        <span className="studio-status-text">{status.state === "up" ? "Up" : "Down"}</span>
-      )}
+      {show === "updown" && status.state === "up" && <span className="studio-status-text">Up</span>}
+      {status.state === "down" && <span className="studio-status-text">{status.code ? "Down" : "Offline"}</span>}
       <span className="studio-status-dot" aria-hidden="true" />
     </span>
   );
 }
 
-function Identity({ icon, name, description, card }) {
+function Identity({ icon, name, description, note, card }) {
   const logo = card.header === "logo-name" || card.header === "logo";
   const title = card.header === "logo-name" || card.header === "name";
   return (
@@ -70,14 +69,18 @@ function Identity({ icon, name, description, card }) {
       {title && (
         <span className="studio-card-name">
           <strong>{name}</strong>
-          {card.description === "show" && description && <small>{description}</small>}
+          {note ? (
+            <small className="studio-card-note">{note}</small>
+          ) : (
+            card.description === "show" && description && <small>{description}</small>
+          )}
         </span>
       )}
     </>
   );
 }
 
-export function CardHead({ icon, name, description, href, card, status, extra }) {
+export function CardHead({ icon, name, description, note, href, card, status, extra }) {
   const target = TARGETS[card.target];
   const linked = href && href !== "#" && target;
   if (card.header === "hidden" && !status && !extra) return null;
@@ -86,11 +89,11 @@ export function CardHead({ icon, name, description, href, card, status, extra })
       {card.header !== "hidden" &&
         (linked ? (
           <a className="studio-card-identity" href={href} target={target} rel="noreferrer">
-            <Identity icon={icon} name={name} description={description} card={card} />
+            <Identity icon={icon} name={name} description={description} note={note} card={card} />
           </a>
         ) : (
           <span className="studio-card-identity">
-            <Identity icon={icon} name={name} description={description} card={card} />
+            <Identity icon={icon} name={name} description={description} note={note} card={card} />
           </span>
         ))}
       <span className="studio-card-tags">
@@ -120,26 +123,23 @@ export function ServiceCard({ service, groupName, children }) {
   if (down && !downSince.has(key)) downSince.set(key, new Date());
   if (status?.state === "up") downSince.delete(key);
   const since = downSince.get(key);
+  // A down service says so in place of its description, so even a compact
+  // card shows why it is red.
+  const note = down
+    ? `${status.code ? `Answered ${status.code}` : "No answer"}${since ? ` since ${since.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}`
+    : null;
   return (
-    <div className="studio-card" data-alert={down || undefined} data-has-body={Boolean(children) || down || undefined}>
+    <div className="studio-card" data-alert={down || undefined} data-has-body={Boolean(children) || undefined}>
       <CardHead
         icon={service.icon}
         name={service.name}
         description={service.description}
+        note={note}
         href={service.href}
         card={card}
         status={status}
         extra={extra}
       />
-      {down && !children && (
-        <div className="studio-card-offline" role="status">
-          <strong>Offline</strong>
-          <span>
-            {status.code ? `Answered ${status.code}` : "No answer"}
-            {since && ` since ${since.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
-          </span>
-        </div>
-      )}
       {children && <div className="studio-card-body">{children}</div>}
     </div>
   );
