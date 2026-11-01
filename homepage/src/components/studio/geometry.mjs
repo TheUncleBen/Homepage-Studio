@@ -26,8 +26,7 @@ export function panelMinimum(panel) {
     if (panel.nativeLocator?.type === "calendar") return { w: 12, h: 9 };
     if (["iframe", "mjpeg"].includes(panel.nativeLocator?.type))
       return { w: 8, h: 9 };
-    if (["glances", "customapi"].includes(panel.nativeLocator?.type))
-      return { w: 8, h: 7 };
+    if (panel.nativeLocator?.type === "glances") return { w: 8, h: 7 };
     return { w: 6, h: 4 };
   }
   return { w: 1, h: 1 };

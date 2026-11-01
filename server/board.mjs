@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { LookError, validateBehaviour, validateLook } from '../homepage/src/components/studio/look.mjs';
+import { panelMinimum } from '../homepage/src/components/studio/geometry.mjs';
 
 const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const digest = (v) => createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0, 24);
@@ -276,8 +277,16 @@ export function boardSources({ services, serviceWidgets, infoWidgets, bookmarks 
 }
 
 // Default size of a newly added card: a third of the desktop width.
-export const NEW_PANEL_SIZE = Object.freeze({ w: 8, h: 6 });
-export const NEW_WIDGET_SIZE = Object.freeze({ w: 8, h: 10 });
+// A link, bookmark or small information widget is one compact row; an
+// integration widget has room for a large value and a row below. Four fit
+// across the desktop grid. Content that needs more starts at its minimum.
+export const NEW_PANEL_SIZE = Object.freeze({ w: 6, h: 2 });
+export const NEW_WIDGET_SIZE = Object.freeze({ w: 6, h: 4 });
+export function newPanelSize(source) {
+  const base = source.kind === 'serviceWidget' ? NEW_WIDGET_SIZE : NEW_PANEL_SIZE;
+  const minimum = panelMinimum(source);
+  return { w: Math.max(base.w, minimum.w), h: Math.max(base.h, minimum.h) };
+}
 
 export function reconcileBoard(sources, previous, { pageId } = {}) {
   previous = validateStoredBoard(previous);
@@ -304,7 +313,7 @@ export function reconcileBoard(sources, previous, { pageId } = {}) {
     if (old?.behaviour) panel.behaviour = old.behaviour;
     if (!position) {
       placement ??= placementIndex(occupied);
-      position = placement.next(source.kind === 'serviceWidget' ? NEW_WIDGET_SIZE : NEW_PANEL_SIZE);
+      position = placement.next(newPanelSize(source));
       if (!stacked.has(source.id)) placement.add(position);
     }
     panel.rect = { ...position };

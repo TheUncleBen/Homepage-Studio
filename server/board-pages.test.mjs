@@ -42,8 +42,8 @@ test('overlap is checked per page, and stacked widgets follow their stack\'s pag
 test('new content lands on the requested page in its first free spot', () => {
   const previous = base([{ ...source('a'), pageId: 'media', rect: { x: 0, y: 0, w: 8, h: 6 } }]);
   const onMedia = reconcileBoard([source('a'), source('n')], previous, { pageId: 'media' });
-  assert.deepEqual(onMedia.panels.find(p => p.id === 'n'), { ...source('n'), pageId: 'media', rect: { x: 8, y: 0, w: 8, h: 6 } });
+  assert.deepEqual(onMedia.panels.find(p => p.id === 'n'), { ...source('n'), pageId: 'media', rect: { x: 8, y: 0, w: 6, h: 2 } });
   const onHome = reconcileBoard([source('a'), source('n')], previous);
-  assert.deepEqual(onHome.panels.find(p => p.id === 'n').rect, { x: 0, y: 0, w: 8, h: 6 });
+  assert.deepEqual(onHome.panels.find(p => p.id === 'n').rect, { x: 0, y: 0, w: 6, h: 2 });
   assert.equal(reconcileBoard([source('a'), source('n')], previous, { pageId: 'gone' }).panels[1].pageId, 'home');
 });

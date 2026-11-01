@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { BOARD_COLUMNS, DEFAULT_PLAYBACK, intersects, nextPosition, reconcileBoard, validateStoredBoard } from './board.mjs';
+import { BOARD_COLUMNS, DEFAULT_PLAYBACK, intersects, newPanelSize, nextPosition, reconcileBoard, validateStoredBoard } from './board.mjs';
 
 // The original row-major scan is deliberately retained as an independent
 // behavioral oracle for the optimized allocator, only on bounded fixtures.
@@ -33,7 +33,7 @@ function referenceBoard(sources, previous) {
   const panels = sources.map(source => {
     let position = byId.get(source.id)?.rect;
     if (!position) {
-      position = referencePosition({ w: 8, h: source.kind === 'serviceWidget' ? 10 : 6 }, occupied);
+      position = referencePosition(newPanelSize(source), occupied);
       if (!stacked.has(source.id)) occupied.push(position);
     }
     return { ...source, pageId: 'home', rect: { ...position } };
@@ -113,19 +113,28 @@ test('initial placement stays bounded through the supported panel limit and a sp
   const result = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
     import { MAX_PANELS, reconcileBoard } from ${JSON.stringify(new URL('./board.mjs', import.meta.url).href)};
-    for (const [count, kind, h] of [[600, 'service', 6], [MAX_PANELS, 'serviceWidget', 10]]) {
+    for (const [count, kind, h] of [[600, 'service', 2], [MAX_PANELS, 'serviceWidget', 4]]) {
       const sources = Array.from({ length: count }, (_, index) => ({ id: 'panel-' + index, kind }));
       const board = reconcileBoard(sources, null);
       assert.equal(board.panels.length, count);
-      for (let index = 0; index < count; index++) assert.deepEqual(board.panels[index].rect, { x: (index % 3) * 8, y: Math.floor(index / 3) * h, w: 8, h });
+      for (let index = 0; index < count; index++) assert.deepEqual(board.panels[index].rect, { x: (index % 4) * 6, y: Math.floor(index / 4) * h, w: 6, h });
       const far = { ...sources[0], rect: { x: 0, y: 200000, w: 24, h: 2000 } };
       const restored = reconcileBoard(sources, { version: 3, columns: 24, panels: [far], stacks: [] });
       assert.deepEqual(restored.panels[0].rect, far.rect);
-      for (let index = 1; index < count; index++) assert.deepEqual(restored.panels[index].rect, { x: ((index - 1) % 3) * 8, y: Math.floor((index - 1) / 3) * h, w: 8, h });
+      for (let index = 1; index < count; index++) assert.deepEqual(restored.panels[index].rect, { x: ((index - 1) % 4) * 6, y: Math.floor((index - 1) / 4) * h, w: 6, h });
       const persisted = { version: 3, columns: 24, pages: board.pages, panels: board.panels, stacks: [] };
       assert.deepEqual(reconcileBoard(sources, persisted), board);
     }
     process.stdout.write('bounded placement passed');
   `], { timeout: 10000, maxBuffer: 1024 * 1024 });
   assert.equal(result.stdout, 'bounded placement passed');
+});
+
+test('new content starts compact: links and info 6x2, integrations 6x4, never under the widget minimum', () => {
+  assert.deepEqual(newPanelSize({ kind: 'service' }), { w: 6, h: 2 });
+  assert.deepEqual(newPanelSize({ kind: 'bookmark' }), { w: 6, h: 2 });
+  assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'datetime' } }), { w: 6, h: 2 });
+  assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'resources' } }), { w: 8, h: 4 });
+  assert.deepEqual(newPanelSize({ kind: 'serviceWidget', nativeLocator: { type: 'customapi' } }), { w: 6, h: 4 });
+  assert.deepEqual(newPanelSize({ kind: 'serviceWidget', nativeLocator: { type: 'calendar' } }), { w: 12, h: 9 });
 });
