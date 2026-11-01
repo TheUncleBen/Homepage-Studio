@@ -1477,9 +1477,12 @@ body {
 .studio-appearance {
   margin-bottom: 8px;
 }
+.studio-appearance {
+  container-type: inline-size;
+}
 .studio-appearance-layout {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-columns: minmax(0, 1fr) 280px;
   gap: 20px;
   align-items: start;
 }
@@ -1559,6 +1562,17 @@ body {
   border-radius: 14px;
   background: var(--studio-bg);
   color: var(--studio-text);
+}
+/* Too narrow for the preview beside rows of five choices: the rows keep
+   the width, so no choice is cut off. */
+@container (max-width: 820px) {
+  .studio-appearance-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .studio-appearance-preview {
+    display: none;
+  }
 }
 .studio-appearance-preview > strong {
   font-size: 15px;
@@ -2599,11 +2613,13 @@ body {
     flex: 1;
     max-width: none;
   }
+  /* Edge to edge under the top bar: its own 12 px padding, no wider. */
   .studio-topbar .studio-pages {
     order: 3;
-    flex: 1 0 100%;
-    margin: 6px -20px 0;
-    padding: 6px 14px;
+    flex: 1 0 calc(100% + 24px);
+    max-width: calc(100% + 24px);
+    margin: 6px -12px 0;
+    padding: 6px 12px;
     border-top: 1px solid var(--studio-line);
   }
 }
@@ -3087,6 +3103,20 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-edit-mode .studio-panel-header .studio-icon-button {
   width: 30px;
   height: 30px;
+}
+/* With a mouse, the controls show on the card under the pointer, the one
+   with keyboard focus and the selected ones, so they don't cover what the
+   other cards show. */
+@media (hover: hover) {
+  .studio-edit-mode .studio-panel:not(.studio-stacked-panel) > .studio-panel-slide > .studio-panel-header {
+    transition: opacity 120ms ease;
+  }
+  .studio-edit-mode
+    .studio-panel:not(.studio-stacked-panel):not(:hover):not(:focus-within):not(.studio-selected)
+    > .studio-panel-slide
+    > .studio-panel-header {
+    opacity: 0;
+  }
 }
 
 /* ---------- Widget dialog: preview, look, arranged values ---------- */

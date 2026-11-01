@@ -611,6 +611,17 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.equal(used.status, 200, used.text);
   assert.equal(used.json.connection.id, mineAdded.json.connection.id);
   assert.equal((await post('/home/studio/api/my-connections/use', { id: mineAdded.json.connection.id }, { cookie: admin.cookie })).status, 200, 'using it again refreshes the copy');
+  // A different personal one with a name the dashboard already uses says how out.
+  const clash = await post('/home/studio/api/my-connections', { action: 'add', name: 'Media server', url: 'https://other.example.org' }, { cookie: admin.cookie });
+  assert.equal(clash.status, 400, 'names are unique within one person too');
+  const twin = await post('/copy/studio/api/connections', { action: 'add', name: 'Twin', url: 'https://twin.example.org' }, { cookie: admin.cookie });
+  assert.equal(twin.status, 200, twin.text);
+  const mineTwin = await post('/home/studio/api/my-connections', { action: 'add', name: 'Twin', url: 'https://twin.example.org' }, { cookie: admin.cookie });
+  const taken = await post('/copy/studio/api/my-connections/use', { id: mineTwin.json.connection.id }, { cookie: admin.cookie });
+  assert.equal(taken.status, 409);
+  assert.equal(taken.json.code, 'CONNECTION_NAME_TAKEN');
+  assert.match(taken.json.error, /Choose that one under This dashboard/);
+  assert.equal((await post('/home/studio/api/my-connections', { action: 'delete', id: mineTwin.json.connection.id }, { cookie: admin.cookie })).status, 200);
   assert.equal((await post('/home/studio/api/my-connections', { action: 'delete', id: mineAdded.json.connection.id }, { cookie: admin.cookie })).status, 200);
   assert.deepEqual((await request('/home/studio/api/connections', { cookie: admin.cookie })).json.connections.map(entry => [entry.name, entry.has.key]), [['Media server', true]], 'the dashboard keeps its copy');
   assert.equal((await post('/home/studio/api/images/delete', { id: imageId, confirm: true }, { cookie: member.cookie })).status, 200);

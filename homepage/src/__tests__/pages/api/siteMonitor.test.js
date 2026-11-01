@@ -107,6 +107,18 @@ describe("pages/api/siteMonitor", () => {
     expect(res.body).toEqual({ status: 200, latency: 10 });
   });
 
+  it("says nothing answered when the proxy could not reach the address", async () => {
+    getServiceItem.mockResolvedValueOnce({ siteMonitor: "http://example.com" });
+    perf.now.mockReturnValueOnce(1).mockReturnValueOnce(2).mockReturnValueOnce(5).mockReturnValueOnce(15);
+    const unreachable = [500, "application/json", { error: { message: "getaddrinfo ENOTFOUND" } }, null];
+    httpProxy.mockResolvedValueOnce(unreachable).mockResolvedValueOnce(unreachable);
+
+    const res = createMockRes();
+    await handler({ query: { groupName: "g", serviceName: "s" } }, res);
+
+    expect(res.body).toEqual({ status: 500, latency: 10, reachable: false });
+  });
+
   it("returns 400 when httpProxy throws", async () => {
     getServiceItem.mockResolvedValueOnce({ siteMonitor: "http://example.com" });
     httpProxy.mockRejectedValueOnce(new Error("nope"));

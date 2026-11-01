@@ -7,10 +7,10 @@ import { createPersonalStore, PreferenceError, validatePreferences } from './per
 
 test('preferences store only what differs from the default and refuse anything else', () => {
   assert.deepEqual(validatePreferences({ searchEngine: 'google', motion: 'reduced', clock: 'dashboard' }), { motion: 'reduced' });
-  assert.deepEqual(validatePreferences({ searchEngine: 'custom', searchUrl: 'https://search.example.com/?q=%s', suggestionsUrl: '' }), { searchEngine: 'custom', searchUrl: 'https://search.example.com/?q=%s' });
+  assert.deepEqual(validatePreferences({ searchEngine: 'custom', searchUrl: 'https://search.example.com/?q=%s' }), { searchEngine: 'custom', searchUrl: 'https://search.example.com/?q=%s' });
   // What was typed for Custom stays while another engine is chosen.
   assert.deepEqual(validatePreferences({ searchEngine: 'bing', searchUrl: 'https://search.example.com/?q=%s' }), { searchEngine: 'bing', searchUrl: 'https://search.example.com/?q=%s' });
-  for (const bad of [null, [], { searchEngine: 'yahoo' }, { unknown: true }, { searchEngine: 'custom' }, { searchUrl: 'https://search.example.com/' }, { searchUrl: 'ftp://example.com/%s' }, { searchUrl: 'https://user:pw@example.com/%s' }, { suggestionsUrl: 'https://example.com/ q=%s' }])
+  for (const bad of [null, [], { searchEngine: 'yahoo' }, { unknown: true }, { searchEngine: 'custom' }, { searchUrl: 'https://search.example.com/' }, { searchUrl: 'ftp://example.com/%s' }, { searchUrl: 'https://user:pw@example.com/%s' }, { suggestionsUrl: 'https://example.com/?q=%s' }])
     assert.throws(() => validatePreferences(bad), PreferenceError);
 });
 

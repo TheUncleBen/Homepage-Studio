@@ -324,6 +324,9 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
           </Group>
         </div>
         <div className="studio-appearance-preview" style={previewStyle} aria-label="Appearance preview">
+          <span className="studio-look-preview-label" aria-hidden="true">
+            Preview
+          </span>
           <strong>{settings.title || "Your dashboard"}</strong>
           <div aria-hidden="true" className="studio-appearance-preview-panels">
             <span>

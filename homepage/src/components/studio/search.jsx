@@ -20,7 +20,7 @@ const LIMIT = 8;
 // bookmark on every page, with its page.
 export function searchableItems(board, data) {
   const pages = new Map((board?.pages || []).map((page) => [page.id, page.name]));
-  return (board?.panels || []).map((panel) => {
+  const items = (board?.panels || []).map((panel) => {
     const resolved = resolveNativePanel(panel, data);
     const item = resolved?.service || resolved?.bookmark || null;
     return {
@@ -32,8 +32,15 @@ export function searchableItems(board, data) {
       icon: typeof item?.icon === "string" ? item.icon : null,
       pageId: pageOf(board, panel),
       pageName: pages.get(pageOf(board, panel)) || "",
+      service: resolved?.service ? `${resolved.groupName}\u0000${resolved.service.name}` : null,
     };
   });
+  // A service and its integration widget are one result: the service tile
+  // when it is on the dashboard, otherwise the widget.
+  const tiles = new Set(items.filter((item) => item.kind === "service" && item.service).map((item) => item.service));
+  return items
+    .filter((item) => item.kind !== "serviceWidget" || !tiles.has(item.service))
+    .map(({ service, ...item }) => item);
 }
 
 // Best first: names that start with the search, then names that contain

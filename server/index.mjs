@@ -890,7 +890,13 @@ export function createStudioServer(options = {}) {
       const here = forDashboard(dashboard).connections;
       const input = { name: entry.name, url: entry.url, ...entry.secrets, clear: SECRET_FIELDS.filter(field => !entry.secrets[field]) };
       const existing = (await here.list()).some(item => item.id === entry.id);
-      const copy = existing ? await here.update(entry.id, input) : await here.add(input, { id: entry.id });
+      let copy;
+      try { copy = existing ? await here.update(entry.id, input) : await here.add(input, { id: entry.id }); }
+      catch (error) {
+        // Another connection on this dashboard has the same name: say how out.
+        if (error instanceof ConnectionError && /already a connection called/.test(error.message)) throw new ConnectionError(`This dashboard already has a different connection called “${entry.name}”. Choose that one under This dashboard, or rename yours in Dashboard settings › Saved connections.`, 'CONNECTION_NAME_TAKEN', 409);
+        throw error;
+      }
       return json(res, 200, { connection: publicConnection(copy) });
     }
     if (path !== '/studio/api/my-connections') return json(res, 404, { error: 'This editor endpoint does not exist.' });

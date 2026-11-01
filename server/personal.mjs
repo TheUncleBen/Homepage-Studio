@@ -47,7 +47,7 @@ export const PREFERENCE_CHOICES = Object.freeze({
   clock: ['dashboard', '24', '12'],
   temperature: ['dashboard', 'c', 'f'],
 });
-const TEXT_KEYS = ['searchUrl', 'suggestionsUrl'];
+const TEXT_KEYS = ['searchUrl'];
 
 function webAddress(value, { needsQuery }) {
   if (typeof value !== 'string' || value.length > 500 || /[\u0000-\u001f\u007f\s]/.test(value)) return false;
@@ -64,7 +64,7 @@ export function validatePreferences(value) {
   for (const [key, entry] of Object.entries(value)) {
     if (TEXT_KEYS.includes(key)) {
       if (entry === '' || entry === undefined) continue;
-      if (!webAddress(entry, { needsQuery: true })) throw new PreferenceError(key === 'searchUrl' ? 'Use a web address with %s where the search goes, such as https://search.example.com/?q=%s.' : 'Use a suggestions address with %s where the search goes, or leave it empty.');
+      if (!webAddress(entry, { needsQuery: true })) throw new PreferenceError('Use a web address with %s where the search goes, such as https://search.example.com/?q=%s.');
       out[key] = entry;
       continue;
     }

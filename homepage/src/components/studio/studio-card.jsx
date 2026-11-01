@@ -3,6 +3,7 @@ import { useContext } from "react";
 import useSWR from "swr";
 
 import { CardLookContext } from "./card-look";
+import { usePreferences } from "./preferences";
 
 import ResolvedIcon from "components/resolvedicon";
 import KubernetesStatus from "components/services/kubernetes-status";
@@ -29,6 +30,7 @@ function useStatus(service, groupName, check) {
   if (error || data?.error) return { state: "down", text: "Error" };
   if (!data) return { state: "pending" };
   if (kind === "ping") return data.alive ? { state: "up", ms: Math.round(data.time) } : { state: "down" };
+  if (data.reachable === false) return { state: "down" };
   return data.status > 403 ? { state: "down", code: data.status } : { state: "up", ms: Math.round(data.latency) };
 }
 
@@ -109,6 +111,8 @@ export function ServiceCard({ service, groupName, children }) {
   const card = useContext(CardLookContext);
   const settings = useContext(SettingsContext)?.settings;
   const status = useStatus(service, groupName, card.statusCheck);
+  const { clock } = usePreferences();
+  const { i18n } = useTranslation();
   const statusStyle = service.statusStyle ?? settings?.statusStyle ?? "dot";
   const extra = (
     <>
@@ -125,7 +129,7 @@ export function ServiceCard({ service, groupName, children }) {
   // A down service says so in place of its description, so even a compact
   // card shows why it is red.
   const note = down
-    ? `${status.code ? `Answered ${status.code}` : "No answer"}${since ? ` since ${since.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}`
+    ? `${status.code ? `Answered ${status.code}` : "No answer"}${since ? ` since ${since.toLocaleTimeString(i18n.language || [], { hour: "2-digit", minute: "2-digit", ...(clock !== "dashboard" ? { hour12: clock === "12" } : {}) })}` : ""}`
     : null;
   return (
     <div className="studio-card" data-alert={down || undefined} data-has-body={Boolean(children) || undefined}>

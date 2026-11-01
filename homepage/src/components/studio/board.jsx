@@ -2210,7 +2210,7 @@ export default function StudioBoard({
         <StudioDialog
           title={modalTitles[modal.type]}
           onClose={closeModal}
-          wide={modal.type === "files" || modal.type === "picker"}
+          wide={modal.type === "files" || modal.type === "picker" || modal.type === "settings"}
           busy={editorGuard.pending}
         >
           <EditorDraftContext.Provider value={reportEditorDraft}>

@@ -54,6 +54,38 @@ describe("search model", () => {
     expect(matchItems(items, "o").map((item) => item.name)).toEqual(["Clock", "Docs", "Vault"]);
   });
 
+  it("lists a service and its integration widget once", () => {
+    const service = { name: "Jellyfin", description: "Films", widgets: [{ type: "jellyfin" }] };
+    const media = { services: [{ name: "Media", services: [service] }] };
+    const tile = {
+      id: "s",
+      kind: "service",
+      title: "Jellyfin",
+      pageId: "home",
+      nativeLocator: { name: "Jellyfin", groupPath: ["Media"] },
+    };
+    const widget = {
+      id: "w",
+      kind: "serviceWidget",
+      title: "Jellyfin",
+      pageId: "home",
+      nativeLocator: {
+        name: "Jellyfin",
+        groupPath: ["Media"],
+        widgetIndex: 0,
+        type: "jellyfin",
+        sourceKey: "widgets",
+        sourceIndex: 0,
+        proxyIndex: 0,
+      },
+    };
+    const both = searchableItems({ pages: board.pages, panels: [tile, widget] }, media);
+    expect(both.map((item) => [item.id, item.kind])).toEqual([["s", "service"]]);
+    // Without the tile on the dashboard, the widget is the result.
+    const alone = searchableItems({ pages: board.pages, panels: [widget] }, media);
+    expect(alone.map((item) => [item.id, item.kind])).toEqual([["w", "serviceWidget"]]);
+  });
+
   it("recognises typed web addresses", () => {
     expect(typedAddress("example.org")).toBe("https://example.org");
     expect(typedAddress("http://nas.example:5000/x")).toBe("http://nas.example:5000/x");
