@@ -23,6 +23,7 @@ import { ConnectionError, createConnectionStore, publicConnection, SECRET_FIELDS
 const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'];
 import { createPersonalStore } from './personal.mjs';
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
+import { LookError, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
 import { createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
@@ -543,9 +544,14 @@ function createDashboardHandlers(options = {}) {
         const change = await readBody(req);
         const config = change.config;
         const validTheme = value => value === null || value === 'dark' || value === 'light';
-        const validStudio = value => value === null || (value && typeof value === 'object' && !Array.isArray(value) && JSON.stringify(value).length <= 4096);
-        if (!config || typeof config !== 'object' || Array.isArray(config) || Object.keys(config).some(key => !APPEARANCE_KEYS.includes(key)) || (Object.hasOwn(config, 'theme') && !validTheme(config.theme)) || (Object.hasOwn(config, 'studioTheme') && !validStudio(config.studioTheme))) {
+        if (!config || typeof config !== 'object' || Array.isArray(config) || Object.keys(config).some(key => !APPEARANCE_KEYS.includes(key)) || (Object.hasOwn(config, 'theme') && !validTheme(config.theme))) {
           throw Object.assign(new Error('Only the display mode and Studio appearance can be changed here.'), { status: 400, code: 'APPEARANCE_ONLY' });
+        }
+        // Each studioTheme key has its own choices (no free text), so nothing
+        // written here can name a {{...}} value for the renderer to fill in.
+        if (Object.hasOwn(config, 'studioTheme')) {
+          try { config.studioTheme = validateStudioTheme(config.studioTheme); }
+          catch (error) { if (error instanceof LookError) throw Object.assign(new Error(error.message), { status: 400, code: 'APPEARANCE_ONLY' }); throw error; }
         }
         // Switching off the platform CSS is a CSS change, for administrators only.
         if (Object.hasOwn(config, 'studioTheme')) {

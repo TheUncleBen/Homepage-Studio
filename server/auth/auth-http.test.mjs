@@ -216,6 +216,20 @@ test('members only reach dashboards shared with them, at the shared level', asyn
   const appearance = await request('/studio/api/appearance', { cookie: member.cookie });
   assert.equal(appearance.status, 200, appearance.text);
   assert.equal((await request('/studio/api/state', { cookie: member.cookie })).status, 403);
+  // Appearance takes only Studio's own choices: no free text that the
+  // renderer could fill in as a saved connection key or a HOMEPAGE_VAR secret.
+  for (const studioTheme of [
+    { note: '{{STUDIO_CONNECTION_0123456789ABCDEF_KEY}}' },
+    { env: '{{HOMEPAGE_VAR_REVIEW_SECRET}}' },
+    { accent: '{{HOMEPAGE_VAR_REVIEW_SECRET}}' },
+    { card: { edge: 'line', label: '{{HOMEPAGE_VAR_REVIEW_SECRET}}' } },
+    { pageBackground: { source: 'library', id: '{{HOMEPAGE_VAR_REVIEW_SECRET}}' } },
+  ]) {
+    const refused = await post('/studio/api/appearance', { revision: appearance.json.revision, config: { studioTheme } }, { cookie: member.cookie });
+    assert.equal(refused.status, 400, JSON.stringify(studioTheme));
+  }
+  const fine = await post('/studio/api/appearance', { revision: appearance.json.revision, config: { studioTheme: { mode: 'light', accent: '#81A8C8', spacing: 'roomy', card: { edge: 'line' } } } }, { cookie: member.cookie });
+  assert.equal(fine.status, 200, fine.text);
 
   // Disabling the account ends its sessions at once.
   const disabled = await post('/studio/auth/admin/update', { id: member.invited.id, disabled: true }, { cookie: admin.cookie });

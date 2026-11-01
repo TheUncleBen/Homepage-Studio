@@ -7,7 +7,8 @@
 // widget follows later changes to the dashboard. There is no reset or
 // inherit control anywhere.
 
-import { hexColor } from "./appearance.mjs";
+import { BASES, hexColor } from "./appearance.mjs";
+import { SPACING } from "./geometry.mjs";
 
 export const LOOK_OPTIONS = Object.freeze({
   layout: ["hero", "quiet"],
@@ -190,6 +191,45 @@ export function validateLook(value) {
     else fail(`Unknown widget look setting: ${key}.`);
   }
   return Object.keys(out).length ? out : undefined;
+}
+
+// settings.yaml studioTheme, as people who may arrange a dashboard write it
+// (POST /studio/api/appearance). Only the keys Studio writes, each with its
+// own choices, so no free text can reach settings.yaml (and the renderer's
+// {{...}} substitution) through this route.
+export function validateStudioTheme(value) {
+  if (value === null || value === undefined) return value;
+  if (!plain(value)) fail("The Studio appearance must be an object.");
+  const out = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "mode") {
+      if (!["dark", "light", "system"].includes(entry)) fail("Mode must be dark, light or system.");
+      out.mode = entry;
+    } else if (key === "accent") {
+      if (!hexColor(entry)) fail("The accent must be a hex colour.");
+      out.accent = hexColor(entry);
+    } else if (key === "base") {
+      if (typeof entry !== "string" || !Object.hasOwn(BASES, entry))
+        fail("That base is not one of the offered choices.");
+      out.base = entry;
+    } else if (key === "spacing") {
+      if (typeof entry !== "string" || !Object.hasOwn(SPACING, entry))
+        fail("Spacing must be compact, default or roomy.");
+      out.spacing = entry;
+    } else if (key === "card") {
+      const look = validateLook(entry);
+      if (look?.values) fail("The dashboard's card look has no widget values.");
+      if (look) out.card = look;
+    } else if (key === "pageBackground") out.pageBackground = background(entry);
+    else if (key === "glass") {
+      if (entry !== true) fail("Glass cards are on or left out.");
+      out.glass = true;
+    } else if (key === "platformCss") {
+      if (entry !== false) fail("The platform CSS is off or left out.");
+      out.platformCss = false;
+    } else fail(`Unknown appearance setting: ${key}.`);
+  }
+  return out;
 }
 
 export function validateBehaviour(value) {
