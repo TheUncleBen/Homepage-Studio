@@ -121,14 +121,14 @@ describe("dashboard appearance controls", () => {
     vi.stubGlobal("matchMedia", () => media);
     const { container, unmount } = render(<Draft initial={{ studioTheme: { mode: "system" } }} />);
     const preview = container.querySelector(".studio-appearance-preview");
-    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#f4f3f6");
+    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#f3f1ec");
     act(() => {
       media.matches = true;
       listener();
     });
-    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#111115");
+    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#121314");
     fireEvent.click(screen.getByRole("radio", { name: "Light" }));
-    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#f4f3f6");
+    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#f3f1ec");
     unmount();
     expect(media.removeEventListener).toHaveBeenCalledWith("change", listener);
   });

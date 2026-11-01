@@ -328,7 +328,7 @@ function reconcileInfo(entries, previous = []) {
   });
 }
 
-function parseSnapshot(raw, forced = {}, discovery = {}) {
+function parseSnapshot(raw, forced = {}, discovery = {}, placement = {}) {
   // Only native YAML files are parsed; custom CSS/JavaScript are opaque text.
   const parsed = Object.fromEntries(Object.entries(FILES).filter(([, file]) => file.endsWith('.yaml')).map(([field, file]) => [field, yamlDocument(raw[file] ?? DEFAULTS[file], file)]));
   const { services, groups } = serviceEntries(parsed.servicesYaml.data);
@@ -346,7 +346,7 @@ function parseSnapshot(raw, forced = {}, discovery = {}) {
   const hiddenDiscoveredIds = state.hiddenDiscoveredIds;
   const sources = [...boardSources({ services, serviceWidgets, infoWidgets, bookmarks }), ...discoveredSources.filter((source) => !hiddenDiscoveredIds.includes(source.id))];
   if (sources.length > MAX_PANELS) fail('The dashboard contains too many independently placed panels.', 'CONFIG_SIZE_LIMIT');
-  const board = reconcileBoard(sources, state.board);
+  const board = reconcileBoard(sources, state.board, placement);
   return { parsed, state, services, groups, infoWidgets, serviceWidgets, bookmarks, discoveredSources, hiddenDiscoveredIds, sources, board };
 }
 
@@ -740,7 +740,8 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       if (state.hiddenDiscoveredIds.some((id) => !known.has(id))) fail('That discovered panel is not known to this dashboard.', 'TILE_NOT_FOUND', 404);
       desired['state.json'] = JSON.stringify(state);
     }
-    const candidate = parseSnapshot(desired, forced, discoveryContext());
+    // New content lands on the page the editor was looking at.
+    const candidate = parseSnapshot(desired, forced, discoveryContext(), { pageId: typeof change.pageId === 'string' ? change.pageId : undefined });
     const state = {
       version: 2,
       infoWidgets: candidate.infoWidgets.map(({ id, type, fingerprint }) => ({ id, type, fingerprint })),
@@ -793,7 +794,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         }
       }
     }
-    return saveCurrent(current, { revision: change.revision, servicesYaml: parsed.text() }, `service-${CONTENT_ACTIONS[change.action]}`);
+    return saveCurrent(current, { revision: change.revision, pageId: change.pageId, servicesYaml: parsed.text() }, `service-${CONTENT_ACTIONS[change.action]}`);
   }
 
   async function mutateInfoInner(change) {
@@ -824,7 +825,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         renamePair(entry.items[0], type);
       }
     }
-    return saveCurrent(current, { revision: change.revision, widgetsYaml: parsed.text() }, `info-widget-${CONTENT_ACTIONS[change.action]}`, { infoWidgets: identities });
+    return saveCurrent(current, { revision: change.revision, pageId: change.pageId, widgetsYaml: parsed.text() }, `info-widget-${CONTENT_ACTIONS[change.action]}`, { infoWidgets: identities });
   }
 
   async function mutateBookmarkInner(change) {
@@ -867,7 +868,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     }
     const text = parsed.text();
     const forced = bookmarkEntries(yamlDocument(text, 'bookmarks.yaml').data).map((entry) => ({ id: identities.get(JSON.stringify([entry.group, entry.name])) }));
-    return saveCurrent(current, { revision: change.revision, bookmarksYaml: text }, `bookmark-${CONTENT_ACTIONS[change.action]}`, { bookmarks: forced });
+    return saveCurrent(current, { revision: change.revision, pageId: change.pageId, bookmarksYaml: text }, `bookmark-${CONTENT_ACTIONS[change.action]}`, { bookmarks: forced });
   }
 
   async function mutateServiceWidgetInner(change) {
@@ -932,7 +933,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const text = parsed.text();
     const newServices = serviceEntries(yamlDocument(text, 'services.yaml').data).services;
     const forcedIdentities = newServices.flatMap((entry) => byService.get(entry.id) ?? []);
-    return saveCurrent(current, { revision: change.revision, servicesYaml: text }, `service-widget-${CONTENT_ACTIONS[change.action]}`, { serviceWidgets: forcedIdentities });
+    return saveCurrent(current, { revision: change.revision, pageId: change.pageId, servicesYaml: text }, `service-widget-${CONTENT_ACTIONS[change.action]}`, { serviceWidgets: forcedIdentities });
   }
 
   async function mutateSettingsInner(change) {
@@ -941,7 +942,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     if (!object(change.config)) fail('Settings must be supplied as a mapping.');
     const parsed = current.parsed.settingsYaml;
     parsed.doc.contents = patchMap(parsed.doc, parsed.doc.contents, change.config, parsed);
-    return saveCurrent(current, { revision: change.revision, settingsYaml: parsed.text() }, 'settings-saved');
+    return saveCurrent(current, { revision: change.revision, pageId: change.pageId, settingsYaml: parsed.text() }, 'settings-saved');
   }
 
   return {
@@ -1043,7 +1044,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       if (!current.discoveredSources.some((source) => source.id === change.id)) fail('That discovered panel no longer exists.', 'TILE_NOT_FOUND', 404);
       const hidden = new Set(current.hiddenDiscoveredIds);
       if (change.hidden) hidden.add(change.id); else hidden.delete(change.id);
-      return saveCurrent(current, { revision: change.revision, hiddenDiscoveredIds: [...hidden] }, change.hidden ? 'discovered-panel-hidden' : 'discovered-panel-shown');
+      return saveCurrent(current, { revision: change.revision, pageId: change.pageId, hiddenDiscoveredIds: [...hidden] }, change.hidden ? 'discovered-panel-hidden' : 'discovered-panel-shown');
     }),
     save: (change) => serialized(async () => saveCurrent(await readCurrent(), change, 'files-saved')),
     mutateService: (change) => serialized(() => mutateServiceInner(change)),

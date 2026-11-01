@@ -1,29 +1,34 @@
-export const COLUMNS = 12;
-export const ROW_HEIGHT = 72;
-export const GAP = 16;
+// 24 columns of 36 px rows (owner-approved board 18): steps half as big as
+// before, so a card can fit its content exactly.
+export const COLUMNS = 24;
+export const ROW_HEIGHT = 36;
+export const GAP = 12;
+// Narrow screens: tablets use 16 columns (cards snap to halves), phones 8.
+export const TABLET_COLUMNS = 16;
+export const PHONE_COLUMNS = 8;
 
 // Grid minima protect readable content space; overflowing native internals remain
 // scrollable, never scaled down. These are content-class limits, not a claim
 // that every service integration has identical layout needs.
 export function panelMinimum(panel) {
   if (panel.kind === "service" || panel.kind === "bookmark")
-    return { w: 3, h: 2 };
+    return { w: 5, h: 2 };
   if (panel.kind === "informationWidget") {
     if (
       ["resources", "kubernetes", "longhorn"].includes(
         panel.nativeLocator?.type,
       )
     )
-      return { w: 4, h: 3 };
-    return { w: panel.nativeLocator?.type === "search" ? 4 : 3, h: 2 };
+      return { w: 8, h: 4 };
+    return { w: panel.nativeLocator?.type === "search" ? 8 : 5, h: 2 };
   }
   if (panel.kind === "serviceWidget") {
-    if (panel.nativeLocator?.type === "calendar") return { w: 6, h: 5 };
+    if (panel.nativeLocator?.type === "calendar") return { w: 12, h: 9 };
     if (["iframe", "mjpeg"].includes(panel.nativeLocator?.type))
-      return { w: 4, h: 5 };
+      return { w: 8, h: 9 };
     if (["glances", "customapi"].includes(panel.nativeLocator?.type))
-      return { w: 4, h: 4 };
-    return { w: 4, h: 3 };
+      return { w: 8, h: 7 };
+    return { w: 6, h: 4 };
   }
   return { w: 1, h: 1 };
 }
@@ -37,8 +42,8 @@ export function unitMinimum(board, id) {
   return {
     w: Math.max(1, ...minima.map((minimum) => minimum.w)),
     h: Math.max(
-      stack ? 3 : 1,
-      ...minima.map((minimum) => minimum.h + (stack ? 1 : 0)),
+      stack ? 5 : 1,
+      ...minima.map((minimum) => minimum.h + (stack ? 2 : 0)),
     ),
   };
 }
@@ -52,11 +57,11 @@ function fitMinimum(rect, minimum) {
 }
 
 export function clampRect(rect = {}, columns = COLUMNS) {
-  const w = Math.max(1, Math.min(columns, Math.round(Number(rect.w) || 4)));
-  const h = Math.max(1, Math.min(1000, Math.round(Number(rect.h) || 3)));
+  const w = Math.max(1, Math.min(columns, Math.round(Number(rect.w) || 8)));
+  const h = Math.max(1, Math.min(2000, Math.round(Number(rect.h) || 6)));
   return {
     x: Math.max(0, Math.min(columns - w, Math.round(Number(rect.x) || 0))),
-    y: Math.max(0, Math.min(100000, Math.round(Number(rect.y) || 0))),
+    y: Math.max(0, Math.min(200000, Math.round(Number(rect.y) || 0))),
     w,
     h,
   };
@@ -212,30 +217,21 @@ function projectEdge(edge, columns) {
   return Math.round((edge * columns) / COLUMNS);
 }
 
-// At 8 columns (tablets) panels snap to halves: a panel up to half the
-// desktop width (6 of 12) is half the tablet width, a wider one is full width.
-// Rows therefore fill the board two-up instead of leaving a narrow strip, and a
-// desktop row of three becomes two, then one (see projectColumns).
-const HALF = 4;
+// On tablets panels snap to halves: a panel up to half the desktop width is
+// half the tablet width, a wider one is full width. Rows therefore fill the
+// board two-up instead of leaving a narrow strip, and a desktop row of three
+// becomes two, then one (see projectColumns). On phones every unit is full width.
+const HALF = TABLET_COLUMNS / 2;
 function projectHalves(rect) {
   if (rect.w > COLUMNS / 2) return { ...rect, x: 0, w: 2 * HALF };
-  const left = Math.min(HALF, Math.round(projectEdge(rect.x, 8) / HALF) * HALF);
+  const left = Math.min(HALF, Math.round(projectEdge(rect.x, TABLET_COLUMNS) / HALF) * HALF);
   return { ...rect, x: left, w: HALF };
 }
 
 function projectRect(rect, columns) {
   if (columns === COLUMNS) return rect;
-  if (columns === 8) return projectHalves(rect);
-  const left = projectEdge(rect.x, columns);
-  const right = projectEdge(rect.x + rect.w, columns);
-  return clampRect(
-    {
-      ...rect,
-      x: left,
-      w: Math.max(columns === 4 ? 4 : 3, right - left),
-    },
-    columns,
-  );
+  if (columns === TABLET_COLUMNS) return projectHalves(rect);
+  return clampRect({ ...rect, x: 0, w: columns }, columns);
 }
 
 // Narrow projections reflow in reading order (left to right, then top to
@@ -244,9 +240,9 @@ function projectRect(rect, columns) {
 // unit placed before it, so tiles that fit side by side stay side by side on
 // shared edges. Otherwise it wraps: it takes the first free spot, scanning
 // rows from the previous unit's row and each row from the left, that reads
-// after the previous unit. At 8 columns a row of three 4-wide tiles becomes two
-// then one; at 4 columns every unit is full width, so each one simply follows
-// the last, as before. The 12-column desktop board is shown as stored.
+// after the previous unit. On tablets a row of three third-width tiles becomes
+// two then one; on phones every unit is full width, so each one simply
+// follows the last. The desktop board is shown as stored.
 function projectColumns(board, columns) {
   const units = unitsForBoard(board).sort(
     (a, b) =>
@@ -268,7 +264,7 @@ function projectColumns(board, columns) {
         }
       }
     }
-    // The canonical 12-column board is disjoint; push any stray overlap down.
+    // The canonical desktop board is disjoint; push any stray overlap down.
     {
       let collisions = placed.filter((other) => intersects(rect, other.rect));
       while (collisions.length) {
@@ -286,12 +282,12 @@ function projectColumns(board, columns) {
   return {
     columns,
     units: placed,
-    rows: Math.max(4, ...placed.map((unit) => unit.rect.y + unit.rect.h)),
+    rows: Math.max(8, ...placed.map((unit) => unit.rect.y + unit.rect.h)),
   };
 }
 
 export function projectBoard(board, width) {
-  return projectColumns(board, width < 560 ? 4 : width < 940 ? 8 : COLUMNS);
+  return projectColumns(board, width < 560 ? PHONE_COLUMNS : width < 940 ? TABLET_COLUMNS : COLUMNS);
 }
 
 export function pixelRect(rect, width, columns = COLUMNS) {
@@ -355,5 +351,34 @@ export function unstackBoard(board, id) {
     const panel = next.panels.find((item) => item.id === panelId);
     if (panel) next = moveUnit(next, panelId, panel.rect);
   });
+  return next;
+}
+
+// Pages: each page is laid out on its own. Geometry works on one page at a
+// time through a page view, and changes are merged back into the whole board.
+export const firstPageId = (board) => board?.pages?.[0]?.id ?? "home";
+export const pageOf = (board, unit) => unit.pageId ?? firstPageId(board);
+
+export function pageBoard(board, pageId = firstPageId(board)) {
+  const onPage = (unit) => pageOf(board, unit) === pageId;
+  return {
+    ...board,
+    pageId,
+    panels: board.panels.filter(onPage),
+    stacks: board.stacks.filter(onPage),
+  };
+}
+
+export function mergePage(board, view) {
+  if (!view || view === board) return board;
+  const pageId = view.pageId ?? firstPageId(board);
+  const changed = new Map(view.panels.map((panel) => [panel.id, { ...panel, pageId }]));
+  const panels = board.panels.map((panel) => changed.get(panel.id) ?? panel);
+  const stacks = [
+    ...board.stacks.filter((stack) => pageOf(board, stack) !== pageId),
+    ...view.stacks.map((stack) => ({ ...stack, pageId })),
+  ];
+  const next = { ...board, panels, stacks };
+  delete next.pageId;
   return next;
 }

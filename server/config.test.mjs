@@ -51,7 +51,7 @@ test('invalid syntax or shape rejects the entire save without changing any file 
     { bookmarksYaml: '- Docs:\n  - Wrong: scalar\n' },
     { widgetsYaml: '- resources: nope\n' },
     { servicesYaml: null },
-    { board: { version: 2, columns: 12, panels: [], stacks: [] } },
+    { board: { version: 3, columns: 24, panels: [], stacks: [] } },
   ]) {
     await assert.rejects(store.save({ revision: before.revision, settingsYaml: 'title: Must not be written\n', ...changes }), (error) => error.status === 422);
     assert.equal((await store.load()).revision, before.revision);

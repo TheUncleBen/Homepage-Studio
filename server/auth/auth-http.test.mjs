@@ -281,7 +281,7 @@ test('the bare address, the Dashboards page and the editor pages follow each per
   const callsBefore = upstreamCalls.length;
   const drawn = await request('/studio/api/preview/default', { cookie: member.cookie });
   assert.equal(drawn.status, 200, drawn.text);
-  assert.ok(Array.isArray(drawn.json.units) && drawn.json.columns === 12);
+  assert.ok(Array.isArray(drawn.json.units) && drawn.json.columns === 24);
   assert.equal((await request('/studio/api/preview/' + other.id, { cookie: member.cookie })).status, 404, 'an unshared dashboard has no preview');
   assert.equal((await request('/studio/api/preview/nope', { cookie: member.cookie })).status, 404);
   assert.equal(upstreamCalls.length, callsBefore, 'no preview starts a dashboard');

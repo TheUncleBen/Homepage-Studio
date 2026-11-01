@@ -33,10 +33,10 @@ function referenceBoard(sources, previous) {
   const panels = sources.map(source => {
     let position = byId.get(source.id)?.rect;
     if (!position) {
-      position = referencePosition({ w: 4, h: source.kind === 'serviceWidget' ? 5 : 3 }, occupied);
+      position = referencePosition({ w: 8, h: source.kind === 'serviceWidget' ? 10 : 6 }, occupied);
       if (!stacked.has(source.id)) occupied.push(position);
     }
-    return { ...source, rect: { ...position } };
+    return { ...source, pageId: 'home', rect: { ...position } };
   });
   for (const old of previous.stacks) {
     const survivors = old.panelIds.filter(id => sourceIds.has(id));
@@ -45,7 +45,7 @@ function referenceBoard(sources, previous) {
     const others = [...stacks.map(stack => stack.rect), ...panels.filter(value => value.id !== panel.id && !stacked.has(value.id)).map(value => value.rect)];
     panel.rect = others.some(other => intersects(old.rect, other)) ? referencePosition(old.rect, others) : { ...old.rect };
   }
-  return { version: 2, columns: BOARD_COLUMNS, panels, stacks };
+  return { version: 3, columns: BOARD_COLUMNS, pages: [{ id: 'home', name: 'Home' }], panels, stacks: stacks.map(stack => ({ ...stack, pageId: 'home' })) };
 }
 
 function random(seed) {
@@ -53,7 +53,7 @@ function random(seed) {
   return maximum => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state % maximum; };
 }
 const source = (id, kind = 'service') => ({ id: `panel-${id}`, kind, title: `Panel ${id}` });
-const board = (panels, stacks = []) => ({ version: 2, columns: BOARD_COLUMNS, panels, stacks });
+const board = (panels, stacks = []) => ({ version: 3, columns: BOARD_COLUMNS, panels, stacks });
 
 test('single-placement searches preserve row-major order across varied sizes and occupied geometry', () => {
   const cases = [
@@ -113,16 +113,16 @@ test('initial placement stays bounded through the supported panel limit and a sp
   const result = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
     import { MAX_PANELS, reconcileBoard } from ${JSON.stringify(new URL('./board.mjs', import.meta.url).href)};
-    for (const [count, kind, h] of [[600, 'service', 3], [MAX_PANELS, 'serviceWidget', 5]]) {
+    for (const [count, kind, h] of [[600, 'service', 6], [MAX_PANELS, 'serviceWidget', 10]]) {
       const sources = Array.from({ length: count }, (_, index) => ({ id: 'panel-' + index, kind }));
       const board = reconcileBoard(sources, null);
       assert.equal(board.panels.length, count);
-      for (let index = 0; index < count; index++) assert.deepEqual(board.panels[index].rect, { x: (index % 3) * 4, y: Math.floor(index / 3) * h, w: 4, h });
-      const far = { ...sources[0], rect: { x: 0, y: 100000, w: 12, h: 1000 } };
-      const restored = reconcileBoard(sources, { version: 2, columns: 12, panels: [far], stacks: [] });
+      for (let index = 0; index < count; index++) assert.deepEqual(board.panels[index].rect, { x: (index % 3) * 8, y: Math.floor(index / 3) * h, w: 8, h });
+      const far = { ...sources[0], rect: { x: 0, y: 200000, w: 24, h: 2000 } };
+      const restored = reconcileBoard(sources, { version: 3, columns: 24, panels: [far], stacks: [] });
       assert.deepEqual(restored.panels[0].rect, far.rect);
-      for (let index = 1; index < count; index++) assert.deepEqual(restored.panels[index].rect, { x: ((index - 1) % 3) * 4, y: Math.floor((index - 1) / 3) * h, w: 4, h });
-      const persisted = { version: 2, columns: 12, panels: board.panels, stacks: [] };
+      for (let index = 1; index < count; index++) assert.deepEqual(restored.panels[index].rect, { x: ((index - 1) % 3) * 8, y: Math.floor((index - 1) / 3) * h, w: 8, h });
+      const persisted = { version: 3, columns: 24, pages: board.pages, panels: board.panels, stacks: [] };
       assert.deepEqual(reconcileBoard(sources, persisted), board);
     }
     process.stdout.write('bounded placement passed');

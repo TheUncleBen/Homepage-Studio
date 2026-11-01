@@ -27,22 +27,22 @@ vi.mock("next/link", () => ({
 const CONFIG_A = "a".repeat(64);
 const CONFIG_B = "b".repeat(64);
 const board = {
-  version: 2,
-  columns: 12,
+  version: 3,
+  columns: 24,
   panels: [
     {
       id: "clock",
       title: "Clock",
       group: "Information",
       kind: "informationWidget",
-      rect: { x: 0, y: 0, w: 4, h: 3 },
+      rect: { x: 0, y: 0, w: 8, h: 6 },
     },
     {
       id: "search",
       title: "Search",
       group: "Information",
       kind: "informationWidget",
-      rect: { x: 4, y: 0, w: 4, h: 3 },
+      rect: { x: 8, y: 0, w: 8, h: 6 },
     },
   ],
   stacks: [],
@@ -248,7 +248,7 @@ describe("Native board save and draft safety", () => {
       {
         id: "live-stack",
         panelIds: ["clock", "search"],
-        rect: { x: 0, y: 0, w: 4, h: 3 },
+        rect: { x: 0, y: 0, w: 8, h: 6 },
         playback: {
           mode: "manual",
           intervalMs: 2000,
@@ -317,7 +317,7 @@ describe("Native board save and draft safety", () => {
     try {
       await mountBoard();
       const input = screen.getByLabelText("Native state search");
-      expect(input.closest("section").style.top).toBe("264px");
+      expect(input.closest("section").style.top).toBe("288px");
       fireEvent.keyDown(
         screen.getByRole("button", { name: "Move Search. Use arrow keys; Shift and arrow keys resize." }),
         { key: "ArrowUp" },
@@ -885,7 +885,7 @@ describe("Native board save and draft safety", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByText("Another change was saved")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save arrangement" })).toBeDisabled();
-    expect(screen.getByLabelText("Native state clock").closest("section")).toHaveStyle({ top: "440px" });
+    expect(screen.getByLabelText("Native state clock").closest("section")).toHaveStyle({ top: "240px" });
     expect(writer).not.toHaveBeenCalled();
   });
 

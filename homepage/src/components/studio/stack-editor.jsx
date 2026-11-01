@@ -7,9 +7,9 @@ import { ActionRow, Group, Row, Segmented, Switch } from "./ui";
 
 const POSITION_FIELDS = [
   ["x", "Column", 0, COLUMNS - 1],
-  ["y", "Row", 0, 100000],
+  ["y", "Row", 0, 200000],
   ["w", "Width", 1, COLUMNS],
-  ["h", "Height", 1, 1000],
+  ["h", "Height", 1, 2000],
 ];
 
 const positionText = (rect) => Object.fromEntries(POSITION_FIELDS.map(([key]) => [key, String(rect[key])]));

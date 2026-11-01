@@ -17,14 +17,15 @@ test('preview icons resolve the names Homepage loads from its icon CDN, and noth
   for (const value of ['a")b.png', '../x.png', 'a b.png', 'mdi-a"b', 'sh-a/b.png', 'x'.repeat(120) + '.png']) assert.equal(previewIcon(value), null, value);
 });
 
-test('a preview holds the layout, the look and each tile name and icon, with stacks drawn once', () => {
+test('a preview holds the first page\'s layout, the look and each tile name and icon, with stacks drawn once', () => {
   const state = {
     settingsConfig: { studioTheme: { accent: '#81a8c8' } },
     services: [{ id: 's1', name: 'Sonarr', config: { icon: 'sonarr.png' } }],
     bookmarks: [{ id: 'b1', name: 'Docs', config: { icon: 'https://example.test/docs.png' } }],
     board: {
-      version: 2, columns: 12,
+      version: 3, columns: 24, pages: [{ id: 'home', name: 'Home' }, { id: 'media', name: 'Media' }],
       panels: [
+        { id: 'm1', kind: 'bookmark', title: 'Elsewhere', pageId: 'media', rect: { x: 0, y: 0, w: 4, h: 2 } },
         { id: 's1', kind: 'service', title: 'Sonarr', nativeLocator: { serviceId: 's1' }, rect: { x: 4, y: 0, w: 4, h: 2 } },
         { id: 'b1', kind: 'bookmark', title: 'Docs', rect: { x: 0, y: 0, w: 4, h: 2 } },
         { id: 'i1', kind: 'informationWidget', title: 'Clock', rect: { x: 0, y: 3, w: 6, h: 2 } },
@@ -37,7 +38,7 @@ test('a preview holds the layout, the look and each tile name and icon, with sta
   assert.equal(preview.mode, 'light', 'the platform mode applies when the dashboard sets none');
   assert.deepEqual(Object.keys(preview.tokens), ['light']);
   assert.match(preview.tokens.light.bg, /^#[0-9a-f]{6}$/);
-  assert.equal(preview.columns, 12);
+  assert.equal(preview.columns, 24);
   assert.equal(preview.rows, 5);
   assert.deepEqual(preview.units.map(unit => [unit.title, unit.x, unit.y, unit.count, unit.icon?.src ?? null]), [
     ['Docs', 0, 0, 1, null],

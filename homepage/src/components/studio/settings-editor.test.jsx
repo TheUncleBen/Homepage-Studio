@@ -37,7 +37,7 @@ describe("Appearance settings save", () => {
     fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
     fireEvent.click(screen.getByRole("radio", { name: "Light" }));
     expect(screen.getByLabelText("Item configuration YAML").value).toContain("mode: light");
-    fireEvent.click(screen.getByRole("button", { name: "Graphite", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Teal", exact: true }));
     fireEvent.change(screen.getByLabelText("Accent color"), {
       target: { value: "#nothex" },
     });
