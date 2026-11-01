@@ -24,6 +24,7 @@ export const SNAPSHOT_ACTION_LABELS = {
   "discovered-panel-hidden": "Discovered panel hidden",
   "discovered-panel-shown": "Discovered panel shown",
   "page-deleted": "Page deleted with its widgets",
+  "page-duplicated": "Page duplicated with copies of its widgets",
   "service-added": "Service tile added",
   "service-edited": "Service tile edited",
   "service-deleted": "Service tile deleted",

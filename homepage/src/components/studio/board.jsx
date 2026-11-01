@@ -1107,6 +1107,32 @@ export default function StudioBoard({
       if (commitWhole(movePage(wholeRef.current, id, index))) showToast("Page moved", true);
     },
     icon: (page) => setModal({ type: "pageIcon", page }),
+    // Copies every widget on the page as real widgets (administrators only),
+    // saved at once like any content change.
+    duplicate: isAdmin
+      ? async (page) => {
+          if (dirty) {
+            setError(new Error("Save or cancel the current arrangement before duplicating a page."));
+            return;
+          }
+          try {
+            const state = await studioRequest("/studio/api/page-duplicate", {
+              revision: envelope.revision,
+              pageId: page.id,
+            });
+            setHistory({ past: [], future: [] });
+            await savedContent(state);
+            showPage(state.pageId);
+            showToast(
+              state.skipped
+                ? `Duplicated “${page.name}”. ${state.skipped} discovered widget${state.skipped === 1 ? " stays" : "s stay"} on the original page only.`
+                : `Duplicated “${page.name}”`,
+            );
+          } catch (err) {
+            setError(err);
+          }
+        }
+      : undefined,
     copyLink: async (page) => {
       const url = `${window.location.origin}${window.location.pathname.replace(/\/edit$/, "")}${pageHash(wholeRef.current, page.id)}`;
       try {

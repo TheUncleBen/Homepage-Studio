@@ -34,7 +34,7 @@ export const DEFAULT_BACKUP_RETENTION = 25;
 const CONTENT_ACTIONS = { add: 'added', update: 'edited', delete: 'deleted' };
 export const SNAPSHOT_ACTIONS = Object.freeze([
   'arrangement-saved', 'settings-saved', 'files-saved', 'snapshot-restored', 'dashboard-imported',
-  'discovered-panel-hidden', 'discovered-panel-shown', 'page-deleted',
+  'discovered-panel-hidden', 'discovered-panel-shown', 'page-deleted', 'page-duplicated',
   ...['service', 'service-widget', 'info-widget', 'bookmark'].flatMap((kind) => Object.values(CONTENT_ACTIONS).map((verb) => `${kind}-${verb}`)),
 ]);
 const snapshotAction = (value) => (SNAPSHOT_ACTIONS.includes(value) ? value : null);
@@ -1032,6 +1032,121 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     return saveCurrent(current, { revision: change.revision, servicesYaml: servicesText, widgetsYaml: info.text(), bookmarksYaml: bookmarksText, hiddenDiscoveredIds: hidden }, 'page-deleted', forced, state);
   }
 
+  // Duplicates a page and everything on it in one save: each service (with
+  // its widgets), lone widget, information widget and bookmark gets a copy
+  // named "… copy", placed and styled like the original on a new page.
+  // Discovered panels belong to their provider and are not copied.
+  async function duplicatePageInner(change) {
+    const current = await readCurrent();
+    checkRevision(change.revision, current);
+    const { board } = current;
+    const page = board.pages.find((item) => item.id === change.pageId);
+    if (!page) fail('That page no longer exists.', 'TILE_NOT_FOUND', 404);
+    if (board.pages.length >= 20) fail('A dashboard has at most 20 pages.');
+    const pageIds = new Set(board.pages.map((item) => item.id));
+    const names = new Set(board.pages.map((item) => item.name.toLocaleLowerCase()));
+    let name = `${page.name} copy`.slice(0, 40);
+    for (let n = 2; names.has(name.toLocaleLowerCase()); n += 1) name = `${page.name.slice(0, 32)} copy ${n}`;
+    let newPageId = `${page.id.slice(0, 58)}-copy`;
+    for (let n = 2; pageIds.has(newPageId); n += 1) newPageId = `${page.id.slice(0, 55)}-copy-${n}`;
+    const onPage = board.panels.filter((panel) => panel.pageId === page.id);
+    const ids = new Set(onPage.map((panel) => panel.id));
+    const idMap = new Map();
+    const copyName = (base, taken) => {
+      let candidate = `${base} copy`;
+      for (let n = 2; taken.has(candidate); n += 1) candidate = `${base} copy ${n}`;
+      taken.add(candidate);
+      return candidate;
+    };
+    // Services, with every widget they carry.
+    const services = current.parsed.servicesYaml;
+    const byService = new Map(current.services.map((entry) => [entry.id, current.serviceWidgets.filter((widget) => widget.serviceId === entry.id).map(({ id }) => ({ id }))]));
+    const copiedServices = new Set();
+    for (const service of current.services) {
+      const widgets = current.serviceWidgets.filter((widget) => widget.serviceId === service.id);
+      const wanted = ids.has(service.id) || (widgets.length && widgets.every((widget) => ids.has(widget.id)) && service.id.startsWith('studio-widget-parent-'));
+      if (!wanted) continue;
+      const parent = services.doc.getIn(service.path.slice(0, -2), true), entry = parent?.items?.[service.index];
+      if (!isSeq(parent) || !isMap(entry)) fail('A service on this page uses an unsupported YAML alias. Edit its YAML directly.');
+      const taken = new Set(current.services.filter((other) => stable(other.groupPath) === stable(service.groupPath)).map((other) => other.name));
+      const copy = entry.clone();
+      renamePair(copy.items[0], copyName(service.name, taken));
+      const options = copy.items[0].value;
+      if (!isMap(options)) fail('A service on this page uses an unsupported YAML alias. Edit its YAML directly.');
+      const newId = `${service.id.startsWith('studio-widget-parent-') ? 'studio-widget-parent' : 'studio'}-${randomUUID()}`;
+      options.set('id', newId);
+      // Appended, so the positions of entries read earlier stay valid.
+      parent.add(copy);
+      idMap.set(service.id, newId);
+      byService.set(newId, widgets.map((widget) => {
+        const fresh = `widget-${randomUUID()}`;
+        idMap.set(widget.id, fresh);
+        return { id: fresh };
+      }));
+      copiedServices.add(service.id);
+    }
+    // Widgets whose service stays behind: a second widget on the same service.
+    for (const widget of current.serviceWidgets.filter((item) => ids.has(item.id) && !copiedServices.has(item.serviceId))) {
+      const service = current.services.find((entry) => entry.id === widget.serviceId);
+      const parent = services.doc.getIn(service.path.slice(0, -2), true), entry = parent?.items?.[service.index];
+      const options = isMap(entry) ? entry.get(service.name, true) : null;
+      if (!isMap(options)) fail('A service on this page uses an unsupported YAML alias. Edit its YAML directly.');
+      options.set('id', service.id);
+      const source = widget.sourceKey === 'widget' ? options.get('widget', true) : options.get('widgets', true)?.items?.[widget.sourceIndex];
+      if (!isMap(source)) fail('A widget on this page uses an unsupported YAML alias. Edit its YAML directly.');
+      let list = options.get('widgets', true);
+      if (list == null) { options.set('widgets', services.doc.createNode([])); list = options.get('widgets', true); }
+      if (!isSeq(list)) fail('Widgets on this page use an unsupported YAML alias. Edit their YAML directly.');
+      const position = list.items.length;
+      list.add(source.clone());
+      const fresh = `widget-${randomUUID()}`;
+      byService.get(service.id).splice(position, 0, { id: fresh });
+      idMap.set(widget.id, fresh);
+    }
+    // Information widgets.
+    const info = current.parsed.widgetsYaml;
+    const infoIdentities = current.infoWidgets.map(({ id }) => ({ id }));
+    for (const widget of current.infoWidgets.filter((item) => ids.has(item.id))) {
+      if (!isSeq(info.doc.contents)) fail('widgets.yaml must be a mutable YAML list.');
+      info.doc.contents.add(info.doc.contents.items[widget.index].clone());
+      const fresh = `info-${randomUUID()}`;
+      infoIdentities.push({ id: fresh });
+      idMap.set(widget.id, fresh);
+    }
+    // Bookmarks.
+    const marks = current.parsed.bookmarksYaml;
+    const markIdentities = new Map(current.bookmarks.map((entry) => [JSON.stringify([entry.group, entry.name]), entry.id]));
+    for (const bookmark of current.bookmarks.filter((item) => ids.has(item.id))) {
+      const parent = marks.doc.getIn([bookmark.groupIndex, bookmark.group], true);
+      const entry = parent?.items?.[bookmark.index];
+      if (!isSeq(parent) || !isMap(entry)) fail('A bookmark on this page uses an unsupported YAML alias. Edit its YAML directly.');
+      const taken = new Set(current.bookmarks.filter((other) => other.group === bookmark.group).map((other) => other.name));
+      const copy = entry.clone();
+      const copied = copyName(bookmark.name, taken);
+      renamePair(copy.items[0], copied);
+      parent.add(copy);
+      const fresh = `bookmark-${randomUUID()}`;
+      markIdentities.set(JSON.stringify([bookmark.group, copied]), fresh);
+      idMap.set(bookmark.id, fresh);
+    }
+    const servicesText = services.text(), bookmarksText = marks.text();
+    const forced = {
+      serviceWidgets: serviceEntries(yamlDocument(servicesText, 'services.yaml').data).services.flatMap((entry) => byService.get(entry.id) ?? []),
+      infoWidgets: infoIdentities,
+      bookmarks: bookmarkEntries(yamlDocument(bookmarksText, 'bookmarks.yaml').data).map((entry) => ({ id: markIdentities.get(JSON.stringify([entry.group, entry.name])) })),
+    };
+    // The new page, with each copy where its original sits.
+    const state = decodeState(current.raw['state.json']);
+    const clones = onPage.filter((panel) => idMap.has(panel.id)).map((panel) => ({ ...panel, id: idMap.get(panel.id), pageId: newPageId }));
+    const stacks = board.stacks.filter((stack) => stack.pageId === page.id && stack.panelIds.every((id) => idMap.has(id)))
+      .map((stack) => ({ ...stack, id: `stack-${randomUUID()}`, pageId: newPageId, panelIds: stack.panelIds.map((id) => idMap.get(id)) }));
+    const pages = [...board.pages];
+    pages.splice(board.pages.indexOf(page) + 1, 0, { ...page, id: newPageId, name });
+    state.board = { ...board, pages, panels: [...board.panels, ...clones], stacks: [...board.stacks, ...stacks] };
+    const result = await saveCurrent(current, { revision: change.revision, pageId: newPageId, servicesYaml: servicesText, widgetsYaml: info.text(), bookmarksYaml: bookmarksText }, 'page-duplicated', forced, state);
+    return { ...result, pageId: newPageId, skipped: onPage.filter((panel) => !idMap.has(panel.id)).length };
+  }
+
   async function mutateSettingsInner(change) {
     const current = await readCurrent();
     checkRevision(change.revision, current);
@@ -1150,6 +1265,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     mutateServiceWidget: (change) => serialized(() => mutateServiceWidgetInner(change)),
     mutateSettings: (change) => serialized(() => mutateSettingsInner(change)),
     deletePage: (change) => serialized(() => deletePageInner(change)),
+    duplicatePage: (change) => serialized(() => duplicatePageInner(change)),
     listBackups: () => serialized(async () => {
       await ready();
       const names = await orderedBackupNames();

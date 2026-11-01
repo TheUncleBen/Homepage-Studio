@@ -542,3 +542,35 @@ test('a content edit can carry the arrangement, so look, page and the edit commi
   assert.equal(result.board.panels.find((item) => item.title === 'Jellyfin').pageId, 'lab');
   await assert.rejects(store.mutateService({ revision: result.revision, action: 'update', id: firewall.id, config: {}, board: { ...result.board, panels: [{ ...result.board.panels[0], look: { fill: 'neon' } }] } }), /offered choices/);
 });
+
+test('duplicating a page copies every widget on it, placed and styled like the original', async (t) => {
+  const { store, configDir } = await fixture(t);
+  let result = await store.load();
+  const firewall = result.services.find((entry) => entry.name === 'pfSense');
+  const firewallWidget = result.serviceWidgets.find((entry) => entry.serviceId === firewall.id);
+  const portainerWidget = result.serviceWidgets.find((entry) => entry.serviceId !== firewall.id);
+  const clock = result.infoWidgets.find((entry) => entry.type === 'datetime');
+  const bookmark = result.bookmarks[0];
+  const away = [firewall.id, firewallWidget.id, portainerWidget.id, clock.id, bookmark.id];
+  const board = { ...result.board, pages: [...result.board.pages, { id: 'lab', name: 'Lab' }] };
+  board.panels = board.panels.map((panel) => {
+    const index = away.indexOf(panel.id);
+    return index < 0 ? panel : { ...panel, pageId: 'lab', rect: { x: 0, y: index * 10, w: 8, h: 10 }, ...(panel.id === clock.id ? { look: { fill: 'tint' } } : {}) };
+  });
+  result = await store.saveBoard({ revision: result.revision, board });
+  const before = result.board.panels.length;
+  result = await store.duplicatePage({ revision: result.revision, pageId: 'lab' });
+  assert.equal(result.pageId, 'lab-copy');
+  assert.deepEqual(result.board.pages.map((page) => page.name), ['Home', 'Lab', 'Lab copy']);
+  const copies = result.board.panels.filter((panel) => panel.pageId === 'lab-copy');
+  assert.equal(copies.length, 5);
+  assert.equal(result.board.panels.length, before + 5);
+  assert.deepEqual(copies.find((panel) => panel.kind === 'informationWidget').look, { fill: 'tint' });
+  assert.deepEqual(copies.map((panel) => panel.rect.y).sort((a, b) => a - b), [0, 10, 20, 30, 40]);
+  const services = await fs.readFile(path.join(configDir, 'services.yaml'), 'utf8');
+  assert.ok(services.includes('pfSense copy'));
+  assert.ok(services.includes('{{HOMEPAGE_VAR_FIREWALL_KEY}}'));
+  assert.equal((services.match(/type: portainer/g) || []).length, 2);
+  assert.ok((await fs.readFile(path.join(configDir, 'bookmarks.yaml'), 'utf8')).includes('Homepage copy'));
+  assert.equal((await store.listBackups())[0].action, 'page-duplicated');
+});

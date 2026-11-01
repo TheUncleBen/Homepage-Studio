@@ -155,3 +155,13 @@ describe("Pages on a dashboard", () => {
     expect(writes[0].body.board.panels.every((item) => item.pageId === "home")).toBe(true);
   });
 });
+
+describe("Duplicate page", () => {
+  it("asks the controller to copy the page and opens the copy", async () => {
+    const { writes } = await mount({ mode: "edit" });
+    fireEvent.click(screen.getByRole("button", { name: "Overview page options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate page" }));
+    await waitFor(() => expect(writes.some((write) => write.path === "/studio/api/page-duplicate")).toBe(true));
+    expect(writes.find((write) => write.path === "/studio/api/page-duplicate").body).toEqual({ revision: "r1", pageId: "home" });
+  });
+});
