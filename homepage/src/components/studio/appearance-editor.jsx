@@ -5,27 +5,31 @@ import {
   appearanceConfig,
   appearanceTokens,
   applyPlatformDefaults,
+  BASES,
+  DEFAULT_ACCENT,
+  DEFAULT_BASE,
   hexColor,
-  ownAppearance,
 } from "./appearance.mjs";
+import { BUILT_IN_LOOK, readLook, setOverride } from "./look.mjs";
 import LogoEditor from "./logo-editor";
 import { Group, Row, Segmented } from "./ui";
 import useSystemTheme from "./use-system-theme";
 
-const MODE_LABELS = { dark: "Dark", light: "Light", system: "Auto" };
+// What a dashboard gets when it sets nothing: the platform defaults from
+// Administration → Appearance, or the built-in Graphite and eggplant.
+function platformDefaults(platform) {
+  return {
+    mode: ["dark", "light", "system"].includes(platform?.mode) ? platform.mode : "dark",
+    accent: hexColor(platform?.accent) || DEFAULT_ACCENT,
+    base: Object.hasOwn(BASES, platform?.base) ? platform.base : DEFAULT_BASE,
+  };
+}
 
-// Each setting either follows the platform default from Administration →
-// Appearance or is this dashboard's own; changing one doesn't touch others.
-export default function AppearanceEditor({
-  settings,
-  platform,
-  logo,
-  onLogoChange,
-  onChange,
-  onValidity,
-  saveLabel = "Save settings",
-}) {
-  const own = ownAppearance(settings);
+// Rule 2: a dashboard stores a row only while it differs from the platform
+// default; choosing the default's value removes the key. There is no
+// separate "Default" choice.
+export default function AppearanceEditor({ settings, platform, logo, onLogoChange, onChange, onValidity }) {
+  const fallback = platformDefaults(platform);
   const effective = applyPlatformDefaults(settings, platform);
   const appearance = appearanceConfig(effective);
   const [accentText, setAccentText] = useState(appearance.accent);
@@ -57,90 +61,99 @@ export default function AppearanceEditor({
     lastTheme.current = updated.studioTheme;
     onChange(updated);
   };
-  const platformMode = MODE_LABELS[platform?.mode] || "Dark";
-  const platformAccent = hexColor(platform?.accent) || "#b299be";
+  const own = (key, value) => change({ [key]: value === fallback[key] ? undefined : value });
   const pickAccent = (color) => {
     setAccentText(color);
-    change({ accent: color });
+    own("accent", color);
   };
+  const rawCard = settings.studioTheme?.card;
+  const card = readLook(rawCard);
+  const cardLook = { ...BUILT_IN_LOOK, ...card };
+  const setCard = (key, value) => change({ card: setOverride(card, key, value, BUILT_IN_LOOK) });
   const preview = appearanceTokens(effective, systemDark);
   const previewStyle = Object.fromEntries(
     Object.entries(preview.tokens).map(([key, value]) => [`--studio-${key}`, value]),
   );
-
-  const custom = own.accent && !ACCENT_PRESETS.some((preset) => preset.color === appearance.accent);
+  const custom = !ACCENT_PRESETS.some((preset) => preset.color === appearance.accent);
   return (
     <section className="studio-appearance" aria-label="Appearance">
       <div className="studio-appearance-layout">
-        <Group
-          title="Appearance"
-          info={`Default follows the look an administrator sets for every dashboard (${platformMode}, ${platformAccent}). Changes apply when you choose ${saveLabel}.`}
-        >
-          <Row label="Mode">
-            <Segmented
-              label="Display mode"
-              value={own.mode ? appearance.mode : "platform"}
-              onChange={(next) => change({ mode: next === "platform" ? undefined : next })}
-              options={[
-                ["platform", "Default"],
-                ["dark", "Dark"],
-                ["light", "Light"],
-                ["system", "Auto"],
-              ]}
-            />
-          </Row>
-          <Row label="Accent" stacked>
-            <div className="studio-swatches" role="group" aria-label="Accent">
-              <button
-                type="button"
-                className="studio-swatch studio-swatch-default"
-                aria-pressed={!own.accent}
-                aria-label={`Default (${platformAccent})`}
-                title={`Default (${platformAccent})`}
-                style={{ "--swatch": platformAccent }}
-                onClick={() => {
-                  setAccentText(platformAccent);
-                  change({ accent: undefined });
-                }}
-              >
-                <span aria-hidden="true" />
-              </button>
-              {ACCENT_PRESETS.map((preset) => (
+        <div className="studio-appearance-groups">
+          <Group
+            title="Appearance"
+            info="Rows you leave alone follow the look an administrator sets for every dashboard. Choosing that same value again follows it again."
+          >
+            <Row label="Mode">
+              <Segmented
+                label="Display mode"
+                value={appearance.mode}
+                onChange={(next) => own("mode", next)}
+                options={[
+                  ["system", "Follow device"],
+                  ["dark", "Dark"],
+                  ["light", "Light"],
+                ]}
+              />
+            </Row>
+            <Row label="Base" stacked info="The page, cards and lines. Each base has a dark and a light version.">
+              <div className="studio-swatches studio-base-swatches" role="radiogroup" aria-label="Base">
+                {Object.entries(BASES).map(([id, base]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    className="studio-base-swatch"
+                    aria-checked={appearance.base === id}
+                    style={{
+                      "--swatch-page": base[preview.mode].bg,
+                      "--swatch-card": base[preview.mode].raised,
+                      "--swatch-line": base[preview.mode]["line-strong"],
+                    }}
+                    onClick={() => own("base", id)}
+                  >
+                    <span aria-hidden="true" />
+                    {base.name}
+                  </button>
+                ))}
+              </div>
+            </Row>
+            <Row label="Accent" stacked info="Buttons, links and focus rings. Any colour works; Studio fits it to stay readable.">
+              <div className="studio-swatches" role="group" aria-label="Accent">
+                {ACCENT_PRESETS.map((preset) => (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    className="studio-swatch"
+                    aria-pressed={appearance.accent === preset.color}
+                    aria-label={preset.name}
+                    title={preset.name}
+                    style={{ "--swatch": preset.color }}
+                    onClick={() => pickAccent(preset.color)}
+                  >
+                    <span aria-hidden="true" />
+                  </button>
+                ))}
                 <button
-                  key={preset.name}
                   type="button"
-                  className="studio-swatch"
-                  aria-pressed={Boolean(own.accent) && appearance.accent === preset.color}
-                  aria-label={preset.name}
-                  title={preset.name}
-                  style={{ "--swatch": preset.color }}
-                  onClick={() => pickAccent(preset.color)}
+                  className="studio-swatch studio-swatch-custom"
+                  aria-pressed={custom}
+                  aria-label="Custom"
+                  title="Custom"
+                  style={{ "--swatch": custom ? appearance.accent : "transparent" }}
+                  onClick={() => colorInput.current?.click()}
                 >
                   <span aria-hidden="true" />
                 </button>
-              ))}
-              <button
-                type="button"
-                className="studio-swatch studio-swatch-custom"
-                aria-pressed={custom}
-                aria-label="Custom"
-                title="Custom"
-                style={{ "--swatch": custom ? appearance.accent : "transparent" }}
-                onClick={() => colorInput.current?.click()}
-              >
-                <span aria-hidden="true" />
-              </button>
-              <input
-                ref={colorInput}
-                type="color"
-                className="studio-color-well"
-                tabIndex={-1}
-                aria-hidden="true"
-                value={appearance.accent}
-                onChange={(event) => pickAccent(event.target.value)}
-              />
-            </div>
-            {own.accent && (
+                <input
+                  ref={colorInput}
+                  type="color"
+                  className="studio-color-well"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  value={appearance.accent}
+                  onChange={(event) => pickAccent(event.target.value)}
+                />
+              </div>
               <div className="studio-hex">
                 <input
                   id="studio-accent-text"
@@ -154,7 +167,7 @@ export default function AppearanceEditor({
                   onChange={(event) => {
                     setAccentText(event.target.value);
                     const color = hexColor(event.target.value);
-                    if (color) change({ accent: color });
+                    if (color) own("accent", color);
                   }}
                 />
                 {!valid && (
@@ -163,9 +176,89 @@ export default function AppearanceEditor({
                   </span>
                 )}
               </div>
+            </Row>
+          </Group>
+          <Group
+            title="Cards"
+            info="Every widget starts with these. A widget that changes one in its own settings keeps its value; setting it back to the same value follows these again."
+          >
+            <Row label="Layout">
+              <Segmented
+                label="Card layout"
+                value={cardLook.layout}
+                onChange={(value) => setCard("layout", value)}
+                options={[
+                  ["hero", "Hero"],
+                  ["quiet", "Quiet"],
+                ]}
+              />
+            </Row>
+            <Row label="Fill">
+              <Segmented
+                label="Card fill"
+                value={["plain", "tint", "solid"].includes(cardLook.fill) ? cardLook.fill : "plain"}
+                onChange={(value) => setCard("fill", value)}
+                options={[
+                  ["plain", "Plain"],
+                  ["tint", "Tint"],
+                  ["solid", "Solid"],
+                ]}
+              />
+            </Row>
+            {(cardLook.fill === "tint" || cardLook.fill === "solid") && (
+              <div className="studio-row-dependent">
+                <Row label="Strength">
+                  <Segmented
+                    label="Fill strength"
+                    value={cardLook.strength}
+                    onChange={(value) => setCard("strength", value)}
+                    options={[
+                      ["soft", "Soft"],
+                      ["medium", "Medium"],
+                      ["strong", "Strong"],
+                    ]}
+                  />
+                </Row>
+              </div>
             )}
-          </Row>
-        </Group>
+            <Row label="Edge">
+              <Segmented
+                label="Card edge"
+                value={cardLook.edge}
+                onChange={(value) => setCard("edge", value)}
+                options={[
+                  ["line", "Line"],
+                  ["shadow", "Shadow"],
+                  ["both", "Both"],
+                  ["none", "None"],
+                ]}
+              />
+            </Row>
+            <Row label="Corners">
+              <Segmented
+                label="Card corners"
+                value={cardLook.corners}
+                onChange={(value) => setCard("corners", value)}
+                options={[
+                  ["square", "Square"],
+                  ["default", "Default"],
+                  ["round", "Round"],
+                ]}
+              />
+            </Row>
+            <Row label="Numbers">
+              <Segmented
+                label="Number font"
+                value={cardLook.numbers}
+                onChange={(value) => setCard("numbers", value)}
+                options={[
+                  ["sans", "Regular"],
+                  ["mono", "Monospaced"],
+                ]}
+              />
+            </Row>
+          </Group>
+        </div>
         <div className="studio-appearance-preview" style={previewStyle} aria-label="Appearance preview">
           <strong>{settings.title || "Your dashboard"}</strong>
           <div aria-hidden="true" className="studio-appearance-preview-panels">

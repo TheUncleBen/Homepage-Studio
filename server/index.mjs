@@ -512,7 +512,7 @@ function createDashboardHandlers(options = {}) {
         const settings = current.settingsConfig || {};
         // The platform defaults show what each "use platform default" means.
         const defaults = await options.platform?.read().catch(() => null);
-        return json(res, 200, { revision: current.revision, settings: Object.fromEntries(APPEARANCE_KEYS.filter(key => Object.hasOwn(settings, key)).map(key => [key, settings[key]])), platform: defaults ? { mode: defaults.mode, accent: defaults.accent, background: defaults.background } : null });
+        return json(res, 200, { revision: current.revision, settings: Object.fromEntries(APPEARANCE_KEYS.filter(key => Object.hasOwn(settings, key)).map(key => [key, settings[key]])), platform: defaults ? { mode: defaults.mode, accent: defaults.accent, base: defaults.base, background: defaults.background } : null });
       }
       if (path === '/studio/api/appearance' && req.method === 'POST') {
         const change = await readBody(req);

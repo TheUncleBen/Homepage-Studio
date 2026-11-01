@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { appearanceTokens } from '../homepage/src/components/studio/appearance.mjs';
+import { appearanceTokens, BASES, DEFAULT_BASE } from '../homepage/src/components/studio/appearance.mjs';
 
 // The platform default look, set in Administration → Appearance. Each
 // dashboard follows each of these settings until it sets its own:
@@ -15,7 +15,7 @@ export const PLATFORM_FILE = 'studio-platform.json';
 export const PLATFORM_CSS_FILE = 'studio-platform.css';
 export const MAX_PLATFORM_CSS_BYTES = 256 * 1024;
 const MAX_PLATFORM_BYTES = 16 * 1024;
-export const DEFAULT_PLATFORM = Object.freeze({ mode: 'dark', accent: '#b299be', background: null });
+export const DEFAULT_PLATFORM = Object.freeze({ mode: 'dark', accent: '#b299be', base: DEFAULT_BASE, background: null });
 
 // Studio's own pages (sign-in, Dashboards, My account, Administration) wear
 // the platform look too: the same tokens a dashboard computes, under the
@@ -27,8 +27,8 @@ const STATUS_TOKENS = {
   dark: { 'ok-text': '#b8e0c6', 'ok-bg': '#1d2b23', 'ok-line': '#5f8f72', 'warn-text': '#f0d9a8', 'warn-bg': '#30291b', 'warn-line': '#9c8455' },
   light: { 'ok-text': '#1f5a37', 'ok-bg': '#e8f4ec', 'ok-line': '#5f8f72', 'warn-text': '#5e4710', 'warn-bg': '#fbf3e0', 'warn-line': '#9c8455' },
 };
-export function studioThemeCss({ mode, accent } = DEFAULT_PLATFORM) {
-  const settings = { studioTheme: { mode, accent } };
+export function studioThemeCss({ mode, accent, base } = DEFAULT_PLATFORM) {
+  const settings = { studioTheme: { mode, accent, base } };
   const block = dark => {
     const { mode: scheme, tokens } = appearanceTokens(settings, dark);
     return `:root{color-scheme:${scheme};${Object.entries({ ...tokens, ...STATUS_TOKENS[scheme] }).map(([name, value]) => `--${name}:${value};`).join('')}}`;
@@ -63,10 +63,11 @@ function validBackground(value) {
 }
 export function validatePlatform(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) invalid('Invalid platform appearance.');
-  if (Object.keys(value).some(key => !['mode', 'accent', 'background'].includes(key))) invalid('Unexpected platform appearance fields.');
+  if (Object.keys(value).some(key => !['mode', 'accent', 'base', 'background'].includes(key))) invalid('Unexpected platform appearance fields.');
   if (!['dark', 'light', 'system'].includes(value.mode)) invalid('Choose dark, light or follow device.');
   if (typeof value.accent !== 'string' || !/^#[\da-f]{6}$/.test(value.accent)) invalid('Use a hex colour such as #b299be.');
-  return { mode: value.mode, accent: value.accent, background: validBackground(value.background ?? null) };
+  if (typeof value.base !== 'string' || !Object.hasOwn(BASES, value.base)) invalid('Choose one of the offered bases.');
+  return { mode: value.mode, accent: value.accent, base: value.base, background: validBackground(value.background ?? null) };
 }
 
 async function readSmall(file, limit) {

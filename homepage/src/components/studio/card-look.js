@@ -21,8 +21,11 @@ export const widgetFields = new Map();
 export function dashboardLook(settings) {
   return readLook(settings?.studioTheme?.card);
 }
+// Links follow Homepage's own settings.target, so native and Studio cards agree.
+const TARGET_FROM_NATIVE = { _self: "same", _blank: "new" };
 export function dashboardBehaviour(settings) {
-  return readBehaviour(settings?.studioDefaults);
+  const target = TARGET_FROM_NATIVE[settings?.target];
+  return { ...readBehaviour(settings?.studioDefaults), ...(target ? { target } : {}) };
 }
 export function resolvedLook(settings, panel) {
   return inheritedLook(dashboardLook(settings), panel?.look);

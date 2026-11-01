@@ -116,7 +116,16 @@ describe("widget look in the widget dialog", () => {
     version: 3,
     columns: 24,
     pages: [{ id: "home", name: "Home" }],
-    panels: [{ id: "bm-1", kind: "bookmark", title: "Docs", pageId: "home", rect: { x: 0, y: 0, w: 6, h: 2 }, look: { edge: "shadow" } }],
+    panels: [
+      {
+        id: "bm-1",
+        kind: "bookmark",
+        title: "Docs",
+        pageId: "home",
+        rect: { x: 0, y: 0, w: 6, h: 2 },
+        look: { edge: "shadow" },
+      },
+    ],
     stacks: [],
   };
   function renderBookmark(fetchMock) {
@@ -139,7 +148,13 @@ describe("widget look in the widget dialog", () => {
     return onSaved;
   }
   const ok = () =>
-    vi.fn(async () => new Response(JSON.stringify({ revision: "r2", board }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ revision: "r2", board }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
 
   it("previews the change and saves a look-only edit as the arrangement", async () => {
     const fetchMock = ok();

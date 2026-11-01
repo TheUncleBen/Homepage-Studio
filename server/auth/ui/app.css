@@ -393,7 +393,7 @@ dialog .group-body { background: var(--raised); }
 .row-item.attention .row-detail { color: var(--warn-text); }
 .row-control { display: grid; justify-items: stretch; min-width: 0; }
 .row-control > :is(.switch, .segmented, .pill, .row-value) { justify-self: end; }
-.row-item.stacked .row-control > .segmented { justify-self: start; }
+.row-item.stacked .row-control > .segmented { justify-self: start; flex-wrap: wrap; }
 .row-value { color: var(--muted); text-align: right; overflow-wrap: anywhere; }
 .row-control :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), select) { width: 100%; min-height: 46px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text); font: inherit; }
 .row-control :is(input, select):focus-visible { outline: none; }

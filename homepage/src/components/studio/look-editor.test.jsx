@@ -41,7 +41,8 @@ const radio = (group, name) => within(screen.getByRole("radiogroup", { name: gro
 describe("widget dialog look (Rule 1: only what can apply)", () => {
   it("shows integration sections and hides colour rows until a fill needs them", () => {
     renderEditor();
-    for (const name of ["Look", "Status", "Show", "Behaviour"]) expect(screen.getByRole("heading", { name })).toBeTruthy();
+    for (const name of ["Look", "Status", "Show", "Behaviour"])
+      expect(screen.getByRole("heading", { name })).toBeTruthy();
     expect(screen.queryByRole("radiogroup", { name: "Strength" })).toBeNull();
     expect(screen.queryByRole("radiogroup", { name: "Colour" })).toBeNull();
     expect(screen.getByRole("radiogroup", { name: "Refresh" })).toBeTruthy();
@@ -132,7 +133,9 @@ describe("arranging values", () => {
   it("moves the hero when another value becomes the hero", () => {
     const { onLook } = renderEditor({ look: { values: [{ field: "users", slot: "hero" }] } });
     fireEvent.change(screen.getByLabelText("Where Logins shows"), { target: { value: "hero" } });
-    expect(onLook).toHaveBeenLastCalledWith({ values: [{ field: "users" }, { field: "failed" }, { field: "logins", slot: "hero" }] });
+    expect(onLook).toHaveBeenLastCalledWith({
+      values: [{ field: "users" }, { field: "failed" }, { field: "logins", slot: "hero" }],
+    });
   });
 });
 

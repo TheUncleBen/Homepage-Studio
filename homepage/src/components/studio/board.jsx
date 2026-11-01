@@ -1854,6 +1854,7 @@ export default function StudioBoard({
               ) : modal.type === "settings" ? (
                 <SettingsEditor
                   {...editorData}
+                  pageCount={pages.length}
                   logo={access?.dashboard?.logo ?? null}
                   onLogoChange={() => mutateAccess()}
                   onSaved={savedContent}

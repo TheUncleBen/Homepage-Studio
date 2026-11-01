@@ -1111,7 +1111,8 @@
   // The platform default look every dashboard follows, setting by setting,
   // until it sets its own (dashboard settings → Appearance). The swatches
   // match the dashboard's own picker (homepage/src/components/studio/appearance.mjs).
-  const ACCENT_PRESETS = [['Eggplant', '#b299be'], ['Graphite', '#a5a5aa'], ['Ocean', '#81a8c8'], ['Sage', '#91b09e']];
+  const ACCENT_PRESETS = [['Eggplant', '#b299be'], ['Teal', '#5fb3a1'], ['Ocean', '#81a8c8'], ['Sage', '#91b09e'], ['Amber', '#d9a35b'], ['Rose', '#d48a96']];
+  const BASES = [['graphite', 'Graphite'], ['slate', 'Slate'], ['midnight', 'Midnight'], ['forest', 'Forest'], ['sand', 'Sand'], ['eggplant', 'Eggplant']];
   async function platformAppearance() {
     let platform = await call('/studio/api/platform');
     const holder = h('div', { class: 'stack' });
@@ -1119,7 +1120,8 @@
       const box = notice();
       if (success) say(box, success, 'ok');
       let accent = platform.accent;
-      const mode = segmented({ value: platform.mode, label: 'Display mode', options: [['dark', 'Dark'], ['light', 'Light'], ['system', 'Auto']] });
+      const mode = segmented({ value: platform.mode, label: 'Display mode', options: [['system', 'Follow device'], ['dark', 'Dark'], ['light', 'Light']] });
+      const base = segmented({ value: platform.base, label: 'Base', options: BASES });
       const picker = h('input', { type: 'color', class: 'color-well', tabindex: '-1', 'aria-hidden': 'true', value: platform.accent });
       const hex = h('input', { type: 'text', maxlength: 7, value: platform.accent, spellcheck: 'false', autocomplete: 'off', 'aria-label': 'Accent color' });
       const hexRow = row('Hex', hex);
@@ -1151,6 +1153,7 @@
       const form = h('form', { class: 'stack' },
         group({ title: 'Default look', info: 'Each dashboard follows each of these settings until it sets its own in its settings. A saved change reaches every dashboard that hasn’t, and these pages, at once.' },
           row('Mode', mode),
+          row('Base', base, { stacked: true, info: 'The page, cards and lines on every dashboard and on these pages. Each base has a dark and a light version.' }),
           row('Accent', h('div', { class: 'swatches', role: 'group', 'aria-label': 'Accent' }, presets, custom, picker), { stacked: true }),
           hexRow,
           row('Background', background, { info: 'Optional. An image address; dashboards without a background of their own use it.' })),
@@ -1165,7 +1168,7 @@
           const image = background.value.trim();
           const keepFilters = platform.background && typeof platform.background === 'object' ? platform.background : {};
           try {
-            platform = await call('/studio/api/platform', { revision: platform.revision, mode: mode.value, accent: color, background: image ? (Object.keys(keepFilters).length ? { ...keepFilters, image } : image) : null, css: css.value });
+            platform = await call('/studio/api/platform', { revision: platform.revision, mode: mode.value, accent: color, base: base.value, background: image ? (Object.keys(keepFilters).length ? { ...keepFilters, image } : image) : null, css: css.value });
             // This page, other Studio pages and open dashboards in this browser
             // update at once.
             refreshTheme(platform.revision);

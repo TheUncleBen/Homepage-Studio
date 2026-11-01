@@ -8,6 +8,7 @@ import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft
 import StudioIcon from "./icons";
 import { patchFromDraft } from "./native-adapter.mjs";
 import { ActionRow, Group, Row, Switch } from "./ui";
+import WidgetDefaults from "./widget-defaults";
 
 const buildRevision = process.env.NEXT_PUBLIC_REVISION;
 const sourceUrl = `https://github.com/TheUncleBen/Homepage-Studio${/^[a-f0-9]{40}$/i.test(buildRevision || "") ? `/tree/${buildRevision}` : ""}`;
@@ -92,6 +93,7 @@ export default function SettingsEditor({
   onOpenFiles,
   onOpenBackups,
   onReload,
+  pageCount = 1,
 }) {
   const original = state.settingsConfig || {};
   const [draft, setDraft] = useState(() => structuredClone(original));
@@ -154,11 +156,12 @@ export default function SettingsEditor({
               </Row>
             </Group>
           </fieldset>
+          <WidgetDefaults settings={draft} onChange={setDraft} pageCount={pageCount} />
           <ConfigForm
             value={draft}
             onChange={setDraft}
-            fields={SETTINGS_FIELDS.filter((field) => field.key !== "theme")}
-            knownKeys={["theme", "studioTheme"]}
+            fields={SETTINGS_FIELDS.filter((field) => field.key !== "theme" && field.key !== "target")}
+            knownKeys={["theme", "studioTheme", "studioDefaults", "target"]}
             onValidity={setValid}
             docs="https://gethomepage.dev/configs/settings/"
             name="Homepage settings"

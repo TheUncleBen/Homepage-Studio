@@ -553,7 +553,7 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   // The platform look is for administrators; its CSS reaches every viewer.
   assert.equal((await request('/studio/api/platform', { cookie: member.cookie })).status, 403);
   const platform = await request('/studio/api/platform', { cookie: admin.cookie });
-  const changed = await post('/studio/api/platform', { revision: platform.json.revision, mode: 'light', accent: '#91b09e', background: null, css: 'body { --platform: 1; }' }, { cookie: admin.cookie });
+  const changed = await post('/studio/api/platform', { revision: platform.json.revision, mode: 'light', accent: '#91b09e', base: 'graphite', background: null, css: 'body { --platform: 1; }' }, { cookie: admin.cookie });
   assert.equal(changed.status, 200, changed.text);
   const css = await request('/studio/platform.css', { cookie: member.cookie });
   assert.equal(css.text, 'body { --platform: 1; }');
@@ -574,7 +574,7 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.match(pagePolicy, /img-src 'self' data: https:\/\/cdn\.jsdelivr\.net;/);
   assert.doesNotMatch(pagePolicy, /frame-src/);
   assert.match(pagePolicy, /frame-ancestors 'none'/);
-  assert.deepEqual((await request('/home/studio/api/appearance', { cookie: member.cookie })).json.platform, { mode: 'light', accent: '#91b09e', background: null });
+  assert.deepEqual((await request('/home/studio/api/appearance', { cookie: member.cookie })).json.platform, { mode: 'light', accent: '#91b09e', base: 'graphite', background: null });
   // Switching the platform CSS off for one dashboard is an administrator's call.
   const appearance = (await request('/home/studio/api/appearance', { cookie: member.cookie })).json;
   const refused = await post('/home/studio/api/appearance', { revision: appearance.revision, config: { studioTheme: { platformCss: false } } }, { cookie: member.cookie });
@@ -591,7 +591,7 @@ test('saving the platform look needs a recent sign-in, as a dashboard custom.css
   t.mock.timers.tick(30 * 60000);
   const platform = await request('/studio/api/platform', { cookie: admin.cookie });
   assert.equal(platform.status, 200, 'reading it needs no confirmation');
-  const stale = await post('/studio/api/platform', { revision: platform.json.revision, mode: 'light', accent: '#91b09e', background: null, css: '' }, { cookie: admin.cookie });
+  const stale = await post('/studio/api/platform', { revision: platform.json.revision, mode: 'light', accent: '#91b09e', base: 'graphite', background: null, css: '' }, { cookie: admin.cookie });
   assert.equal(stale.status, 401);
   assert.equal(stale.json.code, 'REAUTH_REQUIRED');
   assert.equal((await request('/studio/api/platform', { cookie: admin.cookie })).json.revision, platform.json.revision, 'nothing was saved');
