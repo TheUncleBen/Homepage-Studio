@@ -10,6 +10,7 @@ import { createDashboardRegistry, resolveDashboardRoute, sharedPublic } from './
 import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
 import { starterFiles, starterChoices, starterLayout } from './starters.mjs';
+import { createHistoryStore, retentionDays } from './history.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { promisify } from 'node:util';
 import zlib from 'node:zlib';
@@ -24,7 +25,7 @@ import { ConnectionError, createConnectionStore, MAX_CONNECTIONS, publicConnecti
 const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'];
 import { createPersonalStore } from './personal.mjs';
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
-import { LookError, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
+import { LookError, inheritedLook, needsHistory, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
 import { BACKGROUND_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
@@ -313,6 +314,7 @@ function createDashboardHandlers(options = {}) {
   const logo = createLogoStore({ stateDir });
   const images = createImageLibrary({ stateDir });
   const connections = createConnectionStore({ dir: stateDir });
+  const history = createHistoryStore({ stateDir });
   const store = createConfigStore({ configDir, stateDir, backupRetention, discoveryReader: async (host, dashboard) => {
     const lease = await acquireNative(host, dashboard);
     try { return await createDiscoveryClient({ upstream: lease.origin.href }).read(host); }
@@ -520,6 +522,53 @@ function createDashboardHandlers(options = {}) {
     } finally { lease.release(); }
   }
 
+  // Chart history: the dashboard's renderer works out the current values of
+  // the widgets that need history (utils/studio/collect.js), and they are kept
+  // here. Runs from the collector loop in createStudioServer, never from a
+  // request, so it uses the first approved host for the renderer.
+  async function rendererCollect(dashboard, panels) {
+    const lease = await acquireNative(allowedHosts[0], dashboard);
+    try {
+      const body = JSON.stringify({ panels });
+      const transport = lease.origin.protocol === 'https:' ? https : http;
+      return await new Promise((resolveCollect, rejectCollect) => {
+        const request = transport.request(lease.origin, { method: 'POST', path: '/api/studio/collect', timeout: 120000, headers: { host: allowedHosts[0], 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), 'x-studio-internal': options.internalToken } }, response => {
+          const chunks = [];
+          let size = 0;
+          response.on('data', chunk => { size += chunk.length; if (size > 2 * 1024 * 1024) request.destroy(new Error('Too large')); else chunks.push(chunk); });
+          response.on('end', () => {
+            try {
+              const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+              if (response.statusCode !== 200 || !value || typeof value.results !== 'object') return rejectCollect(Object.assign(new Error('Collection failed'), { code: 'HISTORY_COLLECT_FAILED' }));
+              resolveCollect(value.results);
+            } catch { rejectCollect(Object.assign(new Error('Collection failed'), { code: 'HISTORY_COLLECT_FAILED' })); }
+          });
+        });
+        request.on('timeout', () => request.destroy(new Error('timeout')));
+        request.on('error', () => rejectCollect(Object.assign(new Error('Collection failed'), { code: 'HISTORY_COLLECT_FAILED' })));
+        request.end(body);
+      });
+    } finally { lease.release(); }
+  }
+  const historyPanels = state => {
+    const card = readLook(state.settingsConfig?.studioTheme?.card);
+    return (state.board?.panels || []).filter(panel => panel.kind === 'serviceWidget' && needsHistory(inheritedLook(card, panel.look)));
+  };
+  async function collectHistory(dashboard) {
+    if (!(await initialization).ok) return;
+    const state = await store.load();
+    const panels = historyPanels(state);
+    // History is kept only for widgets that still need it.
+    await history.keepOnly(panels.map(panel => panel.id));
+    if (!panels.length) return;
+    const results = await rendererCollect(dashboard, panels.map(({ id, kind, nativeLocator, available }) => ({ id, kind, nativeLocator, ...(available === false ? { available } : {}) })));
+    const at = Date.now();
+    for (const panel of panels) {
+      const values = results[panel.id]?.values;
+      if (Array.isArray(values)) await history.record(panel.id, values, { at, days: retentionDays(state.settingsConfig) });
+    }
+  }
+
   async function handle(req, res, dashboard) {
     try {
       checkRequest(req);
@@ -627,6 +676,30 @@ function createDashboardHandlers(options = {}) {
         }
         return json(res, 200, { removed: await images.remove(change.id) });
       }
+      // Chart history for one widget on this dashboard, for anyone who can
+      // view it (the same numbers its card shows).
+      if (path === '/studio/api/history' && req.method === 'GET') {
+        const query = new URL(req.url, 'http://studio.invalid').searchParams;
+        const panelId = query.get('panel');
+        const board = (await store.loadBoard()).board;
+        if (!panelId || !board.panels.some(panel => panel.id === panelId)) return json(res, 404, { error: 'That widget is not on this dashboard.' });
+        res.setHeader('cache-control', 'private, no-store');
+        return json(res, 200, await history.read(panelId, query.get('range') || '24h'));
+      }
+      // Which numbers a widget has and how each is written, so the widget
+      // dialog offers only the chart formats its data supports (Rule 1).
+      // For people who can arrange the dashboard, like the look itself.
+      if (path === '/studio/api/history/probe' && req.method === 'POST') {
+        const change = await readBody(req, 4 * 1024);
+        const board = (await store.loadBoard()).board;
+        const panel = typeof change?.panel === 'string' && Object.keys(change).length === 1 ? board.panels.find(item => item.id === change.panel) : null;
+        if (!panel) return json(res, 404, { error: 'That widget is not on this dashboard.' });
+        if (panel.kind !== 'serviceWidget') return json(res, 200, { values: [] });
+        const { id, kind, nativeLocator, available } = panel;
+        const results = await rendererCollect(dashboard, [{ id, kind, nativeLocator, ...(available === false ? { available } : {}) }]);
+        const values = Array.isArray(results[panel.id]?.values) ? results[panel.id].values : [];
+        return json(res, 200, { values: values.filter(value => typeof value?.field === 'string').map(value => ({ field: value.field, format: typeof value.format === 'string' ? value.format : 'plain' })) });
+      }
       // Test connection: the widget dialog's draft runs its own first request
       // in this dashboard's renderer, which answers with a plain reason only.
       // Administrators only (default deny), like widget settings.
@@ -703,7 +776,7 @@ function createDashboardHandlers(options = {}) {
     return { ...result, ...(needKeys.length ? { connectionsNeedingKeys: needKeys } : {}), ...(notes.length ? { importNotes: notes } : {}) };
   }
 
-  return { handle, checkRequest, store, logo, images, connections, initialization };
+  return { handle, checkRequest, store, logo, images, connections, history, collectHistory, initialization };
 }
 
 export function createStudioServer(options = {}) {
@@ -1220,8 +1293,29 @@ export function createStudioServer(options = {}) {
   server.on('close', () => {
     if (!applicationClosing) void closeRenderer().catch(error => console.error('Renderer shutdown failed:', error.code || error.name));
   });
+  // Chart history collector: every minute, each dashboard with widgets that
+  // need history asks its renderer for their values. One run at a time; a
+  // dashboard that fails is skipped until the next run.
+  const collectMs = options.collectMs ?? 60000;
+  let collecting = false;
+  const collector = collectMs > 0 ? setInterval(async () => {
+    if (collecting || applicationClosing) return;
+    collecting = true;
+    try {
+      const manifest = await prepareRegistry();
+      for (const entry of manifest.dashboards) {
+        if (applicationClosing) break;
+        if (entry.archived || (!entry.slug && entry.id !== 'default')) continue;
+        try { await forDashboard(entry).collectHistory(entry); }
+        catch (error) { console.error('Chart history collection failed:', error.code || error.name); }
+      }
+    } catch (error) { console.error('Chart history collection failed:', error.code || error.name); }
+    finally { collecting = false; }
+  }, collectMs) : null;
+  collector?.unref();
   let shutdownResult;
   function shutdown({ graceMs = 10000 } = {}) {
+    if (collector) clearInterval(collector);
     if (shutdownResult) return shutdownResult;
     if (!Number.isInteger(graceMs) || graceMs < 0 || graceMs > 30000) throw new Error('Shutdown grace must be an integer from 0 to 30000 milliseconds.');
     applicationClosing = true;

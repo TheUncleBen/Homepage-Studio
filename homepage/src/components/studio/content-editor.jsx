@@ -1,6 +1,8 @@
 import { useContext, useEffect, useRef, useState } from "react";
+import useSWR from "swr";
 
 import { studioRequest } from "./api.mjs";
+import { chartRanges } from "./card-chart";
 import { resolvedBehaviour, resolvedLook, widgetFields } from "./card-look";
 import ConfigForm, { LINK_FIELDS, SERVICE_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
@@ -226,6 +228,13 @@ export default function ContentEditor({
   const [behaviour, setBehaviour] = useState(boardPanel?.behaviour);
   const [page, setPage] = useState(initialPage);
   const [savedLooks, setSavedLooks] = useState(wholeBoard?.looks || []);
+  // The formats of this widget's numbers (from Studio's collector), so Show
+  // as offers only the charts its data supports.
+  const { data: chartProbe } = useSWR(
+    boardPanel && kind === "serviceWidget" ? ["/studio/api/history/probe", boardPanel.id] : null,
+    ([path, id]) => studioRequest(path, { panel: id }),
+    { revalidateOnFocus: false, shouldRetryOnError: false },
+  );
   const lookChanged =
     Boolean(boardPanel) &&
     (JSON.stringify(look ?? null) !== JSON.stringify(boardPanel.look ?? null) ||
@@ -322,6 +331,8 @@ export default function ContentEditor({
   const lookProps = boardPanel
     ? {
         kind,
+        chartFields: chartProbe?.values,
+        rangeChoices: chartRanges(settings, look?.chartRange),
         look,
         behaviour,
         inheritedLook: resolvedLook(settings, null),

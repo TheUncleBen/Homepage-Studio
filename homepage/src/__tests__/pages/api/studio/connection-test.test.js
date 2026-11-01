@@ -16,7 +16,8 @@ vi.mock("widgets/widgets", () => ({
   },
 }));
 
-import handler, { firstEndpoint, fromController } from "pages/api/studio/connection-test";
+import handler, { firstEndpoint } from "pages/api/studio/connection-test";
+import { fromController } from "utils/studio/internal";
 
 function createRes() {
   const res = { statusCode: 200 };

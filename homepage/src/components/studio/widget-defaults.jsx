@@ -3,13 +3,17 @@ import ColourField from "./colour-field";
 import { BUILT_IN_BEHAVIOUR, STATUS_COLOURS, keepsUpdatingHidden, setOverride, statusColours } from "./look.mjs";
 import { Group, Row, Segmented } from "./ui";
 
+// Chart history retention (server/history.mjs keeps the same choices).
+const CHART_DAYS = [7, 30, 90];
+const DEFAULT_CHART_DAYS = 30;
+
 const plain = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 // The behaviour every widget on this dashboard starts with. A widget that
 // changes one keeps its own value; choosing the same value again follows
 // these again. Each value is stored only while it differs from the built-in
 // default (Rule 2). Look defaults live in Appearance, so each has one home.
-export default function WidgetDefaults({ settings, onChange, pageCount = 1 }) {
+export default function WidgetDefaults({ settings, onChange, pageCount = 1, hasCharts = false }) {
   const own = plain(settings.studioDefaults) ? settings.studioDefaults : {};
   const acts = { ...BUILT_IN_BEHAVIOUR, ...dashboardBehaviour(settings) };
   const write = (studioDefaults, extra = {}) => {
@@ -37,6 +41,10 @@ export default function WidgetDefaults({ settings, onChange, pageCount = 1 }) {
   const setUpdates = (value) => {
     const { updates: _old, ...rest } = own;
     write(value === "keep" ? { ...rest, updates: "keep" } : rest);
+  };
+  const setChartDays = (value) => {
+    const { chartDays: _old, ...rest } = own;
+    write(value === DEFAULT_CHART_DAYS ? rest : { ...rest, chartDays: value });
   };
   const setOpensOn = (value) => {
     const { opensOn: _old, ...rest } = own;
@@ -112,11 +120,12 @@ export default function WidgetDefaults({ settings, onChange, pageCount = 1 }) {
         </Row>
         <Row
           label="Status colours"
-          info="For the whole dashboard: the status dot, and the alert look a card takes when its check fails."
+          info="For the whole dashboard: the status dot, colour rules, and the alert look a card takes when its check or a colour rule fails."
         >
           <div className="studio-status-colours">
             {[
               ["good", "Good"],
+              ["warn", "Warning"],
               ["problem", "Problem"],
             ].map(([key, label]) => (
               <span key={key} className="studio-status-colour">
@@ -130,6 +139,19 @@ export default function WidgetDefaults({ settings, onChange, pageCount = 1 }) {
             ))}
           </div>
         </Row>
+        {hasCharts && (
+          <Row
+            label="Chart history"
+            info="Studio keeps numbers only for widgets shown as a chart, with a trend or with colour rules. Older history is removed."
+          >
+            <Segmented
+              label="Chart history"
+              value={CHART_DAYS.includes(own.chartDays) ? own.chartDays : DEFAULT_CHART_DAYS}
+              onChange={setChartDays}
+              options={CHART_DAYS.map((days) => [days, `${days} days`])}
+            />
+          </Row>
+        )}
         <Row
           label="Background updates"
           info="Pausing while the tab is in the background saves API calls and battery. Widgets catch up when you come back."

@@ -26,7 +26,24 @@ export const LOOK_OPTIONS = Object.freeze({
   // Colour fit (board 7): a custom colour is fitted to the theme unless the
   // widget asks for its exact colour; text contrast is still chosen for it.
   colourFit: ["fitted", "exact"],
+  // Show as (boards 6, 10): how the numbers are drawn. Numbers is the layout
+  // above (Hero, with an optional trend, or Quiet); the charts read the
+  // history Studio collects for widgets shown this way (server/history.mjs).
+  show: ["numbers", "line", "area", "bar", "donut", "pie", "gauge", "table"],
+  chartRange: ["1h", "6h", "24h", "7d", "30d"],
 });
+
+// Formats drawn from collected history, and the ones that need it at all
+// (a trend or colour rules read the latest collected value too).
+export const CHART_SHOWS = Object.freeze(["line", "area", "bar"]);
+export const COLLECTED_SHOWS = Object.freeze(["line", "area", "bar", "donut", "pie", "gauge"]);
+export function needsHistory(look) {
+  return (
+    COLLECTED_SHOWS.includes(look.show) ||
+    (look.show === "numbers" && look.layout === "hero" && look.trend !== "off") ||
+    (Array.isArray(look.values) && look.values.some((value) => value.rules))
+  );
+}
 
 export const BEHAVIOUR_OPTIONS = Object.freeze({
   target: ["same", "new", "none"],
@@ -38,7 +55,7 @@ export const BEHAVIOUR_OPTIONS = Object.freeze({
 
 // Dashboard-wide status colours (Dashboard settings › Widget defaults). Only
 // a colour that differs from these is stored, in studioDefaults.statusColours.
-export const STATUS_COLOURS = Object.freeze({ good: "#3fb27f", problem: "#e5604f" });
+export const STATUS_COLOURS = Object.freeze({ good: "#3fb27f", warn: "#d9a33b", problem: "#e5604f" });
 export function statusColours(settings) {
   const raw = settings?.studioDefaults?.statusColours;
   const out = {};
@@ -71,6 +88,8 @@ export const BUILT_IN_LOOK = Object.freeze({
   status: "dot",
   align: "left",
   colourFit: "fitted",
+  show: "numbers",
+  chartRange: "24h",
 });
 
 export const BUILT_IN_BEHAVIOUR = Object.freeze({
@@ -87,7 +106,10 @@ export const VALUE_SLOTS = ["hero", "below", "hidden"];
 export const NUMBER_STYLES = ["full", "short", "compact"];
 export const MAX_VALUES = 24;
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
-const FIELD = /^[A-Za-z0-9_.:-]{1,80}$/;
+// A value's key: the widget's field name, or its label (customapi labels are
+// the owner's own words, such as "Blocked today"). Kept equal to
+// server/history.mjs so a chart and its arranged values use the same keys.
+const FIELD = /^[^\u0000-\u001f\u007f"\\/<>`]{1,80}$/u;
 
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const plain = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -149,6 +171,33 @@ function background(value) {
   return out;
 }
 
+function rules(value) {
+  if (!plain(value)) fail("Colour rules must be an object.");
+  const out = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "warn" || key === "problem") {
+      if (!Number.isFinite(entry) || Math.abs(entry) > 1e15) fail("A colour rule needs a number.");
+      out[key] = entry;
+    } else if (key === "lower") {
+      if (entry !== true) fail("Lower is worse is either on or left out.");
+      out.lower = true;
+    } else fail(`Unknown colour rule setting: ${key}.`);
+  }
+  if (!own(out, "warn") && !own(out, "problem")) fail("A colour rule needs a warning or a problem level.");
+  if (own(out, "warn") && own(out, "problem") && (out.lower ? out.problem > out.warn : out.problem < out.warn))
+    fail("The problem level must be past the warning level.");
+  return out;
+}
+
+// The level a value reaches under its colour rules: problem, warn or null.
+export function ruleLevel(rule, value) {
+  if (!rule || !Number.isFinite(value)) return null;
+  const past = (limit) => Number.isFinite(limit) && (rule.lower ? value <= limit : value >= limit);
+  if (past(rule.problem)) return "problem";
+  if (past(rule.warn)) return "warn";
+  return null;
+}
+
 function values(list) {
   if (!Array.isArray(list) || list.length > MAX_VALUES) fail(`A widget can arrange at most ${MAX_VALUES} values.`);
   const seen = new Set();
@@ -168,6 +217,16 @@ function values(list) {
       if (!NUMBER_STYLES.includes(entry.format)) fail("A number style must be full, short or compact.");
       out.format = entry.format;
     }
+    // A chart line's own colour.
+    if (own(entry, "colour")) {
+      const colour = hexColor(entry.colour);
+      if (!colour) fail("A value colour must be a hex colour.");
+      out.colour = colour;
+    }
+    // Colour rules: from warn the value shows the warning colour, from
+    // problem the problem colour (and the card turns to its alert state).
+    // lower turns them round, for values where less is worse.
+    if (own(entry, "rules")) out.rules = rules(entry.rules);
     if (heroes > 1) fail("Only one value can be the hero.");
     return out;
   });

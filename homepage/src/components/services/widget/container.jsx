@@ -3,11 +3,12 @@ import { useContext, useMemo } from "react";
 import Error from "./error";
 import { BlockHighlightContext } from "./highlight-context";
 
+import CardError from "components/studio/card-error";
 import { CardLookContext } from "components/studio/card-look";
 import CardValues from "components/studio/card-values";
-import CardError from "components/studio/card-error";
 import { SettingsContext } from "utils/contexts/settings";
 import { buildHighlightConfig } from "utils/highlights";
+import { CollectContext } from "utils/studio/collect-context";
 
 const ALIASED_WIDGETS = {
   pialert: "netalertx",
@@ -16,25 +17,8 @@ const ALIASED_WIDGETS = {
   overseerr: "seerr",
 };
 
-export default function Container({ error = false, children, service }) {
-  const { settings } = useContext(SettingsContext);
-  // Inside a Studio card the card decides the arrangement and error display.
-  const card = useContext(CardLookContext);
-
-  const highlightConfig = useMemo(
-    () => buildHighlightConfig(settings?.blockHighlights, service?.widget?.highlight, service?.widget?.type),
-    [settings?.blockHighlights, service?.widget?.highlight, service?.widget?.type],
-  );
-
-  if (error && card) return <CardError card={card} service={service} error={error} />;
-  if (error) {
-    if (settings.hideErrors || service.widget.hide_errors) {
-      return null;
-    }
-
-    return <Error service={service} error={error} />;
-  }
-
+// The values the widget's fields option keeps.
+function filterFields(children, service) {
   const childrenArray = Array.isArray(children) ? children : [children];
 
   let visibleChildren = childrenArray;
@@ -67,6 +51,35 @@ export default function Container({ error = false, children, service }) {
       }),
     );
   }
+  return visibleChildren;
+}
+
+export default function Container({ error = false, children, service }) {
+  const { settings } = useContext(SettingsContext);
+  // Inside a Studio card the card decides the arrangement and error display.
+  const card = useContext(CardLookContext);
+  // Chart history (utils/studio/collect.js): hand the values over, draw nothing.
+  const collect = useContext(CollectContext);
+
+  const highlightConfig = useMemo(
+    () => buildHighlightConfig(settings?.blockHighlights, service?.widget?.highlight, service?.widget?.type),
+    [settings?.blockHighlights, service?.widget?.highlight, service?.widget?.type],
+  );
+
+  if (collect) {
+    collect(error, error ? [] : filterFields(children, service));
+    return null;
+  }
+  if (error && card) return <CardError card={card} service={service} error={error} />;
+  if (error) {
+    if (settings.hideErrors || service.widget.hide_errors) {
+      return null;
+    }
+
+    return <Error service={service} error={error} />;
+  }
+
+  const visibleChildren = filterFields(children, service);
   const content = card ? (
     <CardValues card={card} items={visibleChildren} />
   ) : (

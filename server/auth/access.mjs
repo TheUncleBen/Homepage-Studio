@@ -74,10 +74,12 @@ export function landingDashboard(data, user, dashboards) {
 
 // Required level for a dashboard-relative request. Anything under
 // /studio/ that is not listed needs an administrator (default deny).
-const VIEW_GET = new Set(['/studio/api/board', '/studio/api/access', '/studio/catalog.json', '/studio/logo', '/studio/api/preferences']);
+// /studio/api/history: a chart's collected numbers, the same values its card shows.
+const VIEW_GET = new Set(['/studio/api/board', '/studio/api/access', '/studio/catalog.json', '/studio/logo', '/studio/api/preferences', '/studio/api/history']);
 // Anyone who can open a dashboard keeps their own preferences.
 const VIEW_POST = new Set(['/studio/api/preferences']);
-const ARRANGE_POST = new Set(['/studio/api/board', '/studio/api/discovery-visibility', '/studio/api/appearance', '/studio/api/logo', '/studio/api/images', '/studio/api/images/delete', '/studio/api/my-images', '/studio/api/my-images/delete', '/studio/api/my-images/use']);
+// /studio/api/history/probe: the formats of a widget's numbers, for the look's Show as choice.
+const ARRANGE_POST = new Set(['/studio/api/history/probe', '/studio/api/board', '/studio/api/discovery-visibility', '/studio/api/appearance', '/studio/api/logo', '/studio/api/images', '/studio/api/images/delete', '/studio/api/my-images', '/studio/api/my-images/delete', '/studio/api/my-images/use']);
 // The editor and settings pages are opened from the Dashboards page.
 const ARRANGE_GET = new Set(['/studio/api/appearance', '/studio/api/images', '/studio/api/my-images', '/studio/edit', '/studio/settings']);
 // Admin operations that also need a recent sign-in.

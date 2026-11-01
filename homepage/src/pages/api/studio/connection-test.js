@@ -1,10 +1,10 @@
-import { timingSafeEqual } from "crypto";
 import { performance } from "perf_hooks";
 
 import { serviceProxy } from "pages/api/services/proxy";
 import { withAuth } from "utils/auth";
 import { connectionTest, connectionTestResult, TEST_GROUP } from "utils/config/connection-test.mjs";
 import { resolveWidgetConnection } from "utils/config/studio-connections.mjs";
+import { captureResponse, fromController } from "utils/studio/internal";
 import widgets from "widgets/widgets";
 
 // Test connection, asked for by the Studio controller only (it strips every
@@ -16,34 +16,6 @@ const TEST_TIMEOUT_MS = 20_000;
 
 export const config = { api: { bodyParser: { sizeLimit: "32kb" } } };
 
-function capture() {
-  const result = { status: 200, body: undefined, headers: {} };
-  const res = {
-    status(code) {
-      result.status = code;
-      return res;
-    },
-    json(value) {
-      result.body = value;
-      return res;
-    },
-    send(value) {
-      result.body = value;
-      return res;
-    },
-    end() {
-      return res;
-    },
-    setHeader(name, value) {
-      result.headers[name] = value;
-    },
-    getHeader(name) {
-      return result.headers[name];
-    },
-  };
-  return { res, result };
-}
-
 // The first request the widget makes on its own: a mapping without segments,
 // parameters or a method other than GET.
 export function firstEndpoint(definition) {
@@ -52,13 +24,6 @@ export function firstEndpoint(definition) {
     ([, mapping]) => !mapping?.segments && !mapping?.params && (!mapping?.method || mapping.method === "GET"),
   );
   return simple?.[0];
-}
-
-export function fromController(header, token = process.env.STUDIO_INTERNAL_TOKEN) {
-  if (!token || typeof header !== "string") return false;
-  const sent = Buffer.from(header);
-  const expected = Buffer.from(token);
-  return sent.length === expected.length && timingSafeEqual(sent, expected);
 }
 
 async function handler(req, res) {
@@ -72,7 +37,7 @@ async function handler(req, res) {
   if (!definition) return res.status(400).json({ error: "This widget type can't be tested." });
   const widget = resolveWidgetConnection(draft);
   const endpoint = firstEndpoint(definition);
-  const { res: captured, result } = capture();
+  const { res: captured, result } = captureResponse();
   const request = {
     method: "GET",
     headers: {},

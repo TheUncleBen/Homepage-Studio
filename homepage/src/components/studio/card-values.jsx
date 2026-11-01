@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 
+import { CardChart, Trend } from "./card-chart";
 import { ValueSlotContext } from "./card-look";
+import { CHART_SHOWS, COLLECTED_SHOWS, ruleLevel } from "./look.mjs";
 
 import Block from "components/services/widget/block";
 
@@ -32,16 +34,24 @@ export default function CardValues({ card, items: children }) {
   useEffect(() => {
     if (card.id && !card.stale) lastValues.set(card.id, { items: children, at: Date.now() });
   });
-  const arranged = new Map((card.values || []).map((value, index) => [value.field, { ...value, order: index }]));
+  // Colour rules read the latest collected number of each value.
+  const latest = card.history?.latest?.values;
+  const arranged = new Map(
+    (card.values || []).map((value, index) => [
+      value.field,
+      { ...value, order: index, ...(value.rules ? { level: ruleLevel(value.rules, latest?.[value.field]) } : {}) },
+    ]),
+  );
   const ordered = [...items].sort((a, b) => {
     const left = arranged.get(a.key)?.order ?? Infinity;
     const right = arranged.get(b.key)?.order ?? Infinity;
     return left === right ? 0 : left - right;
   });
   const visible = ordered.filter((item) => arranged.get(item.key)?.slot !== "hidden");
-  if (card.layout === "quiet") {
+  const show = card.show || "numbers";
+  if (show === "table" || (show === "numbers" && card.layout === "quiet")) {
     return (
-      <div className="studio-values studio-values-quiet">
+      <div className={`studio-values ${show === "table" ? "studio-values-table" : "studio-values-quiet"}`}>
         {visible.map((item) => (
           <ValueSlotContext.Provider key={item.key} value={{ slot: "quiet", ...arranged.get(item.key) }}>
             {item.child}
@@ -53,14 +63,19 @@ export default function CardValues({ card, items: children }) {
   const chosen = visible.find((item) => item.block && arranged.get(item.key)?.slot === "hero");
   const hero = chosen || visible.find((item) => item.block);
   const rest = visible.filter((item) => item !== hero);
+  // A chart shows the hero value above it; its legend names the others.
+  const charted = COLLECTED_SHOWS.includes(show);
+  const trend = show === "numbers" && card.trend && card.trend !== "off" && hero;
   return (
-    <div className="studio-values studio-values-hero">
-      {hero && (
+    <div className={`studio-values studio-values-hero${charted ? " studio-values-charted" : ""}`}>
+      {hero && show !== "gauge" && (
         <ValueSlotContext.Provider value={{ ...arranged.get(hero.key), slot: "hero" }}>
           {hero.child}
         </ValueSlotContext.Provider>
       )}
-      {rest.length > 0 && (
+      {trend && <Trend history={card.history} field={hero.key} trend={card.trend} />}
+      {charted && <CardChart card={card} onOpen={CHART_SHOWS.includes(show) ? card.onFullView : undefined} />}
+      {!charted && rest.length > 0 && (
         <div className="studio-values-below">
           {rest.map((item) => (
             <ValueSlotContext.Provider key={item.key} value={{ ...arranged.get(item.key), slot: "below" }}>

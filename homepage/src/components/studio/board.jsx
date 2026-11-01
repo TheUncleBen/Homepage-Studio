@@ -7,7 +7,8 @@ import AppearanceOnlyEditor from "./appearance-only-editor";
 import { PageBackgroundEditor } from "./background-picker";
 import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm } from "./bulk-bar";
 import CardBackground from "./card-background";
-import { canRefresh, refreshCards, resolvedBehaviour, useCardTheme } from "./card-look";
+import { ChartFullView, chartRanges } from "./card-chart";
+import { canRefresh, refreshCards, resolvedBehaviour, resolvedLook, useCardTheme } from "./card-look";
 import { ConnectionsEditor } from "./connections";
 import ContentEditor, { ContentPicker, duplicateEntry } from "./content-editor";
 import { dashboardPath } from "./dashboard-path.mjs";
@@ -45,11 +46,11 @@ import {
   updatePage,
 } from "./geometry.mjs";
 import StudioIcon from "./icons";
-import { readLook, statusColours } from "./look.mjs";
+import { CHART_SHOWS, needsHistory, readLook, statusColours } from "./look.mjs";
 import Menu from "./menu";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
-import PanelHost, { CardPreview } from "./panel-host";
+import PanelHost, { CardPreview, useCardPresentation } from "./panel-host";
 import { useReducedMotion } from "./preferences";
 import StudioSearch from "./search";
 import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
@@ -130,6 +131,7 @@ export function PanelLayer({
   onStackDrag,
   onManualNavigation,
   onEdit,
+  onFullView,
   canEdit,
   onSelect,
   onManipulate,
@@ -172,6 +174,7 @@ export function PanelLayer({
             onStackDrag={stack ? (offset) => onStackDrag?.(stack.id, offset) : undefined}
             onManual={onManualNavigation}
             onEdit={onEdit}
+            onFullView={onFullView}
             canEdit={canEdit ? canEdit(panel) : true}
             onSelect={onSelect}
             onManipulate={onManipulate}
@@ -182,6 +185,20 @@ export function PanelLayer({
         );
       })}
     </div>
+  );
+}
+
+// A chart widget full size, with its own look (names, colours, format).
+function FullViewHost({ panel, data, settings, onClose }) {
+  const { card } = useCardPresentation(panel, data);
+  return (
+    <ChartFullView
+      panel={panel}
+      card={card}
+      title={panel.title || "Chart"}
+      ranges={chartRanges(settings, card.chartRange)}
+      onClose={onClose}
+    />
   );
 }
 
@@ -295,6 +312,8 @@ export default function StudioBoard({
   const [dropPage, setDropPage] = useState(null);
   const [pageMenu, setPageMenu] = useState(null);
   const [unitMenu, setUnitMenu] = useState(null);
+  // Full view of a chart widget (board 15).
+  const [fullView, setFullView] = useState(null);
   const [marquee, setMarquee] = useState(null);
 
   const [lookClipboard, setLookClipboard] = useState(readLookClipboard);
@@ -1549,6 +1568,13 @@ export default function StudioBoard({
           ),
       },
       "-",
+      CHART_SHOWS.includes(resolvedLook(settings, panel).show) && {
+        id: "full-view",
+        icon: "expand",
+        label: "Open full view",
+        shortcut: "Space",
+        onSelect: () => setFullView(panel),
+      },
       canRefresh(panel.id) && {
         id: "refresh",
         icon: "refresh",
@@ -1616,6 +1642,8 @@ export default function StudioBoard({
       if (command || event.shiftKey) return;
       if (lower === "e" && (isAdmin || panel.nativeLocator?.discovered)) return run(() => editPanel(panel));
       if (lower === "r" && canRefresh(panel.id)) return run(() => refreshNow([panel.id]));
+      if (event.key === " " && CHART_SHOWS.includes(resolvedLook(settings, panel).show))
+        return run(() => setFullView(panel));
       if ((event.key === "Delete" || event.key === "Backspace") && canChange) return run(() => deletePanel(panel));
     };
     window.addEventListener("keydown", key);
@@ -2126,6 +2154,7 @@ export default function StudioBoard({
           }
           onStackDrag={onStackDrag}
           onEdit={editPanel}
+          onFullView={setFullView}
           canEdit={(panel) => isAdmin || Boolean(panel.nativeLocator?.discovered)}
           onSelect={select}
           onManipulate={manipulate}
@@ -2164,6 +2193,14 @@ export default function StudioBoard({
           </div>
         )}
       </div>
+      {fullView && (
+        <FullViewHost
+          panel={fullView}
+          data={renderedNativeData}
+          settings={settings}
+          onClose={() => setFullView(null)}
+        />
+      )}
       {search?.open && !editing && (
         <StudioSearch
           board={wholeBoard}
@@ -2470,6 +2507,7 @@ export default function StudioBoard({
                 <SettingsEditor
                   {...editorData}
                   pageCount={pages.length}
+                  hasCharts={wholeBoard.panels.some((panel) => needsHistory(resolvedLook(settings, panel)))}
                   logo={access?.dashboard?.logo ?? null}
                   onLogoChange={() => mutateAccess()}
                   onSaved={savedContent}

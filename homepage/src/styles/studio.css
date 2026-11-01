@@ -2995,6 +2995,183 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-value-below .studio-value-label {
   font-size: 11.5px;
 }
+/* Table: every value as a row, its name left and its number right. */
+.studio-values-table {
+  gap: 0;
+}
+.studio-values-table .studio-value {
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--card-text) 10%, transparent);
+}
+.studio-values-table .studio-value:last-child {
+  border-bottom: 0;
+}
+.studio-values-table .studio-value-number {
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
+}
+/* Colour rules: the number takes the dashboard's warning or problem colour. */
+.studio-value[data-rule="warn"] .studio-value-number {
+  color: var(--studio-status-warn, #d9a33b);
+}
+.studio-value[data-rule="problem"] .studio-value-number {
+  color: var(--studio-status-problem, #e5604f);
+}
+/* Trend under the large value. */
+.studio-trend {
+  font-size: 12px;
+  color: var(--card-muted-text);
+}
+.studio-trend-up span,
+.studio-trend-down span {
+  color: var(--card-text);
+}
+/* Charts: drawn from the history Studio keeps. */
+.studio-values-charted {
+  flex: 1;
+  min-height: 0;
+}
+.studio-chart-open,
+.studio-chart-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.studio-chart-open {
+  cursor: zoom-in;
+  border-radius: 6px;
+}
+.studio-chart-open:focus-visible {
+  outline: 2px solid var(--studio-focus, var(--studio-accent));
+  outline-offset: 2px;
+}
+.studio-chart {
+  position: relative;
+  flex: 1;
+  min-height: 48px;
+}
+.studio-chart-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.studio-chart-donut,
+.studio-chart-pie,
+.studio-chart-gauge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.studio-chart-round {
+  height: 100%;
+  max-height: 140px;
+  aspect-ratio: 1;
+}
+.studio-chart-gauge-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 220px;
+}
+.studio-chart-gauge {
+  width: 100%;
+}
+.studio-chart-track {
+  stroke: color-mix(in srgb, var(--card-text) 12%, transparent);
+}
+.studio-chart-gauge-value {
+  margin-top: -1.6em;
+  font-size: 24px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.studio-chart-range,
+.studio-chart-note {
+  color: var(--card-muted-text);
+  font-size: 11.5px;
+}
+.studio-chart-note {
+  margin: 0;
+}
+.studio-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--card-muted-text);
+}
+.studio-chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.studio-chart-legend strong {
+  color: var(--card-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.studio-chart-key {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.studio-full-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.studio-full-chart {
+  position: relative;
+  height: min(48vh, 360px);
+  --card-text: var(--studio-text);
+  --card-muted-text: var(--studio-muted);
+}
+.studio-full-view .studio-chart-legend {
+  --card-text: var(--studio-text);
+  --card-muted-text: var(--studio-muted);
+}
+.studio-chart-cursor {
+  stroke: var(--studio-muted);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+/* Colour rules in the widget dialog. */
+.studio-value-rules {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  flex-basis: 100%;
+  padding: 6px 0 2px;
+  font-size: 13px;
+}
+.studio-value-rules input[type="number"] {
+  width: 7em;
+}
+.studio-rules-toggle.is-set {
+  color: var(--studio-accent);
+}
 .studio-values-quiet {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
@@ -3198,8 +3375,8 @@ a.studio-card-identity:hover .studio-card-name strong {
   list-style: none;
 }
 .studio-value-list > li {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-height: 48px;
@@ -3225,15 +3402,33 @@ a.studio-card-identity:hover .studio-card-name strong {
   font: inherit;
 }
 .studio-value-list input {
+  flex: 1 1 8rem;
   min-width: 0;
 }
-@media (max-width: 680px) {
-  .studio-value-list > li {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-  }
-  .studio-value-list > li > select:last-child {
-    grid-column: 2 / -1;
-  }
+/* A chart line's colour sits in the row: a small swatch and its hex. */
+.studio-value-list .studio-colour-field {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+.studio-value-list .studio-colour-input {
+  flex: 0 0 32px;
+  width: 32px;
+  min-height: 28px;
+  height: 28px;
+  border: 1px solid var(--studio-line);
+}
+.studio-value-list .studio-colour-text {
+  flex: 0 0 6.5rem;
+  width: 6.5rem;
+  min-height: 28px;
+  border: 1px solid var(--studio-line);
+  background: var(--studio-input);
+}
+.studio-value-rules input[type="number"] {
+  flex: 0 0 7em;
+  border: 1px solid var(--studio-line);
+  border-radius: 6px;
+  padding: 0 6px;
 }
 
 /* ---------- Appearance: bases and card defaults ---------- */

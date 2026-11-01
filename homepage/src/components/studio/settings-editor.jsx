@@ -204,6 +204,7 @@ export default function SettingsEditor({
   onOpenImages,
   onReload,
   pageCount = 1,
+  hasCharts = false,
 }) {
   const { data: saved } = useSWR(onOpenConnections ? "/studio/api/connections" : null, studioRequest);
   const savedCount = saved?.connections?.length;
@@ -280,7 +281,7 @@ export default function SettingsEditor({
             </Group>
           </fieldset>
           <BrowserSettings settings={draft} onChange={setDraft} />
-          <WidgetDefaults settings={draft} onChange={setDraft} pageCount={pageCount} />
+          <WidgetDefaults settings={draft} onChange={setDraft} pageCount={pageCount} hasCharts={hasCharts} />
           <ConfigForm
             value={draft}
             onChange={setDraft}

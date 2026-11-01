@@ -49,11 +49,24 @@ export default function Block({ value, highlightValue, label, field }) {
     const text = slot.label || t(label);
     return (
       <div
-        className={classNames("studio-value", `studio-value-${slot.slot}`, loading && "studio-value-loading", highlightClass, "service-block")}
+        className={classNames(
+          "studio-value",
+          `studio-value-${slot.slot}`,
+          loading && "studio-value-loading",
+          highlightClass,
+          "service-block",
+        )}
+        data-rule={slot.level || undefined}
         data-highlight-level={highlight?.level}
         data-highlight-source={highlight?.source}
       >
-        <span className={classNames("studio-value-number", applyToValueOnly && "studio-value-highlighted", "service-block-value")}>
+        <span
+          className={classNames(
+            "studio-value-number",
+            applyToValueOnly && "studio-value-highlighted",
+            "service-block-value",
+          )}
+        >
           {number}
           {unit && <span className="studio-value-unit">{unit}</span>}
         </span>

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 
 import { withoutPhoneHidden } from "./board";
-import LookEditor, { arrangeValues, storedValues } from "./look-editor";
+import LookEditor, { arrangeValues, showChoices, storedValues } from "./look-editor";
 import { BUILT_IN_BEHAVIOUR, BUILT_IN_LOOK } from "./look.mjs";
 
 vi.mock("./native-panel", () => ({ default: () => null }));
@@ -284,5 +284,50 @@ describe("exact colour", () => {
   it("is not offered when the colour comes from the logo", () => {
     renderEditor({ look: { fill: "solid" } });
     expect(screen.queryByRole("switch", { name: "Use my exact colour" })).toBeNull();
+  });
+});
+
+describe("Show as and charts", () => {
+  it("offers only the formats the widget's numbers can be drawn as (Rule 1)", () => {
+    const keys = (fieldsSeen, current) => showChoices(fieldsSeen, current).map(([value]) => value);
+    expect(keys(undefined)).toEqual(["numbers", "table"]);
+    expect(keys([{ field: "rx", format: "byterate" }])).toEqual(["numbers", "table", "line", "area", "bar"]);
+    expect(
+      keys([
+        { field: "a", format: "number" },
+        { field: "b", format: "number" },
+        { field: "c", format: "percent" },
+      ]),
+    ).toEqual(["numbers", "table", "line", "area", "bar", "donut", "pie", "gauge"]);
+    expect(keys([], "gauge")).toEqual(["numbers", "table", "gauge"]);
+  });
+
+  it("shows each line's colour as drawn and stores only a changed one (Rule 2)", () => {
+    const { onLook } = renderEditor({
+      look: { show: "line" },
+      inheritedLook: { ...BUILT_IN_LOOK, show: "line" },
+      chartFields: [{ field: "users", format: "number" }],
+      rangeChoices: ["1h", "6h", "24h", "7d"],
+    });
+    const colour = screen.getByRole("textbox", { name: "Chart colour for Users" });
+    expect(colour.value).toBe("#5aa9e6");
+    expect(screen.getByRole("textbox", { name: "Chart colour for Failed" }).value).toBe("#e0a03b");
+    expect(within(screen.getByRole("radiogroup", { name: "Time range" })).queryByRole("radio", { name: "30 d" })).toBe(
+      null,
+    );
+    fireEvent.change(colour, { target: { value: "#112233" } });
+    expect(onLook.mock.calls.at(-1)[0].values[0]).toEqual({ field: "users", colour: "#112233" });
+    // Picking the colour it already draws in stores nothing.
+    fireEvent.change(screen.getByRole("textbox", { name: "Chart colour for Failed" }), {
+      target: { value: "#e0a03b" },
+    });
+    expect(onLook).toHaveBeenCalledTimes(1);
+  });
+
+  it("edits a value's colour rules", () => {
+    const { onLook } = renderEditor();
+    fireEvent.click(screen.getAllByRole("button", { name: "Rules" })[0]);
+    fireEvent.change(screen.getByLabelText("Warning from"), { target: { value: "70" } });
+    expect(onLook.mock.calls.at(-1)[0].values[0]).toEqual({ field: "users", rules: { warn: 70 } });
   });
 });

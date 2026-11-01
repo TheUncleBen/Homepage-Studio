@@ -1,6 +1,7 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import CardBackground, { backgroundSource } from "./card-background";
+import { useCardHistory } from "./card-chart";
 import {
   CardLookContext,
   fillColours,
@@ -14,7 +15,7 @@ import Freshness from "./freshness";
 import { COLUMNS, GAP, ROW_HEIGHT } from "./geometry.mjs";
 import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
-import { REFRESH_MS } from "./look.mjs";
+import { CHART_SHOWS, REFRESH_MS, ruleLevel } from "./look.mjs";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import NativePanel from "./native-panel";
 
@@ -24,7 +25,7 @@ const iconOf = (resolved) => resolved?.service?.icon || resolved?.bookmark?.icon
 
 // How a card looks: built-in, then the dashboard's defaults, then its own.
 // Shared by the board and the widget dialog's live preview.
-export function useCardPresentation(panel, data, onEdit) {
+export function useCardPresentation(panel, data, onEdit, onFullView) {
   const settings = useContext(SettingsContext)?.settings;
   const look = useMemo(() => resolvedLook(settings, panel), [settings, panel]);
   const behaviour = useMemo(() => resolvedBehaviour(settings, panel), [settings, panel]);
@@ -33,6 +34,10 @@ export function useCardPresentation(panel, data, onEdit) {
   const wantsLogo = (look.fill === "tint" || look.fill === "solid") && look.colour === "logo";
   const logoColour = useLogoColour(iconOf(resolved), wantsLogo);
   const colours = useMemo(() => fillColours(look, logoColour, theme), [look, logoColour, theme]);
+  // Charts, trends and colour rules read the history Studio collects.
+  const history = useCardHistory(panel, look);
+  const latest = history?.latest?.values;
+  const ruleAlert = (look.values || []).some((value) => ruleLevel(value.rules, latest?.[value.field]) === "problem");
   const card = useMemo(
     () => ({
       id: panel.id,
@@ -47,8 +52,14 @@ export function useCardPresentation(panel, data, onEdit) {
       refreshMs: REFRESH_MS[behaviour.refresh],
       onFix: onEdit ? () => onEdit(panel) : undefined,
       reportFields: (fields) => widgetFields.set(panel.id, fields),
+      show: look.show,
+      chartRange: look.chartRange,
+      trend: look.layout === "hero" ? look.trend : "off",
+      history,
+      ruleAlert,
+      onFullView: onFullView && CHART_SHOWS.includes(look.show) ? () => onFullView(panel) : undefined,
     }),
-    [panel, look, behaviour, onEdit],
+    [panel, look, behaviour, onEdit, onFullView, history, ruleAlert],
   );
   const pictured =
     (look.fill === "picture" || look.fill === "pattern") && Boolean(backgroundSource(look.background, theme));
@@ -117,6 +128,7 @@ export default function PanelHost({
   onStackDrag,
   onManual,
   onEdit,
+  onFullView,
   canEdit = true,
   onSelect,
   onManipulate,
@@ -126,7 +138,12 @@ export default function PanelHost({
 }) {
   const nativeContent = useRef(null);
   const slide = useRef(null);
-  const { card, attributes, colourStyle, backdrop } = useCardPresentation(panel, data, canEdit ? onEdit : undefined);
+  const { card, attributes, colourStyle, backdrop } = useCardPresentation(
+    panel,
+    data,
+    canEdit ? onEdit : undefined,
+    onFullView,
+  );
   const previousPresentation = useRef(null);
   const slideAnimation = useRef(null);
   const playback = controller?.();

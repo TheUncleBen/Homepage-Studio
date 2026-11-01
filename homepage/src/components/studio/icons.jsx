@@ -1,6 +1,7 @@
 export default function StudioIcon({ name, size = 18, ...props }) {
   const paths = {
     plus: "M12 5v14M5 12h14",
+    expand: "M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7",
     close: "m6 6 12 12M6 18 18 6",
     search: "m21 21-4.3-4.3M10.8 18a7.2 7.2 0 1 0 0-14.4 7.2 7.2 0 0 0 0 14.4Z",
     edit: "m15 5 4 4M5 19l4-1L20 7a2.8 2.8 0 0 0-4-4L5 14l-1 6Z",

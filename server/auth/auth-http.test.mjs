@@ -188,6 +188,8 @@ test('members only reach dashboards shared with them, at the shared level', asyn
   assert.equal(home.headers.location, '/studio/dashboards');
   assert.deepEqual((await request('/studio/api/overview', { cookie: member.cookie })).json.dashboards, []);
   assert.equal((await request('/studio/api/board', { cookie: member.cookie })).status, 404, 'an unshared dashboard looks like a missing one');
+  assert.equal((await request('/studio/api/history?panel=missing&range=24h', { cookie: member.cookie })).status, 404);
+  assert.equal((await request('/studio/api/history?panel=missing&range=24h')).status, 401, 'chart history needs sign-in');
   const list = await request('/studio/api/dashboards', { cookie: member.cookie });
   assert.deepEqual(list.json.dashboards, []);
 
@@ -205,6 +207,10 @@ test('members only reach dashboards shared with them, at the shared level', asyn
     assert.equal((await request(target, { cookie: member.cookie })).status, 403, target);
   }
   assert.equal((await post('/studio/api/save', { revision: board.json.revision }, { cookie: member.cookie })).status, 403);
+  // Chart history is read by anyone who can view; working out a widget's
+  // chart formats is for people who can arrange it.
+  assert.equal((await request('/studio/api/history?panel=missing&range=24h', { cookie: member.cookie })).status, 404, 'viewers reach chart history');
+  assert.equal((await post('/studio/api/history/probe', { panel: 'missing' }, { cookie: member.cookie })).status, 403);
   assert.equal((await request('/studio/auth/admin/overview', { cookie: member.cookie })).status, 403);
   assert.equal((await request('/api/mcp', { cookie: member.cookie })).status, 403, 'the native MCP endpoint stays off with sign-in on');
 
@@ -213,6 +219,9 @@ test('members only reach dashboards shared with them, at the shared level', asyn
   const arranged = await post('/studio/api/board', { revision: board.json.revision, board: board.json.board }, { cookie: member.cookie });
   assert.equal(arranged.status, 200, arranged.text);
   assert.equal(arranged.json.servicesYaml, undefined);
+  assert.equal((await post('/studio/api/history/probe', { panel: 'missing' }, { cookie: member.cookie })).status, 404);
+  const firstPanel = board.json.board.panels[0];
+  if (firstPanel) assert.equal((await post('/studio/api/history/probe', { panel: firstPanel.id, extra: 1 }, { cookie: member.cookie })).status, 404, 'only the panel is sent');
   const appearance = await request('/studio/api/appearance', { cookie: member.cookie });
   assert.equal(appearance.status, 200, appearance.text);
   assert.equal((await request('/studio/api/state', { cookie: member.cookie })).status, 403);

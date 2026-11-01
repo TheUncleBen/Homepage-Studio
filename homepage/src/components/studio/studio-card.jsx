@@ -132,7 +132,11 @@ export function ServiceCard({ service, groupName, children }) {
     ? `${status.code ? `Answered ${status.code}` : "No answer"}${since ? ` since ${since.toLocaleTimeString(i18n.language || [], { hour: "2-digit", minute: "2-digit", ...(clock !== "dashboard" ? { hour12: clock === "12" } : {}) })}` : ""}`
     : null;
   return (
-    <div className="studio-card" data-alert={down || undefined} data-has-body={Boolean(children) || undefined}>
+    <div
+      className="studio-card"
+      data-alert={down || card.ruleAlert || undefined}
+      data-has-body={Boolean(children) || undefined}
+    >
       <CardHead
         icon={service.icon}
         name={service.name}

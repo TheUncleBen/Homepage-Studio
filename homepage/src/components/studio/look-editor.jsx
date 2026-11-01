@@ -1,10 +1,11 @@
 import { useId, useState } from "react";
 
 import { BackgroundAdjust, BackgroundGrid, familyOf, FILL_FAMILIES } from "./background-picker";
+import { PALETTE } from "./card-chart";
 import { useCardTheme } from "./card-look";
 import ColourField from "./colour-field";
 import StudioIcon from "./icons";
-import { exactColour, setOverride } from "./look.mjs";
+import { CHART_SHOWS, exactColour, setOverride } from "./look.mjs";
 import { Group, Row, Segmented, Switch } from "./ui";
 
 // Which parts of the widget dialog apply to each kind of widget (Rule 1: only
@@ -16,6 +17,8 @@ const HAS_LINK = new Set(["service", "serviceWidget", "bookmark"]);
 
 export function lookSections(kind) {
   return {
+    // Charts read the history Studio's collector keeps for integration widgets.
+    charts: kind === "serviceWidget",
     logo: HAS_LOGO.has(kind),
     status: HAS_STATUS.has(kind),
     values: HAS_VALUES.has(kind),
@@ -179,6 +182,81 @@ function Choice({ label, value, options, onChange, info }) {
   );
 }
 
+// Show as (boards 6, 10), Rule 1: the formats this widget's numbers support.
+// Numbers and Table always; charts over time need a number; parts of a whole
+// need two numbers written the same way; a gauge needs a percentage.
+export const SHOW_LABELS = {
+  numbers: "Numbers",
+  table: "Table",
+  line: "Line chart",
+  area: "Area chart",
+  bar: "Bar chart",
+  donut: "Donut",
+  pie: "Pie",
+  gauge: "Gauge",
+};
+export function showChoices(chartFields, current) {
+  const fields = Array.isArray(chartFields) ? chartFields : [];
+  const formats = fields.map((field) => field.format);
+  const shared = formats.some((format, index) => formats.indexOf(format) !== index);
+  const offered = [
+    "numbers",
+    "table",
+    ...(fields.length ? ["line", "area", "bar"] : []),
+    ...(shared ? ["donut", "pie"] : []),
+    ...(formats.includes("percent") ? ["gauge"] : []),
+  ];
+  // A format chosen earlier stays listed, so the row still says what it is.
+  if (current && !offered.includes(current)) offered.push(current);
+  return offered.map((value) => [value, SHOW_LABELS[value]]);
+}
+
+function RulesEditor({ row, onChange }) {
+  const rules = row.rules || {};
+  const set = (key, text) => {
+    const next = { ...rules };
+    const value = text === "" ? undefined : Number(text);
+    if (value === undefined || !Number.isFinite(value)) delete next[key];
+    else next[key] = value;
+    const kept = Object.fromEntries(Object.entries(next).filter(([key]) => key !== "lower"));
+    onChange(Object.keys(kept).length ? next : undefined);
+  };
+  const warnId = useId();
+  const problemId = useId();
+  return (
+    <div className="studio-value-rules" role="group" aria-label={`Colour rules for ${row.label}`}>
+      <label htmlFor={warnId}>Warning from</label>
+      <input
+        id={warnId}
+        type="number"
+        inputMode="decimal"
+        value={rules.warn ?? ""}
+        onChange={(event) => set("warn", event.target.value)}
+      />
+      <label htmlFor={problemId}>Problem from</label>
+      <input
+        id={problemId}
+        type="number"
+        inputMode="decimal"
+        value={rules.problem ?? ""}
+        onChange={(event) => set("problem", event.target.value)}
+      />
+      <Switch
+        label="Lower is worse"
+        checked={Boolean(rules.lower)}
+        disabled={rules.warn === undefined && rules.problem === undefined}
+        onChange={(checked) => {
+          const next = { ...rules };
+          if (checked) next.lower = true;
+          else delete next.lower;
+          onChange(next);
+        }}
+      />
+      <span className="studio-muted">Lower is worse</span>
+    </div>
+  );
+}
+
 // The widget's arrangement of its values: which one is the hero, their order,
 // names and number style. Rows come back in display order, each with the
 // widget's own label and anything the arrangement changes.
@@ -194,6 +272,8 @@ export function arrangeValues(fields, values = []) {
       slot: stored.slot,
       format: stored.format,
       name: stored.label,
+      colour: stored.colour,
+      rules: stored.rules,
     };
   });
 }
@@ -204,18 +284,22 @@ export function arrangeValues(fields, values = []) {
 export function storedValues(rows, fields) {
   const natural = fields.map((field) => field.field);
   const reordered = rows.some((row, index) => row.field !== natural[index]);
-  const stored = rows.map(({ field, slot, format, name }) => ({
+  const stored = rows.map(({ field, slot, format, name, colour, rules }) => ({
     field,
     ...(slot && slot !== "below" ? { slot } : {}),
     ...(name && name.trim() ? { label: name.trim() } : {}),
     ...(format && format !== "full" ? { format } : {}),
+    ...(colour ? { colour } : {}),
+    ...(rules ? { rules } : {}),
   }));
   if (!reordered && stored.every((entry) => Object.keys(entry).length === 1)) return undefined;
   return stored;
 }
 
-function ValueList({ fields, values, layout, onChange }) {
+function ValueList({ fields, values, layout, show = "numbers", onChange }) {
   const rows = arrangeValues(fields, values);
+  const [rulesOpen, setRulesOpen] = useState(null);
+  const coloured = ["line", "area", "bar", "donut", "pie"].includes(show);
   const commit = (next) => onChange(storedValues(next, fields));
   const update = (index, patch) => {
     const next = rows.map((row, position) => {
@@ -243,10 +327,19 @@ function ValueList({ fields, values, layout, onChange }) {
           ["below", "Shown"],
           ["hidden", "Hidden"],
         ];
+  // The colour each shown value gets on a chart unless it has its own, as
+  // the chart counts them (card-chart chartSeries). Picking that colour
+  // again stores nothing (Rule 2).
+  const shownSlot = (row) => (row.slot === "hero" && layout !== "hero" ? "below" : row.slot || "below");
+  const defaultColour = new Map(
+    rows
+      .filter((row) => shownSlot(row) !== "hidden")
+      .map((row, position) => [row.field, PALETTE[position % PALETTE.length]]),
+  );
   return (
     <ol className="studio-value-list">
       {rows.map((row, index) => {
-        const slot = row.slot === "hero" && layout !== "hero" ? "below" : row.slot || "below";
+        const slot = shownSlot(row);
         return (
           <li key={row.field}>
             <div className="studio-value-order">
@@ -296,6 +389,24 @@ function ValueList({ fields, values, layout, onChange }) {
               <option value="short">1.2M</option>
               <option value="compact">1.2 M</option>
             </select>
+            {coloured && slot !== "hidden" && (
+              <ColourField
+                label={`Chart colour for ${row.label}`}
+                value={row.colour || defaultColour.get(row.field)}
+                onChange={(colour) =>
+                  update(index, { colour: colour === defaultColour.get(row.field) ? undefined : colour })
+                }
+              />
+            )}
+            <button
+              type="button"
+              className={`studio-button studio-quiet studio-rules-toggle${row.rules ? " is-set" : ""}`}
+              aria-expanded={rulesOpen === row.field}
+              onClick={() => setRulesOpen(rulesOpen === row.field ? null : row.field)}
+            >
+              {row.rules ? "Rules on" : "Rules"}
+            </button>
+            {rulesOpen === row.field && <RulesEditor row={row} onChange={(rules) => update(index, { rules })} />}
           </li>
         );
       })}
@@ -324,8 +435,12 @@ export default function LookEditor({
   savedLooks,
   onSavedLooks,
   statusAddress,
+  chartFields,
+  // The time ranges the dashboard keeps history for (card-chart chartRanges).
+  rangeChoices = ["1h", "6h", "24h", "7d", "30d"],
 }) {
   const show = sections || lookSections(kind);
+  const showId = useId();
   // The dialog puts Look and Status above the widget's own settings, and
   // Show and Behaviour below them, as in the approved layout.
   const top = part !== "bottom";
@@ -359,7 +474,7 @@ export default function LookEditor({
             onChange={onSavedLooks}
             onApply={(saved) => onLook({ ...saved, ...(look.values !== undefined ? { values: look.values } : {}) })}
           />
-          {show.values && (
+          {show.values && (!show.charts || effective.show === "numbers" || effective.show === MIXED) && (
             <>
               <Choice
                 label="Layout"
@@ -384,6 +499,20 @@ export default function LookEditor({
                       ["xl", "XL"],
                     ]}
                   />
+                  {show.charts && effective.show === "numbers" && (
+                    <Choice
+                      label="Trend"
+                      value={effective.trend}
+                      onChange={(value) => setLook("trend", value)}
+                      options={[
+                        ["off", "Off"],
+                        ["hour", "Last hour"],
+                        ["day", "Yesterday"],
+                        ["week", "Last week"],
+                      ]}
+                      info="The change in the large value since then, from the history Studio keeps for this widget."
+                    />
+                  )}
                 </Dependent>
               )}
             </>
@@ -591,10 +720,36 @@ export default function LookEditor({
           title="Show"
           info="The values this widget showed last. Pick the hero, hide what you don't need, rename a value or change how its number reads."
         >
+          {show.charts && (
+            <Row
+              label="Show as"
+              htmlFor={showId}
+              info="Charts use history Studio keeps for this widget, about one value a minute."
+            >
+              <select id={showId} value={effective.show} onChange={(event) => setLook("show", event.target.value)}>
+                {showChoices(chartFields, effective.show).map(([value, text]) => (
+                  <option key={value} value={value}>
+                    {text}
+                  </option>
+                ))}
+              </select>
+            </Row>
+          )}
+          {show.charts && CHART_SHOWS.includes(effective.show) && (
+            <Dependent>
+              <Choice
+                label="Time range"
+                value={effective.chartRange}
+                onChange={(value) => setLook("chartRange", value)}
+                options={rangeChoices.map((key) => [key, key.replace(/(\d)([hd])/, "$1 $2")])}
+              />
+            </Dependent>
+          )}
           <ValueList
             fields={fields}
             values={look.values || []}
-            layout={effective.layout}
+            layout={effective.show === "numbers" ? effective.layout : "hero"}
+            show={effective.show}
             onChange={(values) => setLook("values", values)}
           />
         </Group>

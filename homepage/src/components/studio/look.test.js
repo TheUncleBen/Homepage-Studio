@@ -6,7 +6,9 @@ import {
   fitColour,
   inheritedBehaviour,
   inheritedLook,
+  needsHistory,
   readLook,
+  ruleLevel,
   setOverride,
   validateBehaviour,
   validateLook,
@@ -104,5 +106,64 @@ describe("colour fit", () => {
 
   it("returns null for anything that is not a colour", () => {
     expect(fitColour("red", DARK)).toBeNull();
+  });
+});
+
+describe("charts and colour rules", () => {
+  it("keeps a chart format, time range, line colour and colour rules", () => {
+    expect(
+      validateLook({
+        show: "line",
+        chartRange: "7d",
+        values: [{ field: "cpu", colour: "#AABBCC", rules: { warn: 70, problem: 90 } }],
+      }),
+    ).toEqual({
+      show: "line",
+      chartRange: "7d",
+      values: [{ field: "cpu", colour: "#aabbcc", rules: { warn: 70, problem: 90 } }],
+    });
+    expect(
+      validateLook({ values: [{ field: "free", rules: { warn: 20, problem: 5, lower: true } }] }).values[0].rules,
+    ).toEqual({
+      warn: 20,
+      problem: 5,
+      lower: true,
+    });
+  });
+
+  it("refuses rules that cannot apply", () => {
+    expect(() => validateLook({ show: "sparkle" })).toThrow();
+    expect(() => validateLook({ chartRange: "forever" })).toThrow();
+    expect(() => validateLook({ values: [{ field: "cpu", rules: {} }] })).toThrow(/warning or a problem/);
+    expect(() => validateLook({ values: [{ field: "cpu", rules: { warn: 90, problem: 70 } }] })).toThrow(
+      /past the warning/,
+    );
+    expect(() => validateLook({ values: [{ field: "cpu", rules: { warn: "high" } }] })).toThrow(/needs a number/);
+    expect(() => validateLook({ values: [{ field: "cpu", rules: { warn: 1, lower: false } }] })).toThrow();
+    expect(() => validateLook({ values: [{ field: "cpu", rules: { warn: 1, colour: "red" } }] })).toThrow(/Unknown/);
+    expect(() => validateLook({ values: [{ field: "cpu", colour: "red" }] })).toThrow(/hex colour/);
+  });
+
+  it("works out a value's level under its rules", () => {
+    const rule = { warn: 70, problem: 90 };
+    expect(ruleLevel(rule, 50)).toBe(null);
+    expect(ruleLevel(rule, 70)).toBe("warn");
+    expect(ruleLevel(rule, 95)).toBe("problem");
+    expect(ruleLevel({ warn: 20, problem: 5, lower: true }, 10)).toBe("warn");
+    expect(ruleLevel({ warn: 20, problem: 5, lower: true }, 3)).toBe("problem");
+    expect(ruleLevel({ problem: 90 }, 80)).toBe(null);
+    expect(ruleLevel(rule, null)).toBe(null);
+    expect(ruleLevel(undefined, 99)).toBe(null);
+  });
+
+  it("collects history only for charts, trends and colour rules", () => {
+    const look = (override) => inheritedLook(BUILT_IN_LOOK, override);
+    expect(needsHistory(look({}))).toBe(false);
+    expect(needsHistory(look({ show: "table" }))).toBe(false);
+    for (const show of ["line", "area", "bar", "donut", "pie", "gauge"])
+      expect(needsHistory(look({ show }))).toBe(true);
+    expect(needsHistory(look({ layout: "hero", trend: "hour" }))).toBe(true);
+    expect(needsHistory(look({ layout: "quiet", trend: "hour" }))).toBe(false);
+    expect(needsHistory(look({ values: [{ field: "cpu", rules: { warn: 1 } }] }))).toBe(true);
   });
 });
