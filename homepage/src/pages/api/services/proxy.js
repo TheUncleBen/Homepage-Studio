@@ -59,6 +59,20 @@ async function handler(req, res) {
       return res.status(403).json({ error: "Unknown proxy service type" });
     }
 
+    // Studio: a widget that needs a service address and has none (or names a
+    // saved connection that no longer exists) is not set up yet, which the
+    // card says plainly instead of showing a failed request.
+    const address = serviceWidget?.url;
+    if (
+      typeof widget.api === "string" &&
+      widget.api.includes("{url}") &&
+      (typeof address !== "string" || !address.trim() || /^\{\{/.test(address.trim()))
+    ) {
+      return res.status(400).json({
+        error: { message: "This widget has no service address yet.", code: "WIDGET_NOT_SET_UP" },
+      });
+    }
+
     const serviceProxyHandler = widget.proxyHandler || genericProxyHandler;
 
     if (serviceProxyHandler instanceof Function) {

@@ -32,6 +32,20 @@ export function errorSummary(error) {
 export default function CardError({ card, service, error }) {
   const { t } = useTranslation();
   const name = service?.name || "this service";
+  // A new widget without its address yet points straight at its settings.
+  if (error?.code === "WIDGET_NOT_SET_UP") {
+    return (
+      <div className="studio-card-state studio-card-setup" role="status">
+        <strong>Not set up yet</strong>
+        <span>Add the service address{card.onFix ? "" : " in its settings"}.</span>
+        {card.onFix && (
+          <button type="button" className="studio-text-button" onClick={card.onFix}>
+            Open setup
+          </button>
+        )}
+      </div>
+    );
+  }
   if (card.errors === "hide") {
     const last = card.id && lastValues.get(card.id);
     if (last) {

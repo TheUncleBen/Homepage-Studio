@@ -92,7 +92,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("maps opaque endpoints using widget.mappings and calls the handler", async () => {
-    getServiceWidget.mockResolvedValue({ type: "linkwarden" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "linkwarden" });
     handlerFn.handler.mockImplementation(async (req, res) => res.status(200).json({ endpoint: req.query.endpoint }));
 
     const req = { method: "GET", query: { group: "g", service: "s", index: "0", endpoint: "collections" } };
@@ -106,7 +106,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("returns 403 for unsupported endpoint mapping", async () => {
-    getServiceWidget.mockResolvedValue({ type: "linkwarden" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "linkwarden" });
 
     const req = { method: "GET", query: { group: "g", service: "s", index: "0", endpoint: "nope" } };
     const res = createMockRes();
@@ -117,8 +117,20 @@ describe("pages/api/services/proxy", () => {
     expect(res.body).toEqual({ error: "Unsupported service endpoint" });
   });
 
+  it("says a widget without its service address is not set up yet", async () => {
+    for (const url of [undefined, "", "{{STUDIO_CONNECTION_ABCDEF0123456789_URL}}"]) {
+      getServiceWidget.mockResolvedValue({ url, type: "linkwarden" });
+      const req = { method: "GET", query: { group: "g", service: "s", index: "0", endpoint: "collections" } };
+      const res = createMockRes();
+      await servicesProxy(req, res);
+      expect(res.statusCode).toBe(400);
+      expect(res.body.error.code).toBe("WIDGET_NOT_SET_UP");
+    }
+    expect(handlerFn.handler).not.toHaveBeenCalled();
+  });
+
   it("returns 403 for unknown widget types", async () => {
-    getServiceWidget.mockResolvedValue({ type: "does_not_exist" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "does_not_exist" });
 
     const req = { method: "GET", query: { group: "g", service: "s", index: "0", endpoint: "collections" } };
     const res = createMockRes();
@@ -130,7 +142,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("quick-returns the proxy handler when no endpoint is provided", async () => {
-    getServiceWidget.mockResolvedValue({ type: "linkwarden" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "linkwarden" });
     handlerFn.handler.mockImplementation(async (_req, res) => res.status(200).json(state.genericResult));
 
     const req = { method: "GET", query: { group: "g", service: "s", index: "0" } };
@@ -144,7 +156,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("applies the calendar exception and always delegates to calendarProxyHandler", async () => {
-    getServiceWidget.mockResolvedValue({ type: "calendar" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "calendar" });
     calendarProxy.mockImplementation(async (_req, res) => res.status(200).json({ ok: "calendar" }));
 
     const req = { method: "GET", query: { group: "g", service: "s", index: "0", endpoint: "events" } };
@@ -159,7 +171,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("applies the unifi_console exception when service and group are unifi_console", async () => {
-    getServiceWidget.mockResolvedValue({ type: "something_else" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "something_else" });
     handlerFn.handler.mockImplementation(async (_req, res) => res.status(200).json({ ok: "unifi" }));
 
     const req = {
@@ -175,7 +187,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("rejects unsupported mapping methods", async () => {
-    getServiceWidget.mockResolvedValue({ type: "linkwarden" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "linkwarden" });
 
     // Inject a mapping with a method requirement through the mocked registry.
     const widgets = (await import("widgets/widgets")).default;
@@ -194,7 +206,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("replaces and encodes endpoint segments", async () => {
-    getServiceWidget.mockResolvedValue({ type: "segments" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "segments" });
     handlerFn.handler.mockImplementation(async (req, res) => res.status(200).json({ endpoint: req.query.endpoint }));
 
     const res = createMockRes();
@@ -233,7 +245,7 @@ describe("pages/api/services/proxy", () => {
     ["arrays", JSON.stringify(["123"])],
     ["null", "null"],
   ])("rejects %s in endpoint segments", async (_, segments) => {
-    getServiceWidget.mockResolvedValue({ type: "segments" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "segments" });
     handlerFn.handler.mockImplementation(async (req, res) => res.status(200).json({ endpoint: req.query.endpoint }));
 
     const res = createMockRes();
@@ -251,7 +263,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("adds query params based on mapping params + optionalParams", async () => {
-    getServiceWidget.mockResolvedValue({ type: "queryparams" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "queryparams" });
     handlerFn.handler.mockImplementation(async (req, res) => res.status(200).json({ endpoint: req.query.endpoint }));
 
     const req = {
@@ -273,7 +285,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("passes mapping headers via req.extraHeaders and uses mapping.proxyHandler when provided", async () => {
-    getServiceWidget.mockResolvedValue({ type: "endpointproxy" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "endpointproxy" });
     handlerFn.handler.mockImplementation(async (req, res) =>
       res.status(200).json({ headers: req.extraHeaders ?? null }),
     );
@@ -289,7 +301,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("allows regex endpoints when widget.allowedEndpoints matches", async () => {
-    getServiceWidget.mockResolvedValue({ type: "regex" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "regex" });
     handlerFn.handler.mockImplementation(async (_req, res) => res.status(200).json({ ok: true }));
 
     const req = { method: "GET", query: { group: "g", service: "s", index: "0", endpoint: "ok/test" } };
@@ -301,7 +313,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("rejects unmapped proxy requests when no mapping and regex does not match", async () => {
-    getServiceWidget.mockResolvedValue({ type: "regex" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "regex" });
 
     const req = { method: "GET", query: { group: "g", service: "s", index: "0", endpoint: "nope" } };
     const res = createMockRes();
@@ -313,7 +325,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("falls back to the service proxy handler when mapping.proxyHandler is not a function", async () => {
-    getServiceWidget.mockResolvedValue({ type: "mapbroken" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "mapbroken" });
     handlerFn.handler.mockImplementation(async (req, res) => res.status(200).json({ endpoint: req.query.endpoint }));
 
     const widgets = (await import("widgets/widgets")).default;
@@ -335,7 +347,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("returns 403 when a widget defines a non-function proxyHandler", async () => {
-    getServiceWidget.mockResolvedValue({ type: "brokenhandler" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "brokenhandler" });
 
     const widgets = (await import("widgets/widgets")).default;
     widgets.brokenhandler = {
@@ -365,7 +377,7 @@ describe("pages/api/services/proxy", () => {
   });
 
   it("returns 500 when an async proxy handler throws", async () => {
-    getServiceWidget.mockResolvedValue({ type: "linkwarden" });
+    getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "linkwarden" });
     handlerFn.handler.mockRejectedValueOnce(new Error("proxy boom"));
 
     const req = { method: "GET", query: { group: "g", service: "s", index: "0" } };
