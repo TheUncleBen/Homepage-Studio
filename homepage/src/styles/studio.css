@@ -3944,8 +3944,22 @@ a.studio-card-identity:hover .studio-card-name strong {
   gap: 6px 8px;
 }
 .studio-colour-text {
-  width: 11ch;
-  font-variant-numeric: tabular-nums;
+  width: 9.5rem;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--studio-line);
+  border-radius: 8px;
+  background: var(--studio-input);
+  color: var(--studio-text);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+.studio-colour-text[aria-invalid="true"] {
+  border-color: var(--studio-danger-line);
+}
+.studio-status-colours .studio-colour-text {
+  width: 7.5rem;
 }
 .studio-colour-field .studio-field-error {
   flex-basis: 100%;
