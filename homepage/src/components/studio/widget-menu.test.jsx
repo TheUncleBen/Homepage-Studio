@@ -258,3 +258,27 @@ describe("Newly discovered widgets", () => {
     expect(saved.panels.find((item) => item.id === "plex").pageId).toBe("home");
   });
 });
+
+describe("Widget controls on touch screens", () => {
+  it("shows Move, Edit and resize only on the widget last tapped", async () => {
+    await mount({ mode: "edit" });
+    const section = (id) => document.querySelector(`[data-panel-id="${id}"]`);
+    const tap = (element) => {
+      fireEvent.pointerDown(element, { pointerType: "touch" });
+      fireEvent.click(element);
+    };
+    expect(section("clock").classList.contains("studio-tools-shown")).toBe(false);
+    tap(screen.getByTestId("native-clock"));
+    expect(section("clock").classList.contains("studio-tools-shown")).toBe(true);
+    tap(screen.getByTestId("native-weather"));
+    expect(section("clock").classList.contains("studio-tools-shown")).toBe(false);
+    expect(section("weather").classList.contains("studio-tools-shown")).toBe(true);
+    // A mouse click changes nothing; the controls show on hover there.
+    fireEvent.pointerDown(screen.getByTestId("native-clock"), { pointerType: "mouse" });
+    fireEvent.click(screen.getByTestId("native-clock"));
+    expect(section("weather").classList.contains("studio-tools-shown")).toBe(true);
+    // A tap on empty space hides them again.
+    tap(document.querySelector(".studio-canvas"));
+    expect(section("weather").classList.contains("studio-tools-shown")).toBe(false);
+  });
+});

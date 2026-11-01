@@ -138,6 +138,7 @@ export function PanelLayer({
   onUnitKey,
   onLongPress,
   renderNative,
+  toolsShown = null,
 }) {
   const stackByPanel = new Map(board.stacks.flatMap((stack) => stack.panelIds.map((id) => [id, stack])));
   // Keep DOM sibling order independent of geometry. Moving an existing iframe
@@ -181,6 +182,7 @@ export function PanelLayer({
             onUnitKey={onUnitKey}
             onLongPress={onLongPress}
             renderNative={renderNative}
+            toolsShown={!stack && toolsShown === panel.id}
           />
         );
       })}
@@ -303,6 +305,11 @@ export default function StudioBoard({
   // The editor page is always in editing; it is left by navigating away.
   const editing = editorPage && canArrange;
   const [selection, setSelection] = useState([]);
+  // Phones (owner choice, 1 Nov): while editing, a widget's Move, Edit and
+  // resize controls show only on the widget last tapped, so they never cover
+  // what the other widgets show. A mouse shows them on hover instead.
+  const [toolsShown, setToolsShown] = useState(null);
+  const lastPointer = useRef("mouse");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
@@ -1299,6 +1306,12 @@ export default function StudioBoard({
       showToast(`Moved to ${pages.find((page) => page.id === target)?.name}`, true);
     }
   };
+  const showToolsByTap = (event) => {
+    if (lastPointer.current !== "touch") return;
+    const target = event.target instanceof Element ? event.target : null;
+    const panel = target?.closest("[data-panel-id]");
+    setToolsShown(panel && !panel.dataset.stackId ? panel.dataset.panelId : null);
+  };
   // Shift-click or Ctrl-click a widget to add it to the selection or take it out.
   const selectByClick = (event) => {
     if (!(event.shiftKey || event.ctrlKey || event.metaKey) || controlsDisabled) return;
@@ -2019,7 +2032,17 @@ export default function StudioBoard({
       <div
         ref={canvas}
         className="studio-canvas"
-        onClickCapture={editing ? selectByClick : undefined}
+        onClickCapture={
+          editing
+            ? (event) => {
+                showToolsByTap(event);
+                selectByClick(event);
+              }
+            : undefined
+        }
+        onPointerDownCapture={(event) => {
+          lastPointer.current = event.pointerType;
+        }}
         onPointerDown={editing ? startMarquee : undefined}
         style={{
           height: board.panels.length ? projection.rows * (ROW_HEIGHT + gap) + 32 : 480,
@@ -2161,6 +2184,7 @@ export default function StudioBoard({
           onUnitKey={unitKey}
           onLongPress={editing ? openUnitMenu : undefined}
           overlayOpen={overlayOpen}
+          toolsShown={editing ? toolsShown : null}
         />
         <div className="studio-stack-layer">
           {board.stacks.map((stack) => (

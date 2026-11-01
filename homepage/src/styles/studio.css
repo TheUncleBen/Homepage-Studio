@@ -3288,6 +3288,19 @@ a.studio-card-identity:hover .studio-card-name strong {
   }
 }
 
+/* On touch screens (owner choice, 1 Nov), only the widget last tapped, a
+   selected one or the one with keyboard focus shows its controls; the rest
+   show their content with nothing on top. A hold still opens the menu. */
+@media (hover: none) {
+  .studio-edit-mode
+    .studio-panel:not(.studio-stacked-panel):not(.studio-tools-shown):not(:focus-within):not(.studio-selected)
+    > .studio-panel-slide
+    > :is(.studio-panel-header, .studio-resize-handle) {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
 /* ---------- Widget dialog: preview, look, arranged values ---------- */
 .studio-look-editor {
   display: contents;
