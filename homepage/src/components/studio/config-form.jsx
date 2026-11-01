@@ -1,7 +1,7 @@
 import { dump, load } from "js-yaml";
 import { useEffect, useId, useState } from "react";
 
-import { CONNECTION_FIELDS, ConnectionChooser, ConnectionSave, savedConnectionId } from "./connections";
+import { CONNECTION_FIELDS, ConnectionChooser, ConnectionSave, ConnectionTest, savedConnectionId } from "./connections";
 import Guide from "./guide";
 import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
@@ -498,6 +498,7 @@ export default function ConfigForm({
   guide,
   setupNotes,
   name,
+  testable = false,
   grouped = true,
   title,
   info,
@@ -608,6 +609,7 @@ export default function ConfigForm({
                 />
               )}
               {connectionRows.map(fieldRow)}
+              {testable && connectionKeys.includes("url") && <ConnectionTest value={value} />}
               {offersSaved && !savedConnection && (
                 <ConnectionSave
                   value={value}

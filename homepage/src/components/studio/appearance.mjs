@@ -20,6 +20,7 @@ const DANGER = {
     "danger-line": "#a86c66",
     "danger-solid": "#7a3a33",
     "danger-contrast": "#fff3f1",
+    "ok-text": "#b8e0c6",
   },
   light: {
     "danger-text": "#8a2a20",
@@ -27,6 +28,7 @@ const DANGER = {
     "danger-line": "#a85a50",
     "danger-solid": "#9a3b30",
     "danger-contrast": "#fff7f5",
+    "ok-text": "#1f5a37",
   },
 };
 const family = (name, dark, light) => ({

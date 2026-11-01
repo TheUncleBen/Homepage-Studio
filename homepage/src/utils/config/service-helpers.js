@@ -4,6 +4,7 @@ import path from "path";
 import Docker from "dockerode";
 
 import checkAndCopyConfig, { CONF_DIR, getSettings, substituteEnvironmentVars } from "utils/config/config";
+import { connectionTest, TEST_GROUP } from "utils/config/connection-test.mjs";
 import getDockerArguments from "utils/config/docker";
 import { getKubeConfig } from "utils/config/kubernetes";
 import * as shvl from "utils/config/shvl";
@@ -774,6 +775,9 @@ export function findGroupByName(groups, name) {
 }
 
 export async function getServiceItem(group, service) {
+  // Test connection: the widget in the dialog, not the saved configuration.
+  const testing = connectionTest.getStore();
+  if (testing && group === TEST_GROUP) return { name: service, widget: testing.widget };
   const configuredServices = await servicesFromConfig();
 
   const serviceGroup = findGroupByName(configuredServices, group);

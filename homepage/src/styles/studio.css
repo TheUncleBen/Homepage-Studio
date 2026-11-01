@@ -3879,6 +3879,25 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-connection-save {
   padding: 4px 16px 12px;
 }
+.studio-connection-test {
+  padding: 4px 16px 0;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.studio-connection-result {
+  margin: 0;
+  flex: 1 1 12rem;
+  font-size: 0.875rem;
+}
+.studio-connection-result:empty {
+  display: none;
+}
+.studio-connection-result.studio-ok {
+  color: var(--studio-ok-text);
+}
+.studio-connection-result.studio-failed {
+  color: var(--studio-danger-text);
+}
 .studio-connection-form {
   border-top: 1px solid var(--studio-line);
   padding-bottom: 12px;

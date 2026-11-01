@@ -511,6 +511,7 @@ export default function ContentEditor({
               setupNotes={selectedEntry?.setupNotes}
               name={selectedEntry?.name}
               connections={kind === "serviceWidget" || kind === "informationWidget"}
+              testable={kind === "serviceWidget"}
             />
             {(kind === "serviceWidget" || kind === "informationWidget") &&
               customApiMappingsMissing(source?.type || entry?.type, draft) && (

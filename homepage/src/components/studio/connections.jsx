@@ -147,6 +147,36 @@ export function ConnectionChooser({ value, keys, saved, onSaved, onChange }) {
   );
 }
 
+// Test connection: runs the widget's own first request with what is in the
+// dialog (a saved connection's key stays on the server) and says in plain
+// words what happened. Shown once there is an address to test.
+export function ConnectionTest({ value }) {
+  const [state, setState] = useState(null);
+  const url = typeof value.url === "string" ? value.url.trim() : "";
+  if (!url || typeof value.type !== "string") return null;
+  const run = async () => {
+    setState({ busy: true });
+    try {
+      setState(await studioRequest("/studio/api/connection-test", { widget: value }));
+    } catch (failure) {
+      setState({ ok: false, message: failure.message });
+    }
+  };
+  return (
+    <div className="studio-inline-actions studio-connection-test">
+      <button type="button" className="studio-button studio-quiet" disabled={state?.busy} onClick={run}>
+        {state?.busy ? "Testing…" : "Test connection"}
+      </button>
+      <p
+        className={`studio-connection-result${state && !state.busy ? (state.ok ? " studio-ok" : " studio-failed") : ""}`}
+        role="status"
+      >
+        {state && !state.busy ? state.message : ""}
+      </p>
+    </div>
+  );
+}
+
 // Under typed-in connection settings: keep them as a named connection to
 // reuse on other widgets. Shown once there is an address to save.
 export function ConnectionSave({ value, keys, onChange, onSaved }) {

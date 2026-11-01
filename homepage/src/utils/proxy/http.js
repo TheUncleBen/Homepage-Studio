@@ -42,6 +42,13 @@ const TRANSPORT_ERRORS = {
   ERR_FR_TOO_MANY_REDIRECTS: "Too many redirects",
   ERR_FR_MAX_BODY_LENGTH_EXCEEDED: "Request body exceeds the transport limit",
   ERR_CROSS_ORIGIN_BODY: "Refusing to forward a request body to another origin",
+  // Certificate failures, so Studio's Test connection can name them.
+  DEPTH_ZERO_SELF_SIGNED_CERT: "Self-signed certificate",
+  SELF_SIGNED_CERT_IN_CHAIN: "Self-signed certificate in chain",
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: "Certificate cannot be verified",
+  UNABLE_TO_GET_ISSUER_CERT_LOCALLY: "Certificate issuer is not trusted",
+  CERT_HAS_EXPIRED: "Certificate has expired",
+  ERR_TLS_CERT_ALTNAME_INVALID: "Certificate does not match the host name",
 };
 
 function transportError(error) {

@@ -47,13 +47,14 @@ function stub({ dashboard = [router], mine = [media], authEnabled = true, fail }
 }
 afterEach(() => vi.unstubAllGlobals());
 
-function Form({ initial, onChange }) {
+function Form({ initial, onChange, testable }) {
   const [value, setValue] = useState(initial);
   return (
     <ConfigForm
       value={value}
       fields={fields}
       connections
+      testable={testable}
       onChange={(next) => {
         setValue(next);
         onChange(next);
@@ -61,10 +62,10 @@ function Form({ initial, onChange }) {
     />
   );
 }
-const mount = (initial, onChange = vi.fn()) => {
+const mount = (initial, onChange = vi.fn(), testable = false) => {
   render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-      <Form initial={initial} onChange={onChange} />
+      <Form initial={initial} onChange={onChange} testable={testable} />
     </SWRConfig>,
   );
   return onChange;
@@ -196,5 +197,35 @@ describe("saved connections in dashboard settings", () => {
       name: "Main router",
       url: "https://router.example.org",
     });
+  });
+});
+
+describe("Test connection", () => {
+  it("shows once there is an address, sends the dialog's widget and reads out the result", async () => {
+    const calls = stub({
+      fail: {
+        path: "/connection-test",
+        status: 200,
+        value: { ok: false, kind: "key", message: "The service refused the key or login. Check them." },
+      },
+    });
+    mount({ type: "sonarr", url: "https://tv.example.org", key: "k" }, vi.fn(), true);
+    fireEvent.click(await screen.findByRole("button", { name: "Test connection" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("The service refused the key or login.");
+    expect(calls.find((call) => call.path.endsWith("/studio/api/connection-test")).body).toEqual({
+      widget: { type: "sonarr", url: "https://tv.example.org", key: "k" },
+    });
+  });
+
+  it("is not offered without an address", () => {
+    stub();
+    mount({ type: "sonarr", url: "" }, vi.fn(), true);
+    expect(screen.queryByRole("button", { name: "Test connection" })).toBeNull();
+  });
+
+  it("is not offered where the widget can't be tested", () => {
+    stub();
+    mount({ type: "sonarr", url: "https://tv.example.org" });
+    expect(screen.queryByRole("button", { name: "Test connection" })).toBeNull();
   });
 });

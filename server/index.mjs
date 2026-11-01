@@ -9,7 +9,7 @@ import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute, sharedPublic } from './dashboards.mjs';
 import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { promisify } from 'node:util';
 import zlib from 'node:zlib';
 import { serveSharedAsset, acceptedEncodings, etagMatches } from './static-assets.mjs';
@@ -492,6 +492,33 @@ function createDashboardHandlers(options = {}) {
     upstreamRequest.end(body);
   }
 
+  async function rendererTest(req, dashboard, widget) {
+    const lease = await acquireNative(String(req.headers.host).toLowerCase(), dashboard);
+    try {
+      const body = JSON.stringify({ widget });
+      const transport = lease.origin.protocol === 'https:' ? https : http;
+      return await new Promise((resolveTest, rejectTest) => {
+        const request = transport.request(lease.origin, { method: 'POST', path: '/api/studio/connection-test', timeout: 30000, headers: { host: req.headers.host, 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), 'x-studio-internal': options.internalToken } }, response => {
+          const chunks = [];
+          let size = 0;
+          response.on('data', chunk => { size += chunk.length; if (size > 16 * 1024) request.destroy(new Error('Too large')); else chunks.push(chunk); });
+          response.on('end', () => {
+            try {
+              const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+              if (response.statusCode !== 200) return rejectTest(Object.assign(new Error(typeof value?.error === 'string' ? value.error : 'The test could not run.'), { status: response.statusCode === 400 ? 400 : 502 }));
+              resolveTest({ ok: value.ok === true, kind: String(value.kind || 'unknown'), message: String(value.message || '') });
+            } catch { rejectTest(Object.assign(new Error('The test could not run.'), { status: 502 })); }
+          });
+        });
+        request.on('timeout', () => request.destroy(new Error('timeout')));
+        // The renderer itself failed or ran out of time (it gives the address
+        // less time than this, so a slow address is answered above).
+        request.on('error', () => rejectTest(Object.assign(new Error('The test could not finish. Try again.'), { status: 502 })));
+        request.end(body);
+      });
+    } finally { lease.release(); }
+  }
+
   async function handle(req, res, dashboard) {
     try {
       checkRequest(req);
@@ -599,6 +626,14 @@ function createDashboardHandlers(options = {}) {
         }
         return json(res, 200, { removed: await images.remove(change.id) });
       }
+      // Test connection: the widget dialog's draft runs its own first request
+      // in this dashboard's renderer, which answers with a plain reason only.
+      // Administrators only (default deny), like widget settings.
+      if (path === '/studio/api/connection-test' && req.method === 'POST') {
+        const change = await readBody(req, 32 * 1024);
+        if (!change || typeof change.widget !== 'object' || change.widget === null || Array.isArray(change.widget) || Object.keys(change).some(key => key !== 'widget')) throw Object.assign(new Error('Send the widget to test.'), { status: 400 });
+        return json(res, 200, await rendererTest(req, dashboard, change.widget));
+      }
       // Saved connections (server/connections.mjs). Administrators only, like
       // widget settings; keys are never sent back.
       if (path === '/studio/api/connections' && req.method === 'GET') {
@@ -685,7 +720,11 @@ export function createStudioServer(options = {}) {
   // Prepare the compressed catalog before the first editor opens; errors surface on request.
   loadCatalogVariants().catch(() => {});
   const nativeBodyBudget = createByteBudget(NATIVE_BODY_BUDGET);
-  rendererPool ||= createRendererPool({ configRoot, stateRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision });
+  // Renderer endpoints only the controller may call (Test connection) check
+  // this token; browsers can't send it because every x-studio-* header they
+  // send is dropped before proxying.
+  const internalToken = options.internalToken ?? randomBytes(32).toString('hex');
+  rendererPool ||= createRendererPool({ configRoot, stateRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision, workerEnv: { STUDIO_INTERNAL_TOKEN: internalToken } });
   // Studio sign-in (owner direction, 23 Oct 2026). On by default; STUDIO_AUTH=off
   // returns to external access control only.
   const deploymentName = readDeploymentName(options.deploymentName ?? process.env.STUDIO_DEPLOYMENT_NAME);
@@ -706,7 +745,7 @@ export function createStudioServer(options = {}) {
   function forDashboard(entry) {
     let handler = handlers.get(entry.id);
     if (!handler) {
-      handler = createDashboardHandlers({ ...options, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
+      handler = createDashboardHandlers({ ...options, internalToken, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
       handlers.set(entry.id, handler);
     }
     // Only immutable-id storage is retained. Each request carries its own

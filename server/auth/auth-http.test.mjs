@@ -602,6 +602,10 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.equal((await request('/copy-two/studio/api/connections', { cookie: admin.cookie })).json.connections.length, 1, 'the copy keeps its own');
   // "Just me" connections follow the administrator; using one copies it here.
   assert.equal((await request('/home/studio/api/my-connections', { cookie: member.cookie })).status, 403);
+  // Test connection runs a widget's request, so it is for administrators.
+  assert.equal((await post('/home/studio/api/connection-test', { widget: { type: 'sonarr', url: 'https://tv.example.org' } }, { cookie: member.cookie })).status, 403);
+  assert.equal((await post('/home/studio/api/connection-test', { widget: { type: 'sonarr' }, extra: 1 }, { cookie: admin.cookie })).status, 400);
+  assert.equal((await post('/home/studio/api/connection-test', { widget: [] }, { cookie: admin.cookie })).status, 400);
   const mineAdded = await post('/home/studio/api/my-connections', { action: 'add', name: 'Media server', url: 'https://media.example.org', key: 'personal-key' }, { cookie: admin.cookie });
   assert.equal(mineAdded.status, 200, mineAdded.text);
   assert.doesNotMatch(mineAdded.text, /personal-key/);

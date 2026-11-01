@@ -42,7 +42,7 @@ function getSafeSegments(rawSegments, allowedSegments) {
   return safeSegments;
 }
 
-async function handler(req, res) {
+export async function serviceProxy(req, res) {
   try {
     const { service, group, index } = req.query;
     const serviceWidget = await getServiceWidget(group, service, index);
@@ -160,4 +160,4 @@ async function handler(req, res) {
   }
 }
 
-export default withAuth(handler);
+export default withAuth(serviceProxy);
