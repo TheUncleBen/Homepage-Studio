@@ -299,16 +299,26 @@ export default function ContentEditor({
         </button>
       </div>
     );
-  // A service's check address lives under Status in the look editor, so it
-  // has one home there.
+  // A service's check address lives under Status in the look editor, and
+  // On click under Behaviour, so each has one home there. Studio cards don't
+  // read the native target or showStats, so they have no row (Rule 1).
+  const studioOwned = new Set(["target", "showStats", ...(boardPanel ? ["ping", "siteMonitor"] : [])]);
   const fields =
     kind === "service"
-      ? boardPanel
-        ? SERVICE_FIELDS.filter((field) => field.key !== "ping" && field.key !== "siteMonitor")
-        : SERVICE_FIELDS
+      ? SERVICE_FIELDS.filter((field) => !studioOwned.has(field.key))
       : kind === "bookmark"
-        ? [...LINK_FIELDS, { key: "abbr", label: "Abbreviation", type: "string" }]
+        ? [...LINK_FIELDS, { key: "abbr", label: "Abbreviation", type: "string" }].filter(
+            (field) => !studioOwned.has(field.key),
+          )
         : selectedEntry?.fields || [];
+  // The id is the panel's identity and a service's widgets are their own
+  // panels, so neither is listed under More options.
+  const hiddenKeys =
+    kind === "service"
+      ? ["id", "target", "showStats", "widget", "widgets"]
+      : kind === "bookmark"
+        ? ["id", "target"]
+        : [];
   const lookProps = boardPanel
     ? {
         kind,
@@ -494,6 +504,7 @@ export default function ContentEditor({
               value={draft}
               onChange={setDraft}
               fields={fields}
+              knownKeys={hiddenKeys}
               onValidity={setValid}
               docs={selectedEntry?.docs}
               guide={selectedEntry?.guide}

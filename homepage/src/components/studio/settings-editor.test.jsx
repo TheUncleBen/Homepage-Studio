@@ -54,6 +54,18 @@ describe("Appearance settings save", () => {
       },
     });
   });
+
+  it("shows the language once and has no Quick Launch row", () => {
+    render(
+      <SettingsEditor
+        state={{ revision: "target", settingsConfig: { language: "de" } }}
+        onSaved={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByText("Language", { exact: true })).toHaveLength(1);
+    expect(screen.queryByText("Quick Launch")).toBeNull();
+  });
 });
 
 const completeArchive = () => ({

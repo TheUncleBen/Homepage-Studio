@@ -128,12 +128,12 @@ describe("widget look in the widget dialog", () => {
     ],
     stacks: [],
   };
-  function renderBookmark(fetchMock) {
+  function renderBookmark(fetchMock, source = bookmark) {
     vi.stubGlobal("fetch", fetchMock);
     const onSaved = vi.fn();
     render(
       <ContentEditor
-        state={{ revision: "r1", services: [], groups: [], bookmarks: [bookmark] }}
+        state={{ revision: "r1", services: [], groups: [], bookmarks: [source] }}
         catalog={{ service: [], info: [] }}
         panel={board.panels[0]}
         wholeBoard={board}
@@ -200,6 +200,17 @@ describe("widget look in the widget dialog", () => {
     const body = JSON.parse(init.body);
     expect(body.name).toBe("Docs site");
     expect(body.board.panels[0].look).toEqual({ edge: "shadow", corners: "round" });
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps On click as the only link-target control and hides the panel id", () => {
+    renderBookmark(ok(), {
+      ...bookmark,
+      config: { href: "https://docs.example.com", target: "_self", id: "studio-abc" },
+    });
+    expect(screen.queryByText("Open target")).toBeNull();
+    expect(screen.queryByText("More options")).toBeNull();
+    expect(screen.getByRole("radiogroup", { name: "On click" })).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 });

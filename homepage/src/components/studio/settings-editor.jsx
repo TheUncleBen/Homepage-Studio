@@ -291,6 +291,7 @@ export default function SettingsEditor({
               "studioDefaults",
               "target",
               "title",
+              "language",
               "favicon",
               "pwa",
               "disableIndexing",

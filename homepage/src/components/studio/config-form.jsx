@@ -50,7 +50,6 @@ export const SETTINGS_FIELDS = [
     type: "object",
     valueTypes: ["string", "object"],
   },
-  { key: "quicklaunch", label: "Quick Launch", type: "object" },
   {
     key: "providers",
     label: "Native providers",
