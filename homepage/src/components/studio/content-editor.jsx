@@ -73,7 +73,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
     {
       kind: "service",
       name: "Service tile",
-      description: "A link to an app, with native status and statistics.",
+      description: "A link to an app, with its status.",
       type: "service",
       icon: "link",
     },
