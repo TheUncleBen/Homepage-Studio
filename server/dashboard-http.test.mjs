@@ -108,6 +108,31 @@ test('all nine native files duplicate independently with their own revisions and
   assert.notEqual(dashboardStateDir(f.stateDir, child.id), f.stateDir);
 });
 
+test('a new dashboard can start from a template of links, a clock and the weather', async t => {
+  const f = await fixture(t);
+  const overview = await f.request('/studio/api/overview');
+  assert.deepEqual(overview.json.starters.map(choice => choice.id), ['homelab', 'media', 'family']);
+  const made = await f.mutate({ action: 'create', name: 'Family', slug: 'family', starter: 'family' });
+  assert.equal(made.status, 200, made.text);
+  const family = await f.state('family');
+  assert.match(family.servicesYaml, /href: https:\/\/photos\.home\.arpa/);
+  assert.doesNotMatch(family.servicesYaml, /widget:/, 'links only, so nothing needs a key');
+  assert.match(family.widgetsYaml, /datetime/);
+  assert.match(family.widgetsYaml, /openmeteo/);
+  assert.doesNotMatch(family.widgetsYaml, /latitude/, 'the weather asks for a location');
+  const board = (await f.request('/family/studio/api/board')).json.board;
+  const top = board.panels.filter(panel => panel.kind === 'informationWidget');
+  assert.deepEqual(top.map(panel => panel.rect), [{ x: 0, y: 0, w: 12, h: 2 }, { x: 12, y: 0, w: 12, h: 2 }]);
+  const links = board.panels.filter(panel => panel.kind === 'service');
+  assert.equal(links.length, 8);
+  assert.ok(links.every(panel => panel.rect.y >= 2 && panel.behaviour?.status === 'off'), 'placeholder links start without a status check');
+  for (const bad of [{ starter: 'nope' }, { starter: 'media', sourceId: 'default' }, { starter: 1 }]) {
+    const refused = await f.mutate({ action: 'create', name: 'Bad', slug: 'bad', ...bad });
+    assert.equal(refused.status, 400, JSON.stringify(bad));
+  }
+  assert.equal((await f.request('/studio/api/dashboards')).json.dashboards.length, 2, 'refused templates create nothing');
+});
+
 test('repeated invalid-source duplicates never allocate targets or retain handlers', async t => {
   const f = await fixture(t); await f.create('existing');
   const beforeConfig = await fs.readdir(path.join(f.configDir, 'dashboards'));

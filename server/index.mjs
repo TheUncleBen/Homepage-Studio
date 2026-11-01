@@ -9,6 +9,7 @@ import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute, sharedPublic } from './dashboards.mjs';
 import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
+import { starterFiles, starterChoices, starterLayout } from './starters.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { promisify } from 'node:util';
 import zlib from 'node:zlib';
@@ -775,8 +776,12 @@ export function createStudioServer(options = {}) {
     }
     return owned;
   }
-  const registry = createDashboardRegistry({ configRoot, prepareDashboard: async (entry, source, { isNew = false } = {}) => {
-    let archive, logo, uploads = [], saved = [];
+  const registry = createDashboardRegistry({ configRoot, prepareDashboard: async (entry, source, { isNew = false, starter } = {}) => {
+    let archive, logo, uploads = [], saved = [], starterContent;
+    if (starter !== undefined) {
+      starterContent = starterFiles(starter);
+      if (!starterContent) throw new DashboardError('Choose one of the starter templates.', 'INVALID_DASHBOARD_ACTION');
+    }
     if (source) {
       const sourceHandler = forDashboard(source);
       await sourceHandler.initialization;
@@ -795,6 +800,13 @@ export function createStudioServer(options = {}) {
     if (archive) {
       const current = await target.store.load();
       await target.store.importArchive({ revision: current.revision, archive });
+    }
+    if (starterContent) {
+      const current = await target.store.load();
+      await target.store.save({ revision: current.revision, ...starterContent });
+      // The clock and weather go across the top, the links below them.
+      const placed = await target.store.loadBoard();
+      await target.store.saveBoard({ revision: placed.revision, board: starterLayout(placed.board) });
     }
     // A duplicate keeps the source's logo too.
     if (logo) await target.logo.save(`data:${logo.type};base64,${logo.bytes.toString('base64')}`);
@@ -1049,6 +1061,7 @@ export function createStudioServer(options = {}) {
           deploymentName: siteName(),
           mainNeedsAddress: isAdmin && !primary.slug,
           suggestedSlug: isAdmin ? suggestedDashboardSlug(manifest.dashboards) : undefined,
+          starters: isAdmin ? starterChoices() : undefined,
           authEnabled: Boolean(auth),
           user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role, defaultDashboardId: current.user.defaultDashboardId ?? null } : null,
           landingId: auth ? current.landing(manifest.dashboards) : null,

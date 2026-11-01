@@ -1866,10 +1866,14 @@
       // dashboard, dashboard-2, …; the name doesn't change the address.
       const slug = h('input', { type: 'text', maxlength: 64, required: true, spellcheck: 'false', autocapitalize: 'off', value: entry ? entry.slug : view.suggestedSlug });
       const copyAccess = toggle({ checked: true, label: 'Share it with the same people' });
+      // A new dashboard can start from a template: links to common apps at
+      // placeholder addresses, a clock and the weather.
+      const starters = !entry && !source ? view.starters || [] : [];
+      const starter = starters.length ? h('select', {}, [h('option', { value: '', text: 'Blank' }), ...starters.map(choice => h('option', { value: choice.id, text: choice.name }))]) : null;
       const save = h('button', { type: 'submit', class: 'primary', text: entry ? 'Save' : source ? 'Duplicate' : 'Create dashboard' });
       const addressRow = row('Address', slug, { detail: ' ', info: 'Lowercase letters, numbers and hyphens.' + (entry ? ' Changing it breaks bookmarks to the old address.' : '') });
       const form = h('form', { class: 'stack' },
-        group({}, row('Name', name), addressRow),
+        group({}, row('Name', name), addressRow, starter ? row('Start with', starter, { info: 'Blank, or links to common apps at placeholder addresses you change, plus a clock and the weather.' }) : null),
         source && view.authEnabled ? group({}, row('Share it with the same people', copyAccess, { info: `The copy gets the same sharing as ${source.name}.` })) : null,
         box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
       // The full address, as people will type it, under the label.
@@ -1881,7 +1885,7 @@
         busy(save, 'Saving…', async () => {
           try {
             if (entry) await registry({ action: 'update', id: entry.id, name: name.value, slug: slug.value });
-            else await registry({ action: 'create', name: name.value, slug: slug.value, ...(source ? { sourceId: source.id, copyAccess: view.authEnabled && copyAccess.checked } : {}) });
+            else await registry({ action: 'create', name: name.value, slug: slug.value, ...(source ? { sourceId: source.id, copyAccess: view.authEnabled && copyAccess.checked } : {}), ...(starter?.value ? { starter: starter.value } : {}) });
             close();
             await reload(entry ? 'Saved.' : `${name.value.trim()} is ready.`);
           } catch (error) {
