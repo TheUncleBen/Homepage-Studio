@@ -36,15 +36,16 @@ const twoPages = {
   stacks: [],
 };
 
-async function mount({ board = twoPages, mode = "live" } = {}) {
-  let state = { revision: "r1", configurationRevision: CONFIG, board: structuredClone(board) };
+async function mount({ board = twoPages, mode = "live", envelope = {} } = {}) {
+  let state = { revision: "r1", configurationRevision: CONFIG, board: structuredClone(board), ...envelope };
   const writes = [];
   const fetch = vi.fn(async (path, options) => {
     let value;
     if (options?.method === "POST") {
       const body = JSON.parse(options.body);
       writes.push({ path, body });
-      state = { ...state, revision: `r${writes.length + 1}`, ...(body.board ? { board: body.board } : {}) };
+      const { newDiscoveredIds: _saved, ...rest } = state;
+      state = { ...rest, revision: `r${writes.length + 1}`, ...(body.board ? { board: body.board } : {}) };
       value = state;
     } else if (path === "/studio/api/access") value = { authEnabled: false, level: "admin", user: null };
     else value = state;
@@ -239,5 +240,19 @@ describe("Tidy up", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save arrangement" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0].body.board.panels.find((item) => item.id === "weather").rect.y).toBe(0);
+  });
+});
+
+describe("Newly discovered widgets", () => {
+  it("names them once in the editor, selects them, and keeps them on save", async () => {
+    const board = structuredClone(twoPages);
+    board.panels[2].nativeLocator = { ...board.panels[2].nativeLocator, discovered: true };
+    const { writes } = await mount({ board, mode: "edit", envelope: { newDiscoveredIds: ["plex"] } });
+    const note = await screen.findByText("A new widget was discovered and placed on Media.");
+    fireEvent.click(within(note.parentElement).getByRole("button", { name: "Select it" }));
+    expect(await screen.findByRole("toolbar", { name: "1 selected" })).toBeTruthy();
+    fireEvent.click(within(note.parentElement).getByRole("button", { name: "Keep it there" }));
+    await waitFor(() => expect(screen.queryByText(/new widget was discovered/)).toBeNull());
+    expect(writes.at(-1).path).toBe("/studio/api/board");
   });
 });

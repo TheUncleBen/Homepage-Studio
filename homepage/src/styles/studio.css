@@ -3883,3 +3883,19 @@ a.studio-card-identity:hover .studio-card-name strong {
   flex: none;
   width: auto;
 }
+
+/* Newly discovered widgets, named once in the editor (board.jsx). */
+.studio-discovered-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--studio-line);
+  border-left: 3px solid var(--studio-accent);
+  border-radius: 10px;
+  background: var(--studio-raised);
+  color: var(--studio-text);
+  font-size: 13px;
+}

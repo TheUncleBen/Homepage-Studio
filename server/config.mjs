@@ -662,6 +662,15 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     }));
     return revision + '\0' + identities.join('\0');
   }
+  // Discovered widgets that arrived since the arrangement was last saved, so
+  // the editor can offer to put them on a page. None before the first save.
+  function newDiscoveredIds(current) {
+    const stored = current.state.board?.panels;
+    if (!Array.isArray(stored)) return [];
+    const known = new Set(stored.map((panel) => panel.id));
+    const discovered = new Set(current.discoveredSources.map((source) => source.id));
+    return current.board.panels.filter((panel) => discovered.has(panel.id) && !known.has(panel.id)).map((panel) => panel.id);
+  }
   function response(current) {
     return {
       revision: current.revision,
@@ -1315,7 +1324,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       return { configuration: 'ok', persistence: 'ok', backupRetention };
     }),
     load: () => serialized(async () => response(await readCurrent())),
-    loadBoard: () => serialized(async () => { const current = await readCurrent(); return { revision: current.revision, configurationRevision: current.configurationRevision, board: current.board, discoveredSources: current.discoveredSources, hiddenDiscoveredIds: current.hiddenDiscoveredIds, warnings: discoveryWarnings }; }),
+    loadBoard: () => serialized(async () => { const current = await readCurrent(); return { revision: current.revision, configurationRevision: current.configurationRevision, board: current.board, discoveredSources: current.discoveredSources, hiddenDiscoveredIds: current.hiddenDiscoveredIds, newDiscoveredIds: newDiscoveredIds(current), warnings: discoveryWarnings }; }),
     saveBoard: (change) => serialized(async () => {
       const result = await saveCurrent(await readCurrent(), { revision: change.revision, board: change.board }, 'arrangement-saved');
       return { revision: result.revision, configurationRevision: result.configurationRevision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, warnings: result.warnings };

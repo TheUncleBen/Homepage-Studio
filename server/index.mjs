@@ -290,7 +290,7 @@ async function serveCatalog(req, res) {
 }
 
 const APPEARANCE_KEYS = ['theme', 'studioTheme'];
-const boardView = result => ({ revision: result.revision, configurationRevision: result.configurationRevision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, warnings: result.warnings });
+const boardView = result => ({ revision: result.revision, configurationRevision: result.configurationRevision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, ...(result.newDiscoveredIds?.length ? { newDiscoveredIds: result.newDiscoveredIds } : {}), warnings: result.warnings });
 
 function createDashboardHandlers(options = {}) {
   const configDir = resolve(options.configDir || process.env.HOMEPAGE_CONFIG_DIR || join(base, 'config'));

@@ -1227,6 +1227,30 @@ export default function StudioBoard({
       showToast(`Deleted “${page.name}”. Its widgets moved to ${pages.find((item) => item.id === target).name}.`, true);
     }
   };
+  // Discovered widgets that arrived since the arrangement was last saved
+  // land on the first page; the editor names them once so they can be
+  // selected (and moved with the selection bar) or kept where they are.
+  const newDiscovered = editing
+    ? (envelope?.newDiscoveredIds || []).filter((id) => wholeBoard.panels.some((panel) => panel.id === id))
+    : [];
+  const newDiscoveredPage = pages.find(
+    (page) => page.id === wholeBoard.panels.find((panel) => panel.id === newDiscovered[0])?.pageId,
+  );
+  const selectNewDiscovered = () => {
+    if (newDiscoveredPage && newDiscoveredPage.id !== currentPage) showPage(newDiscoveredPage.id);
+    setSelection(newDiscovered.filter((id) => !wholeBoard.stacks.some((stack) => stack.panelIds.includes(id))));
+  };
+  const keepNewDiscovered = async () => {
+    if (dirty) return saveArrangement();
+    setError(null);
+    try {
+      await mutate(await studioRequest("/studio/api/board", { revision: envelope.revision, board: envelope.board }), {
+        revalidate: false,
+      });
+    } catch (err) {
+      setError(err);
+    }
+  };
   const moveUnitsToPage = (ids, target) => {
     let next = wholeRef.current;
     for (const id of ids) next = moveToPage(next, id, target);
@@ -1886,6 +1910,27 @@ export default function StudioBoard({
             onClick={() => setSelection([])}
           >
             <StudioIcon name="close" size={16} />
+          </button>
+        </div>
+      )}
+      {newDiscovered.length > 0 && (
+        <div className="studio-discovered-note" role="status">
+          <span>
+            {newDiscovered.length === 1
+              ? "A new widget was discovered"
+              : `${newDiscovered.length} new widgets were discovered`}
+            {newDiscoveredPage && pages.length > 1 ? ` and placed on ${newDiscoveredPage.name}` : ""}.
+          </span>
+          <button
+            type="button"
+            className="studio-text-button"
+            disabled={controlsDisabled}
+            onClick={selectNewDiscovered}
+          >
+            {newDiscovered.length === 1 ? "Select it" : "Select them"}
+          </button>
+          <button type="button" className="studio-text-button" disabled={controlsDisabled} onClick={keepNewDiscovered}>
+            {newDiscovered.length === 1 ? "Keep it there" : "Keep them there"}
           </button>
         </div>
       )}
