@@ -44,9 +44,10 @@ own address on the same host (`/family`, `/admin`, ...).
   muted eggplant accent by default. Each dashboard can switch to light or
   follow the device, pick its own accent and carry its own custom CSS
   ([docs/APPEARANCE.md](docs/APPEARANCE.md)).
-- **On a phone or tablet:** the board reflows to 8 columns on medium widths
-  and 4 on narrow ones. Press and hold to edit, swipe a stack to change
-  slides, and the page still scrolls normally.
+- **On a phone or tablet:** the board reflows to 16 columns on medium widths
+  and 8 on narrow ones. In the editor, tap a widget to show its controls and
+  hold it for its menu; swipe a stack to change slides, and the page still
+  scrolls normally.
 - **What it talks to:** whatever services you configure, through Homepage's
   own server-side widget proxies. Nothing leaves the container on its own.
 
@@ -116,15 +117,16 @@ piece can be swapped, and the guide links to the alternatives.
   bare address opens your default dashboard, your group's, or the Dashboards
   page. One top bar is the same on every page.
 - **Arrange in the editor.** Move panels by their handle, resize from the
-  corner or use the keyboard. The board snaps to a 12-column grid and never
-  lets panels overlap. **Done** saves the arrangement and goes back to
+  corner or use the keyboard. The board snaps to a 24-column grid and never
+  lets panels overlap. Up to 20 pages per dashboard; on a phone a widget's
+  controls show only after you tap it. **Done** saves the arrangement and goes back to
   Dashboards; **Cancel** asks before it throws away unsaved moves.
 - **Four kinds of panel, each placed on its own.** Service tiles, single
   service widgets (one integration of a service, apart from the rest),
   information widgets (clock, weather, search, resources, ...) and bookmarks.
   Information widgets get readable titles ("Date & Time", "Date & Time 2").
 - **Stacks.** Put panels of the same size on top of each other, or select
-  several and **Create stack**. A stack shows one member at a time with:
+  several and choose **Stack** in the selection bar. A stack shows one member at a time with:
   - one **Play/Pause** button and passive dots (no previous/next buttons);
   - swipe on the header or the widget body, drag horizontally with a mouse,
     scroll sideways on a trackpad, or focus it and press Left/Right;
@@ -154,8 +156,20 @@ piece can be swapped, and the guide links to the alternatives.
   Dashboards page.
 - **Discovery.** Docker labels and Kubernetes annotations still define
   discovered services; Studio only decides where they go and whether they show.
-- **Appearance.** Dark, light or follow device, any accent color, native
-  background options and custom CSS, per dashboard.
+- **Appearance.** Dark, light or follow device, any accent color, built-in
+  backgrounds and patterns, a per-dashboard image library and custom CSS, per
+  dashboard. Each widget has its own look, with dashboard-wide defaults.
+- **Charts.** Show a widget's numbers as a line, area, bar, donut, pie or
+  gauge chart, with a trend or warning and problem colours. Studio keeps the
+  numbers once a minute, only for widgets that use them, for 7 to 90 days.
+- **Saved connections.** Save a service's address and key once and use it on
+  any widget; keys are never shown again. **Test connection** says in plain
+  words whether a widget's settings work.
+- **Search and starter templates.** Search every page of a dashboard and the
+  web with your own engine. A new dashboard can start from a template of
+  common apps at placeholder `home.arpa` addresses, plus a clock and weather.
+- **Offline logos.** Small copies of the Dashboard Icons logos ship with
+  Studio, so logos show without internet access.
 
 ### Status
 
