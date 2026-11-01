@@ -266,3 +266,23 @@ describe("status address", () => {
     expect(screen.getByLabelText("Address").placeholder).toBe("nas.example.org");
   });
 });
+
+describe("exact colour", () => {
+  it("offers it only for a custom colour, and hides Strength for an exact solid", () => {
+    const { onLook } = renderEditor({ look: { fill: "solid", colour: "#ffff00" } });
+    expect(screen.getByRole("radiogroup", { name: "Strength" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("switch", { name: "Use my exact colour" }));
+    expect(onLook).toHaveBeenLastCalledWith({ fill: "solid", colour: "#ffff00", colourFit: "exact" });
+  });
+
+  it("warns when text can't reach 4.5:1 on the exact colour", () => {
+    renderEditor({ look: { fill: "solid", colour: "#777777", colourFit: "exact" } });
+    expect(screen.queryByRole("radiogroup", { name: "Strength" })).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/reaches only/);
+  });
+
+  it("is not offered when the colour comes from the logo", () => {
+    renderEditor({ look: { fill: "solid" } });
+    expect(screen.queryByRole("switch", { name: "Use my exact colour" })).toBeNull();
+  });
+});

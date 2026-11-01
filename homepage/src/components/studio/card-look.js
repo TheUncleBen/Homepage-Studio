@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 import { appearanceTokens, contrastRatio } from "./appearance.mjs";
-import { fitColour, inheritedBehaviour, inheritedLook, readBehaviour, readLook } from "./look.mjs";
+import { exactColour, fitColour, inheritedBehaviour, inheritedLook, readBehaviour, readLook } from "./look.mjs";
 import useSystemTheme from "./use-system-theme";
 
 import { SettingsContext } from "utils/contexts/settings";
@@ -177,9 +177,12 @@ export function useCardTheme() {
 // tint washes the surface with the colour; solid fits the colour itself.
 export function fillColours(look, logoColour, theme) {
   if (look.fill !== "tint" && look.fill !== "solid") return null;
-  const source = look.colour && look.colour !== "logo" ? look.colour : logoColour || theme.accent;
+  const own = look.colour && look.colour !== "logo";
+  const source = own ? look.colour : logoColour || theme.accent;
+  // "Use my exact colour" applies to a colour the widget chose.
+  const exact = own && look.colourFit === "exact";
   if (look.fill === "solid") {
-    const fitted = fitColour(source, theme, look.strength);
+    const fitted = exact ? exactColour(source, theme) : fitColour(source, theme, look.strength);
     if (!fitted) return null;
     const muted =
       contrastRatio(mixHex(fitted.ink, fitted.fill, 0.3), fitted.fill) >= 4.5
@@ -187,7 +190,7 @@ export function fillColours(look, logoColour, theme) {
         : fitted.ink;
     return { fill: fitted.fill, ink: fitted.ink, muted, source };
   }
-  const tone = fitColour(source, theme, "medium");
+  const tone = exact ? exactColour(source, theme) : fitColour(source, theme, "medium");
   if (!tone) return null;
   const fill = mixHex(theme.surface, tone.fill, TINT[look.strength] ?? TINT.medium);
   const ink = contrastRatio(theme.text, fill) >= 4.5 ? theme.text : tone.ink;

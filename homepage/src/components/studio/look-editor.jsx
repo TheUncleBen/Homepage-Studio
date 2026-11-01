@@ -3,8 +3,8 @@ import { useId, useState } from "react";
 import { BackgroundAdjust, BackgroundGrid, familyOf, FILL_FAMILIES } from "./background-picker";
 import { useCardTheme } from "./card-look";
 import StudioIcon from "./icons";
-import { setOverride } from "./look.mjs";
-import { Group, Row, Segmented } from "./ui";
+import { exactColour, setOverride } from "./look.mjs";
+import { Group, Row, Segmented, Switch } from "./ui";
 
 // Which parts of the widget dialog apply to each kind of widget (Rule 1: only
 // show options that can apply).
@@ -452,16 +452,38 @@ export default function LookEditor({
                   )}
                 </div>
               </Row>
-              <Choice
-                label="Strength"
-                value={effective.strength}
-                onChange={(value) => setLook("strength", value)}
-                options={[
-                  ["soft", "Soft"],
-                  ["medium", "Medium"],
-                  ["strong", "Strong"],
-                ]}
-              />
+              {custom && (
+                <Row
+                  label="Exact colour"
+                  info="Studio fits a colour to the theme so it never glows or turns muddy. Use your exact colour to turn that off; text still picks its most readable colour."
+                >
+                  <MixedNote value={effective.colourFit} />
+                  <Switch
+                    label="Use my exact colour"
+                    checked={effective.colourFit === "exact"}
+                    onChange={(on) => setLook("colourFit", on ? "exact" : "fitted")}
+                  />
+                </Row>
+              )}
+              {custom && effective.colourFit === "exact" && exactColour(effective.colour, theme)?.contrast < 4.5 && (
+                <p className="studio-callout studio-callout-warn" role="status">
+                  Text on this colour reaches only {exactColour(effective.colour, theme).contrast}:1, below the 4.5:1
+                  that keeps it easy to read.
+                </p>
+              )}
+              {/* An exact solid colour has no strength to choose. */}
+              {!(effective.fill === "solid" && custom && effective.colourFit === "exact") && (
+                <Choice
+                  label="Strength"
+                  value={effective.strength}
+                  onChange={(value) => setLook("strength", value)}
+                  options={[
+                    ["soft", "Soft"],
+                    ["medium", "Medium"],
+                    ["strong", "Strong"],
+                  ]}
+                />
+              )}
             </Dependent>
           )}
           <Choice

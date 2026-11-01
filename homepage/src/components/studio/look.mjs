@@ -22,6 +22,9 @@ export const LOOK_OPTIONS = Object.freeze({
   description: ["show", "hide"],
   status: ["dot", "updown", "time"],
   align: ["left", "centre"],
+  // Colour fit (board 7): a custom colour is fitted to the theme unless the
+  // widget asks for its exact colour; text contrast is still chosen for it.
+  colourFit: ["fitted", "exact"],
 });
 
 export const BEHAVIOUR_OPTIONS = Object.freeze({
@@ -66,6 +69,7 @@ export const BUILT_IN_LOOK = Object.freeze({
   description: "show",
   status: "dot",
   align: "left",
+  colourFit: "fitted",
 });
 
 export const BUILT_IN_BEHAVIOUR = Object.freeze({
@@ -319,6 +323,17 @@ function harmonize(hue, anchor) {
 // Returns {fill, ink, contrast}. Ink is the theme text when it reaches 4.5:1,
 // otherwise the better of near-black and white; the fill's lightness is
 // nudged until some ink reaches 4.5:1.
+// A colour used as it is: only the text colour is picked for it.
+export function exactColour(hex, { text = "#ececea", inkDark = "#141414" } = {}) {
+  const fill = hexColor(hex);
+  if (!fill) return null;
+  const ink = [text, inkDark, "#ffffff"].reduce((best, candidate) =>
+    contrast(candidate, fill) > contrast(best, fill) ? candidate : best,
+  );
+  // Rounded down, so a colour just under 4.5:1 never reads as passing.
+  return { fill, ink, contrast: Math.floor(contrast(ink, fill) * 10) / 10 };
+}
+
 export function fitColour(
   hex,
   { mode = "dark", accent = "#5fb3a1", text = "#ececea", inkDark = "#141414" } = {},
