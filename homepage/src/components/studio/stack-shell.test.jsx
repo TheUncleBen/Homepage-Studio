@@ -265,7 +265,7 @@ describe("Native board stack controls", () => {
       />,
     );
     fireEvent.contextMenu(screen.getByText("Widget stack"));
-    expect(hold).toHaveBeenCalledWith("s");
+    expect(hold).toHaveBeenCalledWith("s", expect.objectContaining({ clientX: expect.any(Number) }));
     screen.getByRole("button", { name: "Play slideshow" }).focus();
     expect(controller.getSnapshot().blockedReasons).not.toContain("content-focus");
   });

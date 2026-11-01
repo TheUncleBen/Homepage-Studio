@@ -7,7 +7,7 @@ import AppearanceOnlyEditor from "./appearance-only-editor";
 import { PageBackgroundEditor } from "./background-picker";
 import CardBackground from "./card-background";
 import { resolvedBehaviour, useCardTheme } from "./card-look";
-import ContentEditor, { ContentPicker } from "./content-editor";
+import ContentEditor, { ContentPicker, duplicateEntry } from "./content-editor";
 import { dashboardPath } from "./dashboard-path.mjs";
 import StudioDialog, { ErrorMessage } from "./dialog";
 import DiscoveryEditor from "./discovery-editor";
@@ -43,6 +43,7 @@ import {
 import StudioIcon from "./icons";
 import { readLook } from "./look.mjs";
 import Menu from "./menu";
+import { resolveNativePanel } from "./native-adapter.mjs";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
 import PanelHost, { CardPreview } from "./panel-host";
 import { useReducedMotion } from "./preferences";
@@ -85,6 +86,18 @@ function readLastPage(id) {
   }
 }
 // Typing in a field never changes page or undoes an arrangement.
+// A copied look is plain colours and choices, never secrets, so it is kept in
+// this browser and can be pasted on any dashboard.
+const LOOK_CLIPBOARD = "studio-look-clipboard";
+function readLookClipboard() {
+  try {
+    const stored = localStorage.getItem(LOOK_CLIPBOARD);
+    return stored === null ? null : readLook(JSON.parse(stored));
+  } catch {
+    return null;
+  }
+}
+
 const typing = (target) =>
   target instanceof Element && Boolean(target.closest("input, textarea, select, [contenteditable='true'], dialog"));
 const EMPTY_NATIVE = {};
@@ -179,6 +192,11 @@ function ShortcutsSheet({ editing, pages }) {
     editing && ["Shift + arrow keys", "Resize the selected widget"],
     editing && ["Esc", "Cancel a drag"],
     editing && ["F2", "Rename the current page"],
+    editing && ["Right-click or hold", "Widget menu (or the menu key)"],
+    editing && ["E", "Edit the selected widget"],
+    editing && ["Ctrl / ⌘ D", "Duplicate the selected widget"],
+    editing && ["Ctrl / ⌘ Alt C, then V", "Copy a widget's look, then paste it"],
+    editing && ["Delete", "Delete the selected widget"],
     ["?", "Show these shortcuts"],
   ].filter(Boolean);
   return (
@@ -267,6 +285,9 @@ export default function StudioBoard({
   const [toast, setToast] = useState(null);
   const [dropPage, setDropPage] = useState(null);
   const [pageMenu, setPageMenu] = useState(null);
+  const [unitMenu, setUnitMenu] = useState(null);
+
+  const [lookClipboard, setLookClipboard] = useState(readLookClipboard);
   const [modal, setModal] = useState(null);
   const [editorData, setEditorData] = useState(null);
   // The native catalog is large and fixed for a deployed build. Fetch it only
@@ -587,14 +608,18 @@ export default function StudioBoard({
     }
   };
 
-  const loadEditorData = async (type) => {
-    if ((type === "picker" || type === "content") && !catalogRequest.current) {
+  const loadCatalog = () => {
+    if (!catalogRequest.current) {
       const request = studioRequest("/studio/catalog.json");
       catalogRequest.current = request;
       request.catch(() => {
         if (catalogRequest.current === request) catalogRequest.current = null;
       });
     }
+    return catalogRequest.current;
+  };
+  const loadEditorData = async (type) => {
+    if (type === "picker" || type === "content") loadCatalog();
     if (type === "appearance") return { appearance: await studioRequest("/studio/api/appearance") };
     const [state, catalog, backups, appearance] = await Promise.all([
       studioRequest("/studio/api/state"),
@@ -617,7 +642,14 @@ export default function StudioBoard({
     setEditorData(null);
     try {
       const loaded = await loadEditorData(type);
-      if (token === generation.current) setEditorData(loaded);
+      if (token !== generation.current) return;
+      // The widget menu's Duplicate opens the add editor, filled from the saved item.
+      if (detail.duplicate) {
+        const entry = duplicateEntry(detail.panel, loaded.state, loaded.catalog);
+        if (!entry) throw new Error("That widget is no longer in the configuration.");
+        setModal({ type, entry });
+      }
+      setEditorData(loaded);
     } catch (err) {
       if (token === generation.current) setEditorError(err);
     }
@@ -1192,6 +1224,166 @@ export default function StudioBoard({
       showToast(`Moved to ${pages.find((page) => page.id === target)?.name}`, true);
     }
   };
+  // The widget menu (right-click or hold while editing).
+  const panelHref = (panel) => {
+    const resolved = resolveNativePanel(panel, renderedNativeData);
+    const href = resolved?.service?.href || resolved?.bookmark?.href;
+    return typeof href === "string" && /^https?:\/\//i.test(href) ? href : null;
+  };
+  const panelType = (panel) =>
+    panel.kind === "serviceWidget" || panel.kind === "informationWidget"
+      ? `${panel.kind}:${panel.nativeLocator?.type}`
+      : panel.kind;
+  const typeName = (panel, catalog) => {
+    if (panel.kind === "service") return "link";
+    if (panel.kind === "bookmark") return "bookmark";
+    const list = catalog?.[panel.kind === "serviceWidget" ? "service" : "info"];
+    return list?.find((entry) => entry.type === panel.nativeLocator?.type)?.name || panel.nativeLocator?.type || "such";
+  };
+  const copyLook = (panel) => {
+    const look = panel.look || {};
+    setLookClipboard(look);
+    try {
+      localStorage.setItem(LOOK_CLIPBOARD, JSON.stringify(look));
+    } catch {
+      // Without storage the copy still lasts while this page is open.
+    }
+    showToast(Object.keys(look).length ? "Look copied" : "Look copied (the default look)");
+  };
+  const applyLook = (ids, look, message) => {
+    const targets = new Set(ids);
+    const next = {
+      ...wholeRef.current,
+      panels: wholeRef.current.panels.map((item) => {
+        if (!targets.has(item.id)) return item;
+        const { look: _old, ...rest } = item;
+        return look && Object.keys(look).length ? { ...rest, look: structuredClone(look) } : rest;
+      }),
+    };
+    if (commitWhole(next)) showToast(message, true);
+  };
+  const deletePanel = (panel) => openEditor("content", { panel, deleting: true });
+  const openUnitMenu = async (id, pointer, from) => {
+    if (controlsDisabled || modal || saveInFlight.current || nativeRefreshLock.current) return;
+    const element = canvas.current?.querySelector(
+      `[data-panel-id="${CSS.escape(id)}"]:not([aria-hidden]), [data-stack-shell-id="${CSS.escape(id)}"]`,
+    );
+    const box = element?.getBoundingClientRect();
+    const x = pointer?.clientX ?? (box ? box.left + 16 : 16);
+    const y = pointer?.clientY ?? (box ? box.top + 16 : 16);
+    const menu = { id, x, y, from: from || document.activeElement };
+    // Only for naming the widget type in "Use this look on every … widget".
+    const catalog = await loadCatalog().catch(() => null);
+    setUnitMenu({ ...menu, items: unitMenuItems(id, menu, catalog) });
+  };
+  const unitMenuItems = (id, menu, catalog) => {
+    const panel = wholeBoard.panels.find((item) => item.id === id);
+    const stack = wholeBoard.stacks.find((item) => item.id === id);
+    const otherPages = pages.filter((page) => page.id !== currentPage);
+    const moveItem = otherPages.length > 0 && {
+      id: "move",
+      icon: "move",
+      label: "Move to page…",
+      keepFocus: true,
+      onSelect: () => setUnitMenu({ ...menu, pages: true }),
+    };
+    if (stack) return [{ id: "edit", icon: "edit", label: "Edit stack", onSelect: () => editStack(stack) }, moveItem];
+    if (!panel) return [];
+    const discovered = Boolean(panel.nativeLocator?.discovered);
+    const canChange = isAdmin && !discovered;
+    const sameType = wholeBoard.panels.filter((item) => panelType(item) === panelType(panel));
+    const href = panelHref(panel);
+    const hasClipboard = lookClipboard !== null;
+    return [
+      (isAdmin || discovered) && {
+        id: "edit",
+        icon: "edit",
+        label: discovered ? "Show or hide" : "Edit",
+        shortcut: "E",
+        onSelect: () => editPanel(panel),
+      },
+      canChange && {
+        id: "duplicate",
+        icon: "copy",
+        label: "Duplicate",
+        shortcut: "Ctrl D",
+        onSelect: () => openEditor("content", { panel, duplicate: true }),
+      },
+      "-",
+      { id: "copy-look", icon: "paint", label: "Copy look", shortcut: "Ctrl Alt C", onSelect: () => copyLook(panel) },
+      {
+        id: "paste-look",
+        label: "Paste look",
+        shortcut: "Ctrl Alt V",
+        disabled: !hasClipboard,
+        hint: hasClipboard ? undefined : "Copy a widget's look first",
+        onSelect: () => applyLook([panel.id], lookClipboard, "Look pasted"),
+      },
+      sameType.length > 1 && {
+        id: "look-everywhere",
+        icon: "grid",
+        label: `Use this look on every ${typeName(panel, catalog)} widget`,
+        onSelect: () =>
+          applyLook(
+            sameType.map((item) => item.id),
+            panel.look || {},
+            `Look used on ${sameType.length} ${typeName(panel, catalog)} widgets`,
+          ),
+      },
+      "-",
+      moveItem,
+      href && {
+        id: "open",
+        icon: "external",
+        label: "Open link",
+        onSelect: () => window.open(href, "_blank", "noopener,noreferrer"),
+      },
+      canChange && "-",
+      canChange && {
+        id: "delete",
+        icon: "trash",
+        label: "Delete…",
+        shortcut: "Del",
+        danger: true,
+        onSelect: () => deletePanel(panel),
+      },
+    ]
+      .filter(Boolean)
+      .filter((item, index, list) => item !== "-" || (index > 0 && index < list.length - 1 && list[index - 1] !== "-"));
+  };
+  // Widget keys while editing act on the one selected widget, or the
+  // focused one: E edits, Delete deletes, Ctrl D duplicates, Ctrl Alt C and
+  // V copy and paste its look, and the menu key opens its menu.
+  useEffect(() => {
+    if (!editing) return undefined;
+    const key = (event) => {
+      if (event.defaultPrevented || typing(event.target) || modal || overlayOpen || unitMenu) return;
+      const focusedId = document.activeElement?.closest?.("[data-panel-id]")?.dataset.panelId;
+      const id = selection.length === 1 ? selection[0] : selection.length === 0 ? focusedId : null;
+      if (!id) return;
+      const panel = wholeBoard.panels.find((item) => item.id === id);
+      const command = event.ctrlKey || event.metaKey;
+      const lower = event.key.toLowerCase();
+      const run = (action) => {
+        event.preventDefault();
+        action();
+      };
+      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))
+        return run(() => openUnitMenu(id, null, document.activeElement));
+      if (!panel) return;
+      const canChange = isAdmin && !panel.nativeLocator?.discovered;
+      if (command && event.altKey && event.code === "KeyC") return run(() => copyLook(panel));
+      if (command && event.altKey && event.code === "KeyV" && lookClipboard !== null)
+        return run(() => applyLook([panel.id], lookClipboard, "Look pasted"));
+      if (event.altKey) return;
+      if (command && lower === "d" && canChange) return run(() => openEditor("content", { panel, duplicate: true }));
+      if (command || event.shiftKey) return;
+      if (lower === "e" && (isAdmin || panel.nativeLocator?.discovered)) return run(() => editPanel(panel));
+      if ((event.key === "Delete" || event.key === "Backspace") && canChange) return run(() => deletePanel(panel));
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  });
   // Page keys: 1-9 jump to a page, [ and ] step. Editing adds undo and redo.
   useEffect(() => {
     const key = (event) => {
@@ -1444,6 +1636,26 @@ export default function StudioBoard({
               Save arrangement
             </button>
           )}
+          {unitMenu && (
+            <Menu
+              key={unitMenu.pages ? "pages" : "actions"}
+              anchor={unitMenu}
+              label={unitMenu.pages ? "Move to page" : "Widget actions"}
+              returnFocus={unitMenu.from}
+              onClose={() => setUnitMenu((menu) => (menu?.pages === unitMenu.pages ? null : menu))}
+              items={
+                unitMenu.pages
+                  ? pages
+                      .filter((page) => page.id !== currentPage)
+                      .map((page) => ({
+                        id: page.id,
+                        label: page.name,
+                        onSelect: () => moveUnitsToPage([unitMenu.id], page.id),
+                      }))
+                  : unitMenu.items
+              }
+            />
+          )}
           {pageMenu && (
             <Menu
               anchor={pageMenu}
@@ -1599,6 +1811,7 @@ export default function StudioBoard({
           onSelect={select}
           onManipulate={manipulate}
           onUnitKey={unitKey}
+          onLongPress={editing ? openUnitMenu : undefined}
           overlayOpen={overlayOpen}
         />
         <div className="studio-stack-layer">
@@ -1617,6 +1830,7 @@ export default function StudioBoard({
               onActive={onActive}
               registerController={registerController}
               onEdit={editStack}
+              onLongPress={editing ? openUnitMenu : undefined}
               onManipulate={manipulate}
               onUnitKey={unitKey}
               onStackDrag={(offset) => onStackDrag(stack.id, offset)}
@@ -1880,6 +2094,7 @@ export default function StudioBoard({
                   {...editorData}
                   panel={modal.panel}
                   entry={modal.entry}
+                  startDeleting={Boolean(modal.deleting)}
                   pageId={currentPage}
                   wholeBoard={wholeBoard}
                   renderPreview={(panel, override) => (

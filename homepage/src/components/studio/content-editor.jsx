@@ -24,6 +24,33 @@ export function customApiMappingsMissing(type, config) {
   return typeof mappings === "object" && Object.keys(mappings).length === 0;
 }
 
+// What "Duplicate" opens: the add editor, filled with this item's saved
+// settings and named "<name> copy". Used by the editor's Duplicate button and
+// the widget menu on the board.
+export function duplicateEntry(panel, state, catalog) {
+  const kind = panel.kind;
+  const source = sourceForPanel(panel, state);
+  if (!source) return null;
+  const parent = state.services?.find((service) => service.id === source.serviceId);
+  const entry = (kind === "serviceWidget" ? catalog?.service : catalog?.info)?.find(
+    (item) => item.type === source.type,
+  );
+  const copy = structuredClone(source.config || entry?.defaults || {});
+  if (kind === "service" || kind === "bookmark") delete copy.id;
+  return {
+    ...entry,
+    kind,
+    type: source.type || kind,
+    name: entry?.name || LABEL[kind],
+    defaults: copy,
+    seed: {
+      name: `${source.name || parent?.name || entry?.name || "Widget"} copy`,
+      group: source.group || parent?.group || "Dashboard",
+      serviceId: source.serviceId,
+    },
+  };
+}
+
 const ENDPOINT = {
   service: "service",
   serviceWidget: "service-widget",
@@ -187,6 +214,7 @@ export default function ContentEditor({
   pageId,
   wholeBoard,
   renderPreview,
+  startDeleting = false,
 }) {
   const kind = panel?.kind || entry.kind;
   // The widget's own look and behaviour live on the board, not in its YAML.
@@ -229,7 +257,7 @@ export default function ContentEditor({
   const [valid, setValid] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(null);
-  const [deleting, setDeleting] = useState(false);
+  const [deleting, setDeleting] = useState(startDeleting);
   const deleteConfirm = useRef(null);
   const keepButton = useRef(null);
   const deleteButton = useRef(null);
@@ -464,20 +492,7 @@ export default function ContentEditor({
                   onClick={() => {
                     // Duplicate the saved source. Switching away from an edited
                     // source asks before discarding its local changes.
-                    const copy = structuredClone(initial);
-                    if (kind === "service" || kind === "bookmark") delete copy.id;
-                    onDuplicate({
-                      ...selectedEntry,
-                      kind,
-                      type: source.type || kind,
-                      name: selectedEntry?.name || LABEL[kind],
-                      defaults: copy,
-                      seed: {
-                        name: `${source.name || parent?.name || selectedEntry?.name || "Widget"} copy`,
-                        group: source.group || parent?.group || "Dashboard",
-                        serviceId: source.serviceId,
-                      },
-                    });
+                    onDuplicate(duplicateEntry(panel, state, catalog));
                   }}
                 >
                   Duplicate
