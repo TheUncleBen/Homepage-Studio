@@ -132,7 +132,7 @@ export function useCardTheme() {
   const systemDark = useSystemTheme();
   return useMemo(() => {
     const { mode, tokens } = appearanceTokens(settings || {}, systemDark);
-    return { mode, accent: tokens.accent, text: tokens.text, muted: tokens.muted, surface: tokens.surface, inkDark: "#141414" };
+    return { ...tokens, mode, inkDark: "#141414" };
   }, [settings, systemDark]);
 }
 

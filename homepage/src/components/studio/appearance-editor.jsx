@@ -10,9 +10,11 @@ import {
   DEFAULT_BASE,
   hexColor,
 } from "./appearance.mjs";
-import { BUILT_IN_LOOK, readLook, setOverride } from "./look.mjs";
+import { BackgroundField, FILL_FAMILIES } from "./background-picker";
+import { builtInFamily } from "./backgrounds.mjs";
 import LogoEditor from "./logo-editor";
-import { Group, Row, Segmented } from "./ui";
+import { BUILT_IN_LOOK, readLook, setOverride } from "./look.mjs";
+import { Group, Row, Segmented, Switch } from "./ui";
 import useSystemTheme from "./use-system-theme";
 
 // What a dashboard gets when it sets nothing: the platform defaults from
@@ -70,7 +72,12 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
   const card = readLook(rawCard);
   const cardLook = { ...BUILT_IN_LOOK, ...card };
   const setCard = (key, value) => change({ card: setOverride(card, key, value, BUILT_IN_LOOK) });
+  const pageBackground = readLook({ background: settings.studioTheme?.pageBackground }).background;
+  // A background from the other kind of fill doesn't apply to it.
+  const cardFamily = card.background?.source === "builtin" ? builtInFamily(card.background.id) : null;
+  const cardBackground = FILL_FAMILIES[cardLook.fill]?.includes(cardFamily) ? card.background : undefined;
   const preview = appearanceTokens(effective, systemDark);
+  const previewTheme = { ...preview.tokens, mode: preview.mode };
   const previewStyle = Object.fromEntries(
     Object.entries(preview.tokens).map(([key, value]) => [`--studio-${key}`, value]),
   );
@@ -117,7 +124,11 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
                 ))}
               </div>
             </Row>
-            <Row label="Accent" stacked info="Buttons, links and focus rings. Any colour works; Studio fits it to stay readable.">
+            <Row
+              label="Accent"
+              stacked
+              info="Buttons, links and focus rings. Any colour works; Studio fits it to stay readable."
+            >
               <div className="studio-swatches" role="group" aria-label="Accent">
                 {ACCENT_PRESETS.map((preset) => (
                   <button
@@ -196,15 +207,30 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
             <Row label="Fill">
               <Segmented
                 label="Card fill"
-                value={["plain", "tint", "solid"].includes(cardLook.fill) ? cardLook.fill : "plain"}
+                value={cardLook.fill}
                 onChange={(value) => setCard("fill", value)}
                 options={[
                   ["plain", "Plain"],
                   ["tint", "Tint"],
                   ["solid", "Solid"],
+                  ["picture", "Picture"],
+                  ["pattern", "Pattern"],
                 ]}
               />
             </Row>
+            {(cardLook.fill === "picture" || cardLook.fill === "pattern") && (
+              <div className="studio-row-dependent">
+                <BackgroundField
+                  key={cardLook.fill}
+                  label="Background"
+                  fill={cardLook.fill}
+                  value={cardBackground}
+                  defaultOpen={!cardBackground}
+                  tokens={previewTheme}
+                  onChange={(value) => setCard("background", value)}
+                />
+              </div>
+            )}
             {(cardLook.fill === "tint" || cardLook.fill === "solid") && (
               <div className="studio-row-dependent">
                 <Row label="Strength">
@@ -257,6 +283,28 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
                 ]}
               />
             </Row>
+          </Group>
+          <Group
+            title="Page"
+            info="A background for every page of this dashboard. A page can choose its own from its menu while editing."
+          >
+            <BackgroundField
+              label="Background"
+              fill="page"
+              value={pageBackground}
+              tokens={previewTheme}
+              allowNone
+              onChange={(value) => change({ pageBackground: value })}
+            />
+            {pageBackground && (
+              <Row label="Glass cards" info="Cards let the page background show through, softly blurred.">
+                <Switch
+                  label="Glass cards"
+                  checked={Boolean(settings.studioTheme?.glass)}
+                  onChange={(on) => change({ glass: on || undefined })}
+                />
+              </Row>
+            )}
           </Group>
         </div>
         <div className="studio-appearance-preview" style={previewStyle} aria-label="Appearance preview">

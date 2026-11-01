@@ -1,5 +1,8 @@
 import { useId } from "react";
 
+import { BackgroundAdjust, BackgroundGrid, FILL_FAMILIES } from "./background-picker";
+import { builtInFamily } from "./backgrounds.mjs";
+import { useCardTheme } from "./card-look";
 import StudioIcon from "./icons";
 import { setOverride } from "./look.mjs";
 import { Group, Row, Segmented } from "./ui";
@@ -186,6 +189,22 @@ export default function LookEditor({
   const setLook = (key, value) => onLook(setOverride(look, key, value, inheritedLook));
   const setBehaviour = (key, value) => onBehaviour(setOverride(behaviour, key, value, inheritedBehaviour));
   const tinted = effective.fill === "tint" || effective.fill === "solid";
+  const pictured = effective.fill === "picture" || effective.fill === "pattern";
+  const theme = useCardTheme();
+  // A background from the other kind of fill doesn't apply to this one.
+  const backgroundFamily =
+    effective.background?.source === "builtin"
+      ? builtInFamily(effective.background.id)
+      : effective.background
+        ? "upload"
+        : null;
+  const chosenBackground =
+    pictured &&
+    effective.background &&
+    (FILL_FAMILIES[effective.fill].includes(backgroundFamily) ||
+      (effective.fill === "picture" && backgroundFamily === "upload"))
+      ? effective.background
+      : null;
   const custom = effective.colour !== "logo";
   const named = effective.header === "logo-name" || effective.header === "name";
   return (
@@ -223,14 +242,42 @@ export default function LookEditor({
           )}
           <Choice
             label="Fill"
-            value={effective.fill === "picture" || effective.fill === "pattern" ? "plain" : effective.fill}
+            value={effective.fill}
             onChange={(value) => setLook("fill", value)}
             options={[
               ["plain", "Plain"],
               ["tint", "Tint"],
               ["solid", "Solid"],
+              ["picture", "Picture"],
+              ["pattern", "Pattern"],
             ]}
           />
+          {pictured && (
+            <Dependent>
+              <Row label="Background" stacked>
+                <BackgroundGrid
+                  key={effective.fill}
+                  fill={effective.fill}
+                  value={chosenBackground}
+                  tokens={theme}
+                  onPick={(id) =>
+                    setLook("background", {
+                      ...(chosenBackground?.id === id ? chosenBackground : {}),
+                      source: "builtin",
+                      id,
+                    })
+                  }
+                />
+              </Row>
+              {chosenBackground && (
+                <BackgroundAdjust
+                  background={chosenBackground}
+                  tokens={theme}
+                  onChange={(background) => setLook("background", background)}
+                />
+              )}
+            </Dependent>
+          )}
           {tinted && (
             <Dependent>
               <Row label="Colour">

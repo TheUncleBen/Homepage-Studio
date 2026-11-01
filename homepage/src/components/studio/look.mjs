@@ -88,6 +88,11 @@ function text(value, max, label) {
 function background(value) {
   if (!plain(value)) fail("A widget background must be an object.");
   const out = {};
+  // "none" lets a page turn off the dashboard's page background.
+  if (value.source === "none") {
+    if (Object.keys(value).length !== 1) fail("A background set to none takes no other settings.");
+    return { source: "none" };
+  }
   if (!["builtin", "library"].includes(value.source)) fail("A widget background needs a source.");
   out.source = value.source;
   if (typeof value.id !== "string" || !ID.test(value.id)) fail("A widget background names an image that does not exist.");

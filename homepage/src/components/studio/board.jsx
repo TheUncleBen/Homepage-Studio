@@ -4,6 +4,9 @@ import useSWR from "swr";
 
 import { studioRequest } from "./api.mjs";
 import AppearanceOnlyEditor from "./appearance-only-editor";
+import { PageBackgroundEditor } from "./background-picker";
+import CardBackground from "./card-background";
+import { resolvedBehaviour, useCardTheme } from "./card-look";
 import ContentEditor, { ContentPicker } from "./content-editor";
 import { dashboardPath } from "./dashboard-path.mjs";
 import StudioDialog, { ErrorMessage } from "./dialog";
@@ -11,36 +14,36 @@ import DiscoveryEditor from "./discovery-editor";
 import { EditorDraftContext } from "./draft-guard";
 import { useBoardFocusOrder } from "./focus-order";
 import {
-  COLUMNS,
-  GAP,
-  MAX_PAGES,
-  ROW_HEIGHT,
   addPage,
   clampRect,
+  COLUMNS,
   firstPageId,
   freePageName,
+  GAP,
+  MAX_PAGES,
   mergePage,
   movePage,
+  moveProjectedUnit,
   moveToPage,
+  moveUnit,
   pageBoard,
   pageFromHash,
   pageHash,
-  removePage,
-  updatePage,
-  moveProjectedUnit,
-  moveUnit,
   panelMinimum,
   PHONE_WIDTH,
   pixelRect,
   projectBoard,
+  removePage,
+  ROW_HEIGHT,
   stackBoard,
   unitMinimum,
   unitsForBoard,
+  updatePage,
 } from "./geometry.mjs";
 import StudioIcon from "./icons";
+import { readLook } from "./look.mjs";
 import Menu from "./menu";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
-import { resolvedBehaviour } from "./card-look";
 import PanelHost, { CardPreview } from "./panel-host";
 import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
 import StackEditor, { PositionEditor } from "./stack-editor";
@@ -373,6 +376,10 @@ export default function StudioBoard({
   // Everything below works on the current page; only its widgets mount, so
   // widgets on other pages don't poll their services.
   const board = useMemo(() => pageBoard(wholeBoard, currentPage), [wholeBoard, currentPage]);
+  // The page's own background, or the dashboard's (Appearance).
+  const cardTheme = useCardTheme();
+  const dashboardPageBackground = readLook({ background: settings?.studioTheme?.pageBackground }).background;
+  const pageBackground = pages.find((page) => page.id === currentPage)?.background ?? dashboardPageBackground;
   const renderedNativeData = renderSnapshot ? renderSnapshot.data : nativePairMatches ? nativeData : EMPTY_NATIVE;
   const nativeUnavailable = !envelope || nativeContentStale;
   const controlsDisabled = saving || nativeUnavailable || accessLoading;
@@ -1130,6 +1137,7 @@ export default function StudioBoard({
       if (commitWhole(movePage(wholeRef.current, id, index))) showToast("Page moved", true);
     },
     icon: (page) => setModal({ type: "pageIcon", page }),
+    background: (page) => setModal({ type: "pageBackground", page }),
     // Copies every widget on the page as real widgets (administrators only),
     // saved at once like any content change.
     duplicate: isAdmin
@@ -1279,13 +1287,19 @@ export default function StudioBoard({
     discardArrangement: "Discard arrangement?",
     deletePage: modal?.page ? `Delete “${modal.page.name}”?` : "Delete page?",
     pageIcon: modal?.page ? `${modal.page.name}: icon` : "Page icon",
+    pageBackground: modal?.page ? `${modal.page.name}: background` : "Page background",
     pageLink: "Link to page",
     shortcuts: "Keyboard shortcuts",
     moveHere: "Move widgets here",
   };
 
   return (
-    <main className={`studio-app${editing ? " studio-edit-mode" : ""}`} aria-busy={saving || refreshing || undefined}>
+    <main
+      className={`studio-app${editing ? " studio-edit-mode" : ""}`}
+      data-glass={(pageBackground && settings?.studioTheme?.glass) || undefined}
+      aria-busy={saving || refreshing || undefined}
+    >
+      {pageBackground && <CardBackground className="studio-page-bg" background={pageBackground} tokens={cardTheme} />}
       {/* Without a title of its own in settings.yaml, the browser tab shows the
           dashboard's name, as the top bar does. */}
       {!settings?.title && access?.dashboard?.name && (
@@ -1356,7 +1370,11 @@ export default function StudioBoard({
       {editing && (
         <div className="studio-board-toolbar">
           {isAdmin && (
-            <button className="studio-button studio-quiet" disabled={controlsDisabled} onClick={() => openEditor("picker")}>
+            <button
+              className="studio-button studio-quiet"
+              disabled={controlsDisabled}
+              onClick={() => openEditor("picker")}
+            >
               <StudioIcon name="plus" size={16} />
               Widgets
             </button>
@@ -1426,7 +1444,11 @@ export default function StudioBoard({
             <StudioIcon name="keyboard" size={17} />
           </button>
           {dirty && (
-            <button className="studio-button studio-primary" disabled={controlsDisabled} onClick={() => saveArrangement(false)}>
+            <button
+              className="studio-button studio-primary"
+              disabled={controlsDisabled}
+              onClick={() => saveArrangement(false)}
+            >
               Save arrangement
             </button>
           )}
@@ -1438,7 +1460,11 @@ export default function StudioBoard({
               onClose={() => setPageMenu(null)}
               items={pages
                 .filter((page) => page.id !== currentPage)
-                .map((page) => ({ id: page.id, label: page.name, onSelect: () => moveUnitsToPage(movableSelection, page.id) }))}
+                .map((page) => ({
+                  id: page.id,
+                  label: page.name,
+                  onSelect: () => moveUnitsToPage(movableSelection, page.id),
+                }))}
             />
           )}
         </div>
@@ -1731,10 +1757,25 @@ export default function StudioBoard({
                   }}
                   onClose={closeModal}
                 />
+              ) : modal.type === "pageBackground" ? (
+                <PageBackgroundEditor
+                  page={modal.page}
+                  dashboardBackground={dashboardPageBackground}
+                  tokens={cardTheme}
+                  onApply={(background) => {
+                    if (commitWhole(updatePage(wholeRef.current, modal.page.id, { background }))) dismissEditor();
+                  }}
+                  onClose={closeModal}
+                />
               ) : modal.type === "pageLink" ? (
                 <div className="studio-dialog-body">
                   <p className="studio-note">Copying isn’t available here. Select the address and copy it yourself.</p>
-                  <input className="studio-link-field" readOnly value={modal.url} onFocus={(event) => event.target.select()} />
+                  <input
+                    className="studio-link-field"
+                    readOnly
+                    value={modal.url}
+                    onFocus={(event) => event.target.select()}
+                  />
                 </div>
               ) : modal.type === "moveHere" ? (
                 <MoveHereDialog

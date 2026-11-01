@@ -10,6 +10,7 @@ import {
   widgetFields,
 } from "./card-look";
 import { COLUMNS, GAP, ROW_HEIGHT } from "./geometry.mjs";
+import CardBackground, { backgroundSource } from "./card-background";
 import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
 import { REFRESH_MS } from "./look.mjs";
@@ -48,9 +49,11 @@ export function useCardPresentation(panel, data, onEdit) {
     }),
     [panel, look, behaviour, onEdit],
   );
+  const pictured = (look.fill === "picture" || look.fill === "pattern") && Boolean(backgroundSource(look.background, theme));
+  const backdrop = pictured ? <CardBackground background={look.background} tokens={theme} /> : null;
   const attributes = {
     "data-layout": look.layout,
-    "data-fill": colours ? look.fill : look.fill === "tint" || look.fill === "solid" ? "plain" : look.fill,
+    "data-fill": colours || pictured ? look.fill : "plain",
     "data-edge": look.edge,
     "data-corners": look.corners,
     "data-numbers": look.numbers,
@@ -58,12 +61,12 @@ export function useCardPresentation(panel, data, onEdit) {
     "data-hero": look.heroSize,
   };
   const colourStyle = colours ? { "--card-fill": colours.fill, "--card-ink": colours.ink, "--card-muted": colours.muted } : {};
-  return { look, behaviour, colours, card, attributes, colourStyle };
+  return { look, behaviour, colours, card, attributes, colourStyle, backdrop };
 }
 
 // A card on its own, outside the board: the widget dialog's live preview.
 export function CardPreview({ panel, data, renderNative: RenderNative = NativePanel }) {
-  const { card, attributes, colourStyle } = useCardPresentation(panel, data, undefined);
+  const { card, attributes, colourStyle, backdrop } = useCardPresentation(panel, data, undefined);
   // Drawn at the widget's own size on a typical 1200 px wide board.
   const rect = panel.rect || { w: 6, h: 4 };
   const column = (1200 - (COLUMNS - 1) * GAP) / COLUMNS;
@@ -80,6 +83,7 @@ export function CardPreview({ panel, data, renderNative: RenderNative = NativePa
       {...attributes}
     >
       <div className="studio-panel-slide">
+        {backdrop}
         <div className="studio-native-content" inert>
           <CardLookContext.Provider value={{ ...card, reportFields: undefined }}>
             <RenderNative panel={panel} data={data} />
@@ -118,7 +122,7 @@ export default function PanelHost({
 }) {
   const nativeContent = useRef(null);
   const slide = useRef(null);
-  const { card, attributes, colourStyle } = useCardPresentation(panel, data, canEdit ? onEdit : undefined);
+  const { card, attributes, colourStyle, backdrop } = useCardPresentation(panel, data, canEdit ? onEdit : undefined);
   const previousPresentation = useRef(null);
   const slideAnimation = useRef(null);
   const playback = controller?.();
@@ -317,6 +321,7 @@ export default function PanelHost({
           transition: dragOffset ? "none" : undefined,
         }}
       >
+        {backdrop}
         {/* The card draws its own logo and name. While editing, a small bar
             on top holds selection, move and edit. */}
         {!stack && editing && (
