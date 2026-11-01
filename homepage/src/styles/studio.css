@@ -3084,3 +3084,105 @@ a.studio-card-identity:hover .studio-card-name strong {
   width: 30px;
   height: 30px;
 }
+
+/* ---------- Widget dialog: preview, look, arranged values ---------- */
+.studio-look-editor {
+  display: contents;
+}
+.studio-look-editor .studio-segmented {
+  flex-wrap: wrap;
+}
+.studio-look-editor .studio-segmented > button {
+  min-width: 3.25rem;
+  padding: 4px 10px;
+}
+.studio-row-dependent {
+  padding-left: 20px;
+  background: color-mix(in srgb, var(--studio-line) 18%, transparent);
+}
+.studio-row-dependent > * + * {
+  border-top: 1px solid var(--studio-line);
+}
+.studio-colour-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.studio-colour-input {
+  width: 40px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--studio-line);
+  border-radius: 8px;
+  background: none;
+}
+.studio-look-preview {
+  position: sticky;
+  top: -1px;
+  z-index: 2;
+  display: grid;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 10px 0 12px;
+  background: var(--studio-surface);
+}
+.studio-look-preview-label {
+  color: var(--studio-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.studio-card-preview.studio-panel {
+  position: relative;
+  inset: auto;
+  justify-self: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+.studio-value-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.studio-value-list > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 4px 12px;
+}
+.studio-value-list > li + li {
+  border-top: 1px solid var(--studio-line);
+}
+.studio-value-order {
+  display: flex;
+  flex-direction: column;
+}
+.studio-value-order .studio-icon-button {
+  width: 28px;
+  height: 20px;
+}
+.studio-value-list input,
+.studio-value-list select {
+  min-height: 36px;
+  border: 0;
+  background: transparent;
+  color: var(--studio-text);
+  font: inherit;
+}
+.studio-value-list input {
+  min-width: 0;
+}
+@media (max-width: 680px) {
+  .studio-value-list > li {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .studio-value-list > li > select:last-child {
+    grid-column: 2 / -1;
+  }
+}

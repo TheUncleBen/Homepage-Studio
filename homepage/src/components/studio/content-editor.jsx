@@ -1,12 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 
 import { studioRequest } from "./api.mjs";
+import { resolvedBehaviour, resolvedLook, widgetFields } from "./card-look";
 import ConfigForm, { LINK_FIELDS, SERVICE_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
+import { moveToPage, pageOf, pagesOf } from "./geometry.mjs";
 import StudioIcon from "./icons";
+import LookEditor from "./look-editor";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
 import { ActionRow, Group, Row } from "./ui";
+
+import { SettingsContext } from "utils/contexts/settings";
 
 // A Custom API widget renders only its mappings, so without any it shows an
 // empty native panel. This is valid YAML, so the editor hints instead of
@@ -180,8 +185,35 @@ export default function ContentEditor({
   onReload,
   onDuplicate,
   pageId,
+  wholeBoard,
+  renderPreview,
 }) {
   const kind = panel?.kind || entry.kind;
+  // The widget's own look and behaviour live on the board, not in its YAML.
+  const settings = useContext(SettingsContext)?.settings;
+  const boardPanel = panel ? wholeBoard?.panels.find((item) => item.id === panel.id) : null;
+  const stacked = Boolean(boardPanel && wholeBoard?.stacks.some((stack) => stack.panelIds.includes(boardPanel.id)));
+  const initialPage = boardPanel ? pageOf(wholeBoard, boardPanel) : null;
+  const [look, setLook] = useState(boardPanel?.look);
+  const [behaviour, setBehaviour] = useState(boardPanel?.behaviour);
+  const [page, setPage] = useState(initialPage);
+  const lookChanged =
+    Boolean(boardPanel) &&
+    (JSON.stringify(look ?? null) !== JSON.stringify(boardPanel.look ?? null) ||
+      JSON.stringify(behaviour ?? null) !== JSON.stringify(boardPanel.behaviour ?? null) ||
+      page !== initialPage);
+  const nextBoard = () => {
+    let next = {
+      ...wholeBoard,
+      panels: wholeBoard.panels.map((item) => {
+        if (item.id !== boardPanel.id) return item;
+        const { look: _look, behaviour: _behaviour, ...rest } = item;
+        return { ...rest, ...(look ? { look } : {}), ...(behaviour ? { behaviour } : {}) };
+      }),
+    };
+    if (page !== initialPage) next = moveToPage(next, boardPanel.id, page);
+    return next;
+  };
   const source = panel ? sourceForPanel(panel, state) : null;
   const parent = state.services?.find((service) => service.id === source?.serviceId);
   const selectedEntry =
@@ -223,7 +255,8 @@ export default function ContentEditor({
       name !== initialName ||
       group !== initialGroup ||
       serviceId !== initialServiceId ||
-      editorDraftChanged(initial, draft),
+      editorDraftChanged(initial, draft) ||
+      lookChanged,
     pending,
   );
   if (panel && !source)
@@ -247,6 +280,18 @@ export default function ContentEditor({
     setError(null);
     setPending(true);
     try {
+      const contentChanged =
+        action !== "update" ||
+        name !== initialName ||
+        group !== initialGroup ||
+        serviceId !== initialServiceId ||
+        editorDraftChanged(initial, draft);
+      // A look-only change saves the arrangement; with content it travels
+      // along so both commit together.
+      if (!contentChanged && lookChanged) {
+        await onSaved(await studioRequest("/studio/api/board", { revision: state.revision, board: nextBoard() }));
+        return;
+      }
       const body = {
         revision: state.revision,
         action,
@@ -255,6 +300,7 @@ export default function ContentEditor({
       };
       // New content lands on the page being edited.
       if (pageId && !source) body.pageId = pageId;
+      if (lookChanged && action === "update") body.board = nextBoard();
       if (kind === "service" || kind === "bookmark") {
         body.name = name;
         body.group = changedGroup;
@@ -284,6 +330,17 @@ export default function ContentEditor({
     >
       <div className="studio-dialog-body">
         <ErrorMessage error={error} onReload={onReload} />
+        {boardPanel && renderPreview && (
+          <div className="studio-look-preview" aria-live="off">
+            <span className="studio-look-preview-label">Preview</span>
+            {renderPreview({
+              ...boardPanel,
+              look,
+              behaviour,
+              title: kind === "service" || kind === "bookmark" ? name || boardPanel.title : boardPanel.title,
+            })}
+          </div>
+        )}
         <fieldset disabled={pending} style={editorFieldsetStyle}>
           {((kind === "serviceWidget" && !source) || requiresName) && (
             <Group>
@@ -373,6 +430,21 @@ export default function ContentEditor({
                 YAML. You can still save it now.
               </p>
             )}
+          {boardPanel && (
+            <LookEditor
+              kind={kind}
+              look={look}
+              behaviour={behaviour}
+              inheritedLook={resolvedLook(settings, null)}
+              inheritedBehaviour={resolvedBehaviour(settings, null)}
+              fields={widgetFields.get(boardPanel.id) || []}
+              pages={pagesOf(wholeBoard)}
+              pageId={page}
+              onLook={setLook}
+              onBehaviour={setBehaviour}
+              onPage={stacked ? undefined : setPage}
+            />
+          )}
           {source && (
             <Group className="studio-item-actions">
               <ActionRow

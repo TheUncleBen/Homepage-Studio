@@ -12,6 +12,9 @@ export const CardLookContext = createContext(null);
 // One value's place inside a card: hero, below or hidden, with its label and
 // number style. Set by Container for each Block.
 export const ValueSlotContext = createContext(null);
+// The values each widget last rendered, by panel id, so the widget dialog can
+// offer them for arranging without asking the integration again.
+export const widgetFields = new Map();
 
 // The dashboard's widget defaults: look in settings.yaml studioTheme.card,
 // behaviour in studioDefaults. A widget's own sparse keys win (Rule 2).

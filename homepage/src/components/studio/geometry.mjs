@@ -6,6 +6,7 @@ export const GAP = 12;
 // Narrow screens: tablets use 16 columns (cards snap to halves), phones 8.
 export const TABLET_COLUMNS = 16;
 export const PHONE_COLUMNS = 8;
+export const PHONE_WIDTH = 560;
 
 // Grid minima protect readable content space; overflowing native internals remain
 // scrollable, never scaled down. These are content-class limits, not a claim
@@ -286,7 +287,7 @@ function projectColumns(board, columns) {
 }
 
 export function projectBoard(board, width) {
-  return projectColumns(board, width < 560 ? PHONE_COLUMNS : width < 940 ? TABLET_COLUMNS : COLUMNS);
+  return projectColumns(board, width < PHONE_WIDTH ? PHONE_COLUMNS : width < 940 ? TABLET_COLUMNS : COLUMNS);
 }
 
 export function pixelRect(rect, width, columns = COLUMNS) {
@@ -436,7 +437,7 @@ export function freePageName(board, base = "New page") {
   for (let index = 2; ; index += 1) if (!names.has(`${base} ${index}`.toLocaleLowerCase())) return `${base} ${index}`;
 }
 
-const pagesOf = (board) => (board.pages?.length ? board.pages : [{ id: firstPageId(board), name: "Home" }]);
+export const pagesOf = (board) => (board.pages?.length ? board.pages : [{ id: firstPageId(board), name: "Home" }]);
 
 export function addPage(board, name = freePageName(board), after) {
   const pages = pagesOf(board);

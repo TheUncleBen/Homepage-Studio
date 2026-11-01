@@ -1,6 +1,15 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
-import { CardLookContext, fillColours, resolvedBehaviour, resolvedLook, useCardTheme, useLogoColour } from "./card-look";
+import {
+  CardLookContext,
+  fillColours,
+  resolvedBehaviour,
+  resolvedLook,
+  useCardTheme,
+  useLogoColour,
+  widgetFields,
+} from "./card-look";
+import { COLUMNS, GAP, ROW_HEIGHT } from "./geometry.mjs";
 import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
 import { REFRESH_MS } from "./look.mjs";
@@ -10,6 +19,76 @@ import NativePanel from "./native-panel";
 import { SettingsContext } from "utils/contexts/settings";
 
 const iconOf = (resolved) => resolved?.service?.icon || resolved?.bookmark?.icon || null;
+
+// How a card looks: built-in, then the dashboard's defaults, then its own.
+// Shared by the board and the widget dialog's live preview.
+export function useCardPresentation(panel, data, onEdit) {
+  const settings = useContext(SettingsContext)?.settings;
+  const look = useMemo(() => resolvedLook(settings, panel), [settings, panel]);
+  const behaviour = useMemo(() => resolvedBehaviour(settings, panel), [settings, panel]);
+  const resolved = useMemo(() => resolveNativePanel(panel, data), [panel, data]);
+  const theme = useCardTheme();
+  const wantsLogo = (look.fill === "tint" || look.fill === "solid") && look.colour === "logo";
+  const logoColour = useLogoColour(iconOf(resolved), wantsLogo);
+  const colours = useMemo(() => fillColours(look, logoColour, theme), [look, logoColour, theme]);
+  const card = useMemo(
+    () => ({
+      id: panel.id,
+      layout: look.layout,
+      values: look.values,
+      header: look.header,
+      description: look.description,
+      status: look.status,
+      statusCheck: behaviour.status,
+      errors: behaviour.errors,
+      target: behaviour.target,
+      refreshMs: REFRESH_MS[behaviour.refresh],
+      onFix: onEdit ? () => onEdit(panel) : undefined,
+      reportFields: (fields) => widgetFields.set(panel.id, fields),
+    }),
+    [panel, look, behaviour, onEdit],
+  );
+  const attributes = {
+    "data-layout": look.layout,
+    "data-fill": colours ? look.fill : look.fill === "tint" || look.fill === "solid" ? "plain" : look.fill,
+    "data-edge": look.edge,
+    "data-corners": look.corners,
+    "data-numbers": look.numbers,
+    "data-align": look.align,
+    "data-hero": look.heroSize,
+  };
+  const colourStyle = colours ? { "--card-fill": colours.fill, "--card-ink": colours.ink, "--card-muted": colours.muted } : {};
+  return { look, behaviour, colours, card, attributes, colourStyle };
+}
+
+// A card on its own, outside the board: the widget dialog's live preview.
+export function CardPreview({ panel, data, renderNative: RenderNative = NativePanel }) {
+  const { card, attributes, colourStyle } = useCardPresentation(panel, data, undefined);
+  // Drawn at the widget's own size on a typical 1200 px wide board.
+  const rect = panel.rect || { w: 6, h: 4 };
+  const column = (1200 - (COLUMNS - 1) * GAP) / COLUMNS;
+  const size = {
+    width: `min(100%, ${Math.round(rect.w * column + (rect.w - 1) * GAP)}px)`,
+    height: Math.min(rect.h * ROW_HEIGHT + (rect.h - 1) * GAP, 280),
+  };
+  return (
+    <section
+      className="studio-panel studio-card-preview"
+      data-panel-kind={panel.kind}
+      aria-label={`Preview of ${panel.title}`}
+      style={{ ...colourStyle, ...size }}
+      {...attributes}
+    >
+      <div className="studio-panel-slide">
+        <div className="studio-native-content" inert>
+          <CardLookContext.Provider value={{ ...card, reportFields: undefined }}>
+            <RenderNative panel={panel} data={data} />
+          </CardLookContext.Provider>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function PanelHost({
   panel,
@@ -39,34 +118,7 @@ export default function PanelHost({
 }) {
   const nativeContent = useRef(null);
   const slide = useRef(null);
-  // How this widget looks: built-in, then the dashboard's defaults, then its own.
-  const settings = useContext(SettingsContext)?.settings;
-  const look = useMemo(() => resolvedLook(settings, panel), [settings, panel]);
-  const behaviour = useMemo(() => resolvedBehaviour(settings, panel), [settings, panel]);
-  const resolved = useMemo(() => resolveNativePanel(panel, data), [panel, data]);
-  const theme = useCardTheme();
-  const wantsLogo = (look.fill === "tint" || look.fill === "solid") && look.colour === "logo";
-  const logoColour = useLogoColour(iconOf(resolved), wantsLogo);
-  const colours = useMemo(() => fillColours(look, logoColour, theme), [look, logoColour, theme]);
-  const fix = canEdit && onEdit ? () => onEdit(panel) : undefined;
-  const card = useMemo(
-    () => ({
-      id: panel.id,
-      layout: look.layout,
-      values: look.values,
-      header: look.header,
-      description: look.description,
-      status: look.status,
-      statusCheck: behaviour.status,
-      errors: behaviour.errors,
-      target: behaviour.target,
-      refreshMs: REFRESH_MS[behaviour.refresh],
-      onFix: fix,
-    }),
-    // onFix changes identity every render; its inputs are listed instead.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [panel.id, look, behaviour, canEdit, onEdit],
-  );
+  const { card, attributes, colourStyle } = useCardPresentation(panel, data, canEdit ? onEdit : undefined);
   const previousPresentation = useRef(null);
   const slideAnimation = useRef(null);
   const playback = controller?.();
@@ -157,7 +209,7 @@ export default function PanelHost({
   const style = {
     ...rect,
     "--studio-slide-duration": `${duration}ms`,
-    ...(colours ? { "--card-fill": colours.fill, "--card-ink": colours.ink, "--card-muted": colours.muted } : {}),
+    ...colourStyle,
   };
   const memberIndex = stack?.panelIds.indexOf(panel.id) ?? 0;
   const snapshot = playback?.getSnapshot();
@@ -228,13 +280,7 @@ export default function PanelHost({
       className={`studio-panel${stack ? " studio-stacked-panel" : ""}${selected ? " studio-selected" : ""}${moving ? " studio-moving" : ""}${!presented ? " studio-inactive" : ""}${!active ? " studio-noninteractive" : ""}`}
       data-panel-id={panel.id}
       data-panel-kind={panel.kind}
-      data-layout={look.layout}
-      data-fill={colours ? look.fill : look.fill === "tint" || look.fill === "solid" ? "plain" : look.fill}
-      data-edge={look.edge}
-      data-corners={look.corners}
-      data-numbers={look.numbers}
-      data-align={look.align}
-      data-hero={look.heroSize}
+      {...attributes}
       data-stack-id={stack?.id}
       aria-label={panel.title}
       aria-hidden={!active || undefined}

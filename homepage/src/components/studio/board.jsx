@@ -30,6 +30,7 @@ import {
   moveProjectedUnit,
   moveUnit,
   panelMinimum,
+  PHONE_WIDTH,
   pixelRect,
   projectBoard,
   stackBoard,
@@ -39,7 +40,8 @@ import {
 import StudioIcon from "./icons";
 import Menu from "./menu";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
-import PanelHost from "./panel-host";
+import { resolvedBehaviour } from "./card-look";
+import PanelHost, { CardPreview } from "./panel-host";
 import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
 import StackEditor, { PositionEditor } from "./stack-editor";
 import StackShell from "./stack-shell";
@@ -200,6 +202,22 @@ function ShortcutsSheet({ editing, pages }) {
       </dl>
     </div>
   );
+}
+
+// Widgets a phone leaves out (behaviour "On phones: Hide"), dropped from the
+// board before it is projected. A stack keeps its other members.
+export function withoutPhoneHidden(board, settings) {
+  const hidden = new Set(
+    board.panels.filter((panel) => resolvedBehaviour(settings, panel).phones === "hide").map((panel) => panel.id),
+  );
+  if (!hidden.size) return board;
+  return {
+    ...board,
+    panels: board.panels.filter((panel) => !hidden.has(panel.id)),
+    stacks: board.stacks
+      .map((stack) => ({ ...stack, panelIds: stack.panelIds.filter((id) => !hidden.has(id)) }))
+      .filter((stack) => stack.panelIds.length),
+  };
 }
 
 export default function StudioBoard({
@@ -389,7 +407,12 @@ export default function StudioBoard({
     });
     return () => element.removeEventListener("touchmove", preserveManipulation);
   }, []);
-  const projection = useMemo(() => projectBoard(board, width), [board, width]);
+  // On a phone, the live dashboard leaves out widgets set to hide on phones.
+  // The editor keeps them so they can still be arranged.
+  const projection = useMemo(
+    () => projectBoard(!editing && width < PHONE_WIDTH ? withoutPhoneHidden(board, settings) : board, width),
+    [board, width, editing, settings],
+  );
   const geometry = useMemo(
     () => new Map(projection.units.map((unit) => [unit.id, pixelRect(unit.rect, width, projection.columns)])),
     [projection, width],
@@ -1800,6 +1823,8 @@ export default function StudioBoard({
                   panel={modal.panel}
                   entry={modal.entry}
                   pageId={currentPage}
+                  wholeBoard={wholeBoard}
+                  renderPreview={(panel) => <CardPreview panel={panel} data={renderedNativeData} />}
                   onSaved={savedContent}
                   onCancel={closeModal}
                   onReload={reloadEditor}
