@@ -27,9 +27,9 @@ export function previewIcon(value) {
     const name = icon.replace(`${prefix}-`, '').replace('.svg', '').replace(/-#[a-f0-9]{6}$/i, '');
     return NAME.test(name) ? { src: `${ICON_SETS[prefix]}${name}.svg`, mask: true } : null;
   }
-  const extension = icon.endsWith('.svg') ? 'svg' : icon.endsWith('.webp') ? 'webp' : 'png';
+  // Built-in logos: the offline copies served with the app.
   const name = icon.replace(/\.(?:svg|webp|png)$/, '');
-  return NAME.test(name) ? { src: `${ICON_HOST}/gh/homarr-labs/dashboard-icons/${extension}/${name}.${extension}`, mask: false } : null;
+  return NAME.test(name) ? { src: `/studio-icons/webp/${encodeURIComponent(name)}.webp`, mask: false } : null;
 }
 
 const TOKENS = ['bg', 'surface', 'raised', 'text', 'muted', 'line', 'accent', 'accent-soft'];

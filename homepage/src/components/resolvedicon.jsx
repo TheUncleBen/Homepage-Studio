@@ -1,9 +1,9 @@
 import Image from "next/image";
-import { useContext } from "react";
+import { useContext, useState } from "react";
 
 import { useCardTheme } from "components/studio/card-look";
 import { dashboardPath } from "components/studio/dashboard-path.mjs";
-import { builtInIcon, builtInIconUrl } from "components/studio/icon-source.mjs";
+import { builtInIcon, builtInIconCdnUrl, builtInIconUrl } from "components/studio/icon-source.mjs";
 import { SettingsContext } from "utils/contexts/settings";
 import { ThemeContext } from "utils/contexts/theme";
 
@@ -104,9 +104,16 @@ export default function ResolvedIcon({ icon, width = 32, height = 32, alt = "log
   // fallback to dashboard-icons (Studio's built-in logos)
   const builtIn = builtInIcon(icon);
   if (!builtIn) return null;
+  return <BuiltInLogo key={icon} builtIn={builtIn} dark={mode === "dark"} width={width} height={height} alt={alt} />;
+}
+
+// The offline copy, or the project's CDN for a name newer than the pinned set.
+function BuiltInLogo({ builtIn, dark, width, height, alt }) {
+  const [offline, setOffline] = useState(true);
   return (
     <Image
-      src={builtInIconUrl(builtIn.name, { dark: mode === "dark", format: builtIn.format })}
+      src={offline ? builtInIconUrl(builtIn.name, { dark }) : builtInIconCdnUrl(builtIn.name, builtIn)}
+      onError={offline ? () => setOffline(false) : undefined}
       width={width}
       height={height}
       style={{

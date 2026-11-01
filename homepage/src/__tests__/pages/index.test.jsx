@@ -261,9 +261,7 @@ describe("Studio main-page composition", () => {
   it("leaves the manifest out when Install as app is off, and loads a logo as the tab icon", async () => {
     await mount({ title: "Family", favicon: "proxmox.webp", pwa: false });
     expect(document.querySelector('link[rel="manifest"]')).toBeNull();
-    expect(document.querySelector('link[rel="icon"]').getAttribute("href")).toBe(
-      "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/proxmox.webp",
-    );
+    expect(document.querySelector('link[rel="icon"]').getAttribute("href")).toBe("/studio-icons/webp/proxmox.webp");
   });
 
   it("starts search inert and rejects shortcuts until the board reports readiness", async () => {

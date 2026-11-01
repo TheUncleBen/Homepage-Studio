@@ -2,12 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dashboardPreview, previewIcon } from './dashboard-preview.mjs';
 
-test('preview icons resolve the names Homepage loads from its icon CDN, and nothing else', () => {
+test('preview icons resolve built-in logos to the offline copies and other sets to their CDN, and nothing else', () => {
   const cdn = 'https://cdn.jsdelivr.net';
-  assert.deepEqual(previewIcon('sonarr.png'), { src: `${cdn}/gh/homarr-labs/dashboard-icons/png/sonarr.png`, mask: false });
-  assert.deepEqual(previewIcon('sonarr'), { src: `${cdn}/gh/homarr-labs/dashboard-icons/png/sonarr.png`, mask: false });
-  assert.deepEqual(previewIcon('jellyfin.svg'), { src: `${cdn}/gh/homarr-labs/dashboard-icons/svg/jellyfin.svg`, mask: false });
-  assert.deepEqual(previewIcon('plex.webp'), { src: `${cdn}/gh/homarr-labs/dashboard-icons/webp/plex.webp`, mask: false });
+  for (const value of ['sonarr.png', 'sonarr', 'sonarr.svg', 'sonarr.webp']) assert.deepEqual(previewIcon(value), { src: '/studio-icons/webp/sonarr.webp', mask: false }, value);
   assert.deepEqual(previewIcon('sh-immich.svg'), { src: `${cdn}/gh/selfhst/icons@main/svg/immich.svg`, mask: false });
   assert.deepEqual(previewIcon('mdi-home-#ff0000'), { src: `${cdn}/npm/@mdi/svg@latest/svg/home.svg`, mask: true });
   assert.deepEqual(previewIcon('si-github'), { src: `${cdn}/npm/simple-icons@latest/icons/github.svg`, mask: true });
@@ -42,7 +39,7 @@ test('a preview holds the first page\'s layout, the look and each tile name and 
   assert.equal(preview.rows, 5);
   assert.deepEqual(preview.units.map(unit => [unit.title, unit.x, unit.y, unit.count, unit.icon?.src ?? null]), [
     ['Docs', 0, 0, 1, null],
-    ['Sonarr', 4, 0, 1, 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sonarr.png'],
+    ['Sonarr', 4, 0, 1, '/studio-icons/webp/sonarr.webp'],
     ['Clock', 0, 3, 2, null],
   ]);
   const following = dashboardPreview({ ...state, settingsConfig: { studioTheme: { mode: 'system' } } }, null);

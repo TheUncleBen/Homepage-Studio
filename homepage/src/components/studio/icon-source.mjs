@@ -3,7 +3,12 @@
 // scripts/icons/build-icon-index.py.
 import { LIGHT_VARIANTS } from "./icon-variants.mjs";
 
-export const BUILT_IN_ICON_BASE = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons";
+// Offline copies (owner choice, 1 Nov 2026): every logo in the pinned set, as
+// 128 px WebP served with the app (scripts/icons/build-icon-files.py), so
+// logos show without reaching a CDN. A name outside the pinned set falls back
+// to the project's CDN (resolvedicon.jsx).
+export const BUILT_IN_ICON_BASE = "/studio-icons/webp";
+export const BUILT_IN_ICON_CDN = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons";
 
 // Icon values that are not built-in logo names: icon sets with a prefix,
 // addresses, and uploads.
@@ -18,11 +23,17 @@ export function builtInIcon(icon) {
   return match ? { name: match[1], format: match[2] || "png" } : null;
 }
 
-// A built-in logo's address. On dark themes the logo's light version is used
-// where one exists.
-export function builtInIconUrl(name, { dark = false, format = "webp" } = {}) {
+// A built-in logo's address: always the offline WebP copy, whatever format
+// the value names. On dark themes the logo's light version is used where one
+// exists.
+export function builtInIconUrl(name, { dark = false } = {}) {
   const chosen = (dark && LIGHT_VARIANTS[name]) || name;
-  return `${BUILT_IN_ICON_BASE}/${format}/${encodeURIComponent(chosen)}.${format}`;
+  return `${BUILT_IN_ICON_BASE}/${encodeURIComponent(chosen)}.webp`;
+}
+
+// The same logo from the project's CDN, for names newer than the pinned set.
+export function builtInIconCdnUrl(name, { format = "webp" } = {}) {
+  return `${BUILT_IN_ICON_CDN}/${format}/${encodeURIComponent(name)}.${format}`;
 }
 
 // How the chooser stores a built-in logo.
@@ -46,5 +57,5 @@ export function iconHref(icon, scope = (path) => path) {
   if (ICON_SETS[prefix])
     return `${ICON_SETS[prefix]}${encodeURIComponent(icon.slice(prefix.length + 1).replace(/\.svg$/, ""))}.svg`;
   const builtIn = builtInIcon(icon);
-  return builtIn ? builtInIconUrl(builtIn.name, { format: builtIn.format }) : null;
+  return builtIn ? builtInIconUrl(builtIn.name) : null;
 }

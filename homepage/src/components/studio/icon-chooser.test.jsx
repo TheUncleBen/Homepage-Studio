@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { describeIcon, IconChooser, IconField, searchIcons } from "./icon-chooser";
-import { builtInIcon, builtInIconUrl, builtInIconValue } from "./icon-source.mjs";
+import { builtInIcon, builtInIconCdnUrl, builtInIconUrl, builtInIconValue, iconHref } from "./icon-source.mjs";
 
 vi.mock("components/resolvedicon", () => ({ default: ({ icon }) => <i data-icon={icon} /> }));
 
@@ -40,6 +40,15 @@ describe("icon values", () => {
     expect(builtInIconUrl("dagster", { dark: true })).toMatch(/\/webp\/dagster-light\.webp$/);
     expect(builtInIconUrl("dagster")).toMatch(/\/webp\/dagster\.webp$/);
     expect(builtInIconUrl("gitea", { dark: true })).toMatch(/\/webp\/gitea\.webp$/);
+  });
+
+  it("loads built-in logos from the offline copies, whatever format the value names", () => {
+    expect(builtInIconUrl("sonarr")).toBe("/studio-icons/webp/sonarr.webp");
+    expect(iconHref("sonarr.png")).toBe("/studio-icons/webp/sonarr.webp");
+    expect(iconHref("sonarr.svg")).toBe("/studio-icons/webp/sonarr.webp");
+    expect(builtInIconCdnUrl("newapp", { format: "svg" })).toBe(
+      "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/newapp.svg",
+    );
   });
 
   it("ranks exact and leading matches first and searches aliases", () => {

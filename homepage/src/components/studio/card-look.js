@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 import { appearanceTokens, contrastRatio } from "./appearance.mjs";
+import { builtInIcon, builtInIconUrl } from "./icon-source.mjs";
 import { exactColour, fitColour, inheritedBehaviour, inheritedLook, readBehaviour, readLook } from "./look.mjs";
 import useSystemTheme from "./use-system-theme";
 
@@ -71,8 +72,8 @@ export function iconImageUrl(icon) {
     const name = icon.replace("sh-", "").replace(/\.(svg|png|webp)$/, "");
     return `https://cdn.jsdelivr.net/gh/selfhst/icons@main/${extension}/${name}.${extension}`;
   }
-  const name = icon.replace(/\.(svg|png|webp)$/, "");
-  return `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/${extension}/${name}.${extension}`;
+  const builtIn = builtInIcon(icon);
+  return builtIn ? builtInIconUrl(builtIn.name) : null;
 }
 
 const logoColours = new Map();

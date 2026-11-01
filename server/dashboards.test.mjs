@@ -42,6 +42,9 @@ test('the main dashboard gets an address once and keeps one; it is not served be
   const initial = await f.registry.initialize();
   assert.throws(() => resolveDashboardRoute(initial, '/'), error => error.code === 'DASHBOARD_NOT_FOUND');
   assert.throws(() => resolveDashboardRoute(initial, '/studio/edit'), error => error.code === 'DASHBOARD_NOT_FOUND');
+  // The offline logo copies are shared by every dashboard, like build assets.
+  assert.equal(resolveDashboardRoute(initial, '/studio-icons/webp/sonarr.webp').shared, true);
+  assert.throws(() => resolveDashboardRoute(initial, '/studio-icons/index.json'), error => error.code === 'DASHBOARD_NOT_FOUND');
   assert.throws(() => resolveDashboardRoute(initial, '/api/services'), error => error.code === 'DASHBOARD_NOT_FOUND');
   const update = async slug => f.registry.mutate({ action: 'update', revision: (await f.registry.read()).revision, id: 'default', name: 'Main dashboard', slug });
   await rejectsCode(update(''), 'INVALID_DASHBOARD_SLUG');
