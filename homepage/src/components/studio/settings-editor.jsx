@@ -195,6 +195,7 @@ export default function SettingsEditor({
   state,
   platform = null,
   logo = null,
+  name,
   onLogoChange,
   onSaved,
   onClose,
@@ -254,6 +255,7 @@ export default function SettingsEditor({
               settings={draft}
               platform={platform}
               logo={logo}
+              name={name}
               onLogoChange={onLogoChange}
               onChange={setDraft}
               onValidity={setAppearanceValid}

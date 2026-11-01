@@ -21,7 +21,7 @@ import { readAuthConfig } from './auth/config.mjs';
 import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
 import { createLogoStore } from './dashboard-logo.mjs';
 import { createImageLibrary, ImageError, imageUsage, MAX_IMAGES, validImageId } from './image-library.mjs';
-import { ConnectionError, createConnectionStore, MAX_CONNECTIONS, publicConnection, SECRET_FIELDS } from './connections.mjs';
+import { ConnectionError, createConnectionStore, MAX_CONNECTIONS, placeholder, publicConnection, SECRET_FIELDS } from './connections.mjs';
 const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'];
 import { createPersonalStore } from './personal.mjs';
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
@@ -717,6 +717,12 @@ function createDashboardHandlers(options = {}) {
       if (path === '/studio/api/connection-test' && req.method === 'POST') {
         const change = await readBody(req, 32 * 1024);
         if (!change || typeof change.widget !== 'object' || change.widget === null || Array.isArray(change.widget) || Object.keys(change).some(key => key !== 'widget')) throw Object.assign(new Error('Send the widget to test.'), { status: 400 });
+        // A saved key, username or password is only ever sent to its own
+        // connection's address, so a test can't carry it anywhere else.
+        for (const field of ['key', 'username', 'password']) {
+          const match = typeof change.widget[field] === 'string' && /^\{\{STUDIO_CONNECTION_([A-F0-9]{16})_[A-Z]+\}\}$/.exec(change.widget[field]);
+          if (match && change.widget.url !== placeholder(match[1], 'url')) return json(res, 200, { ok: false, kind: 'address', message: 'A saved key is only sent to its own connection’s address. Choose that connection for the address too.' });
+        }
         return json(res, 200, await rendererTest(req, dashboard, change.widget));
       }
       // Saved connections (server/connections.mjs). Administrators only, like

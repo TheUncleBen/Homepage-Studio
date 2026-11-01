@@ -348,6 +348,10 @@ A choice that matches the dashboard's default is not stored, so changing the
 default in **Dashboard settings → Widget defaults** changes every widget that
 didn't choose otherwise.
 
+**Status history**, under **Status** on a service tile or in **Show as** on
+an integration, shows a bar for each status check (about one a minute, the
+last hour) and the share of checks that were up over a range you choose.
+
 **Show** lists the values the widget showed last. Pick the hero, hide what you
 don't need, rename a value or change how its number reads. **Show as** draws
 the numbers as **Numbers**, a **Table**, a **Line**, **Area** or **Bar**

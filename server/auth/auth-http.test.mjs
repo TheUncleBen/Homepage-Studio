@@ -615,6 +615,12 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.equal((await post('/home/studio/api/connection-test', { widget: { type: 'sonarr', url: 'https://tv.example.org' } }, { cookie: member.cookie })).status, 403);
   assert.equal((await post('/home/studio/api/connection-test', { widget: { type: 'sonarr' }, extra: 1 }, { cookie: admin.cookie })).status, 400);
   assert.equal((await post('/home/studio/api/connection-test', { widget: [] }, { cookie: admin.cookie })).status, 400);
+  // A saved key goes only to its own connection's address (checked before
+  // any request is made, so no renderer is needed here).
+  const elsewhere = await post('/home/studio/api/connection-test', { widget: { type: 'sonarr', url: 'https://elsewhere.example.org', key: '{{STUDIO_CONNECTION_0123456789ABCDEF_KEY}}' } }, { cookie: admin.cookie });
+  assert.equal(elsewhere.status, 200, elsewhere.text);
+  assert.equal(elsewhere.json.ok, false);
+  assert.match(elsewhere.json.message, /only sent to its own connection/);
   const mineAdded = await post('/home/studio/api/my-connections', { action: 'add', name: 'Media server', url: 'https://media.example.org', key: 'personal-key' }, { cookie: admin.cookie });
   assert.equal(mineAdded.status, 200, mineAdded.text);
   assert.doesNotMatch(mineAdded.text, /personal-key/);

@@ -28,6 +28,7 @@ in older entries below are history only.
   trend, values can have warning and problem colours, and line, area and bar
   charts open full size. Studio collects the numbers once a minute, only for
   widgets that need them, and keeps them for 7, 30 or 90 days (30 by default).
+  **Status history** shows a bar for each status check and the uptime.
 - **Saved connections** keep a service's address and key once for any widget,
   per dashboard or *Just me*. Keys are write-only. They are stored in plain
   text in the state volume, so whole-deployment backups contain them.

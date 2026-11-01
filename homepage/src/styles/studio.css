@@ -3112,16 +3112,22 @@ a.studio-card-identity:hover .studio-card-name strong {
   margin: 0;
 }
 /* Status history: one bar per check, up or down. */
+/* One line, so it fits even a compact two-row tile. */
 .studio-status-history {
-  display: grid;
-  gap: 6px;
-  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  min-width: 0;
 }
 .studio-status-bars {
   display: flex;
+  flex: 1 1 auto;
   align-items: stretch;
   gap: 2px;
-  height: 20px;
+  min-width: 0;
+  height: 12px;
+  overflow: hidden;
 }
 .studio-status-bars > span {
   flex: 1 1 0;
@@ -3137,6 +3143,8 @@ a.studio-card-identity:hover .studio-card-name strong {
   background: var(--studio-status-problem, #e5604f);
 }
 .studio-status-uptime {
+  flex: none;
+  white-space: nowrap;
   color: var(--card-muted-text);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
@@ -3313,8 +3321,17 @@ a.studio-card-identity:hover .studio-card-name strong {
   .studio-edit-mode
     .studio-panel:not(.studio-stacked-panel):not(:hover):not(:focus-within):not(.studio-selected)
     > .studio-panel-slide
-    > .studio-panel-header {
+    > :is(.studio-panel-header, .studio-resize-handle) {
     opacity: 0;
+  }
+  /* The resize corner sits in the card's very corner, small, so it covers as
+     little of the widget (a search box's button, say) as it can. */
+  .studio-edit-mode .studio-resize-handle {
+    bottom: 0;
+    right: 0;
+    width: 26px;
+    height: 26px;
+    transition: opacity 120ms ease;
   }
 }
 

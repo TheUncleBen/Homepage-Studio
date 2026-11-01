@@ -8,7 +8,7 @@ import { patchFromDraft } from "./native-adapter.mjs";
 
 // For people who may arrange a dashboard but not read its settings: only the
 // display mode and Studio appearance, through the appearance endpoint.
-export default function AppearanceOnlyEditor({ appearance, logo, onLogoChange, onSaved, onClose, onReload }) {
+export default function AppearanceOnlyEditor({ appearance, logo, name, onLogoChange, onSaved, onClose, onReload }) {
   const original = appearance.settings || {};
   const [draft, setDraft] = useState(() => structuredClone(original));
   const [valid, setValid] = useState(true);
@@ -43,6 +43,7 @@ export default function AppearanceOnlyEditor({ appearance, logo, onLogoChange, o
             settings={draft}
             platform={appearance.platform}
             logo={logo}
+            name={name}
             onLogoChange={onLogoChange}
             onChange={setDraft}
             onValidity={setValid}

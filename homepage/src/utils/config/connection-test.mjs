@@ -41,6 +41,14 @@ export function connectionTestResult({ status, body, ms }) {
     for (const [pattern, kind, message] of TRANSPORT) if (pattern.test(codes)) return { ok: false, kind, message };
     return { ok: false, kind: "unreachable", message: "Studio couldn't reach that address." };
   }
+  // The proxy's own catch-all: the widget's handler couldn't read what came
+  // back (an answer in a shape it doesn't expect), not an error at the service.
+  if (status === 500 && error === "Unexpected error")
+    return {
+      ok: false,
+      kind: "format",
+      message: "The address answered, but not in the way this widget expects. Check the address and the app's version.",
+    };
   if (status < 400 && !error)
     return { ok: true, kind: "ok", message: `Connected in ${Math.max(1, Math.round(ms))} ms.` };
   if (status === 401) return { ok: false, kind: "key", message: "The service refused the key or login. Check them." };

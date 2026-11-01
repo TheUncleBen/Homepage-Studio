@@ -31,7 +31,8 @@ function platformDefaults(platform) {
 // Rule 2: a dashboard stores a row only while it differs from the platform
 // default; choosing the default's value removes the key. There is no
 // separate "Default" choice.
-export default function AppearanceEditor({ settings, platform, logo, onLogoChange, onChange, onValidity }) {
+// name: the dashboard's name, as its top bar shows it.
+export default function AppearanceEditor({ settings, platform, logo, name, onLogoChange, onChange, onValidity }) {
   const fallback = platformDefaults(platform);
   const effective = applyPlatformDefaults(settings, platform);
   const appearance = appearanceConfig(effective);
@@ -333,7 +334,7 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
           <span className="studio-look-preview-label" aria-hidden="true">
             Preview
           </span>
-          <strong>{settings.title || "Your dashboard"}</strong>
+          <strong>{name || settings.title || "Your dashboard"}</strong>
           <div aria-hidden="true" className="studio-appearance-preview-panels">
             <span>
               <i />

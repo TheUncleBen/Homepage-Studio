@@ -97,6 +97,10 @@ describe("Test connection results", () => {
     expect(connectionTestResult({ status: 403, body: {} }).kind).toBe("permission");
     expect(connectionTestResult({ status: 404, body: {} }).kind).toBe("address");
     expect(connectionTestResult({ status: 502, body: {} }).message).toMatch(/\(502\)/);
+    // The widget's handler couldn't read the answer: not the service's fault.
+    expect(connectionTestResult({ status: 500, body: { error: "Unexpected error" } }).message).toMatch(
+      /answered, but not in the way this widget expects/,
+    );
     expect(connectionTestResult({ status: 400, body: { error: { code: "WIDGET_NOT_SET_UP" } } }).message).toBe(
       "Add the service address first.",
     );

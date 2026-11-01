@@ -2522,6 +2522,7 @@ export default function StudioBoard({
                 <AppearanceOnlyEditor
                   {...editorData}
                   logo={access?.dashboard?.logo ?? null}
+                  name={access?.dashboard?.name}
                   onLogoChange={() => mutateAccess()}
                   onSaved={savedContent}
                   onClose={closeModal}
@@ -2533,6 +2534,7 @@ export default function StudioBoard({
                   pageCount={pages.length}
                   hasCharts={wholeBoard.panels.some((panel) => needsHistory(resolvedLook(settings, panel)))}
                   logo={access?.dashboard?.logo ?? null}
+                  name={access?.dashboard?.name}
                   onLogoChange={() => mutateAccess()}
                   onSaved={savedContent}
                   onClose={closeModal}

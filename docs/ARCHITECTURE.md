@@ -170,6 +170,10 @@ service's response or the key.
 
 Widgets shown as a chart (line, area, bar, donut, pie or gauge), or with a
 trend under their hero value or colour rules on a value, need past numbers.
+Widgets shown as **Status history** need past status checks instead: for
+those the renderer runs the card's own check (site monitor or ping, with the
+service's address as fallback) and keeps whether it was up (1 or 0) and the
+response time.
 The controller asks each dashboard's renderer for them once a minute
 (`/api/studio/collect`, which only the controller can call: it checks the
 internal token from `STUDIO_INTERNAL_TOKEN`, and the controller removes every
@@ -185,6 +189,13 @@ Chart history**, shown only while a chart exists). People who can view the
 dashboard read history with `GET /studio/api/history?panel=<id>&range=<range>`;
 the widget dialog asks which chart formats fit with
 `POST /studio/api/history/probe`, which needs the arrange level.
+
+The collector keeps each dashboard with such widgets awake: its renderer
+worker answers once a minute and never goes idle. Past the worker limit
+(`STUDIO_RENDERER_MAX_WORKERS`, 8 by default) workers would be swapped in and out
+every minute, so keep charts and status history to fewer dashboards than
+that. The probe has no rate limit of its own; it needs the arrange level, and
+each call renders one widget once.
 
 ### Status checks
 
