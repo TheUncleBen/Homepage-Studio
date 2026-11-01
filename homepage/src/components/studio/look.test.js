@@ -165,5 +165,6 @@ describe("charts and colour rules", () => {
     expect(needsHistory(look({ layout: "hero", trend: "hour" }))).toBe(true);
     expect(needsHistory(look({ layout: "quiet", trend: "hour" }))).toBe(false);
     expect(needsHistory(look({ values: [{ field: "cpu", rules: { warn: 1 } }] }))).toBe(true);
+    expect(needsHistory(look({ show: "status" }))).toBe(true);
   });
 });

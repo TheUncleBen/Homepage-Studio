@@ -3111,6 +3111,36 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-chart-note {
   margin: 0;
 }
+/* Status history: one bar per check, up or down. */
+.studio-status-history {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+.studio-status-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 20px;
+}
+.studio-status-bars > span {
+  flex: 1 1 0;
+  min-width: 2px;
+  max-width: 8px;
+  border-radius: 2px;
+}
+.studio-status-bars > .is-up {
+  background: var(--studio-status-good, #3fb27f);
+  opacity: 0.8;
+}
+.studio-status-bars > .is-down {
+  background: var(--studio-status-problem, #e5604f);
+}
+.studio-status-uptime {
+  color: var(--card-muted-text);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
 .studio-chart-legend {
   display: flex;
   flex-wrap: wrap;

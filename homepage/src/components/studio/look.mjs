@@ -29,7 +29,7 @@ export const LOOK_OPTIONS = Object.freeze({
   // Show as (boards 6, 10): how the numbers are drawn. Numbers is the layout
   // above (Hero, with an optional trend, or Quiet); the charts read the
   // history Studio collects for widgets shown this way (server/history.mjs).
-  show: ["numbers", "line", "area", "bar", "donut", "pie", "gauge", "table"],
+  show: ["numbers", "line", "area", "bar", "donut", "pie", "gauge", "table", "status"],
   chartRange: ["1h", "6h", "24h", "7d", "30d"],
 });
 
@@ -37,9 +37,12 @@ export const LOOK_OPTIONS = Object.freeze({
 // (a trend or colour rules read the latest collected value too).
 export const CHART_SHOWS = Object.freeze(["line", "area", "bar"]);
 export const COLLECTED_SHOWS = Object.freeze(["line", "area", "bar", "donut", "pie", "gauge"]);
+// Status history: a bar for each status check, from the widget's own check.
+export const STATUS_SHOW = "status";
 export function needsHistory(look) {
   return (
     COLLECTED_SHOWS.includes(look.show) ||
+    look.show === STATUS_SHOW ||
     (look.show === "numbers" && look.layout === "hero" && look.trend !== "off") ||
     (Array.isArray(look.values) && look.values.some((value) => value.rules))
   );

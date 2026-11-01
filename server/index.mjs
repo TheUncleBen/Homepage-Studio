@@ -25,7 +25,7 @@ import { ConnectionError, createConnectionStore, MAX_CONNECTIONS, publicConnecti
 const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'];
 import { createPersonalStore } from './personal.mjs';
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
-import { LookError, inheritedLook, needsHistory, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
+import { LookError, STATUS_SHOW, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
 import { BACKGROUND_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
@@ -550,9 +550,20 @@ function createDashboardHandlers(options = {}) {
       });
     } finally { lease.release(); }
   }
+  // The widgets the collector polls: charts, trends and colour rules read
+  // the widget's values; status history runs its status check instead.
   const historyPanels = state => {
     const card = readLook(state.settingsConfig?.studioTheme?.card);
-    return (state.board?.panels || []).filter(panel => panel.kind === 'serviceWidget' && needsHistory(inheritedLook(card, panel.look)));
+    const acts = readBehaviour(state.settingsConfig?.studioDefaults);
+    const out = [];
+    for (const panel of state.board?.panels || []) {
+      const look = inheritedLook(card, panel.look);
+      if (look.show === STATUS_SHOW && ['service', 'serviceWidget'].includes(panel.kind)) {
+        const check = inheritedBehaviour(acts, panel.behaviour).status;
+        if (check === 'web' || check === 'ping') out.push({ ...panel, check });
+      } else if (panel.kind === 'serviceWidget' && needsHistory(look)) out.push(panel);
+    }
+    return out;
   };
   async function collectHistory(dashboard) {
     if (!(await initialization).ok) return;
@@ -561,7 +572,7 @@ function createDashboardHandlers(options = {}) {
     // History is kept only for widgets that still need it.
     await history.keepOnly(panels.map(panel => panel.id));
     if (!panels.length) return;
-    const results = await rendererCollect(dashboard, panels.map(({ id, kind, nativeLocator, available }) => ({ id, kind, nativeLocator, ...(available === false ? { available } : {}) })));
+    const results = await rendererCollect(dashboard, panels.map(({ id, kind, nativeLocator, available, check }) => ({ id, kind, nativeLocator, ...(available === false ? { available } : {}), ...(check ? { check } : {}) })));
     const at = Date.now();
     for (const panel of panels) {
       const values = results[panel.id]?.values;

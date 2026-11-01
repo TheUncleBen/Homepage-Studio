@@ -300,6 +300,8 @@ describe("Show as and charts", () => {
       ]),
     ).toEqual(["numbers", "table", "line", "area", "bar", "donut", "pie", "gauge"]);
     expect(keys([], "gauge")).toEqual(["numbers", "table", "gauge"]);
+    // Status history needs a status check.
+    expect(showChoices([], undefined, true).map(([value]) => value)).toEqual(["numbers", "table", "status"]);
   });
 
   it("shows each line's colour as drawn and stores only a changed one (Rule 2)", () => {
@@ -329,5 +331,26 @@ describe("Show as and charts", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Rules" })[0]);
     fireEvent.change(screen.getByLabelText("Warning from"), { target: { value: "70" } });
     expect(onLook.mock.calls.at(-1)[0].values[0]).toEqual({ field: "users", rules: { warn: 70 } });
+  });
+});
+
+describe("Status history on a service tile", () => {
+  it("is switched on under Status, needs a check, and offers the uptime range", () => {
+    const { onLook } = renderEditor({ kind: "service", fields: [] });
+    fireEvent.click(screen.getByRole("switch", { name: "Show status history" }));
+    expect(onLook).toHaveBeenLastCalledWith({ show: "status" });
+  });
+
+  it("goes back to the plain tile when the check is turned off", () => {
+    const { onLook, onBehaviour } = renderEditor({
+      kind: "service",
+      fields: [],
+      look: { show: "status" },
+      inheritedLook: BUILT_IN_LOOK,
+    });
+    expect(screen.getByRole("radiogroup", { name: "Uptime over" })).toBeTruthy();
+    fireEvent.click(radio("Check by", "Off"));
+    expect(onBehaviour).toHaveBeenLastCalledWith({ status: "off" });
+    expect(onLook).toHaveBeenLastCalledWith(undefined);
   });
 });

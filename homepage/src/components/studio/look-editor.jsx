@@ -194,8 +194,10 @@ export const SHOW_LABELS = {
   donut: "Donut",
   pie: "Pie",
   gauge: "Gauge",
+  status: "Status history",
 };
-export function showChoices(chartFields, current) {
+// statusCheck: the widget has a status check on, so its history can show.
+export function showChoices(chartFields, current, statusCheck = false) {
   const fields = Array.isArray(chartFields) ? chartFields : [];
   const formats = fields.map((field) => field.format);
   const shared = formats.some((format, index) => formats.indexOf(format) !== index);
@@ -205,6 +207,7 @@ export function showChoices(chartFields, current) {
     ...(fields.length ? ["line", "area", "bar"] : []),
     ...(shared ? ["donut", "pie"] : []),
     ...(formats.includes("percent") ? ["gauge"] : []),
+    ...(statusCheck ? ["status"] : []),
   ];
   // A format chosen earlier stays listed, so the row still says what it is.
   if (current && !offered.includes(current)) offered.push(current);
@@ -690,7 +693,11 @@ export default function LookEditor({
           <Choice
             label="Check by"
             value={acts.status}
-            onChange={(value) => setBehaviour("status", value)}
+            onChange={(value) => {
+              setBehaviour("status", value);
+              // Status history needs a check; without one it goes back to the default.
+              if (value === "off" && effective.show === "status") setLook("show", "numbers");
+            }}
             options={[
               ["web", "Web address"],
               ["ping", "Ping"],
@@ -711,11 +718,36 @@ export default function LookEditor({
                   ["time", "Response time"],
                 ]}
               />
+              {/* A service tile has no Show section, so its status history is
+                  switched on here; an integration widget picks it in Show as. */}
+              {!show.values && (
+                <Row
+                  label="History"
+                  info="A bar for each check, about one a minute, with the share of checks that were up. Studio keeps them for this widget only while this is on."
+                >
+                  <MixedNote value={effective.show} />
+                  <Switch
+                    label="Show status history"
+                    checked={effective.show === "status"}
+                    onChange={(on) => setLook("show", on ? "status" : "numbers")}
+                  />
+                </Row>
+              )}
+              {effective.show === "status" && (
+                <Choice
+                  label="Uptime over"
+                  value={effective.chartRange}
+                  onChange={(value) => setLook("chartRange", value)}
+                  options={rangeChoices.map((key) => [key, key.replace(/(\d)([hd])/, "$1 $2")])}
+                />
+              )}
             </Dependent>
           )}
         </Group>
       )}
-      {bottom && show.values && fields.length > 0 && (
+      {/* A widget showing its status history shows no values, so it reports
+          none; Show stays so it can be switched back. */}
+      {bottom && show.values && (fields.length > 0 || effective.show === "status") && (
         <Group
           title="Show"
           info="The values this widget showed last. Pick the hero, hide what you don't need, rename a value or change how its number reads."
@@ -727,7 +759,7 @@ export default function LookEditor({
               info="Charts use history Studio keeps for this widget, about one value a minute."
             >
               <select id={showId} value={effective.show} onChange={(event) => setLook("show", event.target.value)}>
-                {showChoices(chartFields, effective.show).map(([value, text]) => (
+                {showChoices(chartFields, effective.show, acts.status !== "off").map(([value, text]) => (
                   <option key={value} value={value}>
                     {text}
                   </option>
@@ -735,7 +767,7 @@ export default function LookEditor({
               </select>
             </Row>
           )}
-          {show.charts && CHART_SHOWS.includes(effective.show) && (
+          {show.charts && (CHART_SHOWS.includes(effective.show) || effective.show === "status") && (
             <Dependent>
               <Choice
                 label="Time range"
@@ -745,13 +777,15 @@ export default function LookEditor({
               />
             </Dependent>
           )}
-          <ValueList
-            fields={fields}
-            values={look.values || []}
-            layout={effective.show === "numbers" ? effective.layout : "hero"}
-            show={effective.show}
-            onChange={(values) => setLook("values", values)}
-          />
+          {effective.show !== "status" && (
+            <ValueList
+              fields={fields}
+              values={look.values || []}
+              layout={effective.show === "numbers" ? effective.layout : "hero"}
+              show={effective.show}
+              onChange={(values) => setLook("values", values)}
+            />
+          )}
         </Group>
       )}
       {bottom && (

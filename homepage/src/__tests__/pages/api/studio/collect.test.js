@@ -7,7 +7,7 @@ vi.mock("utils/config/api-response", () => ({ servicesResponse: async () => [] }
 // The real translation hook, so the collector's own translator is used.
 vi.unmock("next-i18next/pages");
 
-import handler, { collectPanels, proxied } from "pages/api/studio/collect";
+import handler, { checkStatus, collectPanels, proxied } from "pages/api/studio/collect";
 
 function createRes() {
   const res = { statusCode: 200 };
@@ -99,5 +99,51 @@ describe("chart history collection endpoint", () => {
     await expect(proxied("/api/studio/state")).rejects.toThrow(/Only proxied/);
     serviceProxy.mockImplementation(async (req, res) => res.status(500).json({ error: "x" }));
     await expect(proxied("/api/services/proxy?service=a&group=b")).rejects.toThrow();
+  });
+});
+
+describe("status history collection", () => {
+  const answer =
+    (body, status = 200) =>
+    async (req, res) =>
+      res.status(status).json(body);
+
+  it("runs the card's own check and keeps up or down with its time", async () => {
+    const service = { name: "Gitea" };
+    const siteMonitor = vi.fn(answer({ status: 200, latency: 41.6 }));
+    expect(await checkStatus(service, "Code", "web", { siteMonitor })).toEqual({
+      values: [
+        { field: "up", label: "Up", format: "plain", value: 1 },
+        { field: "ms", label: "Response time", format: "plain", value: 42 },
+      ],
+    });
+    expect(siteMonitor.mock.calls[0][0].query).toEqual({ groupName: "Code", serviceName: "Gitea", fallback: "1" });
+    expect(await checkStatus(service, "Code", "web", { siteMonitor: answer({ status: 503, latency: 3 }) })).toEqual({
+      values: [{ field: "up", label: "Up", format: "plain", value: 0 }],
+    });
+    expect(await checkStatus(service, "Code", "ping", { ping: answer({ alive: true, time: 3.2 }) })).toMatchObject({
+      values: [
+        { field: "up", value: 1 },
+        { field: "ms", value: 3 },
+      ],
+    });
+    expect(await checkStatus(service, "Code", "ping", { ping: answer({ error: "x" }, 400) })).toEqual({
+      values: [{ field: "up", label: "Up", format: "plain", value: 0 }],
+    });
+    expect(await checkStatus(service, "Code", "off", {})).toEqual({ error: "unavailable" });
+  });
+
+  it("checks status panels instead of rendering them, and refuses an unknown check", async () => {
+    resolveNativePanel.mockReturnValue({ service: { name: "Gitea" }, groupName: "Code" });
+    const results = await collectPanels(
+      [{ id: "tile", kind: "service", nativeLocator: {}, check: "ping" }],
+      { services: [] },
+      undefined,
+      { ping: answer({ alive: false }) },
+    );
+    expect(results.tile).toEqual({ values: [{ field: "up", label: "Up", format: "plain", value: 0 }] });
+    const res = createRes();
+    await handler(request({ panels: [{ id: "tile", nativeLocator: {}, check: "dns" }] }), res);
+    expect(res.statusCode).toBe(400);
   });
 });

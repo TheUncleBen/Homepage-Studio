@@ -7,7 +7,8 @@ import { httpProxy } from "utils/proxy/http";
 
 const logger = createLogger("siteMonitor");
 
-async function handler(req, res) {
+// Studio's status history (pages/api/studio/collect.js) runs the same check.
+export async function siteMonitor(req, res) {
   const { groupName, serviceName } = req.query;
   const serviceItem = await getServiceItem(groupName, serviceName);
   if (!serviceItem) {
@@ -61,4 +62,4 @@ async function handler(req, res) {
   }
 }
 
-export default withAuth(handler);
+export default withAuth(siteMonitor);

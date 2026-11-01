@@ -2,6 +2,7 @@ import { useTranslation } from "next-i18next/pages";
 import { useContext } from "react";
 import useSWR from "swr";
 
+import { StatusHistory } from "./card-chart";
 import { CardLookContext } from "./card-look";
 import { usePreferences } from "./preferences";
 
@@ -11,6 +12,7 @@ import ProxmoxStatus from "components/services/proxmox-status";
 import DockerStatus from "components/services/status";
 import ServiceWidget from "components/services/widget";
 import { SettingsContext } from "utils/contexts/settings";
+import { statusFrom, statusKind } from "utils/studio/status-check";
 
 const TARGETS = { same: "_self", new: "_blank" };
 // When each service was first seen down, so "since" means since it failed.
@@ -19,7 +21,7 @@ const downSince = new Map();
 // The check behind a card's status: the service's own siteMonitor or ping
 // when set, otherwise its address (fallback=1) when the widget asks for one.
 function useStatus(service, groupName, check) {
-  const kind = check === "ping" ? "ping" : check === "web" ? "siteMonitor" : null;
+  const kind = statusKind(check);
   const has = kind === "ping" ? service.ping || service.href : service.siteMonitor || service.href;
   const key =
     kind && has && groupName && service.name
@@ -29,9 +31,7 @@ function useStatus(service, groupName, check) {
   if (!key) return null;
   if (error || data?.error) return { state: "down", text: "Error" };
   if (!data) return { state: "pending" };
-  if (kind === "ping") return data.alive ? { state: "up", ms: Math.round(data.time) } : { state: "down" };
-  if (data.reachable === false) return { state: "down" };
-  return data.status > 403 ? { state: "down", code: data.status } : { state: "up", ms: Math.round(data.latency) };
+  return statusFrom(kind, data);
 }
 
 function StatusMark({ status, show }) {
@@ -131,11 +131,13 @@ export function ServiceCard({ service, groupName, children }) {
   const note = down
     ? `${status.code ? `Answered ${status.code}` : "No answer"}${since ? ` since ${since.toLocaleTimeString(i18n.language || [], { hour: "2-digit", minute: "2-digit", ...(clock !== "dashboard" ? { hour12: clock === "12" } : {}) })}` : ""}`
     : null;
+  // Status history takes the place of an integration's own values.
+  const body = card.show === "status" && card.statusCheck !== "off" ? <StatusHistory card={card} /> : children;
   return (
     <div
       className="studio-card"
       data-alert={down || card.ruleAlert || undefined}
-      data-has-body={Boolean(children) || undefined}
+      data-has-body={Boolean(body) || undefined}
     >
       <CardHead
         icon={service.icon}
@@ -147,7 +149,7 @@ export function ServiceCard({ service, groupName, children }) {
         status={status}
         extra={extra}
       />
-      {children && <div className="studio-card-body">{children}</div>}
+      {body && <div className="studio-card-body">{body}</div>}
     </div>
   );
 }

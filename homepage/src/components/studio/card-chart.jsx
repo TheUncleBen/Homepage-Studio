@@ -445,3 +445,60 @@ export function ChartFullView({ panel, card, title, ranges = Object.keys(RANGE_L
     </StudioDialog>
   );
 }
+
+// Status history (board 13): a bar for each status check in the last hour,
+// up or down, and the share of checks that were up over the chosen range.
+const BARS = 60;
+export function uptimeOf(history) {
+  const index = history?.fields?.findIndex((field) => field.field === "up");
+  if (index === undefined || index < 0) return null;
+  const values = history.points.map((point) => point[index + 1]).filter(Number.isFinite);
+  if (!values.length) return null;
+  return (values.reduce((sum, value) => sum + value, 0) / values.length) * 100;
+}
+
+export function statusBars(history) {
+  const up = history?.fields?.findIndex((field) => field.field === "up");
+  if (up === undefined || up < 0) return [];
+  const ms = history.fields.findIndex((field) => field.field === "ms");
+  return history.points
+    .filter((point) => Number.isFinite(point[up + 1]))
+    .slice(-BARS)
+    .map((point) => ({ at: point[0], up: point[up + 1] >= 0.5, ms: ms >= 0 ? point[ms + 1] : null }));
+}
+
+export function StatusHistory({ card }) {
+  const range = card.chartRange || "24h";
+  const { data: recent } = useSWR(card.id ? historyPath(card.id, "1h") : null, studioRequest, {
+    refreshInterval: 60000,
+  });
+  const { data: longer } = useSWR(card.id && range !== "1h" ? historyPath(card.id, range) : null, studioRequest, {
+    refreshInterval: 60000,
+  });
+  if (!recent) return <p className="studio-chart-note">Loading the status history…</p>;
+  const bars = statusBars(recent);
+  if (!bars.length)
+    return <p className="studio-chart-note">Collecting checks. A bar appears for each one, about once a minute.</p>;
+  const uptime = uptimeOf(range === "1h" ? recent : longer);
+  const time = (at) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const words = (bar) => `${time(bar.at)}: ${bar.up ? `Up${Number.isFinite(bar.ms) ? `, ${bar.ms} ms` : ""}` : "Down"}`;
+  const down = bars.filter((bar) => !bar.up).length;
+  return (
+    <div className="studio-status-history">
+      <div
+        className="studio-status-bars"
+        role="img"
+        aria-label={`Last ${bars.length} checks: ${down ? `${down} down` : "all up"}`}
+      >
+        {bars.map((bar) => (
+          <span key={bar.at} className={bar.up ? "is-up" : "is-down"} title={words(bar)} />
+        ))}
+      </div>
+      {uptime !== null && (
+        <span className="studio-status-uptime">
+          {uptime >= 99.95 || uptime === 0 ? Math.round(uptime) : uptime.toFixed(1)}% up · {RANGE_LABELS[range]}
+        </span>
+      )}
+    </div>
+  );
+}

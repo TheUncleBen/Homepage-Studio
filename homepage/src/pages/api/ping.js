@@ -6,7 +6,8 @@ import createLogger from "utils/logger";
 
 const logger = createLogger("ping");
 
-async function handler(req, res) {
+// Studio's status history (pages/api/studio/collect.js) runs the same check.
+export async function pingCheck(req, res) {
   const { groupName, serviceName } = req.query;
   const serviceItem = await getServiceItem(groupName, serviceName);
   if (!serviceItem) {
@@ -47,4 +48,4 @@ async function handler(req, res) {
   }
 }
 
-export default withAuth(handler);
+export default withAuth(pingCheck);

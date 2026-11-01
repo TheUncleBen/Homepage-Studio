@@ -2,7 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { CardChart, chartRanges, chartSeries, historyRange, scales, trendOf } from "./card-chart";
+import { CardChart, chartRanges, chartSeries, historyRange, scales, statusBars, trendOf, uptimeOf } from "./card-chart";
 
 const HOUR = 3600e3;
 const NOW = 1_800_000_000_000;
@@ -71,5 +71,25 @@ describe("charts", () => {
     rerender(<CardChart card={{ show: "line", chartRange: "24h", history }} />);
     expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/Last 24 h/);
     expect(document.querySelectorAll("path").length).toBe(3);
+  });
+});
+
+describe("status history", () => {
+  const checks = {
+    fields: [
+      { field: "up", label: "Up", format: "plain" },
+      { field: "ms", label: "Response time", format: "plain" },
+    ],
+    points: Array.from({ length: 80 }, (_, i) => [NOW - (80 - i) * 60e3, i === 70 ? 0 : 1, i === 70 ? null : 40]),
+    latest: null,
+  };
+
+  it("draws the last 60 checks, up or down, and the share that were up", () => {
+    const bars = statusBars(checks);
+    expect(bars).toHaveLength(60);
+    expect(bars.filter((bar) => !bar.up)).toEqual([{ at: NOW - 10 * 60e3, up: false, ms: null }]);
+    expect(uptimeOf(checks)).toBeCloseTo(98.75);
+    expect(uptimeOf({ fields: [], points: [] })).toBe(null);
+    expect(statusBars(history)).toEqual([]);
   });
 });

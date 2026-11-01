@@ -1,9 +1,12 @@
 import { resolveNativePanel } from "components/studio/native-adapter.mjs";
+import { pingCheck } from "pages/api/ping";
 import { serviceProxy } from "pages/api/services/proxy";
+import { siteMonitor } from "pages/api/siteMonitor";
 import { withAuth } from "utils/auth";
 import { servicesResponse } from "utils/config/api-response";
 import { collectWidget } from "utils/studio/collect";
 import { captureResponse, fromController } from "utils/studio/internal";
+import { statusFrom, statusKind } from "utils/studio/status-check";
 import loaders from "widgets/loaders";
 
 // Chart history: the controller's collector asks for the current values of
@@ -41,9 +44,43 @@ function timeout(ms) {
   });
 }
 
-export async function collectPanels(panels, data, load = proxied) {
+// Status history: the same check the card makes (web address or ping, with
+// the address as fallback), kept as up (1 or 0) and its time in ms.
+const CHECKS = { siteMonitor, ping: pingCheck };
+export async function checkStatus(service, groupName, check, run = CHECKS) {
+  const kind = statusKind(check);
+  if (!kind || !service?.name || !groupName) return { error: "unavailable" };
+  const { res, result } = captureResponse();
+  await run[kind]({ method: "GET", headers: {}, query: { groupName, serviceName: service.name, fallback: "1" } }, res);
+  const answer = result.status >= 400 ? null : result.body;
+  const status = statusFrom(kind, answer);
+  return {
+    values: [
+      { field: "up", label: "Up", format: "plain", value: status.state === "up" ? 1 : 0 },
+      ...(Number.isFinite(status.ms)
+        ? [{ field: "ms", label: "Response time", format: "plain", value: status.ms }]
+        : []),
+    ],
+  };
+}
+
+export async function collectPanels(panels, data, load = proxied, run = CHECKS) {
   const results = {};
   for (const panel of panels) {
+    if (panel?.check) {
+      const resolved = ["service", "serviceWidget"].includes(panel.kind) ? resolveNativePanel(panel, data) : null;
+      try {
+        results[panel.id] = resolved
+          ? await Promise.race([
+              checkStatus(resolved.service, resolved.groupName, panel.check, run),
+              timeout(PANEL_TIMEOUT_MS),
+            ])
+          : { error: "unavailable" };
+      } catch {
+        results[panel.id] = { error: "service" };
+      }
+      continue;
+    }
     const resolved = panel?.kind === "serviceWidget" ? resolveNativePanel(panel, data) : null;
     const loader = resolved && Object.hasOwn(loaders, resolved.widget.type) ? loaders[resolved.widget.type] : null;
     if (!loader) {
@@ -68,7 +105,13 @@ async function handler(req, res) {
   if (
     !Array.isArray(panels) ||
     panels.length > MAX_PANELS ||
-    panels.some((panel) => !panel || typeof panel.id !== "string" || typeof panel.nativeLocator !== "object")
+    panels.some(
+      (panel) =>
+        !panel ||
+        typeof panel.id !== "string" ||
+        typeof panel.nativeLocator !== "object" ||
+        (panel.check !== undefined && !["web", "ping"].includes(panel.check)),
+    )
   )
     return res.status(400).json({ error: "Send the panels to collect." });
   const services = (await servicesResponse()) || [];
