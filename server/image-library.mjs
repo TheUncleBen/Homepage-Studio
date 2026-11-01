@@ -12,6 +12,9 @@ import { LogoError, logoType } from './dashboard-logo.mjs';
 export const IMAGE_KINDS = ['logo', 'background'];
 export const MAX_IMAGE_BYTES = { logo: 256 * 1024, background: 3 * 1024 * 1024 };
 export const MAX_IMAGES = 200;
+// All of one library together, so a dashboard export with its images stays
+// under the import limit (server/config.mjs MAX_IMPORT_BYTES).
+export const MAX_LIBRARY_BYTES = 60 * 1024 * 1024;
 const INDEX_FILE = 'images.json';
 const ID = /^[a-f0-9]{24}$/;
 const EXTENSION = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/svg+xml': 'svg' };
@@ -100,6 +103,8 @@ export function createImageLibrary({ stateDir }) {
       const existing = entries.find(entry => entry.id === id);
       if (existing) return existing;
       if (entries.length >= MAX_IMAGES) fail(`A dashboard keeps up to ${MAX_IMAGES} images. Remove some you no longer use.`, 'IMAGE_LIMIT', 409);
+      const used = entries.reduce((total, item) => total + (Number.isSafeInteger(item.size) ? item.size : 0), 0);
+      if (used + bytes.length > MAX_LIBRARY_BYTES) fail(`A library keeps up to ${MAX_LIBRARY_BYTES / 1024 / 1024} MiB of images. Remove some you no longer use.`, 'IMAGE_LIMIT', 409);
       const entry = { id, kind, name: cleanName(name), type, size: bytes.length, createdAt: new Date().toISOString() };
       // The bytes first: the list never names an image that wasn't written.
       await write(id + '.' + EXTENSION[type], bytes);

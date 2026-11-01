@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createImageLibrary, imageUsage, MAX_IMAGE_BYTES } from './image-library.mjs';
+import { createImageLibrary, imageUsage, MAX_IMAGE_BYTES, MAX_LIBRARY_BYTES } from './image-library.mjs';
 import { requiredLevel } from './auth/access.mjs';
 
 const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082', 'hex');
@@ -67,4 +67,15 @@ test('viewers load uploaded images; arranging adds and removes them; anything el
   assert.equal(requiredLevel('POST', '/studio/api/images').level, 'arrange');
   assert.equal(requiredLevel('POST', '/studio/api/images/delete').level, 'arrange');
   assert.equal(requiredLevel('POST', '/studio/api/images/' + 'a'.repeat(24)).level, 'admin');
+});
+
+test('a library keeps at most MAX_LIBRARY_BYTES of images in all', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-images-'));
+  const library = createImageLibrary({ stateDir: root });
+  const first = await library.add({ kind: 'logo', name: 'one.png', image: dataUrl(png) });
+  // Stand in for a nearly full library without writing 60 MiB.
+  const index = path.join(root, 'images', (await fs.readdir(path.join(root, 'images'))).find((name) => name.endsWith('.json')));
+  await fs.writeFile(index, JSON.stringify([{ ...first, size: MAX_LIBRARY_BYTES }]));
+  const other = Buffer.concat([png, Buffer.from([0])]);
+  await assert.rejects(library.add({ kind: 'background', name: 'two.png', image: dataUrl(other) }), { code: 'IMAGE_LIMIT' });
 });

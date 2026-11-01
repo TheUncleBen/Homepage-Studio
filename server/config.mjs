@@ -26,7 +26,9 @@ const ALL_FILES = [...Object.values(FILES), 'state.json'];
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_STATE_BYTES = 2 * 1024 * 1024;
 const MAX_BACKUP_BYTES = 20 * MAX_FILE_BYTES;
-export const MAX_IMPORT_BYTES = MAX_BACKUP_BYTES;
+// A dashboard export carries its image library (at most 60 MiB, base64 in
+// JSON) beside its files.
+export const MAX_IMPORT_BYTES = 100 * 1024 * 1024;
 export const DEFAULT_BACKUP_RETENTION = 25;
 // Fixed codes naming the API operation that created a pre-change snapshot.
 // They are chosen by the server per endpoint and never contain request text.

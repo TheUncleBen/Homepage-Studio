@@ -184,7 +184,7 @@ when invoked. Upstream merges must preserve this behavior and its tests.
 
 ## Configuration and recovery
 
-Managed native files are services.yaml, widgets.yaml, bookmarks.yaml, settings.yaml, docker.yaml, kubernetes.yaml, proxmox.yaml, custom.css, and custom.js. YAML edits use an AST, bounded aliases, and the patched parser pinned in package-lock.json. Custom CSS and JavaScript are preserved as opaque text. The per-file limit is 2 MiB; ordinary requests also have a 2 MiB JSON limit, including JSON escaping overhead. Only a complete dashboard import has a larger 40 MiB serialized request limit; every imported native file and state.json still has a 2 MiB limit.
+Managed native files are services.yaml, widgets.yaml, bookmarks.yaml, settings.yaml, docker.yaml, kubernetes.yaml, proxmox.yaml, custom.css, and custom.js. YAML edits use an AST, bounded aliases, and the patched parser pinned in package-lock.json. Custom CSS and JavaScript are preserved as opaque text. The per-file limit is 2 MiB; ordinary requests also have a 2 MiB JSON limit, including JSON escaping overhead. Only a complete dashboard import has a larger 100 MiB serialized request limit; every imported native file and state.json still has a 2 MiB limit.
 
 YAML values must remain representable in the editor's JSON transport. Cyclic aliases and non-finite numbers such as `.inf`, `.nan`, or an overflowing numeric literal are rejected before snapshots or writes. Ordinary aliases and merges, finite numbers, nulls, booleans, comments, unknown options, quoted text, and native environment/file references remain supported. Quote an infinity-like value when it is intentionally text. Invalid drafts remain available for correction; existing invalid files are not rewritten automatically.
 

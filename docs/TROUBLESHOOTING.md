@@ -64,7 +64,7 @@ Then find the symptom below. What the health endpoints mean is in
 | --- | --- |
 | `403` *Open the editor from your dashboard.* or *Open this request from your dashboard.* | An editor or widget request came from another site, or with an `Origin` that isn't `STUDIO_PUBLIC_ORIGIN`. Use the dashboard at its exact origin. A proxy that rewrites the scheme (`http` vs `https`) causes this too |
 | `413` *This request exceeds the 2 MiB configuration limit.* | One file or request is over 2 MiB. Split large content, or keep it out of the YAML |
-| `413` on **Import dashboard**, often from the proxy itself | The proxy's body limit is below 40 MiB, or the backup really is larger ([REVERSE-PROXY.md](REVERSE-PROXY.md#request-limits)) |
+| `413` on **Import dashboard**, often from the proxy itself | The proxy's body limit is below 100 MiB, or the backup really is larger ([REVERSE-PROXY.md](REVERSE-PROXY.md#request-limits)) |
 | `413` or `408` from a widget action | The body sent to a native route was over 1 MiB, or took over 30 seconds to arrive |
 | `503` *Studio is receiving too many dashboard requests at once.* | Many widget actions were uploading at the same moment (over 32 MiB in total). Retry after the `Retry-After` seconds |
 | A save is refused because the dashboard changed | Someone else saved first. Your draft stays on screen; reload to see their change and redo yours |

@@ -41,7 +41,7 @@ assets all live on it.
 | **Pass the original `Host` header**, matching `STUDIO_PUBLIC_ORIGIN` | Studio answers only that exact host (and port). Anything else gets `403` *This dashboard address is not in HOMEPAGE_ALLOWED_HOSTS.* |
 | Pass the full path and query unchanged | Don't strip or rewrite the dashboard segment. Studio picks the dashboard from the path alone, never from cookies, `Referer` or forwarded headers |
 | Route the **entire** hostname to Studio | Including `/_next/static/`, `/studio/` and the icons and images at the root |
-| Allow request bodies of at least **40 MiB** if you'll import dashboards | See [request limits](#request-limits). Everyday saves need far less |
+| Allow request bodies of at least **100 MiB** if you'll import dashboards | See [request limits](#request-limits). Everyday saves need far less |
 | Don't compress what's already compressed | Studio serves pre-compressed Brotli/gzip build files with `Vary: Accept-Encoding`. Respect `Content-Encoding` and `Vary`; don't add a second encoding |
 | A valid certificate | Your choice; Studio doesn't care, but browsers do |
 | No websocket support needed | Studio has no websocket endpoints and refuses upgrade requests |
@@ -157,7 +157,7 @@ server {
     ssl_certificate     /etc/nginx/certs/homepage.example.test.crt;
     ssl_certificate_key /etc/nginx/certs/homepage.example.test.key;
 
-    client_max_body_size 40m;            # Import dashboard sends up to 40 MiB
+    client_max_body_size 100m;           # Import dashboard sends up to 100 MiB
 
     location / {
         proxy_pass http://homepage_studio:3000;
@@ -180,7 +180,7 @@ limit rejects a request before Studio sees it, usually with its own `413`.
 | Request | Limit | When it's exceeded |
 | --- | --- | --- |
 | Editor saves and other configuration requests (JSON) | 2 MiB, escaping included | `413` *This request exceeds the 2 MiB configuration limit.* |
-| Importing a complete dashboard (**Import dashboard**) | 40 MiB; each file and the layout inside it still at most 2 MiB | `413` *... 40 MiB dashboard import limit.* |
+| Importing a complete dashboard (**Import dashboard**) | 100 MiB; each file and the layout inside it still at most 2 MiB | `413` *... 100 MiB dashboard import limit.* |
 | Bodies sent to native widget routes (`/api/...`, `/<dashboard>/api/...`) | 1 MiB, arriving within 30 seconds; 32 MiB across all such bodies in flight at once | `413` if larger (at once when `Content-Length` says so), `408` if too slow, `503` with `Retry-After` when the shared budget is full; the connection is closed |
 
 The controller limit matches Homepage's own native body limit (Next.js's

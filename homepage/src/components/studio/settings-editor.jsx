@@ -486,6 +486,19 @@ export function FilesEditor({ state, onSaved, onClose, onReload }) {
   );
 }
 
+// An export carries saved connections without their keys, so the import
+// says which ones need a key typed in again.
+export function importNote(result) {
+  const parts = [];
+  const names = Array.isArray(result?.connectionsNeedingKeys) ? result.connectionsNeedingKeys : [];
+  if (names.length)
+    parts.push(
+      `Dashboard imported. Add the keys again in Dashboard settings › Saved connections: ${names.join(", ")}.`,
+    );
+  if (Array.isArray(result?.importNotes)) parts.push(...result.importNotes);
+  return parts.join(" ");
+}
+
 export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
   const [chosen, setChosen] = useState(null);
   const [archive, setArchive] = useState(null);
@@ -519,7 +532,7 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
     setArchive(null);
     setChosen(null);
     try {
-      if (file.size > 40 * 1024 * 1024) throw new Error("Choose a dashboard backup no larger than 40 MiB.");
+      if (file.size > 100 * 1024 * 1024) throw new Error("Choose a dashboard backup no larger than 100 MiB.");
       let content;
       try {
         content = JSON.parse(await file.text());
@@ -561,6 +574,7 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
       });
       await onSaved(restored, {
         customJsChanged: (restored.customJs || "") !== (state.customJs || ""),
+        ...(importNote(restored) ? { importNote: importNote(restored) } : {}),
       });
     } catch (err) {
       setError(err);

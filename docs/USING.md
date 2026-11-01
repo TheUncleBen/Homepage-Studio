@@ -350,7 +350,7 @@ Playing slideshows, opening dialogs and exporting never make snapshots.
   their layout as they were.
 - **Download snapshot** downloads the selected snapshot as a file.
 - **Choose a backup file** stages an exported dashboard or a downloaded
-  snapshot (up to 40 MiB). Nothing changes until you press **Import
+  snapshot (up to 100 MiB). Nothing changes until you press **Import
   dashboard**, which checks the whole file, keeps a snapshot of the current
   dashboard first, and then replaces it. Closing the dialog while a backup is
   staged asks first and names the file, for example **Discard the staged
@@ -420,7 +420,7 @@ as unavailable instead of being dropped or swapped for something else.
 | A save is refused because the dashboard changed | Someone (or another tab) saved first. Your draft stays; reload to see their change, then repeat yours |
 | *The dashboard could not refresh* after a save | The save went through; only refreshing the widgets failed. Use the reload offered; the save isn't sent again |
 | *All dashboard renderers are busy* | Too many dashboards are open at once for the container's limit. Try again shortly, or ask the operator ([OPERATIONS.md](OPERATIONS.md#workers-and-limits)) |
-| *This request exceeds the 2 MiB configuration limit* | A single file or request is too big. Imports have a 40 MiB limit, but each file in them is still limited to 2 MiB |
+| *This request exceeds the 2 MiB configuration limit* | A single file or request is too big. Imports have a 100 MiB limit, but each file in them is still limited to 2 MiB |
 | **This dashboard isn't available** | The address changed or the dashboard was archived; see [More than one dashboard](#more-than-one-dashboard) |
 
 More fixes are in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).

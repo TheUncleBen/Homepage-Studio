@@ -18,8 +18,8 @@ import { renderRobotsPolicy } from './indexing-policy.mjs';
 import { readAuthConfig } from './auth/config.mjs';
 import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
 import { createLogoStore } from './dashboard-logo.mjs';
-import { createImageLibrary, ImageError, imageUsage, validImageId } from './image-library.mjs';
-import { ConnectionError, createConnectionStore, publicConnection, SECRET_FIELDS } from './connections.mjs';
+import { createImageLibrary, ImageError, imageUsage, MAX_IMAGES, validImageId } from './image-library.mjs';
+import { ConnectionError, createConnectionStore, MAX_CONNECTIONS, publicConnection, SECRET_FIELDS } from './connections.mjs';
 const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'];
 import { createPersonalStore } from './personal.mjs';
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
@@ -512,11 +512,11 @@ function createDashboardHandlers(options = {}) {
       if (path === '/studio/api/state' && req.method === 'GET') return json(res, 200, await store.load());
       if (path === '/studio/api/board' && req.method === 'GET') return json(res, 200, await store.loadBoard());
       if (path === '/studio/api/board' && req.method === 'POST') return json(res, 200, await store.saveBoard(await readBody(req)));
-      if (path === '/studio/api/export' && req.method === 'GET') return json(res, 200, await store.exportCurrent());
+      if (path === '/studio/api/export' && req.method === 'GET') return json(res, 200, await portableExport());
       if (path === '/studio/api/backups' && req.method === 'GET') return json(res, 200, await store.listBackups());
       if (path.startsWith('/studio/api/backups/') && req.method === 'GET') return json(res, 200, await store.exportBackup(path.slice('/studio/api/backups/'.length)));
       if (path === '/studio/api/restore' && req.method === 'POST') return json(res, 200, await store.restoreBackup(await readBody(req)));
-      if (path === '/studio/api/import' && req.method === 'POST') return json(res, 200, await store.importArchive(await readBody(req, MAX_IMPORT_BYTES)));
+      if (path === '/studio/api/import' && req.method === 'POST') return json(res, 200, await portableImport(await readBody(req, MAX_IMPORT_BYTES)));
       if (path === '/studio/api/save' && req.method === 'POST') return json(res, 200, await store.save(saveChange));
       if (path === '/studio/api/service' && req.method === 'POST') return json(res, 200, await store.mutateService(await readBody(req)));
       if (path === '/studio/api/info-widget' && req.method === 'POST') return json(res, 200, await store.mutateInfoWidget(await readBody(req)));
@@ -630,6 +630,41 @@ function createDashboardHandlers(options = {}) {
       // Load shedding (503 with Retry-After) is expected under a burst; do not log each refusal.
       if (status >= 500 && !error.retryAfter) console.error('Editor request failed:', error.code || error.name);
     }
+  }
+
+  // A dashboard export carries its uploaded images, so its cards and pages
+  // keep their pictures, and its saved connections by name and address only:
+  // keys never leave the server, so the importer types them in again.
+  async function portableExport() {
+    const archive = await store.exportCurrent();
+    const pictures = [];
+    for (const entry of await images.list()) {
+      const image = await images.read(entry.id);
+      if (image) pictures.push({ kind: image.kind, name: image.name, image: `data:${image.type};base64,${image.bytes.toString('base64')}` });
+    }
+    const saved = (await connections.list()).map(({ id, name, url }) => ({ id, name, url }));
+    return { ...archive, ...(pictures.length ? { images: pictures } : {}), ...(saved.length ? { connections: saved } : {}) };
+  }
+  async function portableImport(change) {
+    const archive = change?.archive && typeof change.archive === 'object' && !Array.isArray(change.archive) ? change.archive : null;
+    const { images: pictures, connections: saved, ...files } = archive ?? {};
+    const refuse = () => { throw Object.assign(new Error('The imported images or connections are not valid.'), { status: 400, code: 'INVALID_IMPORT' }); };
+    if (pictures !== undefined && (!Array.isArray(pictures) || pictures.length > MAX_IMAGES || pictures.some((item) => !item || typeof item !== 'object'))) refuse();
+    if (saved !== undefined && (!Array.isArray(saved) || saved.length > MAX_CONNECTIONS || saved.some((item) => !item || typeof item !== 'object' || typeof item.id !== 'string'))) refuse();
+    const result = await store.importArchive({ ...change, archive: archive ? files : change?.archive });
+    const notes = [];
+    for (const picture of pictures ?? []) {
+      try { await images.add({ kind: picture.kind, name: picture.name, image: picture.image }); }
+      catch (error) { if (error instanceof ImageError) notes.push(`Image “${String(picture.name ?? '').slice(0, 80)}” was not added: ${error.message}`); else throw error; }
+    }
+    const existing = new Set((await connections.list()).map((entry) => entry.id));
+    const needKeys = [];
+    for (const entry of saved ?? []) {
+      if (existing.has(entry.id)) continue;
+      try { await connections.add({ name: entry.name, url: entry.url }, { id: entry.id }); needKeys.push(String(entry.name)); }
+      catch (error) { if (error instanceof ConnectionError) notes.push(`Connection “${String(entry.name ?? '').slice(0, 60)}” was not added: ${error.message}`); else throw error; }
+    }
+    return { ...result, ...(needKeys.length ? { connectionsNeedingKeys: needKeys } : {}), ...(notes.length ? { importNotes: notes } : {}) };
   }
 
   return { handle, checkRequest, store, logo, images, connections, initialization };

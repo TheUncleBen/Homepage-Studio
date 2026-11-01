@@ -63,7 +63,7 @@ describe("Studio request boundary", () => {
     await expect(studioRequest("/studio/api/save", body)).rejects.toMatchObject({ status: 413 });
     await expect(
       studioRequest("/studio/api/import", {
-        archive: "x".repeat(40 * 1024 * 1024),
+        archive: "x".repeat(100 * 1024 * 1024),
       }),
     ).rejects.toMatchObject({ status: 413 });
     expect(fetch).toHaveBeenCalledTimes(1);

@@ -29,11 +29,11 @@ async function request(path, body, scoped) {
           return value;
         });
   const importing = path === "/studio/api/import";
-  const maxBytes = (importing ? 40 : 2) * 1024 * 1024;
+  const maxBytes = (importing ? 100 : 2) * 1024 * 1024;
   if (encoded !== undefined && new TextEncoder().encode(encoded).length > maxBytes) {
     throw new StudioRequestError(
       importing
-        ? "This dashboard import exceeds the 40 MiB request limit. Your current dashboard has not been changed."
+        ? "This dashboard import exceeds the 100 MiB request limit. Your current dashboard has not been changed."
         : "This save exceeds the 2 MiB request limit. Reduce the changed configuration before saving; your draft is still here.",
       413,
     );

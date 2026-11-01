@@ -713,7 +713,18 @@ export default function StudioBoard({
     // Successful commits explicitly bypass the unsaved-draft dismissal guard.
     dismissEditor();
     setSelection([]);
-    setNotice(details.customJsChanged ? "Changes saved. Reload once to apply custom JavaScript." : "Changes saved");
+    setNotice(
+      [
+        details.importNote,
+        details.customJsChanged
+          ? "Changes saved. Reload once to apply custom JavaScript."
+          : details.importNote
+            ? ""
+            : "Changes saved",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
     if (details.customJsChanged) setReloadRequired(true);
     await refreshNativeContent();
   };

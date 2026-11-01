@@ -169,7 +169,7 @@ describe("Portable dashboard import", () => {
 
   it.each([
     ["incomplete", backupFile({ version: 1, files: { "settings.yaml": "{}" } }), /complete dashboard/],
-    ["oversized", backupFile({}, { size: 40 * 1024 * 1024 + 1 }), /40 MiB/],
+    ["oversized", backupFile({}, { size: 100 * 1024 * 1024 + 1 }), /100 MiB/],
     [
       "unreadable",
       backupFile(
