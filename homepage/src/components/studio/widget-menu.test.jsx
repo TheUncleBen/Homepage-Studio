@@ -244,15 +244,17 @@ describe("Tidy up", () => {
 });
 
 describe("Newly discovered widgets", () => {
-  it("names them once in the editor, selects them, and keeps them on save", async () => {
+  it("asks once which page they go on, with the current page preselected", async () => {
     const board = structuredClone(twoPages);
     board.panels[2].nativeLocator = { ...board.panels[2].nativeLocator, discovered: true };
     const { writes } = await mount({ board, mode: "edit", envelope: { newDiscoveredIds: ["plex"] } });
-    const note = await screen.findByText("A new widget was discovered and placed on Media.");
-    fireEvent.click(within(note.parentElement).getByRole("button", { name: "Select it" }));
-    expect(await screen.findByRole("toolbar", { name: "1 selected" })).toBeTruthy();
-    fireEvent.click(within(note.parentElement).getByRole("button", { name: "Keep it there" }));
-    await waitFor(() => expect(screen.queryByText(/new widget was discovered/)).toBeNull());
-    expect(writes.at(-1).path).toBe("/studio/api/board");
+    const note = await screen.findByRole("group", { name: "Newly discovered widgets" });
+    expect(within(note).getByText("A new widget was discovered.")).toBeTruthy();
+    const select = within(note).getByRole("combobox", { name: "Put it on" });
+    expect(select.value).toBe("home");
+    fireEvent.click(within(note).getByRole("button", { name: "Put it there" }));
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Newly discovered widgets" })).toBeNull());
+    const saved = writes.at(-1).body.board;
+    expect(saved.panels.find((item) => item.id === "plex").pageId).toBe("home");
   });
 });

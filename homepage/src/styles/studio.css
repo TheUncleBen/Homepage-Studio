@@ -3899,3 +3899,11 @@ a.studio-card-identity:hover .studio-card-name strong {
   color: var(--studio-text);
   font-size: 13px;
 }
+.studio-discovered-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.studio-discovered-note .studio-button {
+  margin-left: auto;
+}

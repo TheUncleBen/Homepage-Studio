@@ -1228,25 +1228,34 @@ export default function StudioBoard({
     }
   };
   // Discovered widgets that arrived since the arrangement was last saved
-  // land on the first page; the editor names them once so they can be
-  // selected (and moved with the selection bar) or kept where they are.
-  const newDiscovered = editing
-    ? (envelope?.newDiscoveredIds || []).filter((id) => wholeBoard.panels.some((panel) => panel.id === id))
-    : [];
-  const newDiscoveredPage = pages.find(
-    (page) => page.id === wholeBoard.panels.find((panel) => panel.id === newDiscovered[0])?.pageId,
-  );
-  const selectNewDiscovered = () => {
-    if (newDiscoveredPage && newDiscoveredPage.id !== currentPage) showPage(newDiscoveredPage.id);
-    setSelection(newDiscovered.filter((id) => !wholeBoard.stacks.some((stack) => stack.panelIds.includes(id))));
-  };
-  const keepNewDiscovered = async () => {
-    if (dirty) return saveArrangement();
+  // land on the first page; the editor asks once which page they belong on,
+  // with the page being edited preselected.
+  const [discoveredTarget, setDiscoveredTarget] = useState(null);
+  const [discoveredHandled, setDiscoveredHandled] = useState(null);
+  const newDiscovered =
+    editing && discoveredHandled !== envelope?.revision
+      ? (envelope?.newDiscoveredIds || []).filter((id) => wholeBoard.panels.some((panel) => panel.id === id))
+      : [];
+  const placeNewDiscovered = async () => {
+    const target = pages.some((page) => page.id === discoveredTarget) ? discoveredTarget : currentPage;
+    let next = wholeRef.current || wholeBoard;
+    for (const id of newDiscovered) {
+      const stack = next.stacks.find((item) => item.panelIds.includes(id));
+      const unitId = stack ? stack.id : id;
+      const pageId = stack ? stack.pageId : next.panels.find((panel) => panel.id === id)?.pageId;
+      if (pageId !== target) next = moveToPage(next, unitId, target);
+    }
+    // With other unsaved changes this joins them; Save keeps everything.
+    if (dirty) {
+      if (commitWhole(next)) setDiscoveredHandled(envelope.revision);
+      return;
+    }
     setError(null);
     try {
-      await mutate(await studioRequest("/studio/api/board", { revision: envelope.revision, board: envelope.board }), {
+      await mutate(await studioRequest("/studio/api/board", { revision: envelope.revision, board: next }), {
         revalidate: false,
       });
+      setDiscoveredHandled(envelope.revision);
     } catch (err) {
       setError(err);
     }
@@ -1914,23 +1923,29 @@ export default function StudioBoard({
         </div>
       )}
       {newDiscovered.length > 0 && (
-        <div className="studio-discovered-note" role="status">
+        <div className="studio-discovered-note" role="group" aria-label="Newly discovered widgets">
           <span>
             {newDiscovered.length === 1
-              ? "A new widget was discovered"
-              : `${newDiscovered.length} new widgets were discovered`}
-            {newDiscoveredPage && pages.length > 1 ? ` and placed on ${newDiscoveredPage.name}` : ""}.
+              ? "A new widget was discovered."
+              : `${newDiscovered.length} new widgets were discovered.`}
           </span>
-          <button
-            type="button"
-            className="studio-text-button"
-            disabled={controlsDisabled}
-            onClick={selectNewDiscovered}
-          >
-            {newDiscovered.length === 1 ? "Select it" : "Select them"}
-          </button>
-          <button type="button" className="studio-text-button" disabled={controlsDisabled} onClick={keepNewDiscovered}>
-            {newDiscovered.length === 1 ? "Keep it there" : "Keep them there"}
+          {pages.length > 1 && (
+            <label className="studio-discovered-page">
+              Put {newDiscovered.length === 1 ? "it" : "them"} on
+              <select
+                value={pages.some((page) => page.id === discoveredTarget) ? discoveredTarget : currentPage}
+                onChange={(event) => setDiscoveredTarget(event.target.value)}
+              >
+                {pages.map((page) => (
+                  <option key={page.id} value={page.id}>
+                    {page.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button type="button" className="studio-button" disabled={controlsDisabled} onClick={placeNewDiscovered}>
+            {pages.length < 2 ? "OK" : newDiscovered.length === 1 ? "Put it there" : "Put them there"}
           </button>
         </div>
       )}
