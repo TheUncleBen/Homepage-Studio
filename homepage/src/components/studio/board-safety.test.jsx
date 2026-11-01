@@ -202,7 +202,7 @@ async function mountBoard({
   if (!firstBoardRead) {
     if (mode === "edit")
       await waitFor(() => expect(screen.getByRole("button", { name: "Done", exact: true })).toBeEnabled());
-    else if (mode === "settings") await screen.findByLabelText(/Dashboard title/);
+    else if (mode === "settings") await screen.findByLabelText(/Tab title/);
     else await waitFor(() => expect(screen.getByRole("button", { name: "Search" })).toBeEnabled());
   }
   return {
@@ -221,7 +221,7 @@ async function mountBoard({
 }
 
 async function openSettings() {
-  const title = await screen.findByLabelText(/Dashboard title/);
+  const title = await screen.findByLabelText(/Tab title/);
   return title.closest("dialog");
 }
 
@@ -384,7 +384,7 @@ describe("Native board save and draft safety", () => {
     expect(fetch.mock.calls.some(([path]) => path === "/studio/api/state")).toBe(false);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await act(async () => gate.resolve());
-    expect(await screen.findByLabelText(/Dashboard title/)).toHaveValue("My dashboard");
+    expect(await screen.findByLabelText(/Tab title/)).toHaveValue("My dashboard");
     expect(fetch.mock.calls.filter(([path]) => path === "/studio/api/state")).toHaveLength(1);
     expect(writer).not.toHaveBeenCalled();
   });
@@ -578,7 +578,7 @@ describe("Native board save and draft safety", () => {
   it("keeps the generic discard prompt for another editor's draft", async () => {
     await mountBoard({ mode: "settings" });
     const again = within(await openSettings());
-    fireEvent.change(again.getByRole("textbox", { name: "Dashboard title" }), { target: { value: "Drafting" } });
+    fireEvent.change(again.getByRole("textbox", { name: "Tab title" }), { target: { value: "Drafting" } });
     fireEvent.click(again.getByRole("button", { name: "Close dialog" }));
     expect(again.getByRole("heading", { name: "Discard unsaved changes?" })).toBeInTheDocument();
     expect(again.queryByText(/staged backup/)).not.toBeInTheDocument();
@@ -615,7 +615,7 @@ describe("Native board save and draft safety", () => {
     await mountBoard({ mode: "settings" });
     const dialog = await openSettings();
     const editor = within(dialog);
-    const title = editor.getByRole("textbox", { name: "Dashboard title" });
+    const title = editor.getByRole("textbox", { name: "Tab title" });
     const close = editor.getByRole("button", { name: "Close dialog" });
     fireEvent.change(title, { target: { value: "Still drafting" } });
     title.focus();
@@ -662,7 +662,7 @@ describe("Native board save and draft safety", () => {
       .mockResolvedValue({ configurationRevision: CONFIG_B });
     const { onLeave } = await mountBoard({ write, refresh, mode: "settings" });
     const dialog = await openSettings();
-    const title = screen.getByRole("textbox", { name: "Dashboard title" });
+    const title = screen.getByRole("textbox", { name: "Tab title" });
     fireEvent.change(title, { target: { value: "Committed title" } });
     fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
     expect(title).toBeDisabled();

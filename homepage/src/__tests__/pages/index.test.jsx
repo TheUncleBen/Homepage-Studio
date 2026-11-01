@@ -252,9 +252,18 @@ describe("Studio main-page composition", () => {
   it("keeps Homepage's favicon setting and lets a dashboard switch the platform CSS off", async () => {
     await mount({ title: "Family", favicon: "/own.ico", studioTheme: { platformCss: false } });
     expect(document.querySelector('link[rel="icon"]').getAttribute("href")).toBe("/own.ico");
+    expect(document.querySelector('link[rel="manifest"]')).toBeTruthy();
     expect([...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.getAttribute("href"))).toEqual([
       "/api/config/custom.css?v=0",
     ]);
+  });
+
+  it("leaves the manifest out when Install as app is off, and loads a logo as the tab icon", async () => {
+    await mount({ title: "Family", favicon: "proxmox.webp", pwa: false });
+    expect(document.querySelector('link[rel="manifest"]')).toBeNull();
+    expect(document.querySelector('link[rel="icon"]').getAttribute("href")).toBe(
+      "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/proxmox.webp",
+    );
   });
 
   it("starts search inert and rejects shortcuts until the board reports readiness", async () => {

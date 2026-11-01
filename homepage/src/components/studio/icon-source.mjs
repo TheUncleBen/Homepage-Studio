@@ -27,3 +27,24 @@ export function builtInIconUrl(name, { dark = false, format = "webp" } = {}) {
 
 // How the chooser stores a built-in logo.
 export const builtInIconValue = (name) => `${name}.webp`;
+
+const ICON_SETS = {
+  mdi: "https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/",
+  si: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/",
+};
+// The address a browser tab can load for an icon value (settings.favicon):
+// addresses as they are, uploads under the dashboard, logos from their set.
+export function iconHref(icon, scope = (path) => path) {
+  if (typeof icon !== "string" || !icon) return null;
+  if (/^https?:/.test(icon)) return icon;
+  if (icon.startsWith("/")) return scope(icon);
+  const prefix = icon.split("-")[0];
+  if (prefix === "sh") {
+    const format = /\.(svg|webp)$/.exec(icon)?.[1] || "png";
+    return `https://cdn.jsdelivr.net/gh/selfhst/icons@main/${format}/${encodeURIComponent(icon.slice(3).replace(/\.(svg|png|webp)$/, ""))}.${format}`;
+  }
+  if (ICON_SETS[prefix])
+    return `${ICON_SETS[prefix]}${encodeURIComponent(icon.slice(prefix.length + 1).replace(/\.svg$/, ""))}.svg`;
+  const builtIn = builtInIcon(icon);
+  return builtIn ? builtInIconUrl(builtIn.name, { format: builtIn.format }) : null;
+}

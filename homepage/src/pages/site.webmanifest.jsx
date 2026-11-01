@@ -22,12 +22,20 @@ async function getProps({ res }) {
   const scope = `${dashboard.basePath}/`;
   const requestedStart = withinScope(settings.startUrl || "/", dashboard.basePath);
 
-  const pwa = settings.pwa || {};
+  // Dashboard settings › Install as app: off means no manifest at all.
+  if (settings.pwa === false) {
+    res.statusCode = 404;
+    res.setHeader("Cache-Control", "no-store");
+    res.end();
+    return { props: {} };
+  }
+  const pwa = settings.pwa && typeof settings.pwa === "object" ? settings.pwa : {};
+  const appName = typeof pwa.name === "string" && pwa.name.trim() ? pwa.name.trim() : settings.title || "Homepage";
 
   const manifest = {
     id: `/studio/install/${dashboard.id}`,
-    name: settings.title || "Homepage",
-    short_name: settings.title || "Homepage",
+    name: appName,
+    short_name: appName,
     icons: pwa.icons || [
       {
         src: "/studio/brand/icon-192.png",

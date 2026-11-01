@@ -6,6 +6,7 @@ import AppearanceEditor from "./appearance-editor";
 import ConfigForm, { SETTINGS_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
+import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
 import { patchFromDraft } from "./native-adapter.mjs";
 import { ActionRow, Group, Row, Switch } from "./ui";
@@ -86,6 +87,80 @@ export function downloadFile(name, text, type = "application/json") {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// How the dashboard appears in a browser tab, on a home screen and to search
+// engines. Uses Homepage's own settings (title, favicon, pwa, disableIndexing).
+export function BrowserSettings({ settings, onChange }) {
+  const set = (patch) => {
+    const next = { ...settings };
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined) delete next[key];
+      else next[key] = value;
+    }
+    onChange(next);
+  };
+  const installable = settings.pwa !== false;
+  const pwa = settings.pwa && typeof settings.pwa === "object" && !Array.isArray(settings.pwa) ? settings.pwa : {};
+  const setApp = (patch) => {
+    const next = { ...pwa, ...patch };
+    for (const [key, value] of Object.entries(patch)) if (value === undefined) delete next[key];
+    set({ pwa: Object.keys(next).length ? next : undefined });
+  };
+  return (
+    <Group title="Browser and phone">
+      <Row label="Tab title" htmlFor="studio-tab-title">
+        <input
+          id="studio-tab-title"
+          value={typeof settings.title === "string" ? settings.title : ""}
+          placeholder="Dashboard"
+          maxLength={120}
+          onChange={(event) => set({ title: event.target.value || undefined })}
+        />
+      </Row>
+      <Row label="Tab icon" info="Shown in the browser tab and bookmarks. Without one, the dashboard's logo is used.">
+        <IconField
+          id="studio-tab-icon"
+          label="tab icon"
+          emptyText="Same as the logo"
+          value={typeof settings.favicon === "string" ? settings.favicon : ""}
+          onChange={(icon) => set({ favicon: icon || undefined })}
+        />
+      </Row>
+      <Row
+        label="Install as app"
+        info="Lets people add this dashboard to a phone's home screen or install it on a computer."
+      >
+        <Switch
+          label="Can be added to a home screen"
+          checked={installable}
+          onChange={(on) => set({ pwa: on ? (Object.keys(pwa).length ? pwa : undefined) : false })}
+        />
+      </Row>
+      {installable && (
+        <div className="studio-row-dependent">
+          <Row label="App name" htmlFor="studio-app-name">
+            <input
+              id="studio-app-name"
+              value={typeof pwa.name === "string" ? pwa.name : ""}
+              placeholder={
+                typeof settings.title === "string" && settings.title ? settings.title : "Same as the tab title"
+              }
+              maxLength={60}
+              onChange={(event) => setApp({ name: event.target.value || undefined })}
+            />
+          </Row>
+        </div>
+      )}
+      <Row label="Hide from search" info="Asks Google and other search engines not to list this dashboard.">
+        <Switch
+          label="Ask search engines not to index this dashboard"
+          checked={settings.disableIndexing === true}
+          onChange={(on) => set({ disableIndexing: on || undefined })}
+        />
+      </Row>
+    </Group>
+  );
+}
+
 export default function SettingsEditor({
   state,
   platform = null,
@@ -162,12 +237,22 @@ export default function SettingsEditor({
               </Row>
             </Group>
           </fieldset>
+          <BrowserSettings settings={draft} onChange={setDraft} />
           <WidgetDefaults settings={draft} onChange={setDraft} pageCount={pageCount} />
           <ConfigForm
             value={draft}
             onChange={setDraft}
-            fields={SETTINGS_FIELDS.filter((field) => field.key !== "theme" && field.key !== "target")}
-            knownKeys={["theme", "studioTheme", "studioDefaults", "target"]}
+            fields={SETTINGS_FIELDS.filter((field) => !["theme", "target", "title"].includes(field.key))}
+            knownKeys={[
+              "theme",
+              "studioTheme",
+              "studioDefaults",
+              "target",
+              "title",
+              "favicon",
+              "pwa",
+              "disableIndexing",
+            ]}
             onValidity={setValid}
             docs="https://gethomepage.dev/configs/settings/"
             name="Homepage settings"

@@ -184,7 +184,7 @@ export function IconChooser({ value, onPick }) {
 
 // The icon setting on a widget or bookmark: what it shows now, Change, and
 // Remove. The chooser opens in place.
-export function IconField({ id, label, value, onChange }) {
+export function IconField({ id, label, value, onChange, emptyText = "No icon" }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="studio-icon-field">
@@ -193,7 +193,7 @@ export function IconField({ id, label, value, onChange }) {
           {value ? <ResolvedIcon icon={value} width={28} height={28} alt="" /> : <StudioIcon name="image" size={18} />}
         </span>
         <span className="studio-icon-value" id={id}>
-          {value ? describeIcon(value) : "No icon"}
+          {value ? describeIcon(value) : emptyText}
         </span>
         <button
           type="button"

@@ -8,6 +8,7 @@ import { studioRequest } from "components/studio/api.mjs";
 import { appearanceStyles, appearanceTokens } from "components/studio/appearance.mjs";
 import StudioBoard from "components/studio/board";
 import { dashboardContext, dashboardPath } from "components/studio/dashboard-path.mjs";
+import { iconHref } from "components/studio/icon-source.mjs";
 import { keepsUpdatingHidden } from "components/studio/look.mjs";
 import { PreferencesContext, viewedSettings } from "components/studio/preferences";
 import useSystemTheme from "components/studio/use-system-theme";
@@ -178,7 +179,20 @@ function StudioDashboard({
         />
         <title>{settings.title || "Dashboard"}</title>
         <meta name="description" content={settings.description || "Your personal Homepage dashboard"} />
-        <link rel="icon" href={settings.favicon || dashboardPath("/studio/logo", studioDashboard.basePath)} />
+        <link
+          rel="icon"
+          href={
+            iconHref(settings.favicon, (path) => dashboardPath(path, studioDashboard.basePath)) ||
+            dashboardPath("/studio/logo", studioDashboard.basePath)
+          }
+        />
+        {settings.pwa !== false && (
+          <link
+            rel="manifest"
+            href={dashboardPath("/site.webmanifest?v=4", studioDashboard.basePath)}
+            crossOrigin="use-credentials"
+          />
+        )}
         <link rel="apple-touch-icon" href="/studio/brand/apple-touch-icon.png" />
         {/* The platform CSS from Administration loads first; this dashboard's
             own custom.css adds to it. A dashboard can switch it off. */}

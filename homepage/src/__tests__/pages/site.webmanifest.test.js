@@ -55,6 +55,18 @@ describe("pages/site.webmanifest", () => {
     expect(manifest.background_color).toBe(themes.slate.dark);
   });
 
+  it("names the app from Install as app, and has no manifest when it is off", async () => {
+    getSettings.mockReturnValueOnce({ title: "Lab", pwa: { name: "Lab app" } });
+    const res = createMockRes();
+    await getServerSideProps({ res });
+    expect(JSON.parse(res.write.mock.calls[0][0]).name).toBe("Lab app");
+    getSettings.mockReturnValueOnce({ title: "Lab", pwa: false });
+    const off = createMockRes();
+    await getServerSideProps({ res: off });
+    expect(off.statusCode).toBe(404);
+    expect(off.write).not.toHaveBeenCalled();
+  });
+
   it("uses sensible defaults when no settings are provided", async () => {
     getSettings.mockReturnValueOnce({});
 
