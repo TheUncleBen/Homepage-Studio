@@ -131,6 +131,39 @@ function SavedLooks({ saved = [], look, onApply, onChange }) {
 }
 
 // A row that only exists for the choice above it, drawn indented under it.
+// Where the status check goes: the service's site monitor address (web) or
+// ping host. Empty uses the service's own link.
+function StatusAddress({ check, address }) {
+  const id = useId();
+  const ping = check === "ping";
+  let host = "";
+  try {
+    host = address.href ? new URL(address.href).hostname : "";
+  } catch {
+    host = "";
+  }
+  return (
+    <Row
+      label="Address"
+      htmlFor={id}
+      info={
+        ping
+          ? "The host to ping. Leave it empty to ping the host of the widget's link."
+          : "The address to check, often a health page. Leave it empty to check the widget's link."
+      }
+    >
+      <input
+        id={id}
+        value={ping ? address.ping : address.web}
+        inputMode={ping ? "text" : "url"}
+        autoComplete="off"
+        placeholder={(ping ? host : address.href) || (ping ? "host.example.org" : "https://service.example.org/health")}
+        onChange={(event) => address.onChange(check, event.target.value.trim())}
+      />
+    </Row>
+  );
+}
+
 function Dependent({ children }) {
   return <div className="studio-row-dependent">{children}</div>;
 }
@@ -289,6 +322,7 @@ export default function LookEditor({
   sections,
   savedLooks,
   onSavedLooks,
+  statusAddress,
 }) {
   const show = sections || lookSections(kind);
   // The dialog puts Look and Status above the widget's own settings, and
@@ -516,6 +550,7 @@ export default function LookEditor({
           />
           {acts.status !== "off" && (
             <Dependent>
+              {statusAddress && <StatusAddress check={acts.status} address={statusAddress} />}
               <Choice
                 label="Show as"
                 value={effective.status}

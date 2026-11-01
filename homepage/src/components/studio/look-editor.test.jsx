@@ -248,3 +248,21 @@ describe("saved looks", () => {
     expect(onSavedLooks).toHaveBeenLastCalledWith([]);
   });
 });
+
+describe("status address", () => {
+  it("asks for the address the check uses, and only while a check is on", () => {
+    const onChange = vi.fn();
+    const address = { web: "", ping: "", href: "https://nas.example.org/ui", onChange };
+    renderEditor({ kind: "service", statusAddress: address });
+    const input = screen.getByLabelText("Address");
+    expect(input.placeholder).toBe("https://nas.example.org/ui");
+    fireEvent.change(input, { target: { value: "https://nas.example.org/health" } });
+    expect(onChange).toHaveBeenCalledWith("web", "https://nas.example.org/health");
+  });
+
+  it("suggests the link's host for Ping", () => {
+    const address = { web: "", ping: "", href: "https://nas.example.org/ui", onChange: vi.fn() };
+    renderEditor({ kind: "service", statusAddress: address, behaviour: { status: "ping" } });
+    expect(screen.getByLabelText("Address").placeholder).toBe("nas.example.org");
+  });
+});

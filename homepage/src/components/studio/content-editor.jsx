@@ -299,9 +299,13 @@ export default function ContentEditor({
         </button>
       </div>
     );
+  // A service's check address lives under Status in the look editor, so it
+  // has one home there.
   const fields =
     kind === "service"
-      ? SERVICE_FIELDS
+      ? boardPanel
+        ? SERVICE_FIELDS.filter((field) => field.key !== "ping" && field.key !== "siteMonitor")
+        : SERVICE_FIELDS
       : kind === "bookmark"
         ? [...LINK_FIELDS, { key: "abbr", label: "Abbreviation", type: "string" }]
         : selectedEntry?.fields || [];
@@ -320,6 +324,21 @@ export default function ContentEditor({
         onPage: stacked ? undefined : setPage,
         savedLooks,
         onSavedLooks: setSavedLooks,
+        statusAddress:
+          kind === "service"
+            ? {
+                web: typeof draft.siteMonitor === "string" ? draft.siteMonitor : "",
+                ping: typeof draft.ping === "string" ? draft.ping : "",
+                href: typeof draft.href === "string" ? draft.href : "",
+                onChange: (check, value) => {
+                  const key = check === "ping" ? "ping" : "siteMonitor";
+                  const next = { ...draft };
+                  if (value) next[key] = value;
+                  else delete next[key];
+                  setDraft(next);
+                },
+              }
+            : undefined,
       }
     : null;
   const changedGroup = source?.group === group ? source?.groupPath || group : group;
