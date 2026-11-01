@@ -306,7 +306,7 @@ describe("Native board save and draft safety", () => {
   it("accepts unchanged position settings without creating a draft or leaving the dialog open", async () => {
     await mountBoard();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Clock", exact: true }));
-    fireEvent.click(screen.getByRole("button", { name: "Position & size", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Size", exact: true }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Apply to arrangement", exact: true }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -404,11 +404,11 @@ describe("Native board save and draft safety", () => {
     const submitted = write.mock.calls[0][1].board;
     const position = native.closest("section").style.cssText;
     expect(handle).toBeDisabled();
-    expect(screen.getByRole("button", { name: /^Create stack/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Position & size" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Stack" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Size" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "Select Clock" })).toBeDisabled();
     fireEvent.keyDown(handle, { key: "ArrowDown" });
-    fireEvent.click(screen.getByRole("button", { name: /^Create stack/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Stack" }));
     expect(native.closest("section").style.cssText).toBe(position);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await act(async () => gate.resolve({ ...initialState, board: submitted, revision: "after" }));
@@ -448,7 +448,7 @@ describe("Native board save and draft safety", () => {
     const catalogReads = () => fetch.mock.calls.filter(([path]) => path === "/studio/catalog.json").length;
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Clock" }));
-    fireEvent.click(screen.getByRole("button", { name: "Position & size" }));
+    fireEvent.click(screen.getByRole("button", { name: "Size" }));
     await screen.findByRole("dialog");
     expect(catalogReads()).toBe(0);
     fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
@@ -589,20 +589,20 @@ describe("Native board save and draft safety", () => {
     expect(screen.queryByRole("checkbox", { name: /^Select stack/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Clock" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Search" }));
-    fireEvent.click(screen.getByRole("button", { name: /^Create stack/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Stack" }));
     const shell = document.querySelector("[data-stack-shell-id]");
     const checkbox = within(shell).getByRole("checkbox", { name: /^Select stack (Clock|Search)$/ });
-    const position = screen.getByRole("button", { name: "Position & size" });
+    // The bulk bar, with Size, shows only while something is selected.
     expect(checkbox).not.toBeChecked();
-    expect(position).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Size" })).toBeNull();
     fireEvent.click(checkbox);
     expect(checkbox).toBeChecked();
     expect(shell).toHaveClass("studio-selected");
-    expect(position).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Size" })).toBeEnabled();
     fireEvent.click(checkbox);
     expect(checkbox).not.toBeChecked();
     expect(shell).not.toHaveClass("studio-selected");
-    expect(position).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Size" })).toBeNull();
     // Leaving the editor discards the unsaved stack on the way back.
     fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
@@ -707,7 +707,7 @@ describe("Native board save and draft safety", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Clock" }));
-    fireEvent.click(screen.getByRole("button", { name: "Position & size" }));
+    fireEvent.click(screen.getByRole("button", { name: "Size" }));
     fireEvent.change(screen.getByRole("spinbutton", { name: "Row" }), {
       target: { value: "4" },
     });
@@ -868,7 +868,7 @@ describe("Native board save and draft safety", () => {
   it("preserves a position dialog draft's original revision when it is applied after an external native change", async () => {
     const { publishNative, pollBoard, setBackend, writer } = await mountBoard();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Clock" }));
-    fireEvent.click(screen.getByRole("button", { name: "Position & size" }));
+    fireEvent.click(screen.getByRole("button", { name: "Size" }));
     fireEvent.change(screen.getByRole("spinbutton", { name: "Row" }), {
       target: { value: "5" },
     });

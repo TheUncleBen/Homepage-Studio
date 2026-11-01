@@ -574,3 +574,38 @@ test('duplicating a page copies every widget on it, placed and styled like the o
   assert.ok((await fs.readFile(path.join(configDir, 'bookmarks.yaml'), 'utf8')).includes('Homepage copy'));
   assert.equal((await store.listBackups())[0].action, 'page-duplicated');
 });
+
+test('several widgets are duplicated or deleted together in one save', async (t) => {
+  const { store, configDir } = await fixture(t);
+  let result = await store.load();
+  const clock = result.infoWidgets.find((entry) => entry.type === 'datetime');
+  const bookmark = result.bookmarks[0];
+  const board = structuredClone(result.board);
+  board.panels = board.panels.map((panel) => (panel.id === clock.id ? { ...panel, look: { fill: 'tint' }, rect: { ...panel.rect, w: 5, h: 2 } } : panel));
+  result = await store.saveBoard({ revision: result.revision, board });
+  const before = result.board.panels.length;
+  result = await store.duplicatePanels({ revision: result.revision, ids: [clock.id, bookmark.id] });
+  assert.equal(result.ids.length, 2);
+  assert.equal(result.board.panels.length, before + 2);
+  const copies = result.board.panels.filter((panel) => result.ids.includes(panel.id));
+  const clockCopy = copies.find((panel) => panel.kind === 'informationWidget');
+  assert.deepEqual(clockCopy.look, { fill: 'tint' });
+  assert.deepEqual([clockCopy.rect.w, clockCopy.rect.h], [5, 2]);
+  // Each copy sits in free space, never on top of another widget.
+  const others = result.board.panels.filter((panel) => panel.id !== clockCopy.id && panel.pageId === clockCopy.pageId);
+  const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  assert.ok(others.every((panel) => !overlaps(panel.rect, clockCopy.rect)));
+  assert.equal((await fs.readFile(path.join(configDir, 'widgets.yaml'), 'utf8')).match(/datetime/g).length, 2);
+  assert.ok((await fs.readFile(path.join(configDir, 'bookmarks.yaml'), 'utf8')).includes('Homepage copy'));
+  assert.equal((await store.listBackups())[0].action, 'widgets-duplicated');
+
+  result = await store.deletePanels({ revision: result.revision, ids: result.ids });
+  assert.equal(result.board.panels.length, before);
+  assert.equal((await fs.readFile(path.join(configDir, 'widgets.yaml'), 'utf8')).match(/datetime/g).length, 1);
+  assert.ok(!(await fs.readFile(path.join(configDir, 'bookmarks.yaml'), 'utf8')).includes('Homepage copy'));
+  assert.equal((await store.listBackups())[0].action, 'widgets-deleted');
+
+  await assert.rejects(store.deletePanels({ revision: result.revision, ids: ['nope'] }), /no longer exists/);
+  await assert.rejects(store.duplicatePanels({ revision: result.revision, ids: [] }), /Choose the widgets/);
+  await assert.rejects(store.deletePanels({ revision: 'stale', ids: [clock.id] }), /changed|revision|reload/i);
+});

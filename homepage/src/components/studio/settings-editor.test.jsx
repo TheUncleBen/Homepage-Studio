@@ -355,7 +355,7 @@ describe("Snapshot action and age", () => {
     expect(snapshotActionLabel("snapshot-restored")).toBe("Snapshot restored");
     expect(snapshotActionLabel("dashboard-imported")).toBe("Dashboard imported");
     expect(snapshotActionLabel("info-widget-deleted")).toBe("Information widget deleted");
-    expect(Object.keys(SNAPSHOT_ACTION_LABELS)).toHaveLength(21);
+    expect(Object.keys(SNAPSHOT_ACTION_LABELS)).toHaveLength(23);
     for (const label of Object.values(SNAPSHOT_ACTION_LABELS)) expect(label).toMatch(/^[A-Z][a-z ]+$/);
     for (const action of [undefined, null, "", "future-operation", "constructor", "toString", 7])
       expect(snapshotActionLabel(action)).toBe("Saved change");

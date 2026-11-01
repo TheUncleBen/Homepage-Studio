@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { studioRequest } from "./api.mjs";
 import AppearanceOnlyEditor from "./appearance-only-editor";
 import { PageBackgroundEditor } from "./background-picker";
+import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm } from "./bulk-bar";
 import CardBackground from "./card-background";
 import { resolvedBehaviour, useCardTheme } from "./card-look";
 import ContentEditor, { ContentPicker, duplicateEntry } from "./content-editor";
@@ -190,9 +191,11 @@ function ShortcutsSheet({ editing, pages }) {
     editing && ["Ctrl / ⌘ Shift Z", "Redo"],
     editing && ["Arrow keys", "Move the selected widget"],
     editing && ["Shift + arrow keys", "Resize the selected widget"],
-    editing && ["Esc", "Cancel a drag"],
+    editing && ["Esc", "Cancel a drag, or clear the selection"],
     editing && ["F2", "Rename the current page"],
     editing && ["Right-click or hold", "Widget menu (or the menu key)"],
+    editing && ["Shift-click, or drag a box", "Select several widgets"],
+    editing && ["Ctrl / ⌘ A", "Select everything on this page"],
     editing && ["E", "Edit the selected widget"],
     editing && ["Ctrl / ⌘ D", "Duplicate the selected widget"],
     editing && ["Ctrl / ⌘ Alt C, then V", "Copy a widget's look, then paste it"],
@@ -286,6 +289,7 @@ export default function StudioBoard({
   const [dropPage, setDropPage] = useState(null);
   const [pageMenu, setPageMenu] = useState(null);
   const [unitMenu, setUnitMenu] = useState(null);
+  const [marquee, setMarquee] = useState(null);
 
   const [lookClipboard, setLookClipboard] = useState(readLookClipboard);
   const [modal, setModal] = useState(null);
@@ -1128,7 +1132,8 @@ export default function StudioBoard({
     const timer = setTimeout(() => setToast(null), 6000);
     return () => clearTimeout(timer);
   }, [toast]);
-  const undo = useCallback(() => {
+  // Plain functions: the key handler below re-subscribes each render.
+  const undo = () => {
     const { past, future } = history.current;
     if (!past.length || !wholeRef.current) return;
     const previous = past.at(-1);
@@ -1137,8 +1142,8 @@ export default function StudioBoard({
       setSelection([]);
       showToast("Undone");
     }
-  }, [commitWhole, showToast, setHistory]);
-  const redo = useCallback(() => {
+  };
+  const redo = () => {
     const { past, future } = history.current;
     if (!future.length || !wholeRef.current) return;
     const [next, ...rest] = future;
@@ -1147,7 +1152,7 @@ export default function StudioBoard({
       setSelection([]);
       showToast("Redone");
     }
-  }, [commitWhole, showToast, setHistory]);
+  };
   const pageActions = {
     canAdd: pages.length < MAX_PAGES,
     add: () => {
@@ -1224,6 +1229,157 @@ export default function StudioBoard({
       showToast(`Moved to ${pages.find((page) => page.id === target)?.name}`, true);
     }
   };
+  // Shift-click or Ctrl-click a widget to add it to the selection or take it out.
+  const selectByClick = (event) => {
+    if (!(event.shiftKey || event.ctrlKey || event.metaKey) || controlsDisabled) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || target.closest(".studio-select-target,.studio-resize-handle,.studio-move-handle")) return;
+    const shell = target.closest("[data-stack-shell-id]");
+    const panel = target.closest("[data-panel-id]");
+    const id = shell?.dataset.stackShellId || panel?.dataset.stackId || panel?.dataset.panelId;
+    if (!id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    select(id);
+  };
+  // Drag a box on empty space to select every widget it touches.
+  const startMarquee = (event) => {
+    if (event.pointerType !== "mouse" || event.button !== 0 || controlsDisabled || modal) return;
+    if (!(event.target instanceof Element) || event.target.closest(".studio-panel,.studio-stack-shell,button,a,input"))
+      return;
+    // Dragging a box must not select page text on the way.
+    event.preventDefault();
+    window.getSelection?.()?.removeAllRanges();
+    const box = canvas.current.getBoundingClientRect();
+    const start = { x0: event.clientX - box.left, y0: event.clientY - box.top };
+    const keep = event.shiftKey || event.ctrlKey || event.metaKey ? selection : [];
+    let current = null;
+    const move = (next) => {
+      current = { ...start, x1: next.clientX - box.left, y1: next.clientY - box.top };
+      if (Math.abs(current.x1 - current.x0) + Math.abs(current.y1 - current.y0) > 6) setMarquee(current);
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      setMarquee(null);
+      if (!current || Math.abs(current.x1 - current.x0) + Math.abs(current.y1 - current.y0) <= 6) return;
+      const area = {
+        left: Math.min(current.x0, current.x1),
+        top: Math.min(current.y0, current.y1),
+        right: Math.max(current.x0, current.x1),
+        bottom: Math.max(current.y0, current.y1),
+      };
+      const touched = [...geometry.entries()]
+        .filter(
+          ([, rect]) =>
+            rect.left < area.right &&
+            rect.left + rect.width > area.left &&
+            rect.top < area.bottom &&
+            rect.top + rect.height > area.top,
+        )
+        .map(([id]) => id);
+      setSelection([...new Set([...keep, ...touched])]);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  };
+  // Several widgets selected: the bulk bar. Stacks count as their members
+  // for look and behaviour, duplicate and delete.
+  const selectedPanels = () => {
+    const ids = selection.flatMap((id) => wholeBoard.stacks.find((stack) => stack.id === id)?.panelIds || [id]);
+    return wholeBoard.panels.filter((panel) => ids.includes(panel.id));
+  };
+  const bulkLook = (changes, inherited) => {
+    const changed = new Map(applyChanges(selectedPanels(), changes, inherited).map((panel) => [panel.id, panel]));
+    const next = {
+      ...wholeRef.current,
+      panels: wholeRef.current.panels.map((panel) => changed.get(panel.id) || panel),
+    };
+    if (commitWhole(next)) {
+      dismissEditor();
+      showToast(`Changed ${changed.size} widgets`, true);
+    }
+  };
+  const bulkSize = ({ w, h }) => {
+    let view = boardRef.current;
+    for (const id of selection) {
+      const unit = unitsForBoard(view).find((item) => item.id === id);
+      if (unit) view = moveUnit(view, id, { ...unit.rect, w: w ?? unit.rect.w, h: h ?? unit.rect.h });
+    }
+    if (changeBoard(view)) {
+      dismissEditor();
+      showToast(`Resized ${selection.length} widgets`, true);
+    }
+  };
+  // Duplicate and delete change the configuration files, so they save at once.
+  const bulkContent = {
+    save: async (path) => {
+      if (dirty) {
+        setError(new Error("Save or cancel the current arrangement first."));
+        return null;
+      }
+      const state = await studioRequest(path, {
+        revision: envelope.revision,
+        ids: selectedPanels().map((panel) => panel.id),
+      });
+      setHistory({ past: [], future: [] });
+      await savedContent(state);
+      return state;
+    },
+    duplicate: async () => {
+      try {
+        const state = await bulkContent.save("/studio/api/widgets-duplicate");
+        if (!state) return;
+        setSelection(state.ids || []);
+        showToast(`Duplicated ${state.ids?.length || 0} widgets`);
+      } catch (err) {
+        setError(err);
+      }
+    },
+    remove: async () => {
+      const count = selectedPanels().length;
+      setModal({ type: "bulkDelete", pending: true });
+      try {
+        if (await bulkContent.save("/studio/api/widgets-delete")) showToast(`Deleted ${count} widgets`);
+      } catch (err) {
+        setModal({ type: "bulkDelete" });
+        setError(err);
+      }
+    },
+  };
+  const runBulk = (id, event) => {
+    if (id === "look") setModal({ type: "bulkLook" });
+    else if (id === "size")
+      movableSelection.length === 1 ? position(movableSelection[0]) : setModal({ type: "bulkSize" });
+    else if (id === "page") {
+      const box = event.currentTarget.getBoundingClientRect();
+      setPageMenu({ x: box.left, y: box.bottom + 4, above: box.top - 4, from: event.currentTarget });
+    } else if (id === "stack") createStack();
+    else if (id === "duplicate") bulkContent.duplicate();
+    else if (id === "delete") setModal({ type: "bulkDelete" });
+  };
+  const bulkActions = () => {
+    const panels = selectedPanels();
+    const discovered = panels.some((panel) => panel.nativeLocator?.discovered);
+    return [
+      panels.length > 0 && { id: "look", icon: "paint", label: "Look" },
+      movableSelection.length > 0 && { id: "size", icon: "resize", label: "Size" },
+      pages.length > 1 && movableSelection.length > 0 && { id: "page", icon: "move", label: "Page", menu: true },
+      stackableSelection.length > 1 && { id: "stack", icon: "stack", label: "Stack" },
+      isAdmin &&
+        panels.length > 0 && {
+          id: "duplicate",
+          icon: "copy",
+          label: "Duplicate",
+          disabled: discovered,
+          hint: discovered ? "Discovered widgets belong to their provider and can't be copied" : undefined,
+        },
+      isAdmin && panels.length > 0 && { id: "delete", icon: "trash", label: "Delete", danger: true },
+    ];
+  };
+
   // The widget menu (right-click or hold while editing).
   const panelHref = (panel) => {
     const resolved = resolveNativePanel(panel, renderedNativeData);
@@ -1358,6 +1514,17 @@ export default function StudioBoard({
     if (!editing) return undefined;
     const key = (event) => {
       if (event.defaultPrevented || typing(event.target) || modal || overlayOpen || unitMenu) return;
+      // Ctrl A selects everything on the page; Esc lets go of the selection.
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        setSelection(unitsForBoard(board).map((unit) => unit.id));
+        return;
+      }
+      if (event.key === "Escape" && selection.length && !moving) {
+        event.preventDefault();
+        setSelection([]);
+        return;
+      }
       const focusedId = document.activeElement?.closest?.("[data-panel-id]")?.dataset.panelId;
       const id = selection.length === 1 ? selection[0] : selection.length === 0 ? focusedId : null;
       if (!id) return;
@@ -1419,7 +1586,7 @@ export default function StudioBoard({
     };
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
-  }, [editing, modal, overlayOpen, pages, currentPage, showPage, undo, redo]);
+  });
   // On phones, a sideways swipe on the dashboard's empty space changes page.
   useEffect(() => {
     const element = canvas.current;
@@ -1458,6 +1625,7 @@ export default function StudioBoard({
   const stackableSelection = selection.filter(
     (id) => board.panels.some((panel) => panel.id === id) && !stackedIds.has(id),
   );
+  const selectedCount = selection.length ? selectedPanels().length : 0;
   const modalTitles = {
     picker: "Add to your dashboard",
     content: modal?.panel ? `Edit ${modal.panel.title}` : modal?.entry?.name || "Configure content",
@@ -1475,11 +1643,14 @@ export default function StudioBoard({
     pageLink: "Link to page",
     shortcuts: "Keyboard shortcuts",
     moveHere: "Move widgets here",
+    bulkLook: `Look for ${selection.length} selected`,
+    bulkSize: "Size",
+    bulkDelete: `Delete ${modal?.type === "bulkDelete" ? selectedCount : ""} widgets?`,
   };
 
   return (
     <main
-      className={`studio-app${editing ? " studio-edit-mode" : ""}`}
+      className={`studio-app${editing ? " studio-edit-mode" : ""}${editing && selection.length ? " studio-has-bulk" : ""}`}
       data-glass={(pageBackground && settings?.studioTheme?.glass) || undefined}
       aria-busy={saving || refreshing || undefined}
     >
@@ -1563,36 +1734,6 @@ export default function StudioBoard({
               Widgets
             </button>
           )}
-          <button
-            className="studio-button studio-quiet"
-            disabled={controlsDisabled || stackableSelection.length < 2}
-            onClick={createStack}
-          >
-            <StudioIcon name="stack" size={16} />
-            Create stack
-            {stackableSelection.length > 0 ? ` (${stackableSelection.length})` : ""}
-          </button>
-          <button
-            className="studio-button studio-quiet"
-            disabled={controlsDisabled || selection.length !== 1}
-            onClick={() => position(selection[0])}
-          >
-            Position & size
-          </button>
-          {pages.length > 1 && (
-            <button
-              className="studio-button studio-quiet"
-              disabled={controlsDisabled || !movableSelection.length}
-              aria-haspopup="menu"
-              onClick={(event) => {
-                const box = event.currentTarget.getBoundingClientRect();
-                setPageMenu({ x: box.left, y: box.bottom + 4, from: event.currentTarget });
-              }}
-            >
-              <StudioIcon name="move" size={16} />
-              Move to page
-            </button>
-          )}
           <span className="studio-toolbar-spacer" />
           <span className="studio-muted">{dirty ? "Unsaved arrangement" : ""}</span>
           <button
@@ -1673,6 +1814,36 @@ export default function StudioBoard({
           )}
         </div>
       )}
+      {editing && selection.length > 0 && (
+        <div className="studio-bulk-bar" role="toolbar" aria-label={`${selection.length} selected`}>
+          <span className="studio-bulk-count">{selection.length} selected</span>
+          {bulkActions()
+            .filter(Boolean)
+            .map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                className={`studio-button studio-quiet${action.danger ? " studio-bulk-danger" : ""}`}
+                disabled={controlsDisabled || action.disabled}
+                title={action.hint}
+                aria-haspopup={action.menu ? "menu" : undefined}
+                onClick={(event) => runBulk(action.id, event)}
+              >
+                <StudioIcon name={action.icon} size={16} />
+                {action.label}
+              </button>
+            ))}
+          <button
+            type="button"
+            className="studio-icon-button"
+            aria-label="Clear selection"
+            title="Clear selection (Esc)"
+            onClick={() => setSelection([])}
+          >
+            <StudioIcon name="close" size={16} />
+          </button>
+        </div>
+      )}
       <div className="studio-status-message" role="status">
         {notice}
         {(refreshWarning || (envelope && nativeContentStale && !draftSourceChanged)) && (
@@ -1699,12 +1870,26 @@ export default function StudioBoard({
       <div
         ref={canvas}
         className="studio-canvas"
+        onClickCapture={editing ? selectByClick : undefined}
+        onPointerDown={editing ? startMarquee : undefined}
         style={{
           height: board.panels.length ? projection.rows * (ROW_HEIGHT + GAP) + 32 : 480,
           "--studio-grid-column": `${(width + GAP) / projection.columns}px`,
           "--studio-grid-row": `${ROW_HEIGHT + GAP}px`,
         }}
       >
+        {marquee && (
+          <div
+            className="studio-marquee"
+            aria-hidden="true"
+            style={{
+              left: Math.min(marquee.x0, marquee.x1),
+              top: Math.min(marquee.y0, marquee.y1),
+              width: Math.abs(marquee.x1 - marquee.x0),
+              height: Math.abs(marquee.y1 - marquee.y0),
+            }}
+          />
+        )}
         {!board.panels.length && wholeBoard.panels.length > 0 && (
           <div className="studio-empty studio-empty-page">
             <span className="studio-empty-icon">
@@ -2017,6 +2202,22 @@ export default function StudioBoard({
                     dismissEditor();
                   }}
                   onClose={closeModal}
+                />
+              ) : modal.type === "bulkLook" ? (
+                <BulkLookEditor panels={selectedPanels()} onApply={bulkLook} onCancel={closeModal} />
+              ) : modal.type === "bulkSize" ? (
+                <BulkSizeEditor
+                  units={unitsForBoard(board).filter((unit) => selection.includes(unit.id))}
+                  onApply={bulkSize}
+                  onCancel={closeModal}
+                />
+              ) : modal.type === "bulkDelete" ? (
+                <DeleteWidgetsConfirm
+                  count={selectedCount}
+                  discovered={selectedPanels().filter((panel) => panel.nativeLocator?.discovered).length}
+                  pending={Boolean(modal.pending)}
+                  onDelete={bulkContent.remove}
+                  onCancel={closeModal}
                 />
               ) : modal.type === "shortcuts" ? (
                 <ShortcutsSheet editing={editing} pages={pages.length > 1} />

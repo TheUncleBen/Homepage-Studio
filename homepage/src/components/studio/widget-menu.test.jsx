@@ -156,3 +156,59 @@ describe("Widget menu while editing", () => {
     expect(await screen.findByText("Look copied")).toBeInTheDocument();
   });
 });
+
+describe("Several widgets at once", () => {
+  it("shows the bar while widgets are selected; Ctrl A selects the page and Esc lets go", async () => {
+    await mount({ mode: "edit" });
+    expect(screen.queryByRole("toolbar", { name: /selected/ })).toBeNull();
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    const bar = await screen.findByRole("toolbar", { name: "2 selected" });
+    expect(
+      within(bar)
+        .getAllByRole("button")
+        .map((button) => button.textContent || button.getAttribute("aria-label")),
+    ).toEqual(["Look", "Size", "Page", "Stack", "Duplicate", "Delete", "Clear selection"]);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("toolbar", { name: /selected/ })).toBeNull();
+  });
+
+  it("Shift-click adds a widget to the selection", async () => {
+    await mount({ mode: "edit" });
+    fireEvent.click(screen.getByTestId("native-clock"), { shiftKey: true });
+    fireEvent.click(screen.getByTestId("native-weather"), { shiftKey: true });
+    expect(screen.getByRole("toolbar", { name: "2 selected" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select weather" })).toBeChecked();
+  });
+
+  it("changes the look of all of them, marking settings they don't share as Mixed", async () => {
+    const { writes } = await mount({ mode: "edit" });
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    fireEvent.click(within(screen.getByRole("toolbar", { name: "2 selected" })).getByRole("button", { name: "Look" }));
+    const dialog = await screen.findByRole("dialog");
+    // Clock has round corners and a shadow, weather the defaults.
+    expect(within(dialog).getAllByText("Mixed")).toHaveLength(2);
+    const apply = within(dialog).getByRole("button", { name: "Apply to 2 widgets" });
+    expect(apply).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Square" }));
+    fireEvent.click(apply);
+    expect(await screen.findByText("Changed 2 widgets")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save arrangement" }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    const looks = Object.fromEntries(writes[0].body.board.panels.map((item) => [item.id, item.look]));
+    // Only the changed setting is applied; each keeps its own edge.
+    expect(looks.clock).toEqual({ corners: "square", edge: "shadow" });
+    expect(looks.weather).toEqual({ corners: "square" });
+  });
+
+  it("duplicates and deletes them in one save", async () => {
+    const { writes } = await mount({ mode: "edit" });
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    fireEvent.click(
+      within(screen.getByRole("toolbar", { name: "2 selected" })).getByRole("button", { name: "Delete" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Delete 2 widgets?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete 2 widgets" }));
+    await waitFor(() => expect(writes.find((write) => write.path === "/studio/api/widgets-delete")).toBeTruthy());
+    expect(writes.at(-1).body.ids.sort()).toEqual(["clock", "weather"]);
+  });
+});

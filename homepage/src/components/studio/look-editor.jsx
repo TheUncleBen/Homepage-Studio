@@ -22,6 +22,20 @@ export function lookSections(kind) {
   };
 }
 
+// Several widgets edited together: a setting where they differ shows this
+// value, so no choice is pressed and the row says "Mixed".
+export const MIXED = "\u0000mixed";
+
+// The sections every one of these kinds has (several widgets at once).
+export function sharedSections(kinds) {
+  const all = kinds.map(lookSections);
+  return Object.fromEntries(Object.keys(lookSections("service")).map((key) => [key, all.every((one) => one[key])]));
+}
+
+function MixedNote({ value }) {
+  return value === MIXED ? <span className="studio-mixed-note">Mixed</span> : null;
+}
+
 // A row that only exists for the choice above it, drawn indented under it.
 function Dependent({ children }) {
   return <div className="studio-row-dependent">{children}</div>;
@@ -31,6 +45,7 @@ function Choice({ label, value, options, onChange, info }) {
   const id = useId();
   return (
     <Row label={label} info={info} htmlFor={undefined}>
+      <MixedNote value={value} />
       <Segmented id={id} label={label} value={value} options={options} onChange={onChange} />
     </Row>
   );
@@ -177,8 +192,9 @@ export default function LookEditor({
   onBehaviour,
   onPage,
   part = "all",
+  sections,
 }) {
-  const show = lookSections(kind);
+  const show = sections || lookSections(kind);
   // The dialog puts Look and Status above the widget's own settings, and
   // Show and Behaviour below them, as in the approved layout.
   const top = part !== "bottom";
@@ -199,7 +215,8 @@ export default function LookEditor({
       (effective.fill === "picture" && backgroundFamily === "upload"))
       ? effective.background
       : null;
-  const custom = effective.colour !== "logo";
+  const colourMixed = effective.colour === MIXED;
+  const custom = !colourMixed && effective.colour !== "logo";
   const named = effective.header === "logo-name" || effective.header === "name";
   return (
     <div className="studio-look-editor">
@@ -276,9 +293,10 @@ export default function LookEditor({
             <Dependent>
               <Row label="Colour">
                 <div className="studio-colour-choice">
+                  <MixedNote value={effective.colour} />
                   <Segmented
                     label="Colour"
-                    value={custom ? "custom" : "logo"}
+                    value={colourMixed ? MIXED : custom ? "custom" : "logo"}
                     onChange={(value) =>
                       setLook("colour", value === "logo" ? "logo" : hexOr(look.colour, inheritedLook.colour))
                     }

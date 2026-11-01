@@ -505,6 +505,8 @@ function createDashboardHandlers(options = {}) {
       // Administrators only (not in the access lists): removes native content.
       if (path === '/studio/api/page-delete' && req.method === 'POST') return json(res, 200, await store.deletePage(await readBody(req)));
       if (path === '/studio/api/page-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePage(await readBody(req)));
+      if (path === '/studio/api/widgets-delete' && req.method === 'POST') return json(res, 200, await store.deletePanels(await readBody(req)));
+      if (path === '/studio/api/widgets-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePanels(await readBody(req)));
       // These two are open to people who may arrange a dashboard, so they answer
       // with the board only, never the configuration files.
       if (path === '/studio/api/discovery-visibility' && req.method === 'POST') return json(res, 200, boardView(await store.mutateDiscoveryVisibility(await readBody(req))));
