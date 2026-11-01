@@ -617,7 +617,7 @@ export function createStudioServer(options = {}) {
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
   const platform = createPlatformStore({ configRoot });
   const backups = createBackupStore({ configRoot, stateRoot, buildRevision: options.buildRevision ?? process.env.STUDIO_BUILD_REVISION });
-  const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards }) : null;
+  const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards, preferences: { read: userId => personal.forUser(userId).preferences.read(), write: (userId, value) => personal.forUser(userId).preferences.write(value) } }) : null;
   const privateCookies = auth ? [authConfig.cookieName, authConfig.flowCookieName, authConfig.setupCookieName] : [];
   const handlers = new Map();
   const unpublished = new Map();

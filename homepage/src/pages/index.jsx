@@ -4,12 +4,11 @@ import Script from "next/script";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import useSWR, { SWRConfig, useSWRConfig } from "swr";
 
-import QuickLaunch from "components/quicklaunch";
 import { studioRequest } from "components/studio/api.mjs";
 import { appearanceStyles, appearanceTokens } from "components/studio/appearance.mjs";
 import StudioBoard from "components/studio/board";
 import { dashboardContext, dashboardPath } from "components/studio/dashboard-path.mjs";
-import { flattenServices } from "components/studio/native-adapter.mjs";
+import { PreferencesContext, viewedSettings } from "components/studio/preferences";
 import useSystemTheme from "components/studio/use-system-theme";
 import { withPageAuth } from "utils/auth";
 import { getDashboardData } from "utils/config/dashboard";
@@ -60,6 +59,9 @@ function StudioDashboard({
     },
     refreshInterval: 30000,
   });
+  // The viewer's own preferences (Account › Preferences); defaults without sign-in.
+  const { data: personal } = useSWR("/studio/api/preferences", studioRequest, { revalidateOnFocus: true });
+  const preferences = useMemo(() => personal?.preferences || {}, [personal]);
   const [searching, setSearching] = useState(false);
   const [interactionBlocked, setInteractionBlocked] = useState(true);
   const [searchString, setSearchString] = useState("");
@@ -73,7 +75,7 @@ function StudioDashboard({
     return () => channel.close();
   }, [mutate]);
   const systemDark = useSystemTheme();
-  const settings = data?.settings || initialSettings;
+  const settings = viewedSettings(data?.settings || initialSettings, preferences, studioMode !== "live");
   const displayMode = appearanceTokens(settings, systemDark).mode;
   const background = settings.background;
   const backgroundImage = typeof background === "string" ? background : background?.image;
@@ -91,14 +93,6 @@ function StudioDashboard({
     "2xl": "40px",
     "3xl": "64px",
   };
-  const searchItems = useMemo(
-    () =>
-      [
-        ...(data?.bookmarks || []).flatMap((group) => group.bookmarks),
-        ...flattenServices(data?.services).map((entry) => entry.service),
-      ].filter((item) => item?.href),
-    [data],
-  );
   useEffect(() => {
     setSettings(settings);
     setTheme(displayMode);
@@ -108,16 +102,15 @@ function StudioDashboard({
     const language = settings.language?.toLowerCase() === "zh-cn" ? "zh-Hans" : settings.language || "en";
     if (i18n.changeLanguage && i18n.language !== language) i18n.changeLanguage(language);
   }, [settings, displayMode, setSettings, setTheme, setColor, i18n]);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (preferences.motion === "reduced" || preferences.motion === "full") root.dataset.motion = preferences.motion;
+    else delete root.dataset.motion;
+  }, [preferences.motion]);
   const reportInteractionBlocked = useCallback((blocked) => {
     setInteractionBlocked(blocked);
     if (blocked) setSearching(false);
   }, []);
-  const changeSearching = useCallback(
-    (next) => {
-      setSearching((current) => (interactionBlocked ? false : typeof next === "function" ? next(current) : next));
-    },
-    [interactionBlocked],
-  );
   useEffect(() => {
     const key = (event) => {
       // The dashboard claims page keys (1-9, [ ], ?) before this runs.
@@ -133,7 +126,7 @@ function StudioDashboard({
         !event.altKey
       ) {
         event.preventDefault();
-        setSearchString(event.key === " " ? "" : event.key);
+        setSearchString(event.key === " " || event.key === "/" ? "" : event.key);
         setSearching(true);
       }
     };
@@ -204,27 +197,32 @@ function StudioDashboard({
           Native widget data is temporarily unavailable. Retry the widget refresh when the renderer is available.
         </div>
       )}
-      <StudioBoard
-        dashboard={studioDashboard}
-        mode={studioMode}
-        nativeData={data}
-        settings={settings}
-        onNativeChange={refresh}
-        onInteractionBlocked={reportInteractionBlocked}
-        overlayOpen={searching && !interactionBlocked}
-        onSearch={() => {
-          if (!interactionBlocked) setSearching(true);
-        }}
-      />
-      <div className="studio-quicklaunch" inert={interactionBlocked} aria-hidden={interactionBlocked || undefined}>
-        <QuickLaunch
-          servicesAndBookmarks={searchItems}
-          searchString={searchString}
-          setSearchString={setSearchString}
-          isOpen={searching && !interactionBlocked}
-          setSearching={changeSearching}
+      <PreferencesContext.Provider value={preferences}>
+        <StudioBoard
+          dashboard={studioDashboard}
+          mode={studioMode}
+          nativeData={data}
+          settings={settings}
+          onNativeChange={refresh}
+          onInteractionBlocked={reportInteractionBlocked}
+          overlayOpen={searching && !interactionBlocked}
+          onSearch={() => {
+            if (!interactionBlocked) {
+              setSearchString("");
+              setSearching(true);
+            }
+          }}
+          search={{
+            open: searching && !interactionBlocked,
+            query: searchString,
+            onQuery: setSearchString,
+            onClose: () => {
+              setSearching(false);
+              setSearchString("");
+            },
+          }}
         />
-      </div>
+      </PreferencesContext.Provider>
     </StudioRevisionContext.Provider>
   );
 }

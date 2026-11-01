@@ -45,6 +45,8 @@ import { readLook } from "./look.mjs";
 import Menu from "./menu";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
 import PanelHost, { CardPreview } from "./panel-host";
+import { useReducedMotion } from "./preferences";
+import StudioSearch from "./search";
 import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
 import StackEditor, { PositionEditor } from "./stack-editor";
 import StackShell from "./stack-shell";
@@ -89,18 +91,6 @@ const EMPTY_NATIVE = {};
 const isConfigurationRevision = (revision) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision);
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const uuid = () => globalThis.crypto?.randomUUID?.() || `stack-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-function useReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const query = matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return reduced;
-}
-
 // One stable React parent owns every native host for its entire board lifetime.
 // Stack shells are siblings; a membership change never reparents native content.
 export function PanelLayer({
@@ -229,6 +219,8 @@ export default function StudioBoard({
   settings,
   onNativeChange,
   onSearch,
+  // Search over every page (search.jsx), owned by the dashboard page.
+  search = null,
   onInteractionBlocked,
   overlayOpen = false,
   // "live" shows the dashboard only. "edit" is the editor page opened from the
@@ -1639,6 +1631,31 @@ export default function StudioBoard({
           </div>
         )}
       </div>
+      {search?.open && !editing && (
+        <StudioSearch
+          board={wholeBoard}
+          data={renderedNativeData}
+          query={search.query}
+          onQuery={search.onQuery}
+          onClose={search.onClose}
+          onShowPanel={(item) => {
+            showPage(item.pageId);
+            // Once the page shows, bring the widget into view and point it out.
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => {
+                const element = document.querySelector(`[data-panel-id="${CSS.escape(item.id)}"]`);
+                if (!element) return;
+                element.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" });
+                // A data attribute, so a re-render of the card's classes keeps it.
+                delete element.dataset.found;
+                void element.offsetWidth;
+                element.dataset.found = "true";
+                setTimeout(() => delete element.dataset.found, 1700);
+              }),
+            );
+          }}
+        />
+      )}
       {toast && (
         <div className="studio-toast" role="status" key={toast.key}>
           <span>{toast.message}</span>

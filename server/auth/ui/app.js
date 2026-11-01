@@ -872,6 +872,7 @@
   async function accountPage() {
     let view = await api('account');
     const { dashboards: shared } = await api('dashboards');
+    let preferences = (await api('account/preferences')).preferences;
     const message = notice();
     if (params.has('linked')) say(message, `Your ${view.oidc?.name ?? 'single sign-on'} account is linked.`, 'ok');
     if (params.has('confirmed')) say(message, 'Confirmed. You can close this tab and go back to your change.', 'ok');
@@ -891,7 +892,7 @@
       if (view.pendingLink) parts.push(linkConfirmSection(view.pendingLink));
       if (view.recovery) parts.push(h('div', { class: 'notice warn', text: 'You signed in with a command-line recovery link. This session ends when you close the browser. Add a passkey or authenticator app now if you lost yours.' }));
       if (local) parts.push(freshBanner(view.fresh));
-      parts.push(profileSection(user), defaultDashboardSection(user));
+      parts.push(profileSection(user), defaultDashboardSection(user), preferencesSection());
       if (local) parts.push(securitySection(user, factors), passkeySection(factors));
       if (view.oidc) parts.push(linkSection(user));
       parts.push(sessionsSection(), policySection());
@@ -929,6 +930,58 @@
       select.addEventListener('change', () => update(() => api('account/default-dashboard', { dashboardId: select.value || null }), box, 'Default dashboard saved.'));
       return [group({ title: 'Default dashboard', info: admin ? 'This site’s address opens the Dashboards page unless you choose a dashboard.' : 'The dashboard this site’s address opens for you. Without a choice, your group’s default opens, or the Dashboards page.' },
         row('Opens at ' + location.host, select)), box];
+    }
+    // Account › Preferences: how this person sees every dashboard they open.
+    // Each change saves at once. A default is never stored: choosing it again
+    // removes the setting. Rows that can't apply stay hidden (Custom search's
+    // address only while Custom is chosen; Suggestions only for engines that
+    // give them).
+    function preferencesSection() {
+      const box = notice();
+      const ENGINES = [['google', 'Google'], ['duckduckgo', 'DuckDuckGo'], ['bing', 'Bing'], ['brave', 'Brave'], ['startpage', 'Startpage'], ['kagi', 'Kagi'], ['custom', 'Custom']];
+      const SUGGESTS = new Set(['google', 'duckduckgo', 'bing', 'brave']);
+      const DEFAULTS = { searchEngine: 'google', searchSuggestions: true, searchDescriptions: true, searchAddresses: true, searchOpens: 'new', mode: 'dashboard', motion: 'system', clock: 'dashboard', temperature: 'dashboard' };
+      const read = key => preferences[key] ?? DEFAULTS[key];
+      async function save(change) {
+        const next = { ...preferences, ...change };
+        for (const [key, entry] of Object.entries(next)) if (entry === DEFAULTS[key] || entry === '' || entry === undefined) delete next[key];
+        try { preferences = (await api('account/preferences', { preferences: next })).preferences; say(box, 'Saved.', 'ok'); return true; }
+        catch (error) { failure(box, error); return false; }
+      }
+      // The search group redraws itself when a choice shows or hides rows.
+      const searchSlot = h('div', {});
+      function drawSearch() { put(searchSlot, searchGroup()); }
+      function searchGroup() {
+        const engine = read('searchEngine');
+        const select = h('select', {}, ENGINES.map(([key, label]) => h('option', { value: key, text: key === 'google' ? 'Google (default)' : label, selected: key === engine })));
+        select.addEventListener('change', async () => {
+          // Custom needs its address first; it saves once one is typed.
+          if (select.value === 'custom' && !preferences.searchUrl) { preferences = { ...preferences, searchEngine: 'custom' }; return drawSearch(); }
+          if (await save({ searchEngine: select.value })) drawSearch();
+        });
+        const rows = [row('Search with', select)];
+        if (engine === 'custom') {
+          const url = h('input', { type: 'url', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'https://search.example.org/?q=%s', value: preferences.searchUrl ?? '' });
+          url.addEventListener('change', async () => { if (await save({ searchEngine: 'custom', searchUrl: url.value.trim() })) drawSearch(); });
+          rows.push(row('Search address', url, { stacked: true, className: 'dependent', info: 'Put %s where the search words go. Suggestions are not offered for a custom engine.' }));
+        }
+        const switchRow = (label, key, info) => row(label, toggle({ checked: read(key), label, onChange: on => save({ [key]: on }) }), { info });
+        if (SUGGESTS.has(engine)) rows.push(switchRow('Suggestions', 'searchSuggestions', 'Show suggestions from your search engine as you type.'));
+        rows.push(switchRow('Descriptions', 'searchDescriptions', 'Also find widgets by their description.'));
+        rows.push(switchRow('Addresses', 'searchAddresses', 'Offer to open a web address you type.'));
+        rows.push(row('Open results', segmented({ label: 'Open results', value: read('searchOpens'), options: [['new', 'New tab'], ['same', 'This tab']], onChange: choice => save({ searchOpens: choice }) })));
+        return group({ title: 'Search', info: 'Search opens with / or Ctrl K on any dashboard, or when you start typing. It finds widgets on every page and searches the web with your engine.' }, rows);
+      }
+      function drawDisplay() {
+        const choice = (label, key, options, info) => row(label, segmented({ label, value: read(key), options, onChange: next => save({ [key]: next }) }), { info, stacked: true });
+        return group({ title: 'Display', info: 'These apply while you view a dashboard. Editing always shows the dashboard as it is set up.' },
+          choice('Light or dark', 'mode', [['dashboard', 'Dashboard’s choice'], ['system', 'Follow device'], ['dark', 'Dark'], ['light', 'Light']]),
+          choice('Motion', 'motion', [['system', 'Follow device'], ['reduced', 'Reduced'], ['full', 'Full']]),
+          choice('Clock', 'clock', [['dashboard', 'Dashboard’s choice'], ['24', '24-hour'], ['12', '12-hour']], 'For date and time widgets.'),
+          choice('Temperature', 'temperature', [['dashboard', 'Dashboard’s choice'], ['c', '°C'], ['f', '°F']], 'For weather, Glances and system resource widgets.'));
+      }
+      drawSearch();
+      return [searchSlot, drawDisplay(), box];
     }
     function securitySection(user, factors) {
       const box = notice();

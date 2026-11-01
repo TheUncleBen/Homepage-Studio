@@ -672,6 +672,13 @@ test('each person keeps their own images and preferences; using an image copies 
   assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'custom' } }, { cookie: member.cookie })).status, 400, 'custom needs an address');
   assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'custom', searchUrl: 'javascript:alert(1)//%s' } }, { cookie: member.cookie })).status, 400);
   assert.deepEqual((await request('/home/studio/api/preferences', { cookie: admin.cookie })).json.preferences, {}, 'preferences belong to one person');
+  // The account page reads and saves the same preferences.
+  assert.deepEqual((await request('/studio/auth/account/preferences', { cookie: member.cookie })).json.preferences, { searchEngine: 'duckduckgo', mode: 'dark' });
+  const fromAccount = await post('/studio/auth/account/preferences', { preferences: { searchEngine: 'kagi' } }, { cookie: member.cookie });
+  assert.equal(fromAccount.status, 200, fromAccount.text);
+  assert.deepEqual((await request('/home/studio/api/preferences', { cookie: member.cookie })).json.preferences, { searchEngine: 'kagi' });
+  assert.equal((await post('/studio/auth/account/preferences', { preferences: { motion: 'wild' } }, { cookie: member.cookie })).status, 400);
+  assert.equal((await request('/studio/auth/account/preferences')).status, 401);
   // Personal images are for editing: viewers cannot reach them.
   const png = 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4, 5, 6]).toString('base64');
   assert.equal((await post('/home/studio/api/my-images', { kind: 'logo', name: 'mine.png', image: png }, { cookie: member.cookie })).status, 403);

@@ -17,9 +17,12 @@ function mount({ authEnabled = true } = {}) {
       calls.push({ path: String(path), body });
       let value;
       if (String(path).endsWith("/studio/api/access"))
-        value = authEnabled ? { authEnabled: true, level: "arrange", user: { username: "sam" } } : { authEnabled: false };
+        value = authEnabled
+          ? { authEnabled: true, level: "arrange", user: { username: "sam" } }
+          : { authEnabled: false };
       else if (String(path).endsWith("/studio/api/my-images/use")) value = { image: { ...mine } };
-      else if (String(path).endsWith("/studio/api/my-images") && body) value = { image: { ...mine, id: "c".repeat(24) } };
+      else if (String(path).endsWith("/studio/api/my-images") && body)
+        value = { image: { ...mine, id: "c".repeat(24) } };
       else if (String(path).endsWith("/studio/api/my-images")) value = { images: [mine] };
       else if (String(path).endsWith("/studio/api/images") && body) value = { image: { ...ours, id: "d".repeat(24) } };
       else value = { images: [ours] };

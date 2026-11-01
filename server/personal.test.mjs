@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createPersonalStore, PreferenceError, validatePreferences } from './personal.mjs';
 
 test('preferences store only what differs from the default and refuse anything else', () => {
-  assert.deepEqual(validatePreferences({ searchEngine: 'google', motion: 'reduced', clock: 'language' }), { motion: 'reduced' });
+  assert.deepEqual(validatePreferences({ searchEngine: 'google', motion: 'reduced', clock: 'dashboard' }), { motion: 'reduced' });
   assert.deepEqual(validatePreferences({ searchEngine: 'custom', searchUrl: 'https://search.example.com/?q=%s', suggestionsUrl: '' }), { searchEngine: 'custom', searchUrl: 'https://search.example.com/?q=%s' });
   // What was typed for Custom stays while another engine is chosen.
   assert.deepEqual(validatePreferences({ searchEngine: 'bing', searchUrl: 'https://search.example.com/?q=%s' }), { searchEngine: 'bing', searchUrl: 'https://search.example.com/?q=%s' });

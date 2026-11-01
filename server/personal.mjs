@@ -38,8 +38,8 @@ export const PREFERENCE_CHOICES = Object.freeze({
   searchOpens: ['new', 'same'],
   mode: ['dashboard', 'system', 'dark', 'light'],
   motion: ['system', 'reduced', 'full'],
-  clock: ['language', '24', '12'],
-  temperature: ['language', 'c', 'f'],
+  clock: ['dashboard', '24', '12'],
+  temperature: ['dashboard', 'c', 'f'],
 });
 const TEXT_KEYS = ['searchUrl', 'suggestionsUrl'];
 

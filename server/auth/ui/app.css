@@ -567,3 +567,5 @@ dialog { overflow-y: auto; }
 .spinner { width: 34px; height: 34px; margin: 6px auto 0; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+/* A row that depends on the choice above it (Rule 1), indented under it. */
+.row-item.dependent { padding-left: 16px; box-shadow: inset 2px 0 0 var(--line-strong, var(--line)); }
