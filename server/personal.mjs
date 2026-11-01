@@ -3,11 +3,15 @@ import { constants } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createImageLibrary } from './image-library.mjs';
+import { createConnectionStore } from './connections.mjs';
 
 // Each signed-in person's own things, kept apart from every dashboard:
 // - images: logos and backgrounds uploaded "Just me". Only that person sees
 //   them in the library. Using one on a dashboard copies it into that
 //   dashboard's own library, so the dashboard never depends on the account.
+// - connections: service addresses and keys saved "Just me"
+//   (server/connections.mjs). Using one on a dashboard copies it there, as
+//   with images.
 // - preferences: how that person likes to see dashboards (search engine,
 //   light or dark, motion, clock, temperature).
 // Stored under <state>/people/<user id>/ and removed with the account.
@@ -116,6 +120,7 @@ export function createPersonalStore({ stateRoot }) {
       const serial = operation => { const result = queue.then(operation, operation); queue = result.catch(() => {}); return result; };
       person = {
         images: createImageLibrary({ stateDir: dir }),
+        connections: createConnectionStore({ dir }),
         preferences: {
           read: () => serial(() => readPreferences(dir)),
           write: value => serial(async () => { const clean = validatePreferences(value); await writePreferences(dir, clean); return clean; }),

@@ -586,6 +586,19 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.equal(removedConnection.status, 200, removedConnection.text);
   assert.deepEqual((await request('/home/studio/api/connections', { cookie: admin.cookie })).json.connections, []);
   assert.equal((await request('/copy-two/studio/api/connections', { cookie: admin.cookie })).json.connections.length, 1, 'the copy keeps its own');
+  // "Just me" connections follow the administrator; using one copies it here.
+  assert.equal((await request('/home/studio/api/my-connections', { cookie: member.cookie })).status, 403);
+  const mineAdded = await post('/home/studio/api/my-connections', { action: 'add', name: 'Media server', url: 'https://media.example.org', key: 'personal-key' }, { cookie: admin.cookie });
+  assert.equal(mineAdded.status, 200, mineAdded.text);
+  assert.doesNotMatch(mineAdded.text, /personal-key/);
+  assert.deepEqual((await request('/copy/studio/api/my-connections', { cookie: admin.cookie })).json.connections.map(entry => entry.name), ['Media server']);
+  assert.deepEqual((await request('/home/studio/api/connections', { cookie: admin.cookie })).json.connections, [], 'personal ones are not on the dashboard');
+  const used = await post('/home/studio/api/my-connections/use', { id: mineAdded.json.connection.id }, { cookie: admin.cookie });
+  assert.equal(used.status, 200, used.text);
+  assert.equal(used.json.connection.id, mineAdded.json.connection.id);
+  assert.equal((await post('/home/studio/api/my-connections/use', { id: mineAdded.json.connection.id }, { cookie: admin.cookie })).status, 200, 'using it again refreshes the copy');
+  assert.equal((await post('/home/studio/api/my-connections', { action: 'delete', id: mineAdded.json.connection.id }, { cookie: admin.cookie })).status, 200);
+  assert.deepEqual((await request('/home/studio/api/connections', { cookie: admin.cookie })).json.connections.map(entry => [entry.name, entry.has.key]), [['Media server', true]], 'the dashboard keeps its copy');
   assert.equal((await post('/home/studio/api/images/delete', { id: imageId, confirm: true }, { cookie: member.cookie })).status, 200);
   assert.equal((await request('/home/studio/api/images/' + imageId, { cookie: member.cookie })).status, 404);
   assert.equal((await request('/copy/studio/api/images/' + imageId, { cookie: admin.cookie })).status, 200, 'the copy keeps its own');

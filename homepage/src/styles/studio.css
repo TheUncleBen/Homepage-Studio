@@ -3838,3 +3838,48 @@ a.studio-card-identity:hover .studio-card-name strong {
   flex: 1 1 160px;
   min-width: 0;
 }
+
+/* Saved connections (connections.jsx). */
+.studio-connection-detail {
+  margin: -6px 0 0;
+  padding: 0 16px 12px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.studio-connection-row .studio-row-control {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.studio-connection-row .studio-connection-detail {
+  padding: 0 0 12px;
+}
+.studio-connection-save {
+  padding: 4px 16px 12px;
+}
+.studio-connection-form {
+  border-top: 1px solid var(--studio-line);
+  padding-bottom: 12px;
+}
+.studio-connection-form > .studio-muted,
+.studio-connection-form > .studio-field-error,
+.studio-connection-form > .studio-inline-actions {
+  padding: 0 16px;
+  margin: 8px 0 0;
+}
+.studio-connection-form .studio-inline-actions {
+  justify-content: flex-end;
+}
+.studio-connection-form .studio-row-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.studio-connection-form .studio-row-control > input {
+  flex: 1;
+  min-width: 0;
+}
+.studio-connection-form .studio-row-control > button {
+  flex: none;
+  width: auto;
+}

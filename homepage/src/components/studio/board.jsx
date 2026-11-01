@@ -8,6 +8,7 @@ import { PageBackgroundEditor } from "./background-picker";
 import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm } from "./bulk-bar";
 import CardBackground from "./card-background";
 import { canRefresh, refreshCards, resolvedBehaviour, useCardTheme } from "./card-look";
+import { ConnectionsEditor } from "./connections";
 import ContentEditor, { ContentPicker, duplicateEntry } from "./content-editor";
 import { dashboardPath } from "./dashboard-path.mjs";
 import StudioDialog, { ErrorMessage } from "./dialog";
@@ -1663,6 +1664,7 @@ export default function StudioBoard({
     settings: "Dashboard settings",
     appearance: "Appearance",
     files: "Configuration files",
+    connections: "Saved connections",
     backups: "Snapshots & restore",
     stack: "Edit widget stack",
     position: "Position & size",
@@ -2397,8 +2399,11 @@ export default function StudioBoard({
                   onClose={closeModal}
                   onOpenFiles={() => requestEditorAction(() => setModal({ type: "files" }))}
                   onOpenBackups={() => requestEditorAction(() => openEditor("backups"))}
+                  onOpenConnections={() => requestEditorAction(() => setModal({ type: "connections" }))}
                   onReload={reloadEditor}
                 />
+              ) : modal.type === "connections" ? (
+                <ConnectionsEditor onClose={closeModal} />
               ) : modal.type === "files" ? (
                 <FilesEditor {...editorData} onSaved={savedContent} onClose={closeModal} onReload={reloadEditor} />
               ) : (

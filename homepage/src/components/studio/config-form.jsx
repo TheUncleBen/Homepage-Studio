@@ -1,6 +1,7 @@
 import { dump, load } from "js-yaml";
 import { useEffect, useId, useState } from "react";
 
+import { CONNECTION_FIELDS, ConnectionChooser, ConnectionSave, savedConnectionId } from "./connections";
 import Guide from "./guide";
 import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
@@ -513,8 +514,11 @@ export default function ConfigForm({
   grouped = true,
   title,
   info,
+  connections = false,
 }) {
   const [tab, setTab] = useState("fields");
+  // Whether a saved connection fills the address and key (connections.jsx).
+  const [savedConnection, setSavedConnection] = useState(() => Boolean(savedConnectionId(value)));
   // A view disabled by an error in the other view points at that error.
   const yamlErrorId = useId();
   const [yaml, setYaml] = useState(() => dump(value, { noRefs: true, lineWidth: 100, sortKeys: false }));
@@ -553,6 +557,11 @@ export default function ConfigForm({
       setError(yamlErrorMessage(err));
     }
   };
+  const wholeChange = (next) => {
+    setLastValue(next);
+    onChange(next);
+    setYaml(dump(next, { noRefs: true, lineWidth: 100, sortKeys: false }));
+  };
   const fieldErrorIds = Object.keys(fieldErrors)
     .filter((key) => fieldErrors[key])
     .map((key) => `studio-field-${key}-error`);
@@ -577,6 +586,10 @@ export default function ConfigForm({
   const connection = grouped
     ? shown.filter((field) => !picker(field) && (CONNECTION_KEYS.has(field.key) || field.sensitive))
     : [];
+  const connectionKeys = connection.map((field) => field.key);
+  const offersSaved = connections && connectionKeys.includes("url");
+  const connectionRows =
+    offersSaved && savedConnection ? connection.filter((field) => !CONNECTION_FIELDS.includes(field.key)) : connection;
   const pickers = shown.filter(picker);
   const options = shown.filter((field) => !picker(field) && !connection.includes(field));
   return (
@@ -596,7 +609,28 @@ export default function ConfigForm({
       />
       {tab === "fields" ? (
         <>
-          {connection.length > 0 && <Group title="Connection">{connection.map(fieldRow)}</Group>}
+          {connection.length > 0 && (
+            <Group title="Connection">
+              {offersSaved && (
+                <ConnectionChooser
+                  value={value}
+                  keys={connectionKeys}
+                  saved={savedConnection}
+                  onSaved={setSavedConnection}
+                  onChange={wholeChange}
+                />
+              )}
+              {connectionRows.map(fieldRow)}
+              {offersSaved && !savedConnection && (
+                <ConnectionSave
+                  value={value}
+                  keys={connectionKeys}
+                  onChange={wholeChange}
+                  onSaved={setSavedConnection}
+                />
+              )}
+            </Group>
+          )}
           {pickers.map((field) => (
             <VisibleFields key={field.key} field={field} value={value[field.key]} onChange={fieldChange} />
           ))}

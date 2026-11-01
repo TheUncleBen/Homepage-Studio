@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import useSWR from "swr";
 
 import { FILES, studioRequest } from "./api.mjs";
 import AppearanceEditor from "./appearance-editor";
@@ -94,9 +95,12 @@ export default function SettingsEditor({
   onClose,
   onOpenFiles,
   onOpenBackups,
+  onOpenConnections,
   onReload,
   pageCount = 1,
 }) {
+  const { data: saved } = useSWR(onOpenConnections ? "/studio/api/connections" : null, studioRequest);
+  const savedCount = saved?.connections?.length;
   const original = state.settingsConfig || {};
   const [draft, setDraft] = useState(() => structuredClone(original));
   const [valid, setValid] = useState(true);
@@ -171,6 +175,17 @@ export default function SettingsEditor({
             title="Homepage settings"
             info="Homepage's own settings for this dashboard. Studio places and sizes the panels, so Homepage's layout options (tabs, columns, equal heights) are kept but don't change this board."
           />
+          {onOpenConnections && (
+            <Group>
+              <ActionRow
+                icon="link"
+                detail={savedCount === undefined ? undefined : `${savedCount || "None"} saved`}
+                onClick={onOpenConnections}
+              >
+                Saved connections
+              </ActionRow>
+            </Group>
+          )}
           <Group title="Files and history">
             <ActionRow icon="code" onClick={onOpenFiles}>
               Configuration files

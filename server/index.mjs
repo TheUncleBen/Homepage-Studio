@@ -19,7 +19,8 @@ import { readAuthConfig } from './auth/config.mjs';
 import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
 import { createLogoStore } from './dashboard-logo.mjs';
 import { createImageLibrary, ImageError, imageUsage, validImageId } from './image-library.mjs';
-import { ConnectionError, createConnectionStore, publicConnection } from './connections.mjs';
+import { ConnectionError, createConnectionStore, publicConnection, SECRET_FIELDS } from './connections.mjs';
+const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'];
 import { createPersonalStore } from './personal.mjs';
 import { createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
@@ -327,7 +328,8 @@ function createDashboardHandlers(options = {}) {
   async function connectionUsageOf() {
     const current = await store.load();
     const sources = [
-      ...(current.services || []).map((entry) => [entry.name, entry.config]),
+      // A service's own settings, not its widgets: those are counted below.
+      ...(current.services || []).map((entry) => [entry.name, entry.config && typeof entry.config === 'object' ? { ...entry.config, widget: undefined, widgets: undefined } : entry.config]),
       ...(current.serviceWidgets || []).map((entry) => [`${current.services.find((service) => service.id === entry.serviceId)?.name || 'Service'} · ${entry.type}`, entry.config]),
       ...(current.infoWidgets || []).map((entry) => [entry.type, entry.config]),
     ];
@@ -597,7 +599,7 @@ function createDashboardHandlers(options = {}) {
       }
       if (path === '/studio/api/connections' && req.method === 'POST') {
         const change = await readBody(req, 64 * 1024);
-        if (!change || typeof change !== 'object' || Object.keys(change).some((key) => !['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'].includes(key))) throw new ConnectionError('Send a connection change.');
+        if (!change || typeof change !== 'object' || Object.keys(change).some((key) => !CONNECTION_KEYS.includes(key))) throw new ConnectionError('Send a connection change.');
         if (change.action === 'add') return json(res, 200, { connection: publicConnection(await connections.add(change)) });
         if (change.action === 'update') return json(res, 200, { connection: publicConnection(await connections.update(change.id, change)) });
         if (change.action === 'delete') {
@@ -829,6 +831,33 @@ export function createStudioServer(options = {}) {
     }
     return json(res, 404, { error: 'This editor endpoint does not exist.' });
   }
+  // A signed-in administrator's own saved connections ("Just me"). Using one
+  // on a dashboard copies it there under the same id, so widgets that use it
+  // keep working if the personal one is changed or removed later.
+  async function handlePersonalConnections(req, res, path, current, dashboard) {
+    if (!auth) return json(res, 404, { error: 'Your own connections need Studio sign-in.', code: 'PERSONAL_UNAVAILABLE' });
+    const mine = personal.forUser(current.user.id).connections;
+    const read = ['GET', 'HEAD'].includes(req.method);
+    if (path === '/studio/api/my-connections' && read) return json(res, 200, { connections: (await mine.list()).map(entry => publicConnection(entry)) });
+    if (req.method !== 'POST') return json(res, 404, { error: 'This editor endpoint does not exist.' });
+    const change = await readBody(req, 64 * 1024);
+    if (path === '/studio/api/my-connections/use') {
+      if (!change || typeof change !== 'object' || Object.keys(change).some(key => key !== 'id')) throw new ConnectionError('Send the connection.');
+      const entry = await mine.read(change.id);
+      const here = forDashboard(dashboard).connections;
+      const input = { name: entry.name, url: entry.url, ...entry.secrets, clear: SECRET_FIELDS.filter(field => !entry.secrets[field]) };
+      const existing = (await here.list()).some(item => item.id === entry.id);
+      const copy = existing ? await here.update(entry.id, input) : await here.add(input, { id: entry.id });
+      return json(res, 200, { connection: publicConnection(copy) });
+    }
+    if (path !== '/studio/api/my-connections') return json(res, 404, { error: 'This editor endpoint does not exist.' });
+    if (!change || typeof change !== 'object' || Object.keys(change).some(key => !CONNECTION_KEYS.includes(key))) throw new ConnectionError('Send a connection change.');
+    if (change.action === 'add') return json(res, 200, { connection: publicConnection(await mine.add(change)) });
+    if (change.action === 'update') return json(res, 200, { connection: publicConnection(await mine.update(change.id, change)) });
+    // Dashboards that use it keep their own copy.
+    if (change.action === 'delete') { await mine.remove(change.id); return json(res, 200, { removed: true }); }
+    throw new ConnectionError('Choose add, update or delete.');
+  }
   async function handleRequest(req, res) {
     for (const [name, value] of Object.entries(responseHeaders)) res.setHeader(name, value);
     try {
@@ -1049,6 +1078,7 @@ export function createStudioServer(options = {}) {
         if (required.stepUp && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
       }
       if (local === '/studio/api/preferences' || local.startsWith('/studio/api/my-images')) return await handlePersonal(req, res, local, current, route.dashboard);
+      if (local === '/studio/api/my-connections' || local === '/studio/api/my-connections/use') return await handlePersonalConnections(req, res, local, current, route.dashboard);
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
       if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);
