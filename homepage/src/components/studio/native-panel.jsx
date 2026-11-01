@@ -10,8 +10,10 @@ import ServiceItem from "components/services/item";
 import ServiceWidget from "components/services/widget";
 import InformationWidget from "components/widgets/widget";
 
-export default memo(function NativePanel({ panel, data }) {
-  const resolved = resolveNativePanel(panel, data);
+// override: unsaved link fields (name, address, description, icon) for the
+// edit dialog's preview.
+export default memo(function NativePanel({ panel, data, override }) {
+  const resolved = withOverride(resolveNativePanel(panel, data), override);
   const card = useContext(CardLookContext);
   if (!resolved)
     return (
@@ -49,3 +51,11 @@ export default memo(function NativePanel({ panel, data }) {
     </ErrorBoundary>
   );
 });
+
+function withOverride(resolved, override) {
+  if (!resolved || !override) return resolved;
+  // The draft is the whole link, so a field it leaves out is shown as gone.
+  if (resolved.kind === "service") return { ...resolved, service: { ...resolved.service, ...override } };
+  if (resolved.kind === "bookmark") return { ...resolved, bookmark: { ...resolved.bookmark, ...override } };
+  return resolved;
+}

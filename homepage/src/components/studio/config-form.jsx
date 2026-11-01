@@ -2,6 +2,7 @@ import { dump, load } from "js-yaml";
 import { useEffect, useId, useState } from "react";
 
 import Guide from "./guide";
+import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
 import { isObject } from "./native-adapter.mjs";
 import { Disclosure, Group, Row, Segmented, Switch } from "./ui";
@@ -9,7 +10,7 @@ import { Disclosure, Group, Row, Segmented, Switch } from "./ui";
 export const LINK_FIELDS = [
   { key: "href", label: "Destination URL", type: "string" },
   { key: "description", label: "Description", type: "string" },
-  { key: "icon", label: "Icon", type: "string", exampleValue: "mdi-server" },
+  { key: "icon", label: "Icon", type: "string", icon: true },
   {
     key: "target",
     label: "Open target",
@@ -203,6 +204,8 @@ function Field({ field, value, onChange, onError }) {
         ]}
       />
     );
+  else if (field.icon && kind === "string")
+    control = <IconField id={id} label={label} value={text} onChange={(next) => update(next)} />;
   else if (flatObject)
     control = (
       <PairsEditor
@@ -264,9 +267,9 @@ function Field({ field, value, onChange, onError }) {
   return (
     <Row
       label={label}
-      htmlFor={choiceList || kind === "boolean" || flatObject || flatList ? undefined : id}
+      htmlFor={choiceList || kind === "boolean" || flatObject || flatList || field.icon ? undefined : id}
       info={field.description}
-      stacked={choiceList || structured || flatObject || flatList || field.valueTypes?.length > 1}
+      stacked={choiceList || structured || flatObject || flatList || field.icon || field.valueTypes?.length > 1}
       className={error ? "studio-row-invalid" : ""}
     >
       {field.valueTypes?.length > 1 && (

@@ -125,7 +125,10 @@ export function imageUsage(id, { board, settings, files = {} }) {
   const places = [];
   const uses = background => background?.source === 'library' && background.id === id;
   for (const panel of board?.panels ?? []) if (uses(panel.look?.background)) places.push({ kind: 'widget', name: panel.title || panel.id });
-  for (const page of board?.pages ?? []) if (uses(page.background)) places.push({ kind: 'page', name: page.name });
+  for (const page of board?.pages ?? []) {
+    if (uses(page.background)) places.push({ kind: 'page', name: page.name });
+    if (page.icon === '/studio/api/images/' + id) places.push({ kind: 'page', name: page.name + ' icon' });
+  }
   const theme = settings?.studioTheme;
   if (uses(theme?.card?.background)) places.push({ kind: 'dashboard', name: 'Card background' });
   if (uses(theme?.pageBackground)) places.push({ kind: 'dashboard', name: 'Page background' });

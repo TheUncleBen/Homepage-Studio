@@ -68,7 +68,7 @@ export function useCardPresentation(panel, data, onEdit) {
 }
 
 // A card on its own, outside the board: the widget dialog's live preview.
-export function CardPreview({ panel, data, renderNative: RenderNative = NativePanel }) {
+export function CardPreview({ panel, data, override, renderNative: RenderNative = NativePanel }) {
   const { card, attributes, colourStyle, backdrop } = useCardPresentation(panel, data, undefined);
   // Drawn at the widget's own size on a typical 1200 px wide board.
   const rect = panel.rect || { w: 6, h: 4 };
@@ -89,7 +89,7 @@ export function CardPreview({ panel, data, renderNative: RenderNative = NativePa
         {backdrop}
         <div className="studio-native-content" inert>
           <CardLookContext.Provider value={{ ...card, reportFields: undefined }}>
-            <RenderNative panel={panel} data={data} />
+            <RenderNative panel={panel} data={data} override={override} />
           </CardLookContext.Provider>
         </div>
       </div>

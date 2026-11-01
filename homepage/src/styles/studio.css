@@ -2574,7 +2574,10 @@ body {
   white-space: nowrap;
 }
 .studio-page-icon-preview {
-  margin: 12px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
 }
 @media (max-width: 680px) {
   .studio-topbar:has(.studio-pages) {
@@ -3360,4 +3363,126 @@ a.studio-card-identity:hover .studio-card-name strong {
 }
 .studio-background-adjust {
   margin-top: 12px;
+}
+
+/* Icon chooser: built-in logos, uploads, or a name or address. */
+.studio-icon-chooser {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.studio-icon-builtin,
+.studio-icon-other {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.studio-search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--studio-field, var(--studio-surface));
+  box-shadow: inset 0 0 0 1px var(--studio-line);
+  color: var(--studio-muted);
+}
+.studio-search-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.studio-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+  max-height: 300px;
+  overflow: auto;
+  padding: 2px;
+}
+.studio-icon-option {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 4px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--studio-muted);
+  font-size: 11px;
+}
+.studio-icon-option img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.studio-icon-option span {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-icon-option:hover {
+  background: var(--studio-hover, color-mix(in srgb, var(--studio-text) 6%, transparent));
+}
+.studio-icon-option[aria-checked="true"] {
+  box-shadow: inset 0 0 0 2px var(--studio-accent);
+  color: var(--studio-text);
+}
+.studio-inline-field {
+  display: flex;
+  gap: 8px;
+}
+.studio-inline-field input {
+  flex: 1;
+  min-width: 0;
+}
+.studio-icon-field {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.studio-icon-current {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.studio-icon-preview {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--studio-surface);
+  box-shadow: inset 0 0 0 1px var(--studio-line);
+  color: var(--studio-muted);
+}
+.studio-icon-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Uploaded logos sit whole on the tile; backgrounds fill it. */
+.studio-uploaded-logo {
+  background-size: 60% auto;
+  background-repeat: no-repeat;
+}
+.studio-uploaded-background {
+  background-size: cover;
+}
+.studio-search-field input:focus,
+.studio-search-field input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.studio-search-field:focus-within {
+  box-shadow:
+    inset 0 0 0 1px var(--studio-line),
+    0 0 0 2px var(--studio-accent);
 }

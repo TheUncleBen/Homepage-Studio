@@ -349,12 +349,18 @@ export default function ContentEditor({
             <span className="studio-look-preview-label" aria-hidden="true">
               Preview
             </span>
-            {renderPreview({
-              ...boardPanel,
-              look,
-              behaviour,
-              title: kind === "service" || kind === "bookmark" ? name || boardPanel.title : boardPanel.title,
-            })}
+            {renderPreview(
+              {
+                ...boardPanel,
+                look,
+                behaviour,
+                title: kind === "service" || kind === "bookmark" ? name || boardPanel.title : boardPanel.title,
+              },
+              // A link's name, address, description and icon show as they are typed.
+              kind === "service" || kind === "bookmark"
+                ? { name: name || boardPanel.title, href: draft.href, description: draft.description, icon: draft.icon }
+                : null,
+            )}
           </aside>
         )}
         <div className="studio-widget-settings">

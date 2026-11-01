@@ -19,6 +19,9 @@ test('pages need unique identities and names, 1 to 40 characters, at most 20', (
   assert.throws(() => validatePages([{ id: 'Bad id', name: 'X' }]), /unique identity/);
   assert.throws(() => validatePages(Array.from({ length: 21 }, (_, i) => ({ id: `p${i}`, name: `P${i}` }))), /1 to 20/);
   assert.throws(() => validatePages([{ id: 'a', name: 'X', icon: 'a b' }]), /icon/);
+  // An uploaded logo is named by its address on the dashboard; other leading slashes are refused.
+  assert.equal(validatePages([{ id: 'a', name: 'X', icon: '/studio/api/images/' + 'c'.repeat(24) }])[0].icon, '/studio/api/images/' + 'c'.repeat(24));
+  assert.throws(() => validatePages([{ id: 'a', name: 'X', icon: '/etc/passwd' }]), /icon/);
   assert.deepEqual(validatePages([{ id: 'a', name: ' Media ', background: { source: 'builtin', id: 'dunes' } }]), [{ id: 'a', name: 'Media', background: { source: 'builtin', id: 'dunes' } }]);
 });
 

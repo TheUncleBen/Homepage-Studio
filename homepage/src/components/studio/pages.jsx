@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { PAGE_NAME_LIMIT, pageHash, pageNameProblem, unitsOnPage } from "./geometry.mjs";
+import { IconChooser } from "./icon-chooser";
 import StudioIcon from "./icons";
 import Menu from "./menu";
 
@@ -463,40 +464,23 @@ export function DeletePageDialog({
   );
 }
 
-const ICON_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;
-
-// A page icon uses the same names as widget icons: a dashboard icon such as
-// "jellyfin.png", "mdi-…", "si-…", or an address.
+// A page icon uses the same choices as widget icons.
 export function PageIconEditor({ page, onApply, onClose }) {
   const [value, setValue] = useState(page.icon || "");
-  const trimmed = value.trim();
-  const valid = !trimmed || ICON_PATTERN.test(trimmed);
   return (
     <>
       <div className="studio-dialog-body">
-        <div className="studio-field">
-          <label htmlFor="page-icon">Icon</label>
-          <input
-            id="page-icon"
-            value={value}
-            placeholder="mdi-filmstrip or jellyfin.png"
-            aria-invalid={!valid || undefined}
-            aria-describedby="page-icon-help"
-            onChange={(event) => setValue(event.target.value)}
-          />
-        </div>
-        <p className="studio-note" id="page-icon-help">
-          {valid
-            ? "The same names as widget icons. Leave it empty for no icon: the tab then shows the name only."
-            : "Use an icon name or address without spaces."}
+        <p className="studio-page-icon-preview">
+          <span className="studio-page-tab" aria-label="Preview">
+            <PageLabel page={{ ...page, icon: value || undefined }} />
+          </span>
+          {value && (
+            <button type="button" className="studio-button studio-quiet" onClick={() => setValue("")}>
+              No icon
+            </button>
+          )}
         </p>
-        {trimmed && valid && (
-          <p className="studio-page-icon-preview">
-            <span className="studio-page-tab" aria-label="Preview">
-              <PageLabel page={{ ...page, icon: trimmed }} />
-            </span>
-          </p>
-        )}
+        <IconChooser value={value} onPick={setValue} />
       </div>
       <footer className="studio-dialog-footer">
         <span className="studio-footer-spacer" />
@@ -506,8 +490,8 @@ export function PageIconEditor({ page, onApply, onClose }) {
         <button
           type="button"
           className="studio-button studio-primary"
-          disabled={!valid || trimmed === (page.icon || "")}
-          onClick={() => onApply(trimmed || undefined)}
+          disabled={value === (page.icon || "")}
+          onClick={() => onApply(value || undefined)}
         >
           Apply to arrangement
         </button>

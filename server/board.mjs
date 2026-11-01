@@ -15,7 +15,8 @@ export const MAX_PANELS = 4096;
 export const MAX_PAGES = 20;
 export const DEFAULT_PAGE = Object.freeze({ id: 'home', name: 'Home' });
 const PAGE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
-const ICON = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;
+// An icon name or address, or an image uploaded to the dashboard.
+const ICON = /^(?:[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}|\/studio\/api\/images\/[a-f0-9]{24})$/;
 export const DEFAULT_PLAYBACK = Object.freeze({ mode: 'manual', intervalMs: 10000, manualHoldMs: 30000, transition: 'horizontal', transitionDurationMs: 250, loop: true });
 
 export class BoardError extends Error {

@@ -1865,7 +1865,9 @@ export default function StudioBoard({
                   entry={modal.entry}
                   pageId={currentPage}
                   wholeBoard={wholeBoard}
-                  renderPreview={(panel) => <CardPreview panel={panel} data={renderedNativeData} />}
+                  renderPreview={(panel, override) => (
+                    <CardPreview panel={panel} data={renderedNativeData} override={override} />
+                  )}
                   onSaved={savedContent}
                   onCancel={closeModal}
                   onReload={reloadEditor}

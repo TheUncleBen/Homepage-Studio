@@ -137,7 +137,12 @@ describe("widget look in the widget dialog", () => {
         catalog={{ service: [], info: [] }}
         panel={board.panels[0]}
         wholeBoard={board}
-        renderPreview={(panel) => <output data-testid="preview">{JSON.stringify(panel.look ?? null)}</output>}
+        renderPreview={(panel, override) => (
+          <>
+            <output data-testid="preview">{JSON.stringify(panel.look ?? null)}</output>
+            <output data-testid="preview-link">{JSON.stringify(override)}</output>
+          </>
+        )}
         onSaved={onSaved}
         onCancel={vi.fn()}
         onParent={vi.fn()}
@@ -170,6 +175,16 @@ describe("widget look in the widget dialog", () => {
     expect(String(url)).toContain("/studio/api/board");
     const body = JSON.parse(init.body);
     expect(body.board.panels[0].look).toEqual({ corners: "round" });
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the link as it is typed in the preview", () => {
+    renderBookmark(ok());
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Docs site" } });
+    expect(JSON.parse(screen.getByTestId("preview-link").textContent)).toEqual({
+      name: "Docs site",
+      href: "https://docs.example.com",
+    });
     vi.unstubAllGlobals();
   });
 
