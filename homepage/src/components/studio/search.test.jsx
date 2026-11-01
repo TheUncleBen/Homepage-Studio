@@ -56,7 +56,7 @@ describe("search model", () => {
 
   it("recognises typed web addresses", () => {
     expect(typedAddress("example.org")).toBe("https://example.org");
-    expect(typedAddress("http://nas.lan:5000/x")).toBe("http://nas.lan:5000/x");
+    expect(typedAddress("http://nas.example:5000/x")).toBe("http://nas.example:5000/x");
     expect(typedAddress("sso login")).toBeNull();
     expect(typedAddress("vault")).toBeNull();
   });
