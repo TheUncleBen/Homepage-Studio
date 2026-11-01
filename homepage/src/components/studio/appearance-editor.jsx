@@ -9,6 +9,7 @@ import {
   DEFAULT_ACCENT,
   DEFAULT_BASE,
   hexColor,
+  parseColour,
 } from "./appearance.mjs";
 import { BackgroundField, familyOf, FILL_FAMILIES } from "./background-picker";
 import { SPACING } from "./geometry.mjs";
@@ -38,7 +39,7 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
   const lastTheme = useRef(settings.studioTheme);
   const colorInput = useRef(null);
   const systemDark = useSystemTheme();
-  const valid = Boolean(hexColor(accentText));
+  const valid = Boolean(parseColour(accentText));
   useEffect(() => {
     onValidity?.(valid);
   }, [valid, onValidity]);
@@ -171,20 +172,20 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
                   id="studio-accent-text"
                   aria-label="Accent color"
                   value={accentText}
-                  maxLength={7}
+                  maxLength={24}
                   autoComplete="off"
                   spellCheck={false}
                   aria-invalid={!valid}
                   aria-describedby={!valid ? "studio-accent-error" : undefined}
                   onChange={(event) => {
                     setAccentText(event.target.value);
-                    const color = hexColor(event.target.value);
+                    const color = parseColour(event.target.value);
                     if (color) own("accent", color);
                   }}
                 />
                 {!valid && (
                   <span id="studio-accent-error" className="studio-field-error">
-                    Use a hex color such as #b299be.
+                    Use hex, such as #b299be, or rgb, such as rgb(178, 153, 190).
                   </span>
                 )}
               </div>

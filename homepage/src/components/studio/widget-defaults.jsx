@@ -1,4 +1,5 @@
 import { dashboardBehaviour } from "./card-look";
+import ColourField from "./colour-field";
 import { BUILT_IN_BEHAVIOUR, STATUS_COLOURS, keepsUpdatingHidden, setOverride, statusColours } from "./look.mjs";
 import { Group, Row, Segmented } from "./ui";
 
@@ -118,14 +119,14 @@ export default function WidgetDefaults({ settings, onChange, pageCount = 1 }) {
               ["good", "Good"],
               ["problem", "Problem"],
             ].map(([key, label]) => (
-              <label key={key} className="studio-status-colour">
-                <input
-                  type="color"
-                  value={colours[key] || STATUS_COLOURS[key]}
-                  onChange={(event) => setColour(key, event.target.value)}
-                />
+              <span key={key} className="studio-status-colour">
                 {label}
-              </label>
+                <ColourField
+                  label={`${label} colour`}
+                  value={colours[key] || STATUS_COLOURS[key]}
+                  onChange={(colour) => setColour(key, colour)}
+                />
+              </span>
             ))}
           </div>
         </Row>

@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 
 import { BackgroundAdjust, BackgroundGrid, familyOf, FILL_FAMILIES } from "./background-picker";
 import { useCardTheme } from "./card-look";
+import ColourField from "./colour-field";
 import StudioIcon from "./icons";
 import { exactColour, setOverride } from "./look.mjs";
 import { Group, Row, Segmented, Switch } from "./ui";
@@ -442,12 +443,10 @@ export default function LookEditor({
                     ]}
                   />
                   {custom && (
-                    <input
-                      type="color"
-                      aria-label="Card colour"
-                      className="studio-colour-input"
+                    <ColourField
+                      label="Card colour"
                       value={effective.colour}
-                      onChange={(event) => setLook("colour", event.target.value)}
+                      onChange={(colour) => setLook("colour", colour)}
                     />
                   )}
                 </div>

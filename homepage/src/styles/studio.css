@@ -3936,3 +3936,18 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-background-static {
   cursor: default;
 }
+.studio-colour-field {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 8px;
+}
+.studio-colour-text {
+  width: 11ch;
+  font-variant-numeric: tabular-nums;
+}
+.studio-colour-field .studio-field-error {
+  flex-basis: 100%;
+  text-align: right;
+}

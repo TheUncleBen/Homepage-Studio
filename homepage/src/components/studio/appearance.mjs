@@ -98,6 +98,22 @@ export function hexColor(value) {
   return null;
 }
 
+// A colour typed or pasted as hex (#b299be, #b9b) or rgb (rgb(178, 153, 190)
+// or 178, 153, 190), as a hex colour; null for anything else.
+export function parseColour(value) {
+  const hex = hexColor(value);
+  if (hex) return hex;
+  if (typeof value !== "string") return null;
+  const match =
+    /^\s*(?:rgba?\s*\(\s*)?(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*(?:[,/]\s*[\d.]+%?\s*)?\)?\s*$/i.exec(
+      value,
+    );
+  if (!match) return null;
+  const channels = match.slice(1, 4).map(Number);
+  if (channels.some((channel) => channel > 255)) return null;
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
 const rgb = (color) => [1, 3, 5].map((start) => Number.parseInt(color.slice(start, start + 2), 16));
 const colorHex = (channels) =>
   `#${channels.map((channel) => Math.round(channel).toString(16).padStart(2, "0")).join("")}`;
