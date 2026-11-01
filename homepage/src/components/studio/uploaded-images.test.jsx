@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { SWRConfig } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { UploadedImages } from "./uploaded-images";
+import { ImagesEditor, UploadedImages } from "./uploaded-images";
 
 const ours = { id: "a".repeat(24), kind: "logo", name: "ours.svg", type: "image/svg+xml", size: 10 };
 const mine = { id: "b".repeat(24), kind: "logo", name: "mine.svg", type: "image/svg+xml", size: 10 };
@@ -73,5 +73,28 @@ describe("uploads in two places", () => {
     await waitFor(() => expect(onPick).toHaveBeenCalledWith("d".repeat(24)));
     expect(screen.queryByRole("group", { name: "Who can reuse it?" })).toBeNull();
     expect(calls.some((call) => call.path.includes("my-images"))).toBe(false);
+  });
+
+  it("manages both libraries from dashboard settings without choosing anything", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path) => {
+        const where = String(path);
+        const value = where.endsWith("/studio/api/access")
+          ? { authEnabled: false }
+          : { images: [ours, { ...ours, id: "e".repeat(24), kind: "background", name: "sky.webp" }] };
+        return { ok: true, status: 200, json: async () => value };
+      }),
+    );
+    render(
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <ImagesEditor onClose={() => {}} />
+      </SWRConfig>,
+    );
+    const logos = await screen.findByRole("list", { name: "Uploaded logos" });
+    expect(within(logos).getByText("ours.svg")).toBeTruthy();
+    expect(within(await screen.findByRole("list", { name: "Uploaded" })).getByText("sky.webp")).toBeTruthy();
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getByRole("button", { name: "Remove ours.svg" })).toBeTruthy();
   });
 });

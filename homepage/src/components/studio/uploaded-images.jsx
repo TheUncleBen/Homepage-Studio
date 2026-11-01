@@ -5,7 +5,7 @@ import { studioRequest } from "./api.mjs";
 import { dashboardPath } from "./dashboard-path.mjs";
 import StudioIcon from "./icons";
 import { formatBytes, prepareImage, UPLOAD_TYPES } from "./image-upload.mjs";
-import { Segmented } from "./ui";
+import { Group, Segmented } from "./ui";
 
 // Where an uploaded image is served, and how configuration names it.
 export const IMAGE_REFERENCE = /^\/studio\/api\/images\/([a-f0-9]{24})$/;
@@ -44,24 +44,35 @@ function useImages(place, kind, enabled) {
 }
 
 function ImageGrid({ label, images, place, kind, value, busy, onPick, onRemove }) {
+  const thumb = (image) => (
+    <>
+      <span
+        className={`studio-background-thumb studio-uploaded-${kind}`}
+        style={{ backgroundImage: `url("${PLACES[place].path(image.id)}")` }}
+      />
+      <span className="studio-background-name">{image.name}</span>
+    </>
+  );
+  // Without onPick this is the library to manage (Dashboard settings ›
+  // Images): pictures to look at and remove, nothing to choose.
   return (
-    <div className="studio-background-grid" role="radiogroup" aria-label={label}>
+    <div className="studio-background-grid" role={onPick ? "radiogroup" : "list"} aria-label={label}>
       {images.map((image) => (
-        <div key={image.id} className="studio-background-uploaded">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={place === "dashboard" && value === image.id}
-            className="studio-background-option"
-            disabled={busy}
-            onClick={() => onPick(image)}
-          >
-            <span
-              className={`studio-background-thumb studio-uploaded-${kind}`}
-              style={{ backgroundImage: `url("${PLACES[place].path(image.id)}")` }}
-            />
-            <span className="studio-background-name">{image.name}</span>
-          </button>
+        <div key={image.id} className="studio-background-uploaded" role={onPick ? undefined : "listitem"}>
+          {onPick ? (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={place === "dashboard" && value === image.id}
+              className="studio-background-option"
+              disabled={busy}
+              onClick={() => onPick(image)}
+            >
+              {thumb(image)}
+            </button>
+          ) : (
+            <div className="studio-background-option studio-background-static">{thumb(image)}</div>
+          )}
           <button
             type="button"
             className="studio-icon-button studio-background-remove"
@@ -119,6 +130,7 @@ export function UploadedImages({ kind, value, onPick }) {
     const { image } = await studioRequest(PLACES[place].add, { kind, name: prepared.name, image: prepared.image });
     setPending(null);
     setStatus({ note: prepared.note });
+    if (!onPick) return (place === "personal" ? mine : dashboard).load();
     if (place === "personal") {
       await mine.load();
       const { image: copy } = await studioRequest("/studio/api/my-images/use", { id: image.id });
@@ -209,7 +221,7 @@ export function UploadedImages({ kind, value, onPick }) {
               disabled={busy}
               onClick={() => save(pending, pending.place)}
             >
-              Save and use
+              {onPick ? "Save and use" : "Save"}
             </button>
           </div>
         </div>
@@ -262,7 +274,7 @@ export function UploadedImages({ kind, value, onPick }) {
             kind={kind}
             value={value}
             busy={busy}
-            onPick={(image) => use(image, "dashboard")}
+            onPick={onPick && ((image) => use(image, "dashboard"))}
             onRemove={(image) => remove(image, "dashboard")}
           />
         )}
@@ -281,12 +293,42 @@ export function UploadedImages({ kind, value, onPick }) {
               kind={kind}
               value={value}
               busy={busy}
-              onPick={(image) => use(image, "personal")}
+              onPick={onPick && ((image) => use(image, "personal"))}
               onRemove={(image) => remove(image, "personal")}
             />
           )}
         </section>
       )}
     </div>
+  );
+}
+
+// Dashboard settings › Images: both libraries, to add to and tidy up.
+export function ImagesEditor({ onClose }) {
+  return (
+    <>
+      <div className="studio-dialog-body">
+        <p className="studio-note">
+          Logos and backgrounds uploaded for this dashboard, and your own. Removing one that is in use asks first and
+          names where it is used.
+        </p>
+        <Group title="Logos">
+          <div className="studio-images-manage">
+            <UploadedImages kind="logo" />
+          </div>
+        </Group>
+        <Group title="Backgrounds">
+          <div className="studio-images-manage">
+            <UploadedImages kind="background" />
+          </div>
+        </Group>
+      </div>
+      <footer className="studio-dialog-footer">
+        <span className="studio-footer-spacer" />
+        <button type="button" className="studio-button studio-primary" onClick={onClose}>
+          Done
+        </button>
+      </footer>
+    </>
   );
 }

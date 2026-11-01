@@ -56,6 +56,7 @@ import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
 import StackEditor, { PositionEditor } from "./stack-editor";
 import StackShell from "./stack-shell";
 import StudioTopBar, { DASHBOARDS_PAGE } from "./top-bar";
+import { ImagesEditor } from "./uploaded-images";
 
 const HOME_PAGES = [{ id: "home", name: "Home" }];
 const EMPTY = { version: 3, columns: 24, pages: HOME_PAGES, panels: [], stacks: [] };
@@ -1699,6 +1700,7 @@ export default function StudioBoard({
     appearance: "Appearance",
     files: "Configuration files",
     connections: "Saved connections",
+    images: "Images",
     backups: "Snapshots & restore",
     stack: "Edit widget stack",
     position: "Position & size",
@@ -2464,8 +2466,11 @@ export default function StudioBoard({
                   onOpenFiles={() => requestEditorAction(() => setModal({ type: "files" }))}
                   onOpenBackups={() => requestEditorAction(() => openEditor("backups"))}
                   onOpenConnections={() => requestEditorAction(() => setModal({ type: "connections" }))}
+                  onOpenImages={() => requestEditorAction(() => setModal({ type: "images" }))}
                   onReload={reloadEditor}
                 />
+              ) : modal.type === "images" ? (
+                <ImagesEditor onClose={closeModal} />
               ) : modal.type === "connections" ? (
                 <ConnectionsEditor onClose={closeModal} />
               ) : modal.type === "files" ? (

@@ -171,11 +171,23 @@ export default function SettingsEditor({
   onOpenFiles,
   onOpenBackups,
   onOpenConnections,
+  onOpenImages,
   onReload,
   pageCount = 1,
 }) {
   const { data: saved } = useSWR(onOpenConnections ? "/studio/api/connections" : null, studioRequest);
   const savedCount = saved?.connections?.length;
+  const { data: uploads } = useSWR(onOpenImages ? "/studio/api/images" : null, studioRequest);
+  const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+  const imagesDetail = uploads?.images
+    ? uploads.images.length
+      ? `${plural(uploads.images.filter((image) => image.kind === "logo").length, "logo", "logos")}, ${plural(
+          uploads.images.filter((image) => image.kind === "background").length,
+          "background",
+          "backgrounds",
+        )}`
+      : "None uploaded"
+    : undefined;
   const original = state.settingsConfig || {};
   const [draft, setDraft] = useState(() => structuredClone(original));
   const [valid, setValid] = useState(true);
@@ -260,15 +272,22 @@ export default function SettingsEditor({
             title="Homepage settings"
             info="Homepage's own settings for this dashboard. Studio places and sizes the panels, so Homepage's layout options (tabs, columns, equal heights) are kept but don't change this board."
           />
-          {onOpenConnections && (
+          {(onOpenConnections || onOpenImages) && (
             <Group>
-              <ActionRow
-                icon="link"
-                detail={savedCount === undefined ? undefined : `${savedCount || "None"} saved`}
-                onClick={onOpenConnections}
-              >
-                Saved connections
-              </ActionRow>
+              {onOpenImages && (
+                <ActionRow icon="image" detail={imagesDetail} onClick={onOpenImages}>
+                  Images
+                </ActionRow>
+              )}
+              {onOpenConnections && (
+                <ActionRow
+                  icon="link"
+                  detail={savedCount === undefined ? undefined : `${savedCount || "None"} saved`}
+                  onClick={onOpenConnections}
+                >
+                  Saved connections
+                </ActionRow>
+              )}
             </Group>
           )}
           <Group title="Files and history">

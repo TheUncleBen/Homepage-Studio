@@ -3930,3 +3930,9 @@ a.studio-card-identity:hover .studio-card-name strong {
   background: none;
   cursor: pointer;
 }
+.studio-images-manage {
+  padding: 12px 16px;
+}
+.studio-background-static {
+  cursor: default;
+}
