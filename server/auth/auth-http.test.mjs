@@ -542,11 +542,31 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.match(String(own.headers['content-security-policy']), /sandbox/);
   assert.deepEqual((await request('/home/studio/api/access', { cookie: member.cookie })).json.dashboard.logo, saved.json.logo);
   assert.equal((await post('/home/studio/api/logo', { image: 'data:text/html;base64,' + Buffer.from('<script>1</script>').toString('base64') }, { cookie: member.cookie })).status, 400);
-  // A duplicate keeps the logo, independently of its source.
+  // Uploaded images: arrangers add and remove them, viewers load them, and
+  // one still in use asks first, naming where it is used.
+  const upload = await post('/home/studio/api/images', { kind: 'background', name: 'sky.png', image: png }, { cookie: member.cookie });
+  assert.equal(upload.status, 200, upload.text);
+  const imageId = upload.json.image.id;
+  const served = await request('/home/studio/api/images/' + imageId, { cookie: member.cookie });
+  assert.equal(served.headers['content-type'], 'image/png');
+  assert.match(String(served.headers['content-security-policy']), /sandbox/);
+  assert.equal(served.headers['x-content-type-options'], 'nosniff');
+  assert.deepEqual((await request('/home/studio/api/images', { cookie: member.cookie })).json.images.map(image => image.id), [imageId]);
+  const board = await request('/home/studio/api/board', { cookie: member.cookie });
+  const pages = [{ ...board.json.board.pages[0], background: { source: 'library', id: imageId } }];
+  assert.equal((await post('/home/studio/api/board', { revision: board.json.revision, board: { ...board.json.board, pages } }, { cookie: member.cookie })).status, 200);
+  const inUse = await post('/home/studio/api/images/delete', { id: imageId }, { cookie: member.cookie });
+  assert.equal(inUse.status, 409);
+  assert.deepEqual(inUse.json.details.usedIn, [{ kind: 'page', name: pages[0].name }]);
+  // A duplicate keeps the logo and the uploads, independently of its source.
   const registry = await request('/studio/api/dashboards', { cookie: admin.cookie });
   const copy = await post('/studio/api/dashboards', { revision: registry.json.revision, action: 'create', name: 'Copy', slug: 'copy', sourceId: 'default' }, { cookie: admin.cookie });
   assert.equal(copy.status, 200, copy.text);
   assert.deepEqual((await request('/copy/studio/api/access', { cookie: admin.cookie })).json.dashboard.logo, saved.json.logo);
+  assert.equal((await request('/copy/studio/api/images/' + imageId, { cookie: admin.cookie })).headers['content-type'], 'image/png');
+  assert.equal((await post('/home/studio/api/images/delete', { id: imageId, confirm: true }, { cookie: member.cookie })).status, 200);
+  assert.equal((await request('/home/studio/api/images/' + imageId, { cookie: member.cookie })).status, 404);
+  assert.equal((await request('/copy/studio/api/images/' + imageId, { cookie: admin.cookie })).status, 200, 'the copy keeps its own');
   assert.equal((await post('/home/studio/api/logo', { reset: true }, { cookie: member.cookie })).status, 200);
   assert.equal((await request('/home/studio/logo', { cookie: member.cookie })).headers['content-type'], 'image/svg+xml');
   assert.equal((await request('/copy/studio/logo', { cookie: admin.cookie })).headers['content-type'], 'image/png');

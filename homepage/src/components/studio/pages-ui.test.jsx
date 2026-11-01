@@ -162,6 +162,9 @@ describe("Duplicate page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Overview page options" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate page" }));
     await waitFor(() => expect(writes.some((write) => write.path === "/studio/api/page-duplicate")).toBe(true));
-    expect(writes.find((write) => write.path === "/studio/api/page-duplicate").body).toEqual({ revision: "r1", pageId: "home" });
+    expect(writes.find((write) => write.path === "/studio/api/page-duplicate").body).toEqual({
+      revision: "r1",
+      pageId: "home",
+    });
   });
 });

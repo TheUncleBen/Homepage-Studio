@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { withoutPhoneHidden } from "./board";
@@ -54,6 +54,12 @@ describe("widget dialog look (Rule 1: only what can apply)", () => {
     renderEditor({ look: { fill: "tint" } });
     expect(screen.getByRole("radiogroup", { name: "Strength" })).toBeTruthy();
     expect(screen.getByRole("radiogroup", { name: "Colour" })).toBeTruthy();
+  });
+
+  it("shows the chosen picture and its adjustments under Picture", () => {
+    renderEditor({ look: { fill: "picture", background: { source: "builtin", id: "coast" } } });
+    expect(screen.getByRole("radio", { name: "Coast" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("radiogroup", { name: "Strength" })).toBeNull();
   });
 
   it("leaves out status, values, refresh and errors on a bookmark", () => {
@@ -159,5 +165,55 @@ describe("hide on phones", () => {
     const shown = withoutPhoneHidden(board, { studioDefaults: { phones: "hide" } });
     expect(shown.panels).toEqual([]);
     expect(shown.stacks).toEqual([]);
+  });
+});
+
+describe("uploaded backgrounds", () => {
+  const image = { id: "a".repeat(24), kind: "background", name: "beach.webp", type: "image/webp", size: 10 };
+  function stub(handlers) {
+    const calls = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path, options) => {
+        const body = options?.body ? JSON.parse(options.body) : undefined;
+        calls.push({ path, body });
+        const [status, value] = handlers(path, body);
+        return { ok: status < 400, status, json: async () => value };
+      }),
+    );
+    return calls;
+  }
+
+  it("stores an uploaded picture as a library background", async () => {
+    stub(() => [200, { images: [image, { ...image, id: "b".repeat(24), kind: "logo", name: "logo.png" }] }]);
+    const { onLook } = renderEditor({ look: { fill: "picture" } });
+    fireEvent.click(radio("Kind of background", "Uploaded"));
+    // Logos are kept apart from backgrounds.
+    expect(await screen.findByRole("radio", { name: "beach.webp" })).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: "logo.png" })).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "beach.webp" }));
+    expect(onLook).toHaveBeenLastCalledWith({ fill: "picture", background: { source: "library", id: image.id } });
+    vi.unstubAllGlobals();
+  });
+
+  it("names where a picture is used before removing it", async () => {
+    const calls = stub((path, body) =>
+      path.endsWith("/images/delete") && !body.confirm
+        ? [
+            409,
+            {
+              error: "This image is still in use.",
+              code: "IMAGE_IN_USE",
+              details: { usedIn: [{ kind: "widget", name: "Pi-hole" }] },
+            },
+          ]
+        : [200, { images: [image] }],
+    );
+    renderEditor({ look: { fill: "picture", background: { source: "library", id: image.id } } });
+    fireEvent.click(await screen.findByRole("button", { name: "Remove beach.webp" }));
+    expect(await screen.findByText("Pi-hole")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Remove anyway" }));
+    await waitFor(() => expect(calls.some((call) => call.body?.confirm === true)).toBe(true));
+    vi.unstubAllGlobals();
   });
 });

@@ -3305,6 +3305,28 @@ a.studio-card-identity:hover .studio-card-name strong {
     0 0 0 2px var(--studio-surface),
     0 0 0 4px var(--studio-accent);
 }
+.studio-uploaded {
+  display: grid;
+  gap: 10px;
+}
+.studio-background-uploaded {
+  position: relative;
+  min-width: 0;
+}
+.studio-background-uploaded .studio-background-option {
+  width: 100%;
+}
+/* Remove sits on the picture's corner, clear of the name. */
+.studio-background-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--studio-surface) 82%, transparent);
+  box-shadow: 0 0 0 1px var(--studio-line);
+}
 .studio-background-name {
   overflow: hidden;
   color: var(--studio-muted);

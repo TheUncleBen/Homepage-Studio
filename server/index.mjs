@@ -18,6 +18,7 @@ import { renderRobotsPolicy } from './indexing-policy.mjs';
 import { readAuthConfig } from './auth/config.mjs';
 import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
 import { createLogoStore } from './dashboard-logo.mjs';
+import { createImageLibrary, ImageError, imageUsage, validImageId } from './image-library.mjs';
 import { createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
@@ -304,6 +305,7 @@ function createDashboardHandlers(options = {}) {
   }
   const backupRetention = options.backupRetention ?? (process.env.STUDIO_BACKUP_RETENTION === undefined ? undefined : Number(process.env.STUDIO_BACKUP_RETENTION));
   const logo = createLogoStore({ stateDir });
+  const images = createImageLibrary({ stateDir });
   const store = createConfigStore({ configDir, stateDir, backupRetention, discoveryReader: async (host, dashboard) => {
     const lease = await acquireNative(host, dashboard);
     try { return await createDiscoveryClient({ upstream: lease.origin.href }).read(host); }
@@ -541,12 +543,40 @@ function createDashboardHandlers(options = {}) {
         if (Object.keys(change).some(key => !['image', 'reset'].includes(key)) || (change.reset === true) === (change.image !== undefined)) throw Object.assign(new Error('Send an image or reset the logo.'), { status: 400, code: 'INVALID_LOGO' });
         return json(res, 200, { logo: change.reset ? await logo.remove() : await logo.save(change.image) });
       }
+      // Uploaded logos and backgrounds (server/image-library.mjs).
+      const imageId = /^\/studio\/api\/images\/([^/]+)$/.exec(path)?.[1];
+      if (imageId !== undefined && ['GET', 'HEAD'].includes(req.method)) {
+        const image = validImageId(imageId) ? await images.read(imageId) : null;
+        if (!image) return json(res, 404, { error: 'That image does not exist.', code: 'IMAGE_NOT_FOUND' });
+        // Ids are content hashes, so a cached copy never goes stale.
+        res.writeHead(200, { 'content-type': image.type, 'content-length': image.bytes.length, 'cache-control': 'private, max-age=31536000, immutable', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" });
+        return res.end(req.method === 'HEAD' ? undefined : image.bytes);
+      }
+      if (path === '/studio/api/images' && req.method === 'GET') return json(res, 200, { images: await images.list() });
+      if (path === '/studio/api/images' && req.method === 'POST') {
+        const change = await readBody(req, 5 * 1024 * 1024);
+        if (!change || typeof change !== 'object' || Object.keys(change).some(key => !['kind', 'name', 'image'].includes(key))) throw new ImageError('Send a kind, a name and an image.');
+        return json(res, 200, { image: await images.add(change) });
+      }
+      if (path === '/studio/api/images/delete' && req.method === 'POST') {
+        const change = await readBody(req);
+        if (!change || typeof change !== 'object' || Object.keys(change).some(key => !['id', 'confirm'].includes(key))) throw new ImageError('Send the image to remove.');
+        // Removing an image still in use asks first and says where it is used.
+        if (change.confirm !== true) {
+          const current = await store.load();
+          const files = { 'services.yaml': current.servicesYaml, 'bookmarks.yaml': current.bookmarksYaml, 'widgets.yaml': current.widgetsYaml, 'settings.yaml': current.settingsYaml };
+          const usedIn = validImageId(change.id) ? imageUsage(change.id, { board: current.board, settings: current.settingsConfig, files }) : [];
+          if (usedIn.length) throw new ImageError('This image is still in use.', 'IMAGE_IN_USE', 409, { usedIn });
+        }
+        return json(res, 200, { removed: await images.remove(change.id) });
+      }
       if (path.startsWith('/studio/')) return json(res, 404, { error: 'This editor endpoint does not exist.' });
       await proxy(req, res, dashboard);
     } catch (error) {
       const status = Number(error.status || error.statusCode) || 500;
       if (error.closeConnection && !res.headersSent) res.setHeader('connection', 'close');
       if (error.retryAfter && !res.headersSent) res.setHeader('retry-after', String(error.retryAfter));
+      if (error instanceof ImageError && error.details && !res.headersSent) return json(res, status, { error: error.message, code: error.code, details: error.details });
       json(res, status, { error: status < 500 || error instanceof ConfigError || error instanceof BoardError || error instanceof DiscoveryError || error instanceof RendererError ? error.message : 'The editor could not read or save its configuration. Check the configuration and state volume permissions.', code: error.code || 'EDITOR_ERROR',
         // ConfigError details are structured and source-free (file names, YAML error codes and positions, limits),
         // so editors can point at the failing line without the response ever echoing configuration text.
@@ -556,7 +586,7 @@ function createDashboardHandlers(options = {}) {
     }
   }
 
-  return { handle, checkRequest, store, logo, initialization };
+  return { handle, checkRequest, store, logo, images, initialization };
 }
 
 export function createStudioServer(options = {}) {
@@ -625,12 +655,16 @@ export function createStudioServer(options = {}) {
     return owned;
   }
   const registry = createDashboardRegistry({ configRoot, prepareDashboard: async (entry, source, { isNew = false } = {}) => {
-    let archive, logo;
+    let archive, logo, uploads = [];
     if (source) {
       const sourceHandler = forDashboard(source);
       await sourceHandler.initialization;
       archive = await sourceHandler.store.exportCurrent();
       logo = await sourceHandler.logo.read();
+      for (const entry of await sourceHandler.images.list()) {
+        const image = await sourceHandler.images.read(entry.id);
+        if (image) uploads.push(image);
+      }
     }
     const owned = isNew ? await allocateDashboard(entry) : null;
     const target = forDashboard(entry);
@@ -642,6 +676,8 @@ export function createStudioServer(options = {}) {
     }
     // A duplicate keeps the source's logo too.
     if (logo) await target.logo.save(`data:${logo.type};base64,${logo.bytes.toString('base64')}`);
+    // And its uploaded images, so its cards and pages keep their pictures.
+    for (const image of uploads) await target.images.add({ kind: image.kind, name: image.name, image: `data:${image.type};base64,${image.bytes.toString('base64')}` });
   }, cleanupDashboard: async entry => {
     if (entry.id === 'default') throw new DashboardError('The original dashboard cannot be removed.', 'DEFAULT_DASHBOARD_REQUIRED');
     const owned = unpublished.get(entry.id);

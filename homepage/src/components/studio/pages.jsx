@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-
 import { PAGE_NAME_LIMIT, pageHash, pageNameProblem, unitsOnPage } from "./geometry.mjs";
 import StudioIcon from "./icons";
 import Menu from "./menu";
@@ -288,8 +287,20 @@ function EditTabs({ board, pages, currentId, onSelect, disabled, dropTarget, act
           returnFocus={menu.from}
           onClose={() => setMenu(null)}
           items={[
-            { id: "rename", label: "Rename", icon: "edit", shortcut: "F2", onSelect: () => setRenaming(current.id), keepFocus: true },
-            { id: "icon", label: current.icon ? "Change icon…" : "Icon…", icon: "tag", onSelect: () => actions.icon(current) },
+            {
+              id: "rename",
+              label: "Rename",
+              icon: "edit",
+              shortcut: "F2",
+              onSelect: () => setRenaming(current.id),
+              keepFocus: true,
+            },
+            {
+              id: "icon",
+              label: current.icon ? "Change icon…" : "Icon…",
+              icon: "tag",
+              onSelect: () => actions.icon(current),
+            },
             actions.background && {
               id: "background",
               label: "Page background…",
@@ -303,17 +314,33 @@ function EditTabs({ board, pages, currentId, onSelect, disabled, dropTarget, act
               disabled: !actions.canAdd,
               onSelect: () => actions.duplicate(current),
             },
-            index > 0 && { id: "left", label: "Move left", icon: "arrowLeft", onSelect: () => actions.move(current.id, index - 1) },
+            index > 0 && {
+              id: "left",
+              label: "Move left",
+              icon: "arrowLeft",
+              onSelect: () => actions.move(current.id, index - 1),
+            },
             index < pages.length - 1 && {
               id: "right",
               label: "Move right",
               icon: "arrowRight",
               onSelect: () => actions.move(current.id, index + 1),
             },
-            index > 0 && { id: "first", label: "Make first page", icon: "home", onSelect: () => actions.move(current.id, 0) },
+            index > 0 && {
+              id: "first",
+              label: "Make first page",
+              icon: "home",
+              onSelect: () => actions.move(current.id, 0),
+            },
             { id: "link", label: "Copy link to page", icon: "link", onSelect: () => actions.copyLink(current) },
             pages.length > 1 && "-",
-            pages.length > 1 && { id: "delete", label: "Delete page…", icon: "trash", danger: true, onSelect: () => actions.remove(current) },
+            pages.length > 1 && {
+              id: "delete",
+              label: "Delete page…",
+              icon: "trash",
+              danger: true,
+              onSelect: () => actions.remove(current),
+            },
           ]}
         />
       )}
@@ -339,7 +366,16 @@ export default function PageTabs({ editing, pages, ...props }) {
 
 // Deleting a page that has widgets: move them (an arrangement change, undoable)
 // or, for administrators with no unsaved arrangement, delete them with the page.
-export function DeletePageDialog({ page, pages, count, canDeleteWidgets, deleteBlocked, onMove, onDeleteAll, onClose }) {
+export function DeletePageDialog({
+  page,
+  pages,
+  count,
+  canDeleteWidgets,
+  deleteBlocked,
+  onMove,
+  onDeleteAll,
+  onClose,
+}) {
   const others = pages.filter((item) => item.id !== page.id);
   const [choice, setChoice] = useState("move");
   const [target, setTarget] = useState(others[0]?.id);
@@ -374,7 +410,11 @@ export function DeletePageDialog({ page, pages, count, canDeleteWidgets, deleteB
             <span>
               <strong>Move its widgets to another page</strong>
               {choice === "move" && (
-                <select aria-label="Page to move them to" value={target} onChange={(event) => setTarget(event.target.value)}>
+                <select
+                  aria-label="Page to move them to"
+                  value={target}
+                  onChange={(event) => setTarget(event.target.value)}
+                >
                   {others.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}

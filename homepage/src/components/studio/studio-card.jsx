@@ -28,8 +28,7 @@ function useStatus(service, groupName, check) {
   if (!key) return null;
   if (error || data?.error) return { state: "down", text: "Error" };
   if (!data) return { state: "pending" };
-  if (kind === "ping")
-    return data.alive ? { state: "up", ms: Math.round(data.time) } : { state: "down" };
+  if (kind === "ping") return data.alive ? { state: "up", ms: Math.round(data.time) } : { state: "down" };
   return data.status > 403 ? { state: "down", code: data.status } : { state: "up", ms: Math.round(data.latency) };
 }
 

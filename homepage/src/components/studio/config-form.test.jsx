@@ -141,7 +141,10 @@ describe("Coherent native option drafts", () => {
         fields={[{ key: "fields", label: "Visible fields", type: "array", choices: ["healthy", "total"] }]}
       />,
     );
-    expect(screen.getByRole("switch", { name: "Use the widget's default fields" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: "Use the widget's default fields" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
     expect(screen.getByRole("switch", { name: "Total" })).toHaveAttribute("aria-checked", "true");
   });
   it("shows a widget's versions as a choice, with the default chosen and nothing written until another is picked", () => {

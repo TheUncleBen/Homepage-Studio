@@ -22,7 +22,9 @@ export default function CardValues({ card, items: children }) {
   const items = children
     .filter((child) => child !== null && child !== undefined && child !== false)
     .map((child, index) => ({ child, key: keyOf(child, index), block: child?.type === Block }));
-  const fieldsKey = JSON.stringify(items.filter((item) => item.block).map((item) => [item.key, item.child.props.label]));
+  const fieldsKey = JSON.stringify(
+    items.filter((item) => item.block).map((item) => [item.key, item.child.props.label]),
+  );
   const report = card.reportFields;
   useEffect(() => {
     if (report) report(JSON.parse(fieldsKey).map(([field, label]) => ({ field, label })));
@@ -54,7 +56,9 @@ export default function CardValues({ card, items: children }) {
   return (
     <div className="studio-values studio-values-hero">
       {hero && (
-        <ValueSlotContext.Provider value={{ ...arranged.get(hero.key), slot: "hero" }}>{hero.child}</ValueSlotContext.Provider>
+        <ValueSlotContext.Provider value={{ ...arranged.get(hero.key), slot: "hero" }}>
+          {hero.child}
+        </ValueSlotContext.Provider>
       )}
       {rest.length > 0 && (
         <div className="studio-values-below">

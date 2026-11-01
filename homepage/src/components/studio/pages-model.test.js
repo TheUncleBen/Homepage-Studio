@@ -73,7 +73,11 @@ describe("pages", () => {
   it("deletes a page, moving or dropping its widgets", () => {
     const moved = removePage(board(), "media", "home");
     expect(moved.pages.map((page) => page.id)).toEqual(["home"]);
-    expect(unitsOnPage(moved, "home").map((unit) => unit.id).sort()).toEqual(["a", "b", "c", "s"]);
+    expect(
+      unitsOnPage(moved, "home")
+        .map((unit) => unit.id)
+        .sort(),
+    ).toEqual(["a", "b", "c", "s"]);
     const dropped = removePage(board(), "media", null);
     expect(dropped.panels.map((item) => item.id)).toEqual(["a", "b"]);
     expect(dropped.stacks).toEqual([]);

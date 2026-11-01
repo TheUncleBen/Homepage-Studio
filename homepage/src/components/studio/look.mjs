@@ -80,7 +80,7 @@ function text(value, max, label) {
   const trimmed = value.trim();
   if (trimmed.length > max) fail(`${label} can be at most ${max} characters.`);
   // Control characters never belong in a label shown on a card.
-   
+
   if (/[\u0000-\u001f\u007f]/.test(trimmed)) fail(`${label} contains characters that cannot be shown.`);
   return trimmed;
 }
@@ -95,7 +95,8 @@ function background(value) {
   }
   if (!["builtin", "library"].includes(value.source)) fail("A widget background needs a source.");
   out.source = value.source;
-  if (typeof value.id !== "string" || !ID.test(value.id)) fail("A widget background names an image that does not exist.");
+  if (typeof value.id !== "string" || !ID.test(value.id))
+    fail("A widget background names an image that does not exist.");
   out.id = value.id;
   if (own(value, "lightId")) {
     if (typeof value.lightId !== "string" || !ID.test(value.lightId)) fail("The light-mode image is not valid.");
@@ -244,7 +245,7 @@ export function toOklch(hex) {
   const L = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
   const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
   const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
-  return [L, Math.hypot(A, B), (((Math.atan2(B, A) * 180) / Math.PI) % 360 + 360) % 360];
+  return [L, Math.hypot(A, B), ((((Math.atan2(B, A) * 180) / Math.PI) % 360) + 360) % 360];
 }
 
 function oklchRaw(L, C, H) {
@@ -264,8 +265,16 @@ export function fromOklch(L, C, H) {
   let chroma = C;
   const inGamut = (c) => oklchRaw(L, c, H).every((v) => v >= -1e-4 && v <= 1 + 1e-4);
   while (chroma > 0 && !inGamut(chroma)) chroma -= 0.002;
-  const rgb = oklchRaw(L, Math.max(chroma, 0), H).map((v) => Math.min(1, Math.max(0, delin(Math.min(1, Math.max(0, v))))));
-  return `#${rgb.map((v) => Math.round(v * 255).toString(16).padStart(2, "0")).join("")}`;
+  const rgb = oklchRaw(L, Math.max(chroma, 0), H).map((v) =>
+    Math.min(1, Math.max(0, delin(Math.min(1, Math.max(0, v))))),
+  );
+  return `#${rgb
+    .map((v) =>
+      Math.round(v * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
 }
 
 function luminance(hex) {
@@ -293,7 +302,11 @@ function harmonize(hue, anchor) {
 // Returns {fill, ink, contrast}. Ink is the theme text when it reaches 4.5:1,
 // otherwise the better of near-black and white; the fill's lightness is
 // nudged until some ink reaches 4.5:1.
-export function fitColour(hex, { mode = "dark", accent = "#5fb3a1", text = "#ececea", inkDark = "#141414" } = {}, strength = "medium") {
+export function fitColour(
+  hex,
+  { mode = "dark", accent = "#5fb3a1", text = "#ececea", inkDark = "#141414" } = {},
+  strength = "medium",
+) {
   const colour = hexColor(hex);
   if (!colour) return null;
   const [L, C, H] = toOklch(colour);

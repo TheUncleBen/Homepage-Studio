@@ -24,8 +24,7 @@ vi.mock("utils/config/config", () => ({
   CONF_DIR: "/fixture",
   getSettings: () => {
     readingNative("settings");
-    if (state.failSettings)
-      throw new Error("fictional-private-error in /fixture/settings.yaml");
+    if (state.failSettings) throw new Error("fictional-private-error in /fixture/settings.yaml");
     return {
       title: "Studio",
       providers: { secret: "fictional-provider-secret" },
@@ -35,9 +34,7 @@ vi.mock("utils/config/config", () => ({
 vi.mock("utils/config/api-response", () => ({
   servicesResponse: async () => {
     readingNative("services");
-    return state.rollbackDuring === "services"
-      ? [{ name: "fictional-intermediate-service" }]
-      : [];
+    return state.rollbackDuring === "services" ? [{ name: "fictional-intermediate-service" }] : [];
   },
   bookmarksResponse: async () => {
     readingNative("bookmarks");
@@ -62,8 +59,7 @@ vi.mock("fs/promises", () => ({
   readFile: async (path) => {
     state.files.push(path);
     state.events.push("file");
-    if (state.failRead)
-      throw new Error("fictional-private-error in /fixture/custom.js");
+    if (state.failRead) throw new Error("fictional-private-error in /fixture/custom.js");
     const bytes = Buffer.from(state.source);
     if (state.changeDuringRead) {
       state.identity += 1n;
@@ -119,9 +115,7 @@ describe("Native Studio bridge endpoints", () => {
     expect(res.payload.widgets[0].type).toBe("greeting");
     expect(res.headers["Cache-Control"]).toBe("private, no-store");
     // Frozen byte-contract fixture: ordered filename + NUL + bytes + NUL.
-    expect(res.payload.configurationRevision).toBe(
-      "96c339027144766117a1cb08f29899c62aa630cd22044050b53839c7a1b0eb9c",
-    );
+    expect(res.payload.configurationRevision).toBe("96c339027144766117a1cb08f29899c62aa630cd22044050b53839c7a1b0eb9c");
     expect(state.files).toHaveLength(18);
     expect(state.events.slice(0, 9)).toEqual(Array(9).fill("file"));
     expect(state.events.slice(-9)).toEqual(Array(9).fill("file"));
@@ -139,9 +133,7 @@ describe("Native Studio bridge endpoints", () => {
     state.source = "changed-private-config";
     const next = response();
     await dataHandler({ method: "GET" }, next);
-    expect(next.payload.configurationRevision).not.toBe(
-      res.payload.configurationRevision,
-    );
+    expect(next.payload.configurationRevision).not.toBe(res.payload.configurationRevision);
   });
   it.each(["settings", "services", "bookmarks", "widgets"])(
     "rejects data when native files change during the %s read and allows a coherent retry",
@@ -153,14 +145,11 @@ describe("Native Studio bridge endpoints", () => {
       expect(changed.headers["Cache-Control"]).toBe("private, no-store");
       expect(changed.headers["Retry-After"]).toBe("1");
       expect(changed.payload).toEqual({
-        error:
-          "Native configuration changed while refreshing. Retry the refresh.",
+        error: "Native configuration changed while refreshing. Retry the refresh.",
         code: "CONFIGURATION_CHANGED",
         retryable: true,
       });
-      expect(JSON.stringify(changed.payload)).not.toMatch(
-        /fictional-|changed-private/,
-      );
+      expect(JSON.stringify(changed.payload)).not.toMatch(/fictional-|changed-private/);
       state.changeDuring = null;
       const retried = response();
       await dataHandler({ method: "GET" }, retried);
@@ -185,9 +174,7 @@ describe("Native Studio bridge endpoints", () => {
     await dataHandler({ method: "GET" }, retried);
     expect(retried.statusCode).toBe(200);
     // Private file identity changes must never alter the public byte contract.
-    expect(retried.payload.configurationRevision).toBe(
-      original.payload.configurationRevision,
-    );
+    expect(retried.payload.configurationRevision).toBe(original.payload.configurationRevision);
   });
   it("rejects a file changed while its fingerprint is being read even if bytes, inode and mtime are unchanged", async () => {
     state.timestampOnly = true;
@@ -209,9 +196,7 @@ describe("Native Studio bridge endpoints", () => {
     expect(unavailable.payload.retryable).toBe(true);
     expect(unavailable.headers["Cache-Control"]).toBe("private, no-store");
     expect(unavailable.headers["Retry-After"]).toBe("1");
-    expect(JSON.stringify(unavailable.payload)).not.toMatch(
-      /fictional-|\/fixture/,
-    );
+    expect(JSON.stringify(unavailable.payload)).not.toMatch(/fictional-|\/fixture/);
   });
   it("returns a private retryable response when a native helper fails", async () => {
     state.failSettings = true;
@@ -219,16 +204,13 @@ describe("Native Studio bridge endpoints", () => {
     await dataHandler({ method: "GET" }, unavailable);
     expect(unavailable.statusCode).toBe(503);
     expect(unavailable.payload).toEqual({
-      error:
-        "Native widget data is temporarily unavailable. Retry the refresh.",
+      error: "Native widget data is temporarily unavailable. Retry the refresh.",
       code: "NATIVE_DATA_UNAVAILABLE",
       retryable: true,
     });
     expect(unavailable.headers["Cache-Control"]).toBe("private, no-store");
     expect(unavailable.headers["Retry-After"]).toBe("1");
-    expect(JSON.stringify(unavailable.payload)).not.toMatch(
-      /fictional-|\/fixture/,
-    );
+    expect(JSON.stringify(unavailable.payload)).not.toMatch(/fictional-|\/fixture/);
   });
   it("keeps the bridge read-only, reports exact upstream protocol and bounds discovery outage responses", async () => {
     const bad = response();
@@ -244,8 +226,6 @@ describe("Native Studio bridge endpoints", () => {
     const unavailable = response();
     await sourcesHandler({ method: "GET" }, unavailable);
     expect(unavailable.statusCode).toBe(503);
-    expect(JSON.stringify(unavailable.payload)).not.toContain(
-      "fictional-private-error",
-    );
+    expect(JSON.stringify(unavailable.payload)).not.toContain("fictional-private-error");
   });
 });

@@ -74,7 +74,13 @@ export function dominantColour(pixels) {
   let best = null;
   for (const bucket of buckets.values()) if (!best || bucket.weight > best.weight) best = bucket;
   if (!best) return null;
-  return `#${[best.r, best.g, best.b].map((value) => Math.round(value / best.weight).toString(16).padStart(2, "0")).join("")}`;
+  return `#${[best.r, best.g, best.b]
+    .map((value) =>
+      Math.round(value / best.weight)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
 }
 
 function readLogoColour(url) {
@@ -123,7 +129,13 @@ const TINT = { soft: 0.1, medium: 0.18, strong: 0.28 };
 function mixHex(first, second, amount) {
   const a = [1, 3, 5].map((i) => Number.parseInt(first.slice(i, i + 2), 16));
   const b = [1, 3, 5].map((i) => Number.parseInt(second.slice(i, i + 2), 16));
-  return `#${a.map((value, i) => Math.round(value * (1 - amount) + b[i] * amount).toString(16).padStart(2, "0")).join("")}`;
+  return `#${a
+    .map((value, i) =>
+      Math.round(value * (1 - amount) + b[i] * amount)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
 }
 
 // The theme a card is fitted against, read from the dashboard's appearance.
@@ -144,7 +156,10 @@ export function fillColours(look, logoColour, theme) {
   if (look.fill === "solid") {
     const fitted = fitColour(source, theme, look.strength);
     if (!fitted) return null;
-    const muted = contrastRatio(mixHex(fitted.ink, fitted.fill, 0.3), fitted.fill) >= 4.5 ? mixHex(fitted.ink, fitted.fill, 0.3) : fitted.ink;
+    const muted =
+      contrastRatio(mixHex(fitted.ink, fitted.fill, 0.3), fitted.fill) >= 4.5
+        ? mixHex(fitted.ink, fitted.fill, 0.3)
+        : fitted.ink;
     return { fill: fitted.fill, ink: fitted.ink, muted, source };
   }
   const tone = fitColour(source, theme, "medium");

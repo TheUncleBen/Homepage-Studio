@@ -14,13 +14,45 @@ export const ACCENT_PRESETS = Object.freeze([
 ]);
 
 const DANGER = {
-  dark: { "danger-text": "#f2b8b0", "danger-bg": "#33201e", "danger-line": "#a86c66", "danger-solid": "#7a3a33", "danger-contrast": "#fff3f1" },
-  light: { "danger-text": "#8a2a20", "danger-bg": "#fbebe8", "danger-line": "#a85a50", "danger-solid": "#9a3b30", "danger-contrast": "#fff7f5" },
+  dark: {
+    "danger-text": "#f2b8b0",
+    "danger-bg": "#33201e",
+    "danger-line": "#a86c66",
+    "danger-solid": "#7a3a33",
+    "danger-contrast": "#fff3f1",
+  },
+  light: {
+    "danger-text": "#8a2a20",
+    "danger-bg": "#fbebe8",
+    "danger-line": "#a85a50",
+    "danger-solid": "#9a3b30",
+    "danger-contrast": "#fff7f5",
+  },
 };
 const family = (name, dark, light) => ({
   name,
-  dark: { bg: dark[0], surface: dark[1], raised: dark[2], input: dark[3], text: dark[4], muted: dark[5], line: dark[6], "line-strong": dark[7], ...DANGER.dark },
-  light: { bg: light[0], surface: light[1], raised: light[2], input: light[3], text: light[4], muted: light[5], line: light[6], "line-strong": light[7], ...DANGER.light },
+  dark: {
+    bg: dark[0],
+    surface: dark[1],
+    raised: dark[2],
+    input: dark[3],
+    text: dark[4],
+    muted: dark[5],
+    line: dark[6],
+    "line-strong": dark[7],
+    ...DANGER.dark,
+  },
+  light: {
+    bg: light[0],
+    surface: light[1],
+    raised: light[2],
+    input: light[3],
+    text: light[4],
+    muted: light[5],
+    line: light[6],
+    "line-strong": light[7],
+    ...DANGER.light,
+  },
 });
 // Each base sets the page, cards and lines in both a dark and a light
 // version. Greys carry a slight tint of their own hue; none is purple unless
@@ -62,22 +94,16 @@ export function hexColor(value) {
   if (typeof value !== "string") return null;
   const text = value.trim();
   if (/^#[\da-f]{6}$/i.test(text)) return text.toLowerCase();
-  if (/^#[\da-f]{3}$/i.test(text))
-    return `#${[...text.slice(1)].map((part) => part + part).join("")}`.toLowerCase();
+  if (/^#[\da-f]{3}$/i.test(text)) return `#${[...text.slice(1)].map((part) => part + part).join("")}`.toLowerCase();
   return null;
 }
 
-const rgb = (color) =>
-  [1, 3, 5].map((start) => Number.parseInt(color.slice(start, start + 2), 16));
+const rgb = (color) => [1, 3, 5].map((start) => Number.parseInt(color.slice(start, start + 2), 16));
 const colorHex = (channels) =>
   `#${channels.map((channel) => Math.round(channel).toString(16).padStart(2, "0")).join("")}`;
 function mix(first, second, amount) {
   const other = rgb(second);
-  return colorHex(
-    rgb(first).map(
-      (channel, index) => channel * (1 - amount) + other[index] * amount,
-    ),
-  );
+  return colorHex(rgb(first).map((channel, index) => channel * (1 - amount) + other[index] * amount));
 }
 function luminance(color) {
   const channels = rgb(color).map((channel) => {
@@ -91,37 +117,22 @@ export function contrastRatio(first, second) {
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
 function readable(color, backgrounds, minimum = 4.5) {
-  if (
-    backgrounds.every(
-      (background) => contrastRatio(color, background) >= minimum,
-    )
-  )
-    return color;
+  if (backgrounds.every((background) => contrastRatio(color, background) >= minimum)) return color;
   const target = ["#000000", "#ffffff"].sort(
     (a, b) =>
-      Math.min(
-        ...backgrounds.map((background) => contrastRatio(b, background)),
-      ) -
-      Math.min(
-        ...backgrounds.map((background) => contrastRatio(a, background)),
-      ),
+      Math.min(...backgrounds.map((background) => contrastRatio(b, background))) -
+      Math.min(...backgrounds.map((background) => contrastRatio(a, background))),
   )[0];
   for (let step = 1; step <= 100; step += 1) {
     const adjusted = mix(color, target, step / 100);
-    if (
-      backgrounds.every(
-        (background) => contrastRatio(adjusted, background) >= minimum,
-      )
-    )
-      return adjusted;
+    if (backgrounds.every((background) => contrastRatio(adjusted, background) >= minimum)) return adjusted;
   }
   return target;
 }
 
 export function appearanceConfig(settings = {}) {
   const raw = settings.studioTheme;
-  const custom =
-    raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const custom = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const mode = ["dark", "light", "system"].includes(custom.mode)
     ? custom.mode
     : settings.theme === "light"
@@ -133,8 +144,7 @@ export function appearanceConfig(settings = {}) {
 
 export function appearanceTokens(settings = {}, systemDark = true) {
   const appearance = appearanceConfig(settings);
-  const dark =
-    appearance.mode === "system" ? systemDark : appearance.mode !== "light";
+  const dark = appearance.mode === "system" ? systemDark : appearance.mode !== "light";
   const base = BASES[appearance.base][dark ? "dark" : "light"];
   const soft = mix(base.surface, appearance.accent, dark ? 0.15 : 0.12);
   const backgrounds = [base.bg, base.surface, base.raised, base.input, soft];
@@ -151,11 +161,7 @@ export function appearanceTokens(settings = {}, systemDark = true) {
     "accent-hover": hover,
     "accent-contrast": readable("#ffffff", [solid, hover]),
     "accent-soft": soft,
-    "accent-line": readable(
-      mix(base.surface, appearance.accent, 0.6),
-      backgrounds,
-      3,
-    ),
+    "accent-line": readable(mix(base.surface, appearance.accent, 0.6), backgrounds, 3),
     focus: readable(appearance.accent, backgrounds, 3),
   };
   return { mode: dark ? "dark" : "light", tokens };

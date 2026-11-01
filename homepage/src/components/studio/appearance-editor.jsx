@@ -10,8 +10,7 @@ import {
   DEFAULT_BASE,
   hexColor,
 } from "./appearance.mjs";
-import { BackgroundField, FILL_FAMILIES } from "./background-picker";
-import { builtInFamily } from "./backgrounds.mjs";
+import { BackgroundField, familyOf, FILL_FAMILIES } from "./background-picker";
 import LogoEditor from "./logo-editor";
 import { BUILT_IN_LOOK, readLook, setOverride } from "./look.mjs";
 import { Group, Row, Segmented, Switch } from "./ui";
@@ -74,8 +73,9 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
   const setCard = (key, value) => change({ card: setOverride(card, key, value, BUILT_IN_LOOK) });
   const pageBackground = readLook({ background: settings.studioTheme?.pageBackground }).background;
   // A background from the other kind of fill doesn't apply to it.
-  const cardFamily = card.background?.source === "builtin" ? builtInFamily(card.background.id) : null;
-  const cardBackground = FILL_FAMILIES[cardLook.fill]?.includes(cardFamily) ? card.background : undefined;
+  const cardBackground = FILL_FAMILIES[cardLook.fill]?.includes(familyOf(card.background))
+    ? card.background
+    : undefined;
   const preview = appearanceTokens(effective, systemDark);
   const previewTheme = { ...preview.tokens, mode: preview.mode };
   const previewStyle = Object.fromEntries(

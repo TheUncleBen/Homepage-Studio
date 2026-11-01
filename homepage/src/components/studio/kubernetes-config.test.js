@@ -37,9 +37,7 @@ function client(name) {
       listClusterCustomObject: async () => ({ items: [item] }),
       getNamespacedCustomObject: async () => ({
         spec: {
-          listeners: [
-            { name: "web", protocol: name === "new" ? "HTTPS" : "HTTP" },
-          ],
+          listeners: [{ name: "web", protocol: name === "new" ? "HTTPS" : "HTTP" }],
         },
       }),
     }),

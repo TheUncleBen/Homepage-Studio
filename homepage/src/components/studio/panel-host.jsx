@@ -1,5 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
+import CardBackground, { backgroundSource } from "./card-background";
 import {
   CardLookContext,
   fillColours,
@@ -10,7 +11,6 @@ import {
   widgetFields,
 } from "./card-look";
 import { COLUMNS, GAP, ROW_HEIGHT } from "./geometry.mjs";
-import CardBackground, { backgroundSource } from "./card-background";
 import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
 import { REFRESH_MS } from "./look.mjs";
@@ -49,7 +49,8 @@ export function useCardPresentation(panel, data, onEdit) {
     }),
     [panel, look, behaviour, onEdit],
   );
-  const pictured = (look.fill === "picture" || look.fill === "pattern") && Boolean(backgroundSource(look.background, theme));
+  const pictured =
+    (look.fill === "picture" || look.fill === "pattern") && Boolean(backgroundSource(look.background, theme));
   const backdrop = pictured ? <CardBackground background={look.background} tokens={theme} /> : null;
   const attributes = {
     "data-layout": look.layout,
@@ -60,7 +61,9 @@ export function useCardPresentation(panel, data, onEdit) {
     "data-align": look.align,
     "data-hero": look.heroSize,
   };
-  const colourStyle = colours ? { "--card-fill": colours.fill, "--card-ink": colours.ink, "--card-muted": colours.muted } : {};
+  const colourStyle = colours
+    ? { "--card-fill": colours.fill, "--card-ink": colours.ink, "--card-muted": colours.muted }
+    : {};
   return { look, behaviour, colours, card, attributes, colourStyle, backdrop };
 }
 

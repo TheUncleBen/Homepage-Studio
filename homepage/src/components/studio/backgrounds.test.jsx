@@ -7,8 +7,22 @@ import { ABSTRACT, builtInFamily, PATTERNS, SCENES, themedSvg } from "./backgrou
 import { autoShade, backgroundSource } from "./card-background";
 import { validateLook } from "./look.mjs";
 
-const dark = { mode: "dark", surface: "#1a1b1d", bg: "#121314", accent: "#b299be", muted: "#a3a6aa", "line-strong": "#6e7175" };
-const light = { mode: "light", surface: "#ffffff", bg: "#f3f1ec", accent: "#b299be", muted: "#5f5c56", "line-strong": "#8f8b84" };
+const dark = {
+  mode: "dark",
+  surface: "#1a1b1d",
+  bg: "#121314",
+  accent: "#b299be",
+  muted: "#a3a6aa",
+  "line-strong": "#6e7175",
+};
+const light = {
+  mode: "light",
+  surface: "#ffffff",
+  bg: "#f3f1ec",
+  accent: "#b299be",
+  muted: "#5f5c56",
+  "line-strong": "#8f8b84",
+};
 
 describe("built-in backgrounds", () => {
   it("offers 14 scenes, 6 abstract designs and 14 patterns", () => {
@@ -60,7 +74,7 @@ describe("background settings", () => {
     const onPick = vi.fn();
     const { unmount } = render(<BackgroundGrid fill="picture" tokens={dark} onPick={onPick} />);
     fireEvent.click(screen.getByRole("radio", { name: "Coast" }));
-    expect(onPick).toHaveBeenCalledWith("coast");
+    expect(onPick).toHaveBeenCalledWith("coast", "builtin");
     expect(screen.queryByRole("radio", { name: "Abstract" })).toBeNull();
     unmount();
     render(<BackgroundGrid fill="pattern" tokens={dark} onPick={onPick} />);

@@ -36,10 +36,17 @@ describe("widget look validation", () => {
 
   it("checks arranged values", () => {
     expect(
-      validateLook({ values: [{ field: "authentik.logins", slot: "hero", label: " Sign-ins today ", format: "short" }] }),
+      validateLook({
+        values: [{ field: "authentik.logins", slot: "hero", label: " Sign-ins today ", format: "short" }],
+      }),
     ).toEqual({ values: [{ field: "authentik.logins", slot: "hero", label: "Sign-ins today", format: "short" }] });
     expect(() =>
-      validateLook({ values: [{ field: "a", slot: "hero" }, { field: "b", slot: "hero" }] }),
+      validateLook({
+        values: [
+          { field: "a", slot: "hero" },
+          { field: "b", slot: "hero" },
+        ],
+      }),
     ).toThrow(/one value/);
     expect(() => validateLook({ values: [{ field: "a" }, { field: "a" }] })).toThrow(/unique/);
     expect(() => validateLook({ values: [{ field: "a", label: "x".repeat(41) }] })).toThrow(/40/);
@@ -59,7 +66,11 @@ describe("widget look validation", () => {
 
 describe("silent inheritance", () => {
   it("layers built-in, platform and dashboard defaults", () => {
-    expect(inheritedLook({ fill: "tint" }, { layout: "quiet" })).toMatchObject({ fill: "tint", layout: "quiet", edge: "line" });
+    expect(inheritedLook({ fill: "tint" }, { layout: "quiet" })).toMatchObject({
+      fill: "tint",
+      layout: "quiet",
+      edge: "line",
+    });
     expect(inheritedBehaviour({ target: "same" }).target).toBe("same");
   });
 

@@ -121,49 +121,65 @@ describe("Studio grid geometry", () => {
     expect(moved.panels.map((panel) => [panel.rect.w, panel.rect.h])).toEqual(widths.map((w) => [w, 4]));
     disjoint(moved);
   });
-  it.each([354, 673, 700, 820])("preserves the requested visual insertion order across varied widths and heights at %s", (width) => {
-    const arrangements = [
-      [6, 8, 6], [6, 6, 8], [8, 8, 8], [12, 6, 6], [6, 12, 6],
-      [8, 10, 6], [10, 6, 8], [6, 8, 10], [12, 12, 6, 6, 8], [6, 10, 8, 8, 6, 10],
-    ];
-    arrangements.forEach((widths) => {
-      let x = 0;
-      let y = 0;
-      let rowHeight = 0;
-      const original = {
-        ...board(),
-        panels: widths.map((w, index) => {
-          const h = [4, 6, 8, 4, 10, 6][index];
-          if (x + w > 24) {
-            x = 0;
-            y += rowHeight;
-            rowHeight = 0;
-          }
-          const panel = { id: `panel-${index}`, kind: "service", rect: { x, y, w, h } };
-          x += w;
-          rowHeight = Math.max(rowHeight, h);
-          return panel;
-        }),
-      };
-      const projection = projectBoard(original, width);
-      const visible = visualOrder(original, width);
-      visible.forEach((source, from) => visible.forEach((target, to) => {
-        if (source.rect.y === target.rect.y) return;
-        const expected = visible.map((unit) => unit.id);
-        expected.splice(to, 0, ...expected.splice(from, 1));
-        const delta = {
-          x: ((target.rect.x + target.rect.w / 2 - source.rect.x - source.rect.w / 2) * 24) / projection.columns,
-          y: target.rect.y - source.rect.y,
+  it.each([354, 673, 700, 820])(
+    "preserves the requested visual insertion order across varied widths and heights at %s",
+    (width) => {
+      const arrangements = [
+        [6, 8, 6],
+        [6, 6, 8],
+        [8, 8, 8],
+        [12, 6, 6],
+        [6, 12, 6],
+        [8, 10, 6],
+        [10, 6, 8],
+        [6, 8, 10],
+        [12, 12, 6, 6, 8],
+        [6, 10, 8, 8, 6, 10],
+      ];
+      arrangements.forEach((widths) => {
+        let x = 0;
+        let y = 0;
+        let rowHeight = 0;
+        const original = {
+          ...board(),
+          panels: widths.map((w, index) => {
+            const h = [4, 6, 8, 4, 10, 6][index];
+            if (x + w > 24) {
+              x = 0;
+              y += rowHeight;
+              rowHeight = 0;
+            }
+            const panel = { id: `panel-${index}`, kind: "service", rect: { x, y, w, h } };
+            x += w;
+            rowHeight = Math.max(rowHeight, h);
+            return panel;
+          }),
         };
-        const moved = moveProjectedUnit(original, source.id, delta, projection);
-        expect(visualOrder(moved, width).map((unit) => unit.id), `${widths}: ${source.id} to ${target.id}`).toEqual(expected);
-        expect(moved.panels.map((panel) => [panel.rect.w, panel.rect.h])).toEqual(
-          original.panels.map((panel) => [panel.rect.w, panel.rect.h]),
+        const projection = projectBoard(original, width);
+        const visible = visualOrder(original, width);
+        visible.forEach((source, from) =>
+          visible.forEach((target, to) => {
+            if (source.rect.y === target.rect.y) return;
+            const expected = visible.map((unit) => unit.id);
+            expected.splice(to, 0, ...expected.splice(from, 1));
+            const delta = {
+              x: ((target.rect.x + target.rect.w / 2 - source.rect.x - source.rect.w / 2) * 24) / projection.columns,
+              y: target.rect.y - source.rect.y,
+            };
+            const moved = moveProjectedUnit(original, source.id, delta, projection);
+            expect(
+              visualOrder(moved, width).map((unit) => unit.id),
+              `${widths}: ${source.id} to ${target.id}`,
+            ).toEqual(expected);
+            expect(moved.panels.map((panel) => [panel.rect.w, panel.rect.h])).toEqual(
+              original.panels.map((panel) => [panel.rect.w, panel.rect.h]),
+            );
+            disjoint(moved);
+          }),
         );
-        disjoint(moved);
-      }));
-    });
-  });
+      });
+    },
+  );
   it.each([673, 820])("snaps tablet panels to halves so rows fill the board at %s px", (width) => {
     const row = (widths, y = 0) => {
       let x = 0;
@@ -190,7 +206,12 @@ describe("Studio grid geometry", () => {
     // Two halves share a row and meet in the middle; quarters pair up two-up.
     expect(at("0-0")).toMatchObject({ x: 0, y: 0, w: 8 });
     expect(at("0-1")).toMatchObject({ x: 8, y: 0, w: 8 });
-    expect([at("4-0"), at("4-1"), at("4-2"), at("4-3")].map(({ x, y }) => [x, y])).toEqual([[0, 4], [8, 4], [0, 8], [8, 8]]);
+    expect([at("4-0"), at("4-1"), at("4-2"), at("4-3")].map(({ x, y }) => [x, y])).toEqual([
+      [0, 4],
+      [8, 4],
+      [0, 8],
+      [8, 8],
+    ]);
     expect(at("12-0")).toMatchObject({ x: 0, w: 16 });
     expect(at("16-0")).toMatchObject({ x: 0, w: 16 });
     expect(at("16-1")).toMatchObject({ x: 0, w: 8 });
@@ -390,7 +411,10 @@ describe("Studio grid geometry", () => {
   it("lays out each page on its own and merges page changes back", () => {
     const whole = {
       ...board(),
-      pages: [{ id: "home", name: "Home" }, { id: "media", name: "Media" }],
+      pages: [
+        { id: "home", name: "Home" },
+        { id: "media", name: "Media" },
+      ],
       panels: [...board().panels, { id: "m", pageId: "media", rect: { x: 0, y: 0, w: 8, h: 6 } }],
     };
     const home = pageBoard(whole, "home");

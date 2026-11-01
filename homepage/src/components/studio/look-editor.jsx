@@ -1,7 +1,6 @@
 import { useId } from "react";
 
-import { BackgroundAdjust, BackgroundGrid, FILL_FAMILIES } from "./background-picker";
-import { builtInFamily } from "./backgrounds.mjs";
+import { BackgroundAdjust, BackgroundGrid, familyOf, FILL_FAMILIES } from "./background-picker";
 import { useCardTheme } from "./card-look";
 import StudioIcon from "./icons";
 import { setOverride } from "./look.mjs";
@@ -192,12 +191,7 @@ export default function LookEditor({
   const pictured = effective.fill === "picture" || effective.fill === "pattern";
   const theme = useCardTheme();
   // A background from the other kind of fill doesn't apply to this one.
-  const backgroundFamily =
-    effective.background?.source === "builtin"
-      ? builtInFamily(effective.background.id)
-      : effective.background
-        ? "upload"
-        : null;
+  const backgroundFamily = familyOf(effective.background);
   const chosenBackground =
     pictured &&
     effective.background &&
@@ -260,10 +254,10 @@ export default function LookEditor({
                   fill={effective.fill}
                   value={chosenBackground}
                   tokens={theme}
-                  onPick={(id) =>
+                  onPick={(id, source) =>
                     setLook("background", {
                       ...(chosenBackground?.id === id ? chosenBackground : {}),
-                      source: "builtin",
+                      source,
                       id,
                     })
                   }

@@ -12,21 +12,14 @@ export const PHONE_WIDTH = 560;
 // scrollable, never scaled down. These are content-class limits, not a claim
 // that every service integration has identical layout needs.
 export function panelMinimum(panel) {
-  if (panel.kind === "service" || panel.kind === "bookmark")
-    return { w: 5, h: 2 };
+  if (panel.kind === "service" || panel.kind === "bookmark") return { w: 5, h: 2 };
   if (panel.kind === "informationWidget") {
-    if (
-      ["resources", "kubernetes", "longhorn"].includes(
-        panel.nativeLocator?.type,
-      )
-    )
-      return { w: 8, h: 4 };
+    if (["resources", "kubernetes", "longhorn"].includes(panel.nativeLocator?.type)) return { w: 8, h: 4 };
     return { w: panel.nativeLocator?.type === "search" ? 8 : 5, h: 2 };
   }
   if (panel.kind === "serviceWidget") {
     if (panel.nativeLocator?.type === "calendar") return { w: 12, h: 9 };
-    if (["iframe", "mjpeg"].includes(panel.nativeLocator?.type))
-      return { w: 8, h: 9 };
+    if (["iframe", "mjpeg"].includes(panel.nativeLocator?.type)) return { w: 8, h: 9 };
     if (panel.nativeLocator?.type === "glances") return { w: 8, h: 7 };
     return { w: 6, h: 4 };
   }
@@ -35,16 +28,11 @@ export function panelMinimum(panel) {
 
 export function unitMinimum(board, id) {
   const stack = board.stacks.find((item) => item.id === id);
-  const panels = board.panels.filter((panel) =>
-    stack ? stack.panelIds.includes(panel.id) : panel.id === id,
-  );
+  const panels = board.panels.filter((panel) => (stack ? stack.panelIds.includes(panel.id) : panel.id === id));
   const minima = panels.map(panelMinimum);
   return {
     w: Math.max(1, ...minima.map((minimum) => minimum.w)),
-    h: Math.max(
-      stack ? 5 : 1,
-      ...minima.map((minimum) => minimum.h + (stack ? 2 : 0)),
-    ),
+    h: Math.max(stack ? 5 : 1, ...minima.map((minimum) => minimum.h + (stack ? 2 : 0))),
   };
 }
 
@@ -68,9 +56,7 @@ export function clampRect(rect = {}, columns = COLUMNS) {
 }
 
 export function intersects(a, b) {
-  return (
-    a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
-  );
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
 // True when a starts before b in reading order: top to bottom, then left to right.
@@ -112,25 +98,16 @@ export function moveUnit(board, id, rect) {
   const placed = [moved];
   units
     .filter((unit) => unit.id !== id)
-    .sort(
-      (a, b) =>
-        a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
-    )
+    .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id))
     .forEach((unit) => {
       let candidate = clampRect(unit.rect);
-      let collisions = placed.filter((other) =>
-        intersects(candidate, other.rect),
-      );
+      let collisions = placed.filter((other) => intersects(candidate, other.rect));
       while (collisions.length) {
         candidate = {
           ...candidate,
-          y: Math.max(
-            ...collisions.map((other) => other.rect.y + other.rect.h),
-          ),
+          y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)),
         };
-        collisions = placed.filter((other) =>
-          intersects(candidate, other.rect),
-        );
+        collisions = placed.filter((other) => intersects(candidate, other.rect));
       }
       placed.push({ ...unit, rect: candidate });
     });
@@ -245,8 +222,7 @@ function projectRect(rect, columns) {
 // follows the last. The desktop board is shown as stored.
 function projectColumns(board, columns) {
   const units = unitsForBoard(board).sort(
-    (a, b) =>
-      a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
+    (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
   );
   const placed = [];
   const free = (rect) => !placed.some((other) => intersects(rect, other.rect));
@@ -270,9 +246,7 @@ function projectColumns(board, columns) {
       while (collisions.length) {
         rect = {
           ...rect,
-          y: Math.max(
-            ...collisions.map((other) => other.rect.y + other.rect.h),
-          ),
+          y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)),
         };
         collisions = placed.filter((other) => intersects(rect, other.rect));
       }
@@ -301,12 +275,8 @@ export function pixelRect(rect, width, columns = COLUMNS) {
 }
 
 export function stackBoard(board, panelIds, id) {
-  const existingMembers = new Set(
-    board.stacks.flatMap((stack) => stack.panelIds),
-  );
-  const panels = board.panels.filter(
-    (panel) => panelIds.includes(panel.id) && !existingMembers.has(panel.id),
-  );
+  const existingMembers = new Set(board.stacks.flatMap((stack) => stack.panelIds));
+  const panels = board.panels.filter((panel) => panelIds.includes(panel.id) && !existingMembers.has(panel.id));
   if (panels.length < 2) return board;
   const origin = panels.reduce((a, b) => (a.rect.y < b.rect.y ? a : b));
   const rect = clampRect({
@@ -523,7 +493,9 @@ export function removePage(board, pageId, to) {
     for (const unit of leaving) next = moveToPage(next, unit.id, to, { ...unit.rect, y: unit.rect.y + offset });
   } else {
     const gone = new Set(
-      leaving.flatMap((unit) => (unit.kind === "stack" ? next.stacks.find((s) => s.id === unit.id).panelIds : [unit.id])),
+      leaving.flatMap((unit) =>
+        unit.kind === "stack" ? next.stacks.find((s) => s.id === unit.id).panelIds : [unit.id],
+      ),
     );
     next = {
       ...next,

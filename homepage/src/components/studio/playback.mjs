@@ -14,8 +14,13 @@ function duration(value, name) {
 }
 
 function members(value) {
-  if (!Array.isArray(value) || value.length > 4096 || value.some(id => typeof id !== 'string' || !id || id.length > 256) || new Set(value).size !== value.length) {
-    throw new TypeError('ids must be distinct, nonempty panel IDs.');
+  if (
+    !Array.isArray(value) ||
+    value.length > 4096 ||
+    value.some((id) => typeof id !== "string" || !id || id.length > 256) ||
+    new Set(value).size !== value.length
+  ) {
+    throw new TypeError("ids must be distinct, nonempty panel IDs.");
   }
   return [...value];
 }
@@ -31,11 +36,11 @@ function members(value) {
  */
 export function createStackPlayback(options = {}) {
   let ids = members(options.ids ?? []);
-  let intervalMs = duration(options.intervalMs ?? DEFAULT_INTERVAL_MS, 'intervalMs');
-  let manualHoldMs = duration(options.manualHoldMs ?? DEFAULT_MANUAL_HOLD_MS, 'manualHoldMs');
+  let intervalMs = duration(options.intervalMs ?? DEFAULT_INTERVAL_MS, "intervalMs");
+  let manualHoldMs = duration(options.manualHoldMs ?? DEFAULT_MANUAL_HOLD_MS, "manualHoldMs");
   let loop = options.loop === undefined ? true : Boolean(options.loop);
   let activeIndex = options.activeId === undefined ? 0 : ids.indexOf(options.activeId);
-  if (activeIndex < 0) throw new TypeError('activeId must identify a member.');
+  if (activeIndex < 0) throw new TypeError("activeId must identify a member.");
   let playing = Boolean(options.autoplay);
   let holding = false;
   let previousId = null;
@@ -49,13 +54,14 @@ export function createStackPlayback(options = {}) {
   const listeners = new Set();
   const now = options.now ?? (() => globalThis.performance?.now() ?? Date.now());
   const setTimer = options.setTimer ?? ((fn, delay) => setTimeout(fn, delay));
-  const clearTimer = options.clearTimer ?? (id => clearTimeout(id));
-  if (![now, setTimer, clearTimer].every(value => typeof value === 'function')) throw new TypeError('Clock and timer adapters must be functions.');
+  const clearTimer = options.clearTimer ?? ((id) => clearTimeout(id));
+  if (![now, setTimer, clearTimer].every((value) => typeof value === "function"))
+    throw new TypeError("Clock and timer adapters must be functions.");
   let snapshot;
 
   function readNow() {
     const value = now();
-    if (!Number.isFinite(value)) throw new TypeError('The playback clock must return a finite number.');
+    if (!Number.isFinite(value)) throw new TypeError("The playback clock must return a finite number.");
     return value;
   }
 
@@ -65,7 +71,9 @@ export function createStackPlayback(options = {}) {
     timer = null;
   }
 
-  function canRun() { return !destroyed && playing && ids.length > 1 && blocks.size === 0; }
+  function canRun() {
+    return !destroyed && playing && ids.length > 1 && blocks.size === 0;
+  }
 
   function publish() {
     snapshot = Object.freeze({
@@ -130,10 +138,11 @@ export function createStackPlayback(options = {}) {
   function select(id, { manual = true, direction: requestedDirection } = {}) {
     if (destroyed) return false;
     const index = ids.indexOf(id);
-    if (index < 0) throw new TypeError('The selected panel is not a stack member.');
+    if (index < 0) throw new TypeError("The selected panel is not a stack member.");
     if (index === activeIndex) return false;
     previousId = ids[activeIndex];
-    direction = requestedDirection === 1 || requestedDirection === -1 ? requestedDirection : Math.sign(index - activeIndex);
+    direction =
+      requestedDirection === 1 || requestedDirection === -1 ? requestedDirection : Math.sign(index - activeIndex);
     activeIndex = index;
     holding = Boolean(manual && playing);
     remainingMs = holding ? Math.max(intervalMs, manualHoldMs) : intervalMs;
@@ -172,11 +181,13 @@ export function createStackPlayback(options = {}) {
 
   function setBlocked(reason, value) {
     if (destroyed) return false;
-    if (typeof reason !== 'string' || !reason || reason.length > 128) throw new TypeError('A blocker needs a short name.');
+    if (typeof reason !== "string" || !reason || reason.length > 128)
+      throw new TypeError("A blocker needs a short name.");
     const blocked = Boolean(value);
     if (blocks.has(reason) === blocked) return false;
     if (blocks.size === 0 && blocked && dueAt !== null) remainingMs = Math.max(0, dueAt - readNow());
-    if (blocked) blocks.add(reason); else blocks.delete(reason);
+    if (blocked) blocks.add(reason);
+    else blocks.delete(reason);
     arm();
     publish();
     return true;
@@ -186,8 +197,8 @@ export function createStackPlayback(options = {}) {
     if (destroyed) return false;
     // Validate the complete change before mutating running state.
     const nextIds = settings.ids === undefined ? ids : members(settings.ids);
-    const nextInterval = duration(settings.intervalMs ?? intervalMs, 'intervalMs');
-    const nextManual = duration(settings.manualHoldMs ?? manualHoldMs, 'manualHoldMs');
+    const nextInterval = duration(settings.intervalMs ?? intervalMs, "intervalMs");
+    const nextManual = duration(settings.manualHoldMs ?? manualHoldMs, "manualHoldMs");
     const nextLoop = settings.loop === undefined ? loop : Boolean(settings.loop);
     const idsEqual = nextIds.length === ids.length && nextIds.every((id, index) => id === ids[index]);
     if (idsEqual && nextInterval === intervalMs && nextManual === manualHoldMs && nextLoop === loop) return false;
@@ -230,17 +241,17 @@ export function createStackPlayback(options = {}) {
   return Object.freeze({
     getSnapshot: () => snapshot,
     subscribe(listener) {
-      if (typeof listener !== 'function') throw new TypeError('A playback subscriber must be a function.');
+      if (typeof listener !== "function") throw new TypeError("A playback subscriber must be a function.");
       if (destroyed) return () => {};
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     select,
-    next: settings => move(1, settings),
-    previous: settings => move(-1, settings),
+    next: (settings) => move(1, settings),
+    previous: (settings) => move(-1, settings),
     play,
     pause,
-    toggle: () => playing ? pause() : play(),
+    toggle: () => (playing ? pause() : play()),
     setBlocked,
     update,
     destroy,

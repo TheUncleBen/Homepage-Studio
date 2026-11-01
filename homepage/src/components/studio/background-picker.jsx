@@ -1,38 +1,178 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { studioRequest } from "./api.mjs";
 import { ABSTRACT, builtInFamily, PATTERNS, scenePath, SCENES, themedSvg } from "./backgrounds.mjs";
 import { dashboardPath } from "./dashboard-path.mjs";
+import StudioIcon from "./icons";
+import { formatBytes, prepareImage, UPLOAD_TYPES } from "./image-upload.mjs";
 import { Row, Segmented, Switch } from "./ui";
 
-// Which built-in families a fill offers: Picture shows scenes (and uploads),
-// Pattern shows the abstract designs and patterns.
+// Which families a fill offers: Picture shows scenes and uploads, Pattern
+// the abstract designs and patterns, and a page any of them.
 export const FILL_FAMILIES = {
-  picture: ["scene"],
+  picture: ["scene", "upload"],
   pattern: ["abstract", "pattern"],
-  page: ["scene", "abstract", "pattern"],
+  page: ["scene", "upload", "abstract", "pattern"],
 };
-const FAMILY_LABEL = { scene: "Scenes", abstract: "Abstract", pattern: "Patterns" };
+const FAMILY_LABEL = { scene: "Scenes", upload: "Uploaded", abstract: "Abstract", pattern: "Patterns" };
 const FAMILY_ITEMS = { scene: SCENES, abstract: ABSTRACT, pattern: PATTERNS };
+export const imagePath = (id) => dashboardPath(`/studio/api/images/${encodeURIComponent(id)}`);
 
 export function backgroundName(background) {
   if (!background?.id) return null;
-  if (background.source !== "builtin") return "Uploaded image";
+  if (background.source !== "builtin") return "Uploaded picture";
   const family = builtInFamily(background.id);
   return family ? FAMILY_ITEMS[family].find((item) => item.id === background.id)?.name : null;
 }
 
+export const familyOf = (background) =>
+  background?.source === "library" ? "upload" : background?.source === "builtin" ? builtInFamily(background.id) : null;
+
 function thumbStyle(family, id, tokens) {
+  if (family === "upload") return { backgroundImage: `url("${imagePath(id)}")`, backgroundSize: "cover" };
   if (family === "scene")
     return { backgroundImage: `url("${dashboardPath(scenePath(id, true))}")`, backgroundSize: "cover" };
   const url = themedSvg(id, tokens);
   return { backgroundImage: `url("${url}")`, backgroundSize: family === "pattern" ? "auto" : "cover" };
 }
 
-// The built-in backgrounds for one fill, by family. Scenes can be narrowed
-// to the ones that suit a dark or a light theme.
+// This dashboard's uploaded backgrounds, with Upload and Remove. Pictures
+// are shrunk to 2560 px and saved as WebP before they are sent.
+function UploadedBackgrounds({ value, onPick }) {
+  const [images, setImages] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(null);
+  const input = useRef(null);
+  const load = () =>
+    studioRequest("/studio/api/images")
+      .then((result) => setImages(result.images.filter((image) => image.kind === "background")))
+      .catch((error) => setStatus({ error: error.message }));
+  useEffect(() => {
+    load();
+  }, []);
+  const upload = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      const prepared = await prepareImage(file, "background");
+      const { image } = await studioRequest("/studio/api/images", {
+        kind: "background",
+        name: file.name,
+        image: prepared.image,
+      });
+      setStatus({
+        note:
+          prepared.after < prepared.before
+            ? `${file.name}: ${formatBytes(prepared.before)}, shrunk to ${formatBytes(prepared.after)}`
+            : `${file.name} added`,
+      });
+      await load();
+      onPick(image.id, "library");
+    } catch (error) {
+      setStatus({ error: error.message });
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = "";
+    }
+  };
+  const remove = async (image, confirmed = false) => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      await studioRequest("/studio/api/images/delete", { id: image.id, ...(confirmed ? { confirm: true } : {}) });
+      setConfirm(null);
+      await load();
+    } catch (error) {
+      // The request error carries the server's reply: { error, code, details }.
+      if (error.details?.code === "IMAGE_IN_USE") setConfirm({ image, usedIn: error.details.details?.usedIn || [] });
+      else setStatus({ error: error.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="studio-uploaded">
+      <div className="studio-inline-actions">
+        <button type="button" className="studio-button" disabled={busy} onClick={() => input.current?.click()}>
+          {busy ? "Working…" : "Upload"}
+        </button>
+        <span className="studio-muted">PNG, JPEG, WebP or SVG. Anyone who can edit this dashboard can reuse it.</span>
+        <input
+          ref={input}
+          type="file"
+          hidden
+          accept={UPLOAD_TYPES.join(",")}
+          onChange={(event) => upload(event.target.files?.[0])}
+        />
+      </div>
+      {status?.note && (
+        <p className="studio-note" role="status">
+          {status.note}
+        </p>
+      )}
+      {status?.error && (
+        <p className="studio-field-error" role="alert">
+          {status.error}
+        </p>
+      )}
+      {confirm && (
+        <div className="studio-delete-confirm" role="alert">
+          <strong>{confirm.image.name} is still in use</strong>
+          <ul>
+            {confirm.usedIn.map((place, index) => (
+              <li key={index}>{place.name}</li>
+            ))}
+          </ul>
+          <p>Removing it leaves those with the dashboard&apos;s default style.</p>
+          <div className="studio-inline-actions">
+            <button type="button" className="studio-button studio-quiet" onClick={() => setConfirm(null)}>
+              Keep it
+            </button>
+            <button type="button" className="studio-button studio-danger" onClick={() => remove(confirm.image, true)}>
+              Remove anyway
+            </button>
+          </div>
+        </div>
+      )}
+      {images?.length === 0 && <p className="studio-muted">Nothing uploaded yet.</p>}
+      {images?.length > 0 && (
+        <div className="studio-background-grid" role="radiogroup" aria-label="Uploaded">
+          {images.map((image) => (
+            <div key={image.id} className="studio-background-uploaded">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={value?.source === "library" && value.id === image.id}
+                className="studio-background-option"
+                onClick={() => onPick(image.id, "library")}
+              >
+                <span className="studio-background-thumb" style={thumbStyle("upload", image.id)} />
+                <span className="studio-background-name">{image.name}</span>
+              </button>
+              <button
+                type="button"
+                className="studio-icon-button studio-background-remove"
+                aria-label={`Remove ${image.name}`}
+                disabled={busy}
+                onClick={() => remove(image)}
+              >
+                <StudioIcon name="close" size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The backgrounds for one fill, by family. Scenes can be narrowed to the ones
+// that suit a dark or a light theme.
 export function BackgroundGrid({ fill, value, tokens, onPick }) {
   const families = FILL_FAMILIES[fill] || [];
-  const current = value?.source === "builtin" ? builtInFamily(value.id) : null;
+  const current = familyOf(value);
   const [family, setFamily] = useState(families.includes(current) ? current : families[0]);
   const [suits, setSuits] = useState("all");
   const items = (FAMILY_ITEMS[family] || []).filter(
@@ -62,24 +202,28 @@ export function BackgroundGrid({ fill, value, tokens, onPick }) {
           />
         )}
       </div>
-      <div className="studio-background-grid" role="radiogroup" aria-label={FAMILY_LABEL[family]}>
-        {items.map((item) => {
-          const chosen = value?.source === "builtin" && value.id === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              role="radio"
-              aria-checked={chosen}
-              className="studio-background-option"
-              onClick={() => onPick(item.id)}
-            >
-              <span className="studio-background-thumb" style={thumbStyle(family, item.id, tokens)} />
-              <span className="studio-background-name">{item.name}</span>
-            </button>
-          );
-        })}
-      </div>
+      {family === "upload" ? (
+        <UploadedBackgrounds value={value} onPick={onPick} />
+      ) : (
+        <div className="studio-background-grid" role="radiogroup" aria-label={FAMILY_LABEL[family]}>
+          {items.map((item) => {
+            const chosen = value?.source === "builtin" && value.id === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="radio"
+                aria-checked={chosen}
+                className="studio-background-option"
+                onClick={() => onPick(item.id, "builtin")}
+              >
+                <span className="studio-background-thumb" style={thumbStyle(family, item.id, tokens)} />
+                <span className="studio-background-name">{item.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -87,14 +231,8 @@ export function BackgroundGrid({ fill, value, tokens, onPick }) {
 // Click or drag on the thumbnail to choose the point that stays in view;
 // double-click centres it again.
 function FocusPicker({ background, tokens, onChange }) {
-  const family = builtInFamily(background.id) || "upload";
-  const style =
-    family === "upload"
-      ? {
-          backgroundImage: `url("${dashboardPath(`/studio/api/images/${encodeURIComponent(background.id)}`)}")`,
-          backgroundSize: "cover",
-        }
-      : thumbStyle(family, background.id, tokens);
+  const family = familyOf(background) || "upload";
+  const style = thumbStyle(family, background.id, tokens);
   const [x, y] = background.focus || [50, 50];
   const place = (event) => {
     const box = event.currentTarget.getBoundingClientRect();
@@ -141,7 +279,7 @@ const BLUR_STEPS = { off: 0, soft: 4, strong: 10 };
 // and Match theme. Each value is stored only when it differs from the
 // default for that background.
 export function BackgroundAdjust({ background, tokens, onChange }) {
-  const family = builtInFamily(background.id) || "upload";
+  const family = familyOf(background) || "upload";
   const raster = family === "scene" || family === "upload";
   const tiledByDefault = family === "pattern";
   const set = (key, value, fallback) => {
@@ -254,7 +392,7 @@ export function PageBackgroundEditor({ page, dashboardBackground, tokens, onAppl
           fill="page"
           value={chosen}
           tokens={tokens}
-          onPick={(id) => store({ ...(chosen?.id === id ? chosen : {}), source: "builtin", id })}
+          onPick={(id, source) => store({ ...(chosen?.id === id ? chosen : {}), source, id })}
         />
         {chosen && (
           <div className="studio-group-body studio-background-adjust">
@@ -311,7 +449,7 @@ export function BackgroundField({ label, fill, value, tokens, onChange, allowNon
             fill={fill}
             value={value}
             tokens={tokens}
-            onPick={(id) => onChange({ ...(value?.id === id ? value : {}), source: "builtin", id })}
+            onPick={(id, source) => onChange({ ...(value?.id === id ? value : {}), source, id })}
           />
         </Row>
       )}
