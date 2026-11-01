@@ -19,6 +19,7 @@ import { readAuthConfig } from './auth/config.mjs';
 import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
 import { createLogoStore } from './dashboard-logo.mjs';
 import { createImageLibrary, ImageError, imageUsage, validImageId } from './image-library.mjs';
+import { createPersonalStore } from './personal.mjs';
 import { createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
@@ -610,7 +611,8 @@ export function createStudioServer(options = {}) {
   const deploymentName = readDeploymentName(options.deploymentName ?? process.env.STUDIO_DEPLOYMENT_NAME);
   const authConfig = readAuthConfig(options);
   let registryForAuth;
-  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent }) : null;
+  const personal = createPersonalStore({ stateRoot });
+  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent, onUserRemoved: userId => personal.removeUser(userId) }) : null;
   // Administration's name for the deployment, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
   const platform = createPlatformStore({ configRoot });
@@ -748,6 +750,46 @@ export function createStudioServer(options = {}) {
   const NATIVE_STUDIO_PAGE = /^\/(?:studio-(?:edit|settings)(?:\/|$)|_next\/data\/[^/]+\/studio-(?:edit|settings)\.json$)/;
   function forbidden(res, message = 'Your account does not have access to this.') {
     return json(res, 403, { error: message, code: 'FORBIDDEN' });
+  }
+  // A signed-in person's own images and preferences (server/personal.mjs).
+  // Without Studio sign-in there are no people, so these are unavailable and
+  // the dashboard uses the defaults.
+  async function handlePersonal(req, res, path, current, dashboard) {
+    const read = ['GET', 'HEAD'].includes(req.method);
+    if (path === '/studio/api/preferences' && read && !auth) return json(res, 200, { available: false, preferences: {} });
+    if (!auth) return json(res, 404, { error: 'Your own images and preferences need Studio sign-in.', code: 'PERSONAL_UNAVAILABLE' });
+    const person = personal.forUser(current.user.id);
+    if (path === '/studio/api/preferences') {
+      if (read) return json(res, 200, { available: true, preferences: await person.preferences.read() });
+      if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST.' });
+      const change = await readBody(req, 16 * 1024);
+      return json(res, 200, { available: true, preferences: await person.preferences.write(change?.preferences) });
+    }
+    const imageId = /^\/studio\/api\/my-images\/([a-f0-9]{24})$/.exec(path)?.[1];
+    if (imageId && read) {
+      const image = await person.images.read(imageId);
+      if (!image) return json(res, 404, { error: 'That image does not exist.', code: 'IMAGE_NOT_FOUND' });
+      res.writeHead(200, { 'content-type': image.type, 'content-length': image.bytes.length, 'cache-control': 'private, max-age=31536000, immutable', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" });
+      return res.end(req.method === 'HEAD' ? undefined : image.bytes);
+    }
+    if (path === '/studio/api/my-images' && read) return json(res, 200, { images: await person.images.list() });
+    if (req.method !== 'POST') return json(res, 404, { error: 'This editor endpoint does not exist.' });
+    if (path === '/studio/api/my-images') {
+      const change = await readBody(req, 5 * 1024 * 1024);
+      if (!change || typeof change !== 'object' || Object.keys(change).some(key => !['kind', 'name', 'image'].includes(key))) throw new ImageError('Send a kind, a name and an image.');
+      return json(res, 200, { image: await person.images.add(change) });
+    }
+    const change = await readBody(req);
+    if (!change || typeof change !== 'object' || Object.keys(change).some(key => key !== 'id')) throw new ImageError('Send the image.');
+    // Your own copy only: dashboards that use it keep theirs.
+    if (path === '/studio/api/my-images/delete') return json(res, 200, { removed: await person.images.remove(change.id) });
+    if (path === '/studio/api/my-images/use') {
+      const image = validImageId(change.id) ? await person.images.read(change.id) : null;
+      if (!image) throw new ImageError('That image does not exist.', 'IMAGE_NOT_FOUND', 404);
+      const copy = await forDashboard(dashboard).images.add({ kind: image.kind, name: image.name, image: `data:${image.type};base64,${image.bytes.toString('base64')}` });
+      return json(res, 200, { image: copy });
+    }
+    return json(res, 404, { error: 'This editor endpoint does not exist.' });
   }
   async function handleRequest(req, res) {
     for (const [name, value] of Object.entries(responseHeaders)) res.setHeader(name, value);
@@ -968,6 +1010,7 @@ export function createStudioServer(options = {}) {
         if (!atLeast(level, required.level)) return forbidden(res, required.level === 'admin' ? 'Only administrators can do this.' : 'You can view this dashboard but not change it.');
         if (required.stepUp && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
       }
+      if (local === '/studio/api/preferences' || local.startsWith('/studio/api/my-images')) return await handlePersonal(req, res, local, current, route.dashboard);
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
       if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);

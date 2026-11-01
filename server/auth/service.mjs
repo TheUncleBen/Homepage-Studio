@@ -151,7 +151,7 @@ function activeAdmins(data) {
   return data.users.filter(user => !user.disabled && user.status === 'active' && effectiveRole(data, user, user.source === 'oidc' ? 'oidc' : 'local') === 'admin');
 }
 
-export function createAuthService({ config, stateRoot, now = () => Date.now(), listDashboards = async () => [], mailAccent }) {
+export function createAuthService({ config, stateRoot, now = () => Date.now(), listDashboards = async () => [], mailAccent, onUserRemoved = async () => {} }) {
   // The deployment's name: Administration's setting, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (store.ready && store.read().settings.deploymentName) || config.deploymentName;
   const store = createAuthStore({ stateRoot });
@@ -1243,6 +1243,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         guardAdmins(data);
       });
       await store.sessions.remove(item => item.userId === body.id);
+      // Their own images and preferences go with the account.
+      await onUserRemoved(body.id);
       await audit('user-deleted', { userId: body.id, by: current.user.id });
       return admin.overview(current);
     },

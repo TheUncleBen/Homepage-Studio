@@ -656,3 +656,44 @@ test('backups are for administrators, need a recent sign-in, download as files a
     assert.equal(stale.json.code, 'REAUTH_REQUIRED');
   }
 });
+
+test('each person keeps their own images and preferences; using an image copies it into the dashboard', async t => {
+  const context = await setup(t);
+  const { request, post } = context;
+  const admin = await createAdmin(context);
+  const member = await inviteMember(context, admin.cookie);
+  const share = level => post('/studio/auth/admin/grants', { dashboardId: 'default', grants: [{ subject: 'user:' + member.invited.id, level }] }, { cookie: admin.cookie });
+  assert.equal((await share('view')).status, 200);
+  // Viewers keep preferences; defaults are never stored.
+  assert.deepEqual((await request('/home/studio/api/preferences', { cookie: member.cookie })).json, { available: true, preferences: {} });
+  const saved = await post('/home/studio/api/preferences', { preferences: { searchEngine: 'duckduckgo', searchOpens: 'new', mode: 'dark' } }, { cookie: member.cookie });
+  assert.equal(saved.status, 200, saved.text);
+  assert.deepEqual(saved.json.preferences, { searchEngine: 'duckduckgo', mode: 'dark' });
+  assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'custom' } }, { cookie: member.cookie })).status, 400, 'custom needs an address');
+  assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'custom', searchUrl: 'javascript:alert(1)//%s' } }, { cookie: member.cookie })).status, 400);
+  assert.deepEqual((await request('/home/studio/api/preferences', { cookie: admin.cookie })).json.preferences, {}, 'preferences belong to one person');
+  // Personal images are for editing: viewers cannot reach them.
+  const png = 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4, 5, 6]).toString('base64');
+  assert.equal((await post('/home/studio/api/my-images', { kind: 'logo', name: 'mine.png', image: png }, { cookie: member.cookie })).status, 403);
+  assert.equal((await share('arrange')).status, 200);
+  const mine = await post('/home/studio/api/my-images', { kind: 'logo', name: 'mine.png', image: png }, { cookie: member.cookie });
+  assert.equal(mine.status, 200, mine.text);
+  const id = mine.json.image.id;
+  assert.equal((await request('/home/studio/api/my-images/' + id, { cookie: member.cookie })).headers['content-type'], 'image/png');
+  assert.equal((await request('/home/studio/api/my-images/' + id, { cookie: admin.cookie })).status, 404, 'nobody else sees it, administrators included');
+  assert.deepEqual((await request('/home/studio/api/my-images', { cookie: admin.cookie })).json.images, []);
+  assert.equal((await request('/home/studio/api/images/' + id, { cookie: member.cookie })).status, 404, 'not on the dashboard until used');
+  const used = await post('/home/studio/api/my-images/use', { id }, { cookie: member.cookie });
+  assert.equal(used.status, 200, used.text);
+  assert.equal(used.json.image.id, id);
+  assert.equal((await request('/home/studio/api/images/' + id, { cookie: member.cookie })).status, 200);
+  // Removing your own copy leaves the dashboard's.
+  assert.equal((await post('/home/studio/api/my-images/delete', { id }, { cookie: member.cookie })).status, 200);
+  assert.equal((await request('/home/studio/api/my-images/' + id, { cookie: member.cookie })).status, 404);
+  assert.equal((await request('/home/studio/api/images/' + id, { cookie: member.cookie })).status, 200);
+  // Deleting the account removes what it kept.
+  const folder = path.join(context.stateDir, 'people', member.invited.id);
+  assert.ok((await fs.stat(folder)).isDirectory());
+  assert.equal((await post('/studio/auth/admin/delete', { id: member.invited.id }, { cookie: admin.cookie })).status, 200);
+  await assert.rejects(fs.stat(folder), { code: 'ENOENT' });
+});

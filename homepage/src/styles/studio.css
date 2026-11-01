@@ -3486,3 +3486,23 @@ a.studio-card-identity:hover .studio-card-name strong {
     inset 0 0 0 1px var(--studio-line),
     0 0 0 2px var(--studio-accent);
 }
+.studio-uploaded-place {
+  display: grid;
+  gap: 8px;
+}
+.studio-uploaded-heading {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.studio-uploaded-heading .studio-muted {
+  margin-left: 6px;
+  font-weight: 400;
+}
+.studio-upload-place {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--studio-line);
+}
