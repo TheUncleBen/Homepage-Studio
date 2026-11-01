@@ -179,6 +179,7 @@ export default function ContentEditor({
   onParent,
   onReload,
   onDuplicate,
+  pageId,
 }) {
   const kind = panel?.kind || entry.kind;
   const source = panel ? sourceForPanel(panel, state) : null;
@@ -252,6 +253,8 @@ export default function ContentEditor({
         ...(source ? { id: source.id } : {}),
         config: patchFromDraft(initial, draft),
       };
+      // New content lands on the page being edited.
+      if (pageId && !source) body.pageId = pageId;
       if (kind === "service" || kind === "bookmark") {
         body.name = name;
         body.group = changedGroup;

@@ -2417,3 +2417,352 @@ body {
   min-width: 15rem;
   margin: 0 auto 20px;
 }
+
+/* ---- Pages: tabs in the top bar ------------------------------------------ */
+.studio-topbar:has(.studio-pages) .studio-switcher {
+  flex: 0 1 auto;
+  max-width: 32%;
+}
+.studio-pages {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+.studio-pages-editing {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.studio-pages-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+.studio-page-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--studio-muted);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+.studio-page-tab:hover {
+  color: var(--studio-text);
+  background: var(--studio-raised);
+}
+.studio-page-tab[aria-current="page"] {
+  color: var(--studio-text);
+  background: var(--studio-raised);
+  font-weight: 650;
+}
+.studio-page-tab.studio-page-drop {
+  border: 1px dashed var(--studio-accent);
+  background: var(--studio-accent-soft);
+  color: var(--studio-text);
+}
+.studio-page-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+.studio-page-icon img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+.studio-page-name {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.studio-pages-editing .studio-page-tab {
+  padding: 0 4px 0 6px;
+  gap: 2px;
+  cursor: default;
+}
+.studio-page-select,
+.studio-page-menu-button,
+.studio-page-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.studio-page-menu-button {
+  padding: 0 4px;
+  color: var(--studio-muted);
+}
+.studio-page-menu-button:hover,
+.studio-page-menu-button[aria-expanded="true"] {
+  background: var(--studio-surface, var(--studio-raised));
+  color: var(--studio-text);
+}
+.studio-page-grip {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 28px;
+  color: var(--studio-muted);
+  cursor: grab;
+  touch-action: none;
+}
+.studio-page-dragging {
+  opacity: 0.7;
+  outline: 1px dashed var(--studio-accent-line);
+}
+.studio-page-add {
+  flex: none;
+  color: var(--studio-accent);
+  font-size: 13.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.studio-page-add:hover {
+  background: var(--studio-accent-soft);
+}
+.studio-page-renaming {
+  position: relative;
+  padding: 0 4px;
+}
+.studio-page-renaming input {
+  min-height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--studio-accent);
+  border-radius: 6px;
+  background: var(--studio-input, var(--studio-surface));
+  color: var(--studio-text);
+  font: inherit;
+  font-size: 13.5px;
+}
+.studio-page-renaming input[aria-invalid="true"] {
+  border-color: var(--studio-danger, #c4554d);
+}
+.studio-page-problem {
+  position: fixed;
+  z-index: 60;
+  margin-top: 64px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--studio-surface, var(--studio-raised));
+  border: 1px solid var(--studio-line);
+  color: var(--studio-text);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.studio-page-icon-preview {
+  margin: 12px 0 0;
+}
+@media (max-width: 680px) {
+  .studio-topbar:has(.studio-pages) {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 56px;
+    row-gap: 0;
+    padding-top: 10px;
+  }
+  .studio-topbar:has(.studio-pages) .studio-switcher {
+    flex: 1;
+    max-width: none;
+  }
+  .studio-topbar .studio-pages {
+    order: 3;
+    flex: 1 0 100%;
+    margin: 6px -20px 0;
+    padding: 6px 14px;
+    border-top: 1px solid var(--studio-line);
+  }
+}
+
+/* ---- Menus -------------------------------------------------------------- */
+.studio-menu {
+  z-index: 70;
+  min-width: 13rem;
+  max-width: min(20rem, calc(100vw - 16px));
+  max-height: min(70vh, 30rem);
+  overflow-y: auto;
+  padding: 5px;
+  display: grid;
+  gap: 1px;
+  background: var(--studio-surface, var(--studio-raised));
+  border: 1px solid var(--studio-line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px #0007;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+.studio-menu > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--studio-text);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.studio-menu > button:hover:not(:disabled),
+.studio-menu > button:focus-visible {
+  background: var(--studio-raised);
+  outline: none;
+}
+.studio-menu > button:disabled {
+  color: var(--studio-muted);
+  cursor: default;
+}
+.studio-menu > button svg {
+  flex: none;
+  color: var(--studio-muted);
+}
+.studio-menu-gap {
+  width: 15px;
+  flex: none;
+}
+.studio-menu-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-menu kbd,
+.studio-shortcuts kbd {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--studio-muted);
+}
+.studio-menu > .studio-menu-danger,
+.studio-menu > .studio-menu-danger svg {
+  color: var(--studio-danger, #e0796f);
+}
+.studio-menu > hr {
+  margin: 4px 2px;
+  border: 0;
+  border-top: 1px solid var(--studio-line);
+}
+
+/* ---- Toast -------------------------------------------------------------- */
+.studio-toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--studio-surface, var(--studio-raised));
+  border: 1px solid var(--studio-line-strong, var(--studio-line));
+  color: var(--studio-text);
+  box-shadow: 0 12px 32px #0007;
+  font-size: 13.5px;
+}
+
+/* ---- Shortcuts, page dialogs ------------------------------------------- */
+.studio-shortcuts {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+.studio-shortcuts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--studio-line);
+}
+.studio-shortcuts dt,
+.studio-shortcuts dd {
+  margin: 0;
+}
+.studio-shortcuts kbd {
+  font-size: 12.5px;
+  color: var(--studio-text);
+}
+.studio-page-choices {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+}
+.studio-page-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--studio-line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.studio-page-choice-on {
+  border-color: var(--studio-accent);
+  background: var(--studio-accent-soft);
+}
+.studio-page-choice > span {
+  display: grid;
+  gap: 6px;
+}
+.studio-page-choice small {
+  color: var(--studio-muted);
+}
+.studio-page-choice select {
+  width: fit-content;
+}
+.studio-move-here fieldset {
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+.studio-move-here legend {
+  margin-bottom: 4px;
+  font-weight: 650;
+}
+.studio-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+}
+.studio-link-field {
+  width: 100%;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+.studio-empty-page h2 {
+  margin-bottom: 14px;
+}

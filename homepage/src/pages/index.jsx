@@ -120,7 +120,8 @@ function StudioDashboard({
   );
   useEffect(() => {
     const key = (event) => {
-      if (interactionBlocked) return;
+      // The dashboard claims page keys (1-9, [ ], ?) before this runs.
+      if (interactionBlocked || event.defaultPrevented) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setSearching((value) => !value);

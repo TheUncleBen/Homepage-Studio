@@ -114,7 +114,7 @@ function DashboardSwitcher({ name, currentId, isAdmin }) {
   );
 }
 
-export default function StudioTopBar({ title, dashboardId, logo, access, onSearch, searchDisabled = false }) {
+export default function StudioTopBar({ title, dashboardId, logo, access, onSearch, searchDisabled = false, children }) {
   const [open, setOpen] = useState(false);
   const menu = useRef(null);
   useDismiss(open, setOpen, menu);
@@ -127,6 +127,8 @@ export default function StudioTopBar({ title, dashboardId, logo, access, onSearc
         <img className="studio-brand-logo" src={logo || STUDIO_LOGO} alt="" width={30} height={30} />
       </a>
       <DashboardSwitcher name={title} currentId={dashboardId} isAdmin={isAdmin} />
+      {/* A dashboard's page tabs. Studio's own pages have none. */}
+      {children}
       <nav className="studio-top-actions" aria-label="Studio">
         {onSearch && (
           <button

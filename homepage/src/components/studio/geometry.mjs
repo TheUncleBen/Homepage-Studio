@@ -382,3 +382,154 @@ export function mergePage(board, view) {
   delete next.pageId;
   return next;
 }
+
+// ---- Pages ---------------------------------------------------------------
+
+export const MAX_PAGES = 20;
+export const PAGE_NAME_LIMIT = 40;
+
+export const pageSlug = (name) =>
+  String(name)
+    .toLocaleLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64) || "page";
+
+// The address of a page follows its name (#media), so a renamed page gets a
+// readable link. An id is accepted too, for links made before a rename.
+export function pageFromHash(board, hash) {
+  const key = decodeURIComponent(String(hash || "").replace(/^#/, "")).toLocaleLowerCase();
+  if (!key) return null;
+  const pages = board?.pages || [];
+  return (pages.find((page) => pageSlug(page.name) === key) || pages.find((page) => page.id === key))?.id ?? null;
+}
+
+export const pageHash = (board, pageId) => {
+  const page = board?.pages?.find((item) => item.id === pageId);
+  return page ? `#${pageSlug(page.name)}` : "";
+};
+
+// Checks a proposed page name the way the controller does. Returns a message
+// or null.
+export function pageNameProblem(board, name, exceptId) {
+  const trimmed = String(name ?? "").trim();
+  if (!trimmed) return "A page needs a name.";
+  if (trimmed.length > PAGE_NAME_LIMIT) return `A page name is at most ${PAGE_NAME_LIMIT} characters.`;
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) return "A page name cannot contain control characters.";
+  const lower = trimmed.toLocaleLowerCase();
+  if ((board?.pages || []).some((page) => page.id !== exceptId && page.name.toLocaleLowerCase() === lower))
+    return `There is already a page called “${trimmed}”.`;
+  return null;
+}
+
+function freePageId(board, base) {
+  const ids = new Set((board.pages || []).map((page) => page.id));
+  const stem = pageSlug(base).slice(0, 58);
+  if (!ids.has(stem)) return stem;
+  for (let index = 2; ; index += 1) if (!ids.has(`${stem}-${index}`)) return `${stem}-${index}`;
+}
+
+export function freePageName(board, base = "New page") {
+  const names = new Set((board.pages || []).map((page) => page.name.toLocaleLowerCase()));
+  if (!names.has(base.toLocaleLowerCase())) return base;
+  for (let index = 2; ; index += 1) if (!names.has(`${base} ${index}`.toLocaleLowerCase())) return `${base} ${index}`;
+}
+
+const pagesOf = (board) => (board.pages?.length ? board.pages : [{ id: firstPageId(board), name: "Home" }]);
+
+export function addPage(board, name = freePageName(board), after) {
+  const pages = pagesOf(board);
+  if (pages.length >= MAX_PAGES) return { board, pageId: null };
+  const page = { id: freePageId(board, name), name };
+  const index = after ? pages.findIndex((item) => item.id === after) + 1 : pages.length;
+  const next = [...pages];
+  next.splice(index > 0 ? index : pages.length, 0, page);
+  return { board: { ...board, pages: next }, pageId: page.id };
+}
+
+export function updatePage(board, pageId, changes) {
+  return {
+    ...board,
+    pages: pagesOf(board).map((page) => {
+      if (page.id !== pageId) return page;
+      const next = { ...page, ...changes };
+      for (const key of Object.keys(changes)) if (changes[key] === undefined) delete next[key];
+      if (typeof next.name === "string") next.name = next.name.trim();
+      return next;
+    }),
+  };
+}
+
+export function movePage(board, pageId, toIndex) {
+  const pages = [...pagesOf(board)];
+  const from = pages.findIndex((page) => page.id === pageId);
+  if (from < 0) return board;
+  const target = Math.max(0, Math.min(pages.length - 1, toIndex));
+  if (target === from) return board;
+  const [page] = pages.splice(from, 1);
+  pages.splice(target, 0, page);
+  // Units without an explicit page belong to the first page; pin them before
+  // the order changes so they stay where they are.
+  const first = firstPageId(board);
+  const pin = (unit) => (unit.pageId ? unit : { ...unit, pageId: first });
+  return { ...board, pages, panels: board.panels.map(pin), stacks: board.stacks.map(pin) };
+}
+
+export const unitsOnPage = (board, pageId) => unitsForBoard(pageBoard(board, pageId));
+
+// Moves a standalone panel or a whole stack to another page. Without a
+// rectangle it lands at the end of that page, keeping its size.
+export function moveToPage(board, unitId, pageId, rect) {
+  const stack = board.stacks.find((item) => item.id === unitId);
+  const panel = stack ? null : board.panels.find((item) => item.id === unitId);
+  if (!stack && !panel) return board;
+  const from = pageOf(board, stack || panel);
+  const memberIds = new Set(stack ? stack.panelIds : [unitId]);
+  const source = stack || panel;
+  let placement = rect;
+  if (!placement) {
+    const bottom = Math.max(0, ...unitsOnPage(board, pageId).map((unit) => unit.rect.y + unit.rect.h));
+    placement = { ...source.rect, x: 0, y: bottom };
+  }
+  let next = {
+    ...board,
+    panels: board.panels.map((item) => (memberIds.has(item.id) ? { ...item, pageId } : item)),
+    stacks: board.stacks.map((item) => (item.id === unitId ? { ...item, pageId } : item)),
+  };
+  if (from !== pageId || rect) next = mergePage(next, moveUnit(pageBoard(next, pageId), unitId, placement));
+  return next;
+}
+
+// Deleting a page moves its units to another page (at the end, in their
+// current reading order), or drops them from the arrangement when `to` is
+// null (their native content is removed separately).
+export function removePage(board, pageId, to) {
+  const pages = pagesOf(board);
+  if (pages.length <= 1 || !pages.some((page) => page.id === pageId)) return board;
+  const remaining = pages.filter((page) => page.id !== pageId);
+  const first = firstPageId(board);
+  // Pin implicit first-page units before the first page can change.
+  let next = {
+    ...board,
+    panels: board.panels.map((unit) => (unit.pageId ? unit : { ...unit, pageId: first })),
+    stacks: board.stacks.map((unit) => (unit.pageId ? unit : { ...unit, pageId: first })),
+  };
+  const leaving = unitsOnPage(next, pageId).sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
+  if (to && remaining.some((page) => page.id === to)) {
+    const top = Math.max(0, ...unitsOnPage(next, to).map((unit) => unit.rect.y + unit.rect.h));
+    const offset = top - Math.min(...leaving.map((unit) => unit.rect.y), top);
+    for (const unit of leaving) next = moveToPage(next, unit.id, to, { ...unit.rect, y: unit.rect.y + offset });
+  } else {
+    const gone = new Set(
+      leaving.flatMap((unit) => (unit.kind === "stack" ? next.stacks.find((s) => s.id === unit.id).panelIds : [unit.id])),
+    );
+    next = {
+      ...next,
+      panels: next.panels.filter((item) => !gone.has(item.id)),
+      stacks: next.stacks.filter((item) => pageOf(next, item) !== pageId),
+    };
+  }
+  return { ...next, pages: remaining };
+}

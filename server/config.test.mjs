@@ -497,3 +497,32 @@ test('snapshot retention follows commit order through tied clocks, clock rollbac
     syncBuiltinESMExports();
   }
 });
+
+test('deleting a page with its widgets removes their native entries in one save', async (t) => {
+  const { store, configDir } = await fixture(t);
+  let result = await store.load();
+  const firewall = result.services.find((entry) => entry.name === 'pfSense');
+  const firewallWidget = result.serviceWidgets.find((entry) => entry.serviceId === firewall.id);
+  const portainer = result.services.find((entry) => entry.name === 'Portainer');
+  const portainerWidget = result.serviceWidgets.find((entry) => entry.serviceId === portainer.id);
+  const clock = result.infoWidgets.find((entry) => entry.type === 'datetime');
+  const bookmark = result.bookmarks[0];
+  const away = new Set([firewall.id, firewallWidget.id, portainerWidget.id, clock.id, bookmark.id]);
+  const board = { ...result.board, pages: [...result.board.pages, { id: 'lab', name: 'Lab' }] };
+  let y = 0;
+  board.panels = board.panels.map((panel) => (away.has(panel.id) ? { ...panel, pageId: 'lab', rect: { x: 0, y: (y += 10) - 10, w: 8, h: 10 } } : panel));
+  result = await store.saveBoard({ revision: result.revision, board });
+  result = await store.deletePage({ revision: result.revision, pageId: 'lab' });
+  assert.deepEqual(result.board.pages.map((page) => page.id), ['home']);
+  assert.ok(result.board.panels.every((panel) => !away.has(panel.id)));
+  const services = await fs.readFile(path.join(configDir, 'services.yaml'), 'utf8');
+  assert.ok(!services.includes('pfSense'));
+  assert.ok(services.includes('Portainer') && !services.includes('type: portainer'));
+  assert.ok(services.includes('# Ben\'s dashboard'));
+  assert.ok(!(await fs.readFile(path.join(configDir, 'widgets.yaml'), 'utf8')).includes('datetime'));
+  assert.ok(!(await fs.readFile(path.join(configDir, 'bookmarks.yaml'), 'utf8')).includes('gethomepage'));
+  assert.ok(result.board.panels.some((panel) => panel.id === portainer.id));
+  const backups = await store.listBackups();
+  assert.equal(backups[0].action, 'page-deleted');
+  await assert.rejects(store.deletePage({ revision: result.revision, pageId: 'home' }), /at least one page|no longer exists/);
+});

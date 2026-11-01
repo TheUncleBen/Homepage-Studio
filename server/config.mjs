@@ -34,7 +34,7 @@ export const DEFAULT_BACKUP_RETENTION = 25;
 const CONTENT_ACTIONS = { add: 'added', update: 'edited', delete: 'deleted' };
 export const SNAPSHOT_ACTIONS = Object.freeze([
   'arrangement-saved', 'settings-saved', 'files-saved', 'snapshot-restored', 'dashboard-imported',
-  'discovered-panel-hidden', 'discovered-panel-shown',
+  'discovered-panel-hidden', 'discovered-panel-shown', 'page-deleted',
   ...['service', 'service-widget', 'info-widget', 'bookmark'].flatMap((kind) => Object.values(CONTENT_ACTIONS).map((verb) => `${kind}-${verb}`)),
 ]);
 const snapshotAction = (value) => (SNAPSHOT_ACTIONS.includes(value) ? value : null);
@@ -936,6 +936,92 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     return saveCurrent(current, { revision: change.revision, pageId: change.pageId, servicesYaml: text }, `service-widget-${CONTENT_ACTIONS[change.action]}`, { serviceWidgets: forcedIdentities });
   }
 
+
+  // Deletes a page and everything on it in one save: services, their
+  // widgets, information widgets and bookmarks are removed from their files,
+  // and discovered panels are hidden. The snapshot taken before the save is
+  // the way back.
+  async function deletePageInner(change) {
+    const current = await readCurrent();
+    checkRevision(change.revision, current);
+    const { board } = current;
+    if (typeof change.pageId !== 'string' || !board.pages.some((page) => page.id === change.pageId)) fail('That page no longer exists.', 'TILE_NOT_FOUND', 404);
+    if (board.pages.length < 2) fail('A dashboard keeps at least one page.');
+    const ids = new Set(board.panels.filter((panel) => panel.pageId === change.pageId).map((panel) => panel.id));
+    const descending = (a, b) => b.index - a.index;
+    // Services and the service widgets of services that stay.
+    const services = current.parsed.servicesYaml;
+    const removedServices = new Set(current.services.filter((entry) => ids.has(entry.id)).map((entry) => entry.id));
+    const byService = new Map(current.services.map((entry) => [entry.id, current.serviceWidgets.filter((widget) => widget.serviceId === entry.id).map(({ id }) => ({ id }))]));
+    const widgets = current.serviceWidgets.filter((widget) => ids.has(widget.id) && !removedServices.has(widget.serviceId));
+    for (const service of current.services) {
+      const mine = widgets.filter((widget) => widget.serviceId === service.id);
+      if (!mine.length) continue;
+      const parent = services.doc.getIn(service.path.slice(0, -2), true), entry = parent?.items?.[service.index];
+      const options = isMap(entry) ? entry.get(service.name, true) : null;
+      if (!isSeq(parent) || !isMap(options)) fail('A service on this page uses an unsupported YAML alias. Edit its YAML directly.');
+      options.set('id', service.id);
+      if (mine.some((widget) => widget.sourceKey === 'widget')) options.delete('widget');
+      const listed = mine.filter((widget) => widget.sourceKey !== 'widget').sort((a, b) => b.sourceIndex - a.sourceIndex);
+      if (listed.length) {
+        const list = options.get('widgets', true);
+        if (!isSeq(list)) fail('Widgets on this page use an unsupported YAML alias. Edit their YAML directly.');
+        for (const widget of listed) list.items.splice(widget.sourceIndex, 1);
+        if (!list.items.length) options.delete('widgets');
+      }
+      byService.set(service.id, byService.get(service.id).filter((identity) => !mine.some((widget) => widget.id === identity.id)));
+      if (service.id.startsWith('studio-widget-parent-') && options.items.length === 1 && options.has('id')) removedServices.add(service.id);
+    }
+    const parents = new Map();
+    for (const service of current.services.filter((entry) => removedServices.has(entry.id))) {
+      const key = JSON.stringify(service.path.slice(0, -2));
+      parents.set(key, [...(parents.get(key) || []), service]);
+    }
+    for (const [key, list] of parents) {
+      const parent = services.doc.getIn(JSON.parse(key), true);
+      if (!isSeq(parent)) fail('A service on this page uses an unsupported YAML alias. Edit its YAML directly.');
+      for (const service of list.sort(descending)) parent.items.splice(service.index, 1);
+    }
+    // Information widgets.
+    const info = current.parsed.widgetsYaml;
+    const infoGone = current.infoWidgets.filter((entry) => ids.has(entry.id)).sort(descending);
+    if (infoGone.length && !isSeq(info.doc.contents)) fail('widgets.yaml must be a mutable YAML list.');
+    for (const entry of infoGone) info.doc.contents.items.splice(entry.index, 1);
+    // Bookmarks.
+    const marks = current.parsed.bookmarksYaml;
+    const markIdentities = new Map(current.bookmarks.map((entry) => [JSON.stringify([entry.group, entry.name]), entry.id]));
+    const markGroups = new Map();
+    for (const entry of current.bookmarks.filter((item) => ids.has(item.id))) {
+      const key = JSON.stringify([entry.groupIndex, entry.group]);
+      markGroups.set(key, [...(markGroups.get(key) || []), entry]);
+      markIdentities.delete(JSON.stringify([entry.group, entry.name]));
+    }
+    for (const [key, list] of markGroups) {
+      const parent = marks.doc.getIn(JSON.parse(key), true);
+      if (!isSeq(parent)) fail('A bookmark on this page uses an unsupported YAML alias. Edit its YAML directly.');
+      for (const entry of list.sort(descending)) parent.items.splice(entry.index, 1);
+    }
+    const servicesText = services.text(), bookmarksText = marks.text();
+    const forced = {
+      serviceWidgets: serviceEntries(yamlDocument(servicesText, 'services.yaml').data).services.flatMap((entry) => byService.get(entry.id) ?? []),
+      infoWidgets: current.infoWidgets.filter((entry) => !ids.has(entry.id)).map(({ id }) => ({ id })),
+      bookmarks: bookmarkEntries(yamlDocument(bookmarksText, 'bookmarks.yaml').data).map((entry) => ({ id: markIdentities.get(JSON.stringify([entry.group, entry.name])) })),
+    };
+    // The page goes from the layout; anything left on it moves to the first page.
+    const state = decodeState(current.raw['state.json']);
+    const pages = board.pages.filter((page) => page.id !== change.pageId);
+    const keep = (unit) => (unit.pageId === change.pageId ? { ...unit, pageId: pages[0].id } : unit);
+    state.board = {
+      ...board,
+      pages,
+      panels: board.panels.filter((panel) => !ids.has(panel.id)).map(keep),
+      stacks: board.stacks.filter((stack) => stack.pageId !== change.pageId),
+    };
+    const discovered = new Set(current.discoveredSources.map((source) => source.id));
+    const hidden = [...new Set([...current.hiddenDiscoveredIds, ...[...ids].filter((id) => discovered.has(id))])];
+    return saveCurrent(current, { revision: change.revision, servicesYaml: servicesText, widgetsYaml: info.text(), bookmarksYaml: bookmarksText, hiddenDiscoveredIds: hidden }, 'page-deleted', forced, state);
+  }
+
   async function mutateSettingsInner(change) {
     const current = await readCurrent();
     checkRevision(change.revision, current);
@@ -1052,6 +1138,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     mutateBookmark: (change) => serialized(() => mutateBookmarkInner(change)),
     mutateServiceWidget: (change) => serialized(() => mutateServiceWidgetInner(change)),
     mutateSettings: (change) => serialized(() => mutateSettingsInner(change)),
+    deletePage: (change) => serialized(() => deletePageInner(change)),
     listBackups: () => serialized(async () => {
       await ready();
       const names = await orderedBackupNames();
