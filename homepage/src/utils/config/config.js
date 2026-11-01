@@ -5,6 +5,7 @@ import cache from "memory-cache";
 
 import { resolveEnvironmentVariables } from "utils/config/environment.mjs";
 import { applyPlatformDefaults, readPlatformDefaults } from "utils/config/platform";
+import { resolveStudioConnections } from "utils/config/studio-connections.mjs";
 import { loadYaml } from "utils/config/yaml";
 
 const cacheKey = "homepageEnvironmentVariables";
@@ -65,7 +66,9 @@ function getCachedEnvironmentVars() {
 }
 
 export function substituteEnvironmentVars(str) {
-  return str.includes("{{") ? resolveEnvironmentVariables(str, getCachedEnvironmentVars(), readFileSync) : str;
+  return str.includes("{{")
+    ? resolveStudioConnections(resolveEnvironmentVariables(str, getCachedEnvironmentVars(), readFileSync))
+    : str;
 }
 
 export function getSettings() {

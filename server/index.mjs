@@ -19,6 +19,7 @@ import { readAuthConfig } from './auth/config.mjs';
 import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
 import { createLogoStore } from './dashboard-logo.mjs';
 import { createImageLibrary, ImageError, imageUsage, validImageId } from './image-library.mjs';
+import { ConnectionError, createConnectionStore, publicConnection } from './connections.mjs';
 import { createPersonalStore } from './personal.mjs';
 import { createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
@@ -307,6 +308,7 @@ function createDashboardHandlers(options = {}) {
   const backupRetention = options.backupRetention ?? (process.env.STUDIO_BACKUP_RETENTION === undefined ? undefined : Number(process.env.STUDIO_BACKUP_RETENTION));
   const logo = createLogoStore({ stateDir });
   const images = createImageLibrary({ stateDir });
+  const connections = createConnectionStore({ dir: stateDir });
   const store = createConfigStore({ configDir, stateDir, backupRetention, discoveryReader: async (host, dashboard) => {
     const lease = await acquireNative(host, dashboard);
     try { return await createDiscoveryClient({ upstream: lease.origin.href }).read(host); }
@@ -320,6 +322,20 @@ function createDashboardHandlers(options = {}) {
     () => { initialized = true; return { ok: true }; },
     (error) => ({ ok: false, code: error.code || 'CONFIG_NOT_READY' }),
   );
+
+  // The widgets whose settings use a saved connection, by name.
+  async function connectionUsageOf() {
+    const current = await store.load();
+    const sources = [
+      ...(current.services || []).map((entry) => [entry.name, entry.config]),
+      ...(current.serviceWidgets || []).map((entry) => [`${current.services.find((service) => service.id === entry.serviceId)?.name || 'Service'} · ${entry.type}`, entry.config]),
+      ...(current.infoWidgets || []).map((entry) => [entry.type, entry.config]),
+    ];
+    return (id) => {
+      const marker = `{{STUDIO_CONNECTION_${id}_`;
+      return sources.filter(([, config]) => JSON.stringify(config ?? null).includes(marker)).map(([name]) => name);
+    };
+  }
 
   async function prepareNative() {
     await initialization;
@@ -573,13 +589,30 @@ function createDashboardHandlers(options = {}) {
         }
         return json(res, 200, { removed: await images.remove(change.id) });
       }
+      // Saved connections (server/connections.mjs). Administrators only, like
+      // widget settings; keys are never sent back.
+      if (path === '/studio/api/connections' && req.method === 'GET') {
+        const usage = await connectionUsageOf();
+        return json(res, 200, { connections: (await connections.list()).map((entry) => publicConnection(entry, usage(entry.id))) });
+      }
+      if (path === '/studio/api/connections' && req.method === 'POST') {
+        const change = await readBody(req, 64 * 1024);
+        if (!change || typeof change !== 'object' || Object.keys(change).some((key) => !['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'].includes(key))) throw new ConnectionError('Send a connection change.');
+        if (change.action === 'add') return json(res, 200, { connection: publicConnection(await connections.add(change)) });
+        if (change.action === 'update') return json(res, 200, { connection: publicConnection(await connections.update(change.id, change)) });
+        if (change.action === 'delete') {
+          await connections.remove(change.id, { usedBy: (await connectionUsageOf())(change.id) });
+          return json(res, 200, { removed: true });
+        }
+        throw new ConnectionError('Choose add, update or delete.');
+      }
       if (path.startsWith('/studio/')) return json(res, 404, { error: 'This editor endpoint does not exist.' });
       await proxy(req, res, dashboard);
     } catch (error) {
       const status = Number(error.status || error.statusCode) || 500;
       if (error.closeConnection && !res.headersSent) res.setHeader('connection', 'close');
       if (error.retryAfter && !res.headersSent) res.setHeader('retry-after', String(error.retryAfter));
-      if (error instanceof ImageError && error.details && !res.headersSent) return json(res, status, { error: error.message, code: error.code, details: error.details });
+      if ((error instanceof ImageError || error instanceof ConnectionError) && error.details && !res.headersSent) return json(res, status, { error: error.message, code: error.code, details: error.details });
       json(res, status, { error: status < 500 || error instanceof ConfigError || error instanceof BoardError || error instanceof DiscoveryError || error instanceof RendererError ? error.message : 'The editor could not read or save its configuration. Check the configuration and state volume permissions.', code: error.code || 'EDITOR_ERROR',
         // ConfigError details are structured and source-free (file names, YAML error codes and positions, limits),
         // so editors can point at the failing line without the response ever echoing configuration text.
@@ -589,7 +622,7 @@ function createDashboardHandlers(options = {}) {
     }
   }
 
-  return { handle, checkRequest, store, logo, images, initialization };
+  return { handle, checkRequest, store, logo, images, connections, initialization };
 }
 
 export function createStudioServer(options = {}) {
@@ -607,7 +640,7 @@ export function createStudioServer(options = {}) {
   // Prepare the compressed catalog before the first editor opens; errors surface on request.
   loadCatalogVariants().catch(() => {});
   const nativeBodyBudget = createByteBudget(NATIVE_BODY_BUDGET);
-  rendererPool ||= createRendererPool({ configRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision });
+  rendererPool ||= createRendererPool({ configRoot, stateRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision });
   // Studio sign-in (owner direction, 23 Oct 2026). On by default; STUDIO_AUTH=off
   // returns to external access control only.
   const deploymentName = readDeploymentName(options.deploymentName ?? process.env.STUDIO_DEPLOYMENT_NAME);
@@ -659,11 +692,12 @@ export function createStudioServer(options = {}) {
     return owned;
   }
   const registry = createDashboardRegistry({ configRoot, prepareDashboard: async (entry, source, { isNew = false } = {}) => {
-    let archive, logo, uploads = [];
+    let archive, logo, uploads = [], saved = [];
     if (source) {
       const sourceHandler = forDashboard(source);
       await sourceHandler.initialization;
       archive = await sourceHandler.store.exportCurrent();
+      saved = await sourceHandler.connections.list();
       logo = await sourceHandler.logo.read();
       for (const entry of await sourceHandler.images.list()) {
         const image = await sourceHandler.images.read(entry.id);
@@ -682,6 +716,8 @@ export function createStudioServer(options = {}) {
     if (logo) await target.logo.save(`data:${logo.type};base64,${logo.bytes.toString('base64')}`);
     // And its uploaded images, so its cards and pages keep their pictures.
     for (const image of uploads) await target.images.add({ kind: image.kind, name: image.name, image: `data:${image.type};base64,${image.bytes.toString('base64')}` });
+    // And its saved connections, under the same names its widgets use.
+    for (const entry of saved) await target.connections.add({ name: entry.name, url: entry.url, ...entry.secrets }, { id: entry.id });
   }, cleanupDashboard: async entry => {
     if (entry.id === 'default') throw new DashboardError('The original dashboard cannot be removed.', 'DEFAULT_DASHBOARD_REQUIRED');
     const owned = unpublished.get(entry.id);

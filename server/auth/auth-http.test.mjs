@@ -564,6 +564,28 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.equal(copy.status, 200, copy.text);
   assert.deepEqual((await request('/copy/studio/api/access', { cookie: admin.cookie })).json.dashboard.logo, saved.json.logo);
   assert.equal((await request('/copy/studio/api/images/' + imageId, { cookie: admin.cookie })).headers['content-type'], 'image/png');
+  // Saved connections are administrators' only, and their keys never come back.
+  assert.equal((await request('/home/studio/api/connections', { cookie: member.cookie })).status, 403);
+  assert.equal((await post('/home/studio/api/connections', { action: 'add', name: 'Router', url: 'https://router.example.org', key: 'k' }, { cookie: member.cookie })).status, 403);
+  const added = await post('/home/studio/api/connections', { action: 'add', name: 'Router', url: 'https://router.example.org/', key: 'secret-key-1' }, { cookie: admin.cookie });
+  assert.equal(added.status, 200, added.text);
+  const connectionId = added.json.connection.id;
+  assert.doesNotMatch(added.text, /secret-key-1/);
+  const listed = await request('/home/studio/api/connections', { cookie: admin.cookie });
+  assert.doesNotMatch(listed.text, /secret-key-1/);
+  assert.deepEqual(listed.json.connections.map(entry => [entry.name, entry.url, entry.has.key, entry.usedBy]), [['Router', 'https://router.example.org', true, []]]);
+  assert.equal((await post('/home/studio/api/connections', { action: 'add', name: 'x', url: 'https://a.example.org', secret: 1 }, { cookie: admin.cookie })).status, 400);
+  const renamed = await post('/home/studio/api/connections', { action: 'update', id: connectionId, name: 'Main router', key: '' }, { cookie: admin.cookie });
+  assert.equal(renamed.status, 200, renamed.text);
+  assert.equal(renamed.json.connection.has.key, true, 'an empty key keeps the saved one');
+  // A copy of the dashboard keeps the connection under the same id.
+  const copy2 = await post('/studio/api/dashboards', { revision: (await request('/studio/api/dashboards', { cookie: admin.cookie })).json.revision, action: 'create', name: 'Copy two', slug: 'copy-two', sourceId: 'default' }, { cookie: admin.cookie });
+  assert.equal(copy2.status, 200, copy2.text);
+  assert.deepEqual((await request('/copy-two/studio/api/connections', { cookie: admin.cookie })).json.connections.map(entry => [entry.id, entry.name, entry.has.key]), [[connectionId, 'Main router', true]]);
+  const removedConnection = await post('/home/studio/api/connections', { action: 'delete', id: connectionId }, { cookie: admin.cookie });
+  assert.equal(removedConnection.status, 200, removedConnection.text);
+  assert.deepEqual((await request('/home/studio/api/connections', { cookie: admin.cookie })).json.connections, []);
+  assert.equal((await request('/copy-two/studio/api/connections', { cookie: admin.cookie })).json.connections.length, 1, 'the copy keeps its own');
   assert.equal((await post('/home/studio/api/images/delete', { id: imageId, confirm: true }, { cookie: member.cookie })).status, 200);
   assert.equal((await request('/home/studio/api/images/' + imageId, { cookie: member.cookie })).status, 404);
   assert.equal((await request('/copy/studio/api/images/' + imageId, { cookie: admin.cookie })).status, 200, 'the copy keeps its own');
