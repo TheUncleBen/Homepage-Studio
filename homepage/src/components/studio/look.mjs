@@ -20,7 +20,7 @@ export const LOOK_OPTIONS = Object.freeze({
   heroSize: ["s", "m", "l", "xl"],
   trend: ["off", "hour", "day", "week"],
   description: ["show", "hide"],
-  status: ["dot", "chip", "hidden"],
+  status: ["dot", "updown", "time"],
   align: ["left", "centre"],
 });
 
@@ -80,7 +80,7 @@ function text(value, max, label) {
   const trimmed = value.trim();
   if (trimmed.length > max) fail(`${label} can be at most ${max} characters.`);
   // Control characters never belong in a label shown on a card.
-  // eslint-disable-next-line no-control-regex
+   
   if (/[\u0000-\u001f\u007f]/.test(trimmed)) fail(`${label} contains characters that cannot be shown.`);
   return trimmed;
 }

@@ -526,3 +526,19 @@ test('deleting a page with its widgets removes their native entries in one save'
   assert.equal(backups[0].action, 'page-deleted');
   await assert.rejects(store.deletePage({ revision: result.revision, pageId: 'home' }), /at least one page|no longer exists/);
 });
+
+test('a content edit can carry the arrangement, so look, page and the edit commit together', async (t) => {
+  const { store } = await fixture(t);
+  let result = await store.load();
+  const board = { ...result.board, pages: [...result.board.pages, { id: 'lab', name: 'Lab' }] };
+  const firewall = result.services.find((entry) => entry.name === 'pfSense');
+  board.panels = board.panels.map((panel) => (panel.id === firewall.id ? { ...panel, look: { fill: 'solid', colour: '#336699' }, behaviour: { target: 'same' } } : panel));
+  result = await store.mutateService({ revision: result.revision, action: 'update', id: firewall.id, name: 'Firewall', config: {}, board, pageId: 'lab' });
+  const panel = result.board.panels.find((item) => item.id === firewall.id);
+  assert.deepEqual(panel.look, { fill: 'solid', colour: '#336699' });
+  assert.deepEqual(panel.behaviour, { target: 'same' });
+  assert.deepEqual(result.board.pages.map((page) => page.id), ['home', 'lab']);
+  result = await store.mutateService({ revision: result.revision, action: 'add', group: 'Media', name: 'Jellyfin', config: { href: 'https://media.example.test' }, board: result.board, pageId: 'lab' });
+  assert.equal(result.board.panels.find((item) => item.title === 'Jellyfin').pageId, 'lab');
+  await assert.rejects(store.mutateService({ revision: result.revision, action: 'update', id: firewall.id, config: {}, board: { ...result.board, panels: [{ ...result.board.panels[0], look: { fill: 'neon' } }] } }), /offered choices/);
+});

@@ -79,6 +79,7 @@ export function resolveNativePanel(panel, data = {}) {
       kind: panel.kind,
       service: serviceOnly,
       widget: { ...widget, index: proxyIndex },
+      groupName: groupPath.at(-1),
     };
   }
   return null;

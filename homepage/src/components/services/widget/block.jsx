@@ -4,6 +4,8 @@ import { useContext, useMemo } from "react";
 
 import { BlockHighlightContext } from "./highlight-context";
 
+import { ValueSlotContext } from "components/studio/card-look";
+import { formatValue, splitValue } from "components/studio/value-format.mjs";
 import { SettingsContext } from "utils/contexts/settings";
 import { evaluateHighlight, getHighlightClass } from "utils/highlights";
 
@@ -12,6 +14,7 @@ export default function Block({ value, highlightValue, label, field }) {
   const highlightConfig = useContext(BlockHighlightContext);
   const { settings } = useContext(SettingsContext);
   const refined = settings?.blockStyle === "refined";
+  const slot = useContext(ValueSlotContext);
 
   const highlight = useMemo(() => {
     if (!highlightConfig) return null;
@@ -36,6 +39,28 @@ export default function Block({ value, highlightValue, label, field }) {
   }, [highlight, highlightConfig]);
 
   const applyToValueOnly = highlight?.valueOnly === true;
+
+  // Inside a Studio card: the slot decides the size; the label and number
+  // style can be the widget's own.
+  if (slot) {
+    const loading = value === undefined;
+    const shown = loading || value === null ? "-" : formatValue(value, slot.format);
+    const { number, unit } = slot.slot === "hero" ? splitValue(shown) : { number: shown, unit: "" };
+    const text = slot.label || t(label);
+    return (
+      <div
+        className={classNames("studio-value", `studio-value-${slot.slot}`, loading && "studio-value-loading", highlightClass, "service-block")}
+        data-highlight-level={highlight?.level}
+        data-highlight-source={highlight?.source}
+      >
+        <span className={classNames("studio-value-number", applyToValueOnly && "studio-value-highlighted", "service-block-value")}>
+          {number}
+          {unit && <span className="studio-value-unit">{unit}</span>}
+        </span>
+        <span className="studio-value-label service-block-label">{text}</span>
+      </div>
+    );
+  }
 
   return (
     <div

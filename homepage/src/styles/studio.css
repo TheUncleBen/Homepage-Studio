@@ -2766,3 +2766,321 @@ body {
 .studio-empty-page h2 {
   margin-bottom: 14px;
 }
+
+/* ---- Cards (approved board 6): one header, Hero or Quiet, fills ---------- */
+.studio-panel {
+  --card-radius: 12px;
+  --card-bg: var(--studio-surface);
+  --card-text: var(--studio-text);
+  --card-muted-text: var(--studio-muted);
+  border-radius: var(--card-radius);
+  background: var(--card-bg);
+  color: var(--card-text);
+  box-shadow: none;
+}
+.studio-panel[data-corners="square"] {
+  --card-radius: 4px;
+}
+.studio-panel[data-corners="round"] {
+  --card-radius: 20px;
+}
+.studio-panel[data-edge="shadow"],
+.studio-panel[data-edge="none"] {
+  border-color: transparent;
+}
+.studio-panel[data-edge="shadow"],
+.studio-panel[data-edge="both"] {
+  box-shadow: 0 6px 22px #0000004d;
+}
+.studio-panel:is([data-fill="tint"], [data-fill="solid"]) {
+  --card-bg: var(--card-fill);
+  --card-text: var(--card-ink);
+  --card-muted-text: var(--card-muted);
+}
+.studio-panel[data-fill="solid"] {
+  border-color: transparent;
+}
+.studio-panel .studio-native-content {
+  padding: 14px 16px 14px;
+  color: var(--card-text);
+}
+.studio-edit-mode .studio-panel .studio-native-content {
+  padding-top: 14px;
+}
+.studio-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100%;
+}
+.studio-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.studio-card-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+  color: inherit;
+  text-decoration: none;
+}
+a.studio-card-identity:hover .studio-card-name strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.studio-card-logo {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+.studio-card-logo > * {
+  max-width: 28px;
+  max-height: 28px;
+}
+.studio-card-name {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+.studio-card-name strong {
+  font-size: 14.5px;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-card-name small {
+  color: var(--card-muted-text);
+  font-size: 12.5px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-card-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 28px;
+}
+.studio-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--card-muted-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.studio-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--studio-muted);
+}
+.studio-status-up .studio-status-dot {
+  background: #3fb27f;
+}
+.studio-status-down .studio-status-dot {
+  background: #e5604f;
+}
+.studio-status-pending .studio-status-dot {
+  opacity: 0.4;
+}
+.studio-status-down .studio-status-text {
+  color: #f08a7c;
+}
+/* A card whose check fails turns to the alert look by itself. */
+.studio-panel:has(.studio-card[data-alert]) {
+  border-color: #c4554d;
+  --card-bg: color-mix(in srgb, #c4554d 12%, var(--studio-surface));
+}
+.studio-card-offline {
+  display: grid;
+  gap: 2px;
+}
+.studio-card-offline strong {
+  color: #f08a7c;
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.1;
+}
+.studio-card-offline span {
+  color: var(--card-muted-text);
+  font-size: 12.5px;
+}
+.studio-card-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Values: Hero (one large, the rest below a line) or Quiet (equal boxes). */
+.studio-values {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+.studio-value {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.studio-value-number {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.studio-panel[data-numbers="mono"] .studio-value-number {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+.studio-value-label {
+  color: var(--card-muted-text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.studio-value-hero .studio-value-number {
+  font-size: 34px;
+  font-weight: 450;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+}
+.studio-panel[data-hero="s"] .studio-value-hero .studio-value-number {
+  font-size: 24px;
+}
+.studio-panel[data-hero="l"] .studio-value-hero .studio-value-number {
+  font-size: 46px;
+}
+.studio-panel[data-hero="xl"] .studio-value-hero .studio-value-number {
+  font-size: 60px;
+}
+.studio-value-unit {
+  margin-left: 4px;
+  color: var(--card-muted-text);
+  font-size: 0.42em;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.studio-value-hero .studio-value-label {
+  margin-top: 4px;
+  font-size: 13px;
+}
+.studio-values-below {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 10px 18px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--card-text) 14%, transparent);
+}
+.studio-value-below .studio-value-number {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.studio-value-below .studio-value-label {
+  font-size: 11.5px;
+}
+.studio-values-quiet {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 8px;
+}
+.studio-value-quiet {
+  align-items: center;
+  justify-content: center;
+  padding: 10px 6px;
+  border-radius: calc(var(--card-radius) * 0.6);
+  background: color-mix(in srgb, var(--card-text) 6%, transparent);
+  text-align: center;
+}
+.studio-value-quiet .studio-value-number {
+  font-size: 15px;
+  font-weight: 600;
+}
+.studio-value-quiet .studio-value-label {
+  font-size: 11px;
+}
+.studio-panel[data-align="centre"] .studio-value:not(.studio-value-quiet) {
+  align-items: center;
+  text-align: center;
+}
+.studio-panel[data-align="centre"] .studio-card-head {
+  justify-content: center;
+}
+.studio-value-loading .studio-value-number {
+  color: transparent;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--card-text) 10%, transparent);
+  animation: studio-pulse 1.4s ease-in-out infinite;
+}
+@keyframes studio-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-value-loading .studio-value-number {
+    animation: none;
+  }
+}
+.studio-value[data-highlight-level="danger"] .studio-value-number {
+  color: #f08a7c;
+}
+.studio-value[data-highlight-level="warn"] .studio-value-number {
+  color: #e6b35c;
+}
+.studio-value[data-highlight-level="good"] .studio-value-number {
+  color: #59c48f;
+}
+.studio-card-state {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.studio-card-error strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+.studio-card-error span,
+.studio-card-quiet-error span {
+  color: var(--card-muted-text);
+  font-size: 12.5px;
+}
+.studio-card-error .studio-text-button {
+  justify-self: start;
+  margin-top: 4px;
+}
+.studio-card-stale {
+  opacity: 0.55;
+}
+.studio-card-stale-note {
+  display: block;
+  margin-top: 8px;
+  color: var(--card-muted-text);
+  font-size: 12px;
+}
+
+/* While editing, the card keeps its own header; Studio's controls float on top. */
+.studio-edit-mode .studio-panel:not(.studio-stacked-panel) > .studio-panel-slide > .studio-panel-header {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  min-height: 0;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--studio-surface) 88%, transparent);
+  border: 1px solid var(--studio-line);
+  backdrop-filter: blur(6px);
+}
+.studio-edit-mode .studio-panel-header .studio-icon-button {
+  width: 30px;
+  height: 30px;
+}

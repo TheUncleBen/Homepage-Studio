@@ -3,6 +3,9 @@ import { useContext, useMemo } from "react";
 import Error from "./error";
 import { BlockHighlightContext } from "./highlight-context";
 
+import { CardLookContext } from "components/studio/card-look";
+import CardValues from "components/studio/card-values";
+import CardError from "components/studio/card-error";
 import { SettingsContext } from "utils/contexts/settings";
 import { buildHighlightConfig } from "utils/highlights";
 
@@ -15,12 +18,15 @@ const ALIASED_WIDGETS = {
 
 export default function Container({ error = false, children, service }) {
   const { settings } = useContext(SettingsContext);
+  // Inside a Studio card the card decides the arrangement and error display.
+  const card = useContext(CardLookContext);
 
   const highlightConfig = useMemo(
     () => buildHighlightConfig(settings?.blockHighlights, service?.widget?.highlight, service?.widget?.type),
     [settings?.blockHighlights, service?.widget?.highlight, service?.widget?.type],
   );
 
+  if (error && card) return <CardError card={card} service={service} error={error} />;
   if (error) {
     if (settings.hideErrors || service.widget.hide_errors) {
       return null;
@@ -61,7 +67,11 @@ export default function Container({ error = false, children, service }) {
       }),
     );
   }
-  const content = <div className="relative flex flex-row w-full service-container">{visibleChildren}</div>;
+  const content = card ? (
+    <CardValues card={card} items={visibleChildren} />
+  ) : (
+    <div className="relative flex flex-row w-full service-container">{visibleChildren}</div>
+  );
 
   if (!highlightConfig) {
     return content;

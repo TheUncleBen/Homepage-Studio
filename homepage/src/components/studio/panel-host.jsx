@@ -1,8 +1,15 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
+import { CardLookContext, fillColours, resolvedBehaviour, resolvedLook, useCardTheme, useLogoColour } from "./card-look";
 import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
+import { REFRESH_MS } from "./look.mjs";
+import { resolveNativePanel } from "./native-adapter.mjs";
 import NativePanel from "./native-panel";
+
+import { SettingsContext } from "utils/contexts/settings";
+
+const iconOf = (resolved) => resolved?.service?.icon || resolved?.bookmark?.icon || null;
 
 export default function PanelHost({
   panel,
@@ -32,6 +39,34 @@ export default function PanelHost({
 }) {
   const nativeContent = useRef(null);
   const slide = useRef(null);
+  // How this widget looks: built-in, then the dashboard's defaults, then its own.
+  const settings = useContext(SettingsContext)?.settings;
+  const look = useMemo(() => resolvedLook(settings, panel), [settings, panel]);
+  const behaviour = useMemo(() => resolvedBehaviour(settings, panel), [settings, panel]);
+  const resolved = useMemo(() => resolveNativePanel(panel, data), [panel, data]);
+  const theme = useCardTheme();
+  const wantsLogo = (look.fill === "tint" || look.fill === "solid") && look.colour === "logo";
+  const logoColour = useLogoColour(iconOf(resolved), wantsLogo);
+  const colours = useMemo(() => fillColours(look, logoColour, theme), [look, logoColour, theme]);
+  const fix = canEdit && onEdit ? () => onEdit(panel) : undefined;
+  const card = useMemo(
+    () => ({
+      id: panel.id,
+      layout: look.layout,
+      values: look.values,
+      header: look.header,
+      description: look.description,
+      status: look.status,
+      statusCheck: behaviour.status,
+      errors: behaviour.errors,
+      target: behaviour.target,
+      refreshMs: REFRESH_MS[behaviour.refresh],
+      onFix: fix,
+    }),
+    // onFix changes identity every render; its inputs are listed instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [panel.id, look, behaviour, canEdit, onEdit],
+  );
   const previousPresentation = useRef(null);
   const slideAnimation = useRef(null);
   const playback = controller?.();
@@ -119,7 +154,11 @@ export default function PanelHost({
   }, []);
   const duration =
     reducedMotion || stack?.playback.transition === "none" ? 0 : (stack?.playback.transitionDurationMs ?? 250);
-  const style = { ...rect, "--studio-slide-duration": `${duration}ms` };
+  const style = {
+    ...rect,
+    "--studio-slide-duration": `${duration}ms`,
+    ...(colours ? { "--card-fill": colours.fill, "--card-ink": colours.ink, "--card-muted": colours.muted } : {}),
+  };
   const memberIndex = stack?.panelIds.indexOf(panel.id) ?? 0;
   const snapshot = playback?.getSnapshot();
   const activeIndex = snapshot?.activeIndex ?? 0;
@@ -189,6 +228,13 @@ export default function PanelHost({
       className={`studio-panel${stack ? " studio-stacked-panel" : ""}${selected ? " studio-selected" : ""}${moving ? " studio-moving" : ""}${!presented ? " studio-inactive" : ""}${!active ? " studio-noninteractive" : ""}`}
       data-panel-id={panel.id}
       data-panel-kind={panel.kind}
+      data-layout={look.layout}
+      data-fill={colours ? look.fill : look.fill === "tint" || look.fill === "solid" ? "plain" : look.fill}
+      data-edge={look.edge}
+      data-corners={look.corners}
+      data-numbers={look.numbers}
+      data-align={look.align}
+      data-hero={look.heroSize}
       data-stack-id={stack?.id}
       aria-label={panel.title}
       aria-hidden={!active || undefined}
@@ -225,7 +271,9 @@ export default function PanelHost({
           transition: dragOffset ? "none" : undefined,
         }}
       >
-        {!stack && (
+        {/* The card draws its own logo and name. While editing, a small bar
+            on top holds selection, move and edit. */}
+        {!stack && editing && (
           <header
             className="studio-panel-header"
             onPointerDown={press.onPointerDown}
@@ -251,7 +299,7 @@ export default function PanelHost({
                 />
               </label>
             )}
-            <span className="studio-panel-title">
+            <span className="studio-panel-title studio-sr-only">
               <small>{panel.group || (panel.kind === "informationWidget" ? "Information" : "Dashboard")}</small>
               <strong>{panel.title}</strong>
             </span>
@@ -292,7 +340,9 @@ export default function PanelHost({
             if (!event.currentTarget.contains(event.relatedTarget)) controller?.()?.setBlocked("content-focus", false);
           }}
         >
-          <RenderNative panel={panel} data={data} />
+          <CardLookContext.Provider value={card}>
+            <RenderNative panel={panel} data={data} />
+          </CardLookContext.Provider>
         </div>
         {stale && (
           <div

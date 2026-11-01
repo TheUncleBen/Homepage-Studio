@@ -17,7 +17,13 @@ async function handler(req, res) {
     });
   }
 
-  const { siteMonitor: monitorURL } = serviceItem;
+  // Studio checks a service's own address when it has no siteMonitor of its
+  // own and the dashboard asks for a web check (fallback=1). Only the address
+  // already in services.yaml is ever probed.
+  let monitorURL = serviceItem.siteMonitor;
+  if (!monitorURL && req.query.fallback === "1" && /^https?:\/\//i.test(serviceItem.href || "")) {
+    monitorURL = serviceItem.href;
+  }
 
   if (!monitorURL) {
     logger.debug("No http monitor URL specified");

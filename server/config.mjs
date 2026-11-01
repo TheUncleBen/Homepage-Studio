@@ -41,6 +41,8 @@ const snapshotAction = (value) => (SNAPSHOT_ACTIONS.includes(value) ? value : nu
 const MAX_DEPTH = 20;
 const PLACEHOLDER = /\{\{\s*HOMEPAGE_(?:VAR|FILE)_[^{}\r\n]*\}\}/g;
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+// The editor's arrangement, when a content edit sends one along.
+const withBoard = (change) => (own(change, 'board') ? { arrangement: change.board } : {});
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const fileHash = (value) => hash(JSON.stringify(value));
@@ -733,6 +735,14 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     // Exact restore uses the snapshot's source identities and board, while the
     // optimistic revision continues to guard the current configuration.
     if (restoredState) desired['state.json'] = JSON.stringify(restoredState);
+    // A content edit can carry the editor's arrangement (its look, page and
+    // the rest of the draft). It becomes the layout the new content is
+    // reconciled into, so both commit together.
+    if (own(change, 'arrangement')) {
+      const state = decodeState(desired['state.json']);
+      state.board = validateStoredBoard(change.arrangement);
+      desired['state.json'] = JSON.stringify(state);
+    }
     if (own(change, 'hiddenDiscoveredIds')) {
       const state = decodeState(desired['state.json']);
       state.hiddenDiscoveredIds = validateHiddenDiscoveredIds(change.hiddenDiscoveredIds);
@@ -794,7 +804,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         }
       }
     }
-    return saveCurrent(current, { revision: change.revision, pageId: change.pageId, servicesYaml: parsed.text() }, `service-${CONTENT_ACTIONS[change.action]}`);
+    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, servicesYaml: parsed.text() }, `service-${CONTENT_ACTIONS[change.action]}`);
   }
 
   async function mutateInfoInner(change) {
@@ -825,7 +835,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         renamePair(entry.items[0], type);
       }
     }
-    return saveCurrent(current, { revision: change.revision, pageId: change.pageId, widgetsYaml: parsed.text() }, `info-widget-${CONTENT_ACTIONS[change.action]}`, { infoWidgets: identities });
+    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, widgetsYaml: parsed.text() }, `info-widget-${CONTENT_ACTIONS[change.action]}`, { infoWidgets: identities });
   }
 
   async function mutateBookmarkInner(change) {
@@ -868,7 +878,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     }
     const text = parsed.text();
     const forced = bookmarkEntries(yamlDocument(text, 'bookmarks.yaml').data).map((entry) => ({ id: identities.get(JSON.stringify([entry.group, entry.name])) }));
-    return saveCurrent(current, { revision: change.revision, pageId: change.pageId, bookmarksYaml: text }, `bookmark-${CONTENT_ACTIONS[change.action]}`, { bookmarks: forced });
+    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, bookmarksYaml: text }, `bookmark-${CONTENT_ACTIONS[change.action]}`, { bookmarks: forced });
   }
 
   async function mutateServiceWidgetInner(change) {
@@ -933,7 +943,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const text = parsed.text();
     const newServices = serviceEntries(yamlDocument(text, 'services.yaml').data).services;
     const forcedIdentities = newServices.flatMap((entry) => byService.get(entry.id) ?? []);
-    return saveCurrent(current, { revision: change.revision, pageId: change.pageId, servicesYaml: text }, `service-widget-${CONTENT_ACTIONS[change.action]}`, { serviceWidgets: forcedIdentities });
+    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, servicesYaml: text }, `service-widget-${CONTENT_ACTIONS[change.action]}`, { serviceWidgets: forcedIdentities });
   }
 
 
@@ -1028,7 +1038,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     if (!object(change.config)) fail('Settings must be supplied as a mapping.');
     const parsed = current.parsed.settingsYaml;
     parsed.doc.contents = patchMap(parsed.doc, parsed.doc.contents, change.config, parsed);
-    return saveCurrent(current, { revision: change.revision, pageId: change.pageId, settingsYaml: parsed.text() }, 'settings-saved');
+    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, settingsYaml: parsed.text() }, 'settings-saved');
   }
 
   return {
@@ -1132,7 +1142,8 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       if (change.hidden) hidden.add(change.id); else hidden.delete(change.id);
       return saveCurrent(current, { revision: change.revision, pageId: change.pageId, hiddenDiscoveredIds: [...hidden] }, change.hidden ? 'discovered-panel-hidden' : 'discovered-panel-shown');
     }),
-    save: (change) => serialized(async () => saveCurrent(await readCurrent(), change, 'files-saved')),
+    // Raw file saves never carry an editor arrangement; a board they send is checked strictly.
+    save: ({ arrangement: ignored, ...change }) => serialized(async () => saveCurrent(await readCurrent(), change, 'files-saved')),
     mutateService: (change) => serialized(() => mutateServiceInner(change)),
     mutateInfoWidget: (change) => serialized(() => mutateInfoInner(change)),
     mutateBookmark: (change) => serialized(() => mutateBookmarkInner(change)),

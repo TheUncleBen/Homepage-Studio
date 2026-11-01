@@ -16,7 +16,12 @@ async function handler(req, res) {
     });
   }
 
-  const { ping: pingHostOrURL } = serviceItem;
+  // Studio pings the host of a service's own address when it has no ping of
+  // its own and the widget asks for a ping check (fallback=1).
+  let pingHostOrURL = serviceItem.ping;
+  if (!pingHostOrURL && req.query.fallback === "1" && /^https?:\/\//i.test(serviceItem.href || "")) {
+    pingHostOrURL = serviceItem.href;
+  }
 
   if (!pingHostOrURL) {
     logger.debug("No ping host specified");

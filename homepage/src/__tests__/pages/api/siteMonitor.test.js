@@ -56,6 +56,25 @@ describe("pages/api/siteMonitor", () => {
     expect(res.body.error).toBe("No http monitor URL given");
   });
 
+  it("checks the service's own address only when Studio asks for the fallback", async () => {
+    getServiceItem.mockResolvedValue({ siteMonitor: "", href: "https://app.example.com" });
+    perf.now.mockReturnValueOnce(1).mockReturnValueOnce(6);
+    httpProxy.mockResolvedValueOnce([200]);
+    const res = createMockRes();
+    await handler({ query: { groupName: "g", serviceName: "s", fallback: "1" } }, res);
+    expect(httpProxy).toHaveBeenCalledWith("https://app.example.com", { method: "HEAD" });
+    expect(res.statusCode).toBe(200);
+
+    const plain = createMockRes();
+    await handler({ query: { groupName: "g", serviceName: "s" } }, plain);
+    expect(plain.statusCode).toBe(400);
+
+    getServiceItem.mockResolvedValue({ href: "javascript:alert(1)" });
+    const unsafe = createMockRes();
+    await handler({ query: { groupName: "g", serviceName: "s", fallback: "1" } }, unsafe);
+    expect(unsafe.statusCode).toBe(400);
+  });
+
   it("uses HEAD and returns status + latency when the response is OK", async () => {
     getServiceItem.mockResolvedValueOnce({ siteMonitor: "http://example.com" });
     perf.now.mockReturnValueOnce(1).mockReturnValueOnce(11);
