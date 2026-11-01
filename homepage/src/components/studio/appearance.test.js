@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ACCENT_PRESETS,
+  BASES,
   appearanceConfig,
   appearanceStyles,
   appearanceTokens,
@@ -13,7 +14,7 @@ import {
 
 describe("appearance settings", () => {
   it("keeps the empty dashboard dark and respects an existing native light theme", () => {
-    expect(appearanceConfig()).toEqual({ mode: "dark", accent: "#b299be" });
+    expect(appearanceConfig()).toEqual({ mode: "dark", accent: "#b299be", base: "graphite" });
     expect(appearanceTokens({ theme: "light" }).mode).toBe("light");
     expect(
       appearanceTokens({ theme: "light", studioTheme: { mode: "dark" } }).mode,
@@ -44,7 +45,7 @@ describe("appearance settings", () => {
   });
 
   it("keeps normal text and chosen accents readable across both palettes", () => {
-    for (const mode of ["light", "dark"]) {
+    for (const base of Object.keys(BASES)) for (const mode of ["light", "dark"]) {
       for (const accent of [
         ...ACCENT_PRESETS.map((preset) => preset.color),
         "#000000",
@@ -56,7 +57,7 @@ describe("appearance settings", () => {
         "#7788aa",
         "#aa00ee",
       ]) {
-        const { tokens } = appearanceTokens({ studioTheme: { mode, accent } });
+        const { tokens } = appearanceTokens({ studioTheme: { mode, accent, base } });
         for (const background of [
           tokens.bg,
           tokens.surface,
@@ -104,7 +105,7 @@ describe("platform defaults", () => {
   });
 
   it("counts a native light or dark theme as the dashboard's own mode", () => {
-    expect(ownAppearance({ theme: "light" })).toEqual({ mode: true, accent: false, background: false });
+    expect(ownAppearance({ theme: "light" })).toEqual({ mode: true, accent: false, base: false, background: false });
     expect(applyPlatformDefaults({ theme: "dark" }, platform).theme).toBe("dark");
   });
 
