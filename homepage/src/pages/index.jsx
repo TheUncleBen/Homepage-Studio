@@ -113,8 +113,9 @@ function StudioDashboard({
   }, []);
   useEffect(() => {
     const key = (event) => {
-      // The dashboard claims page keys (1-9, [ ], ?) before this runs.
-      if (interactionBlocked || event.defaultPrevented) return;
+      // The dashboard claims page keys (1-9, [ ], ?) before this runs. Search
+      // is for viewing; while editing, letters are the widget shortcuts.
+      if (interactionBlocked || event.defaultPrevented || studioMode !== "live") return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setSearching((value) => !value);
@@ -132,7 +133,7 @@ function StudioDashboard({
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [interactionBlocked]);
+  }, [interactionBlocked, studioMode]);
   const refresh = async () => {
     await studioRequest("/api/revalidate");
     const updated = await mutate();

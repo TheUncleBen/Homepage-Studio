@@ -203,7 +203,7 @@ async function mountBoard({
     if (mode === "edit")
       await waitFor(() => expect(screen.getByRole("button", { name: "Done", exact: true })).toBeEnabled());
     else if (mode === "settings") await screen.findByLabelText(/Dashboard title/);
-    else await waitFor(() => expect(screen.getByRole("button", { name: "Quick Launch" })).toBeEnabled());
+    else await waitFor(() => expect(screen.getByRole("button", { name: "Search" })).toBeEnabled());
   }
   return {
     ...view,
@@ -293,7 +293,7 @@ describe("Native board save and draft safety", () => {
   it("the editor page starts in editing, and Done saves and goes back to the Dashboards page", async () => {
     const { onLeave, writer } = await mountBoard();
     expect(document.querySelector(".studio-edit-mode")).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Quick Launch" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Search" })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("button", { name: /^Move Clock\./ }), { key: "ArrowDown" });
     fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
     await waitFor(() => expect(onLeave).toHaveBeenCalledTimes(1));
@@ -379,7 +379,7 @@ describe("Native board save and draft safety", () => {
   it("keeps startup controls unavailable until the first board response, then opens settings by itself", async () => {
     const gate = deferred();
     const { fetch, writer, interactions } = await mountBoard({ mode: "settings", firstBoardRead: gate.promise });
-    expect(screen.getByLabelText("Quick Launch")).toBeDisabled();
+    expect(screen.getByLabelText("Search")).toBeDisabled();
     expect(interactions).toHaveBeenLastCalledWith(true);
     expect(fetch.mock.calls.some(([path]) => path === "/studio/api/state")).toBe(false);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -926,10 +926,10 @@ describe("Native board save and draft safety", () => {
     },
   );
 
-  it("names the Quick Launch icon and its shortcut", async () => {
+  it("names the search icon and its shortcut", async () => {
     await mountBoard({ mode: "live" });
-    const search = screen.getByRole("button", { name: "Quick Launch" });
-    expect(search).toHaveAttribute("title", "Quick Launch (Ctrl / ⌘ K)");
+    const search = screen.getByRole("button", { name: "Search" });
+    expect(search).toHaveAttribute("title", "Search (/ or Ctrl / ⌘ K)");
     expect(search).toHaveAttribute("aria-keyshortcuts", "Control+K Meta+K");
   });
 });

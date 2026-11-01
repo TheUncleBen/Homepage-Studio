@@ -29,11 +29,7 @@ beforeEach(async () => {
   vi.resetModules();
   cache.clear();
   directory = await mkdtemp(join(tmpdir(), "homepage-studio-empty-ssr-"));
-  await Promise.all(
-    Object.entries(emptyFiles).map(([name, text]) =>
-      writeFile(join(directory, name), text),
-    ),
-  );
+  await Promise.all(Object.entries(emptyFiles).map(([name, text]) => writeFile(join(directory, name), text)));
   vi.stubEnv("HOMEPAGE_CONFIG_DIR", directory);
   vi.stubEnv("LOG_TARGETS", "stdout");
   // Cold transforms of the real application belong to bounded setup, not the
@@ -71,19 +67,12 @@ async function renderPage() {
 
 function expectServerControlsUnavailable(html) {
   const buttons = html.match(/<button\b[^>]*>/g) || [];
-  expect(
-    buttons.find((button) => button.includes('aria-label="Quick Launch"')),
-  ).toContain('disabled=""');
+  expect(buttons.find((button) => button.includes('aria-label="Search"'))).toContain('disabled=""');
   // The live dashboard carries no editing or settings controls.
   for (const label of ["Dashboard settings", "Edit dashboard"])
-    expect(
-      buttons.find((button) => button.includes(`aria-label="${label}"`)),
-    ).toBeUndefined();
-  const quickLaunch = html.match(
-    /<div\b[^>]*class="studio-quicklaunch"[^>]*>/,
-  )?.[0];
-  expect(quickLaunch).toContain('inert=""');
-  expect(quickLaunch).toContain('aria-hidden="true"');
+    expect(buttons.find((button) => button.includes(`aria-label="${label}"`))).toBeUndefined();
+  // Search is drawn only once it is opened.
+  expect(html).not.toContain("studio-find");
 }
 
 describe("Studio real native server render", () => {
@@ -94,12 +83,10 @@ describe("Studio real native server render", () => {
     expect(props.fallback["/api/services"]).toEqual([]);
     expect(props.fallback["/api/bookmarks"]).toEqual([]);
     expect(html).toContain('class="studio-app"');
-    expect(html).toContain("Quick Launch");
+    expect(html).toContain('aria-label="Search"');
     expectServerControlsUnavailable(html);
     expect(html).not.toContain("data-panel-id");
-    expect((await readdir(directory)).sort()).toEqual(
-      Object.keys(emptyFiles).sort(),
-    );
+    expect((await readdir(directory)).sort()).toEqual(Object.keys(emptyFiles).sort());
     await Promise.all(
       Object.entries(emptyFiles).map(async ([name, text]) =>
         expect(await readFile(join(directory, name), "utf8")).toBe(text),
@@ -144,38 +131,22 @@ describe("Studio real native server render", () => {
     );
     await writeFile(
       join(directory, "bookmarks.yaml"),
-      JSON.stringify([
-        { Links: [{ Docs: [{ href: "https://docs.example.test/" }] }] },
-      ]),
+      JSON.stringify([{ Links: [{ Docs: [{ href: "https://docs.example.test/" }] }] }]),
     );
     const { props, html } = await renderPage();
-    expect(props.fallback["/api/widgets"].map((widget) => widget.type)).toEqual(
-      ["search", "greeting"],
-    );
-    expect(props.fallback["/api/widgets"][0].options.provider).toBe(
-      "duckduckgo",
-    );
-    expect(props.fallback["/api/widgets"][1].options.text).toBe(
-      "Persisted greeting",
-    );
-    expect(props.fallback["/api/services"][0].services[0].widgets[0].type).toBe(
-      "sonarr",
-    );
-    expect(props.fallback["/api/bookmarks"][0].bookmarks[0].href).toBe(
-      "https://docs.example.test/",
-    );
+    expect(props.fallback["/api/widgets"].map((widget) => widget.type)).toEqual(["search", "greeting"]);
+    expect(props.fallback["/api/widgets"][0].options.provider).toBe("duckduckgo");
+    expect(props.fallback["/api/widgets"][1].options.text).toBe("Persisted greeting");
+    expect(props.fallback["/api/services"][0].services[0].widgets[0].type).toBe("sonarr");
+    expect(props.fallback["/api/bookmarks"][0].bookmarks[0].href).toBe("https://docs.example.test/");
     expect(props.initialSettings).toEqual({
       title: "Persisted Studio",
       quicklaunch: { mobileButtonPosition: "bottom-right" },
     });
-    expect(JSON.stringify(props) + html).not.toContain(
-      "fictional-provider-secret",
-    );
-    expect(JSON.stringify(props) + html).not.toContain(
-      "fictional-service-secret",
-    );
+    expect(JSON.stringify(props) + html).not.toContain("fictional-provider-secret");
+    expect(JSON.stringify(props) + html).not.toContain("fictional-service-secret");
     expect(html).toContain('class="studio-app"');
-    expect(html).toContain("Quick Launch");
+    expect(html).toContain('aria-label="Search"');
     expectServerControlsUnavailable(html);
   });
 });

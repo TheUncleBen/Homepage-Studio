@@ -16,6 +16,31 @@ export const ValueSlotContext = createContext(null);
 // offer them for arranging without asking the integration again.
 export const widgetFields = new Map();
 
+// Each card's live data, by panel id: how to fetch it again now ("Refresh
+// now"), when it last arrived and how often it updates ("Updated 12 s ago").
+// Filled by useWidgetAPI for the requests a card makes; cards without any
+// (links, bookmarks, the clock) have none.
+const liveCards = new Map();
+export function cardLive(id) {
+  let live = liveCards.get(id);
+  if (!live) {
+    live = { refreshers: new Map(), updatedAt: 0, interval: 0 };
+    liveCards.set(id, live);
+  }
+  return live;
+}
+export function refreshCards(ids) {
+  let count = 0;
+  for (const id of ids) {
+    const live = liveCards.get(id);
+    if (!live?.refreshers.size) continue;
+    live.refreshers.forEach((refresh) => refresh());
+    count += 1;
+  }
+  return count;
+}
+export const canRefresh = (id) => Boolean(liveCards.get(id)?.refreshers.size);
+
 // The dashboard's widget defaults: look in settings.yaml studioTheme.card,
 // behaviour in studioDefaults. A widget's own sparse keys win (Rule 2).
 export function dashboardLook(settings) {

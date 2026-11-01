@@ -57,7 +57,7 @@ async function mount({ board = twoPages, mode = "live" } = {}) {
     </SWRConfig>,
   );
   if (mode === "edit") await waitFor(() => expect(screen.getByRole("button", { name: "Done" })).toBeEnabled());
-  else await waitFor(() => expect(screen.getByRole("button", { name: "Quick Launch" })).toBeEnabled());
+  else await waitFor(() => expect(screen.getByRole("button", { name: "Search" })).toBeEnabled());
   return { ...view, writes };
 }
 

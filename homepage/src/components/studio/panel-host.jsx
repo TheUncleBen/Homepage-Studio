@@ -10,6 +10,7 @@ import {
   useLogoColour,
   widgetFields,
 } from "./card-look";
+import Freshness from "./freshness";
 import { COLUMNS, GAP, ROW_HEIGHT } from "./geometry.mjs";
 import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
@@ -402,6 +403,7 @@ export default function PanelHost({
             <RenderNative panel={panel} data={data} />
           </CardLookContext.Provider>
         </div>
+        {!editing && !stale && <Freshness panelId={panel.id} title={panel.title} />}
         {stale && (
           <div
             className="studio-panel-placeholder studio-panel-refresh"

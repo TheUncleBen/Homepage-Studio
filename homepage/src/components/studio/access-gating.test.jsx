@@ -85,7 +85,7 @@ describe("dashboard controls follow the sign-in access level", () => {
       { authEnabled: true, level: "admin", user: { ...user, role: "admin" }, dashboard: { name: "Family" } },
     ]) {
       const view = mount(access);
-      await waitFor(() => expect(screen.getByLabelText("Quick Launch")).toBeEnabled());
+      await waitFor(() => expect(screen.getByLabelText("Search")).toBeEnabled());
       expect(screen.getByText("Family", { selector: ".studio-switcher-name" })).toBeInTheDocument();
       for (const name of ["Edit dashboard", "Add widget", "Done"]) expect(screen.queryByText(name)).toBeNull();
       expect(screen.queryByLabelText("Dashboard settings")).toBeNull();

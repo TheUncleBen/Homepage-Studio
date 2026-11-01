@@ -7,7 +7,7 @@ import AppearanceOnlyEditor from "./appearance-only-editor";
 import { PageBackgroundEditor } from "./background-picker";
 import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm } from "./bulk-bar";
 import CardBackground from "./card-background";
-import { resolvedBehaviour, useCardTheme } from "./card-look";
+import { canRefresh, refreshCards, resolvedBehaviour, useCardTheme } from "./card-look";
 import ContentEditor, { ContentPicker, duplicateEntry } from "./content-editor";
 import { dashboardPath } from "./dashboard-path.mjs";
 import StudioDialog, { ErrorMessage } from "./dialog";
@@ -200,6 +200,8 @@ function ShortcutsSheet({ editing, pages }) {
     editing && ["Ctrl / ⌘ D", "Duplicate the selected widget"],
     editing && ["Ctrl / ⌘ Alt C, then V", "Copy a widget's look, then paste it"],
     editing && ["Delete", "Delete the selected widget"],
+    editing && ["R", "Refresh the selected widget now"],
+    ["Shift R", "Refresh every widget on this page now"],
     ["?", "Show these shortcuts"],
   ].filter(Boolean);
   return (
@@ -1419,6 +1421,17 @@ export default function StudioBoard({
     if (commitWhole(next)) showToast(message, true);
   };
   const deletePanel = (panel) => openEditor("content", { panel, deleting: true });
+  // Asks the integrations behind these widgets for fresh numbers now.
+  const refreshNow = (ids, page = false) => {
+    const count = refreshCards(ids);
+    showToast(
+      count
+        ? page
+          ? `Refreshing ${count} widget${count === 1 ? "" : "s"} on this page`
+          : "Refreshing"
+        : "Nothing here updates on its own",
+    );
+  };
   const openUnitMenu = async (id, pointer, from) => {
     if (controlsDisabled || modal || saveInFlight.current || nativeRefreshLock.current) return;
     const element = canvas.current?.querySelector(
@@ -1487,6 +1500,13 @@ export default function StudioBoard({
           ),
       },
       "-",
+      canRefresh(panel.id) && {
+        id: "refresh",
+        icon: "refresh",
+        label: "Refresh now",
+        shortcut: "R",
+        onSelect: () => refreshNow([panel.id]),
+      },
       moveItem,
       href && {
         id: "open",
@@ -1546,6 +1566,7 @@ export default function StudioBoard({
       if (command && lower === "d" && canChange) return run(() => openEditor("content", { panel, duplicate: true }));
       if (command || event.shiftKey) return;
       if (lower === "e" && (isAdmin || panel.nativeLocator?.discovered)) return run(() => editPanel(panel));
+      if (lower === "r" && canRefresh(panel.id)) return run(() => refreshNow([panel.id]));
       if ((event.key === "Delete" || event.key === "Backspace") && canChange) return run(() => deletePanel(panel));
     };
     window.addEventListener("keydown", key);
@@ -1565,6 +1586,14 @@ export default function StudioBoard({
       if (editing && command && !event.altKey && event.key.toLowerCase() === "y") {
         event.preventDefault();
         redo();
+        return;
+      }
+      if (event.shiftKey && !command && !event.altKey && event.key.toLowerCase() === "r") {
+        event.preventDefault();
+        refreshNow(
+          board.panels.map((panel) => panel.id),
+          true,
+        );
         return;
       }
       if (event.key === "?" && !command && !event.altKey) {

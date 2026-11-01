@@ -134,9 +134,9 @@ export default function StudioTopBar({ title, dashboardId, logo, access, onSearc
           <button
             type="button"
             className="studio-icon-button"
-            aria-label="Quick Launch"
+            aria-label="Search"
             aria-keyshortcuts="Control+K Meta+K"
-            title="Quick Launch (Ctrl / ⌘ K)"
+            title="Search (/ or Ctrl / ⌘ K)"
             disabled={searchDisabled}
             onClick={onSearch}
           >

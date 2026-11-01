@@ -4,6 +4,7 @@ import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import StudioBoard from "./board";
+import { cardLive } from "./card-look";
 
 vi.mock("./native-panel", () => ({
   default: ({ panel }) => <output data-testid={`native-${panel.id}`}>{panel.title}</output>,
@@ -63,7 +64,7 @@ async function mount({ board = twoPages, mode = "live" } = {}) {
     </SWRConfig>,
   );
   if (mode === "edit") await waitFor(() => expect(screen.getByRole("button", { name: "Done" })).toBeEnabled());
-  else await waitFor(() => expect(screen.getByRole("button", { name: "Quick Launch" })).toBeEnabled());
+  else await waitFor(() => expect(screen.getByRole("button", { name: "Search" })).toBeEnabled());
   return { ...view, writes };
 }
 
@@ -147,6 +148,20 @@ describe("Widget menu while editing", () => {
     fireEvent.click(within(pagesMenu).getByRole("menuitem", { name: "Media" }));
     expect(await screen.findByText("Moved to Media")).toBeInTheDocument();
     expect(screen.queryByTestId("native-weather")).toBeNull();
+  });
+
+  it("refreshes a widget that updates on its own, and Shift R refreshes the page", async () => {
+    const refresh = vi.fn();
+    cardLive("weather").refreshers.set("/api/widgets/openmeteo", refresh);
+    await mount({ mode: "edit" });
+    expect(within(await menuFor("clock")).queryByRole("menuitem", { name: /Refresh now/ })).toBeNull();
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(within(await menuFor("weather")).getByRole("menuitem", { name: /Refresh now/ }));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(window, { key: "R", shiftKey: true });
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText("Refreshing 1 widget on this page")).toBeInTheDocument();
+    cardLive("weather").refreshers.clear();
   });
 
   it("copies the selected widget's look with Ctrl Alt C", async () => {

@@ -26,7 +26,6 @@ const {
     data: null,
     error: null,
     boardProps: null,
-    quickProps: null,
     requests: [],
     mounts: 0,
     script: null,
@@ -87,16 +86,10 @@ vi.mock("components/studio/board", () => ({
     }, [onInteractionBlocked]);
     return (
       <main data-testid="studio-board">
-        <button onClick={props.onSearch}>Open Quick Launch</button>
+        <button onClick={props.onSearch}>Open search</button>
         <input aria-label="Stable native fixture" />
       </main>
     );
-  },
-}));
-vi.mock("components/quicklaunch", () => ({
-  default: (props) => {
-    state.quickProps = props;
-    return <div data-testid="quick-launch">{props.isOpen ? "open" : "closed"}</div>;
   },
 }));
 
@@ -264,22 +257,16 @@ describe("Studio main-page composition", () => {
     ]);
   });
 
-  it("starts Quick Launch inert and rejects shortcuts and the native floating control until the board reports readiness", async () => {
+  it("starts search inert and rejects shortcuts until the board reports readiness", async () => {
     state.deferBoardReady = true;
     await mount();
-    const quickLaunch = screen.getByTestId("quick-launch");
-    const surface = quickLaunch.closest(".studio-quicklaunch");
-    expect(surface).toHaveAttribute("inert");
-    expect(surface).toHaveAttribute("aria-hidden", "true");
     fireEvent.keyDown(document, { key: "k", ctrlKey: true });
-    expect(quickLaunch).toHaveTextContent("closed");
-    act(() => state.quickProps.setSearching(true));
-    expect(quickLaunch).toHaveTextContent("closed");
+    expect(state.boardProps.search.open).toBe(false);
+    act(() => state.boardProps.onSearch());
+    expect(state.boardProps.search.open).toBe(false);
     act(() => state.boardProps.onInteractionBlocked(false));
-    expect(surface).not.toHaveAttribute("inert");
-    expect(surface).not.toHaveAttribute("aria-hidden");
-    act(() => state.quickProps.setSearching(true));
-    expect(quickLaunch).toHaveTextContent("open");
+    act(() => state.boardProps.onSearch());
+    expect(state.boardProps.search.open).toBe(true);
   });
 
   it("emits the chosen appearance before hydration and tracks device changes for native widget themes", async () => {
@@ -305,23 +292,18 @@ describe("Studio main-page composition", () => {
     });
     expect(setters.setTheme).toHaveBeenLastCalledWith("dark");
   });
-  it("keeps Quick Launch shortcuts out of an open editor or an unavailable native data pair", async () => {
+  it("keeps search shortcuts out of an open editor or an unavailable native data pair", async () => {
     await mount();
     fireEvent.keyDown(document, { key: "k", ctrlKey: true });
-    expect(screen.getByTestId("quick-launch")).toHaveTextContent("open");
+    expect(state.boardProps.search.open).toBe(true);
     act(() => state.boardProps.onInteractionBlocked(true));
-    expect(screen.getByTestId("quick-launch")).toHaveTextContent("closed");
+    expect(state.boardProps.search.open).toBe(false);
     fireEvent.keyDown(document, { key: "k", ctrlKey: true });
-    expect(screen.getByTestId("quick-launch")).toHaveTextContent("closed");
-    // Native Quick Launch's optional mobile button calls its supplied setter.
-    act(() => state.quickProps.setSearching(true));
-    expect(screen.getByTestId("quick-launch")).toHaveTextContent("closed");
-    act(() => state.quickProps.setSearching((current) => !current));
-    expect(screen.getByTestId("quick-launch")).toHaveTextContent("closed");
+    expect(state.boardProps.search.open).toBe(false);
     act(() => state.boardProps.onInteractionBlocked(false));
-    expect(screen.getByTestId("quick-launch")).toHaveTextContent("closed");
+    expect(state.boardProps.search.open).toBe(false);
     fireEvent.keyDown(document, { key: "k", ctrlKey: true });
-    expect(screen.getByTestId("quick-launch")).toHaveTextContent("open");
+    expect(state.boardProps.search.open).toBe(true);
   });
   it("mounts a single board with native data and never requests raw editor state during ordinary viewing", async () => {
     await mount(
@@ -334,40 +316,22 @@ describe("Studio main-page composition", () => {
     );
     expect(screen.getByTestId("studio-board")).toBeInTheDocument();
     expect(state.boardProps.nativeData.widgets[0].type).toBe("greeting");
-    expect(new Set(state.requests)).toEqual(new Set(["/api/studio/data"]));
+    // The viewer's own preferences are the only other read.
+    expect(new Set(state.requests)).toEqual(new Set(["/api/studio/data", "/studio/api/preferences"]));
     expect(request).not.toHaveBeenCalled();
   });
-  it("keeps native Quick Launch links including nested services and supports the keyboard shortcut", async () => {
-    await mount(
-      {},
-      {
-        "/api/services": [
-          {
-            name: "A",
-            services: [],
-            groups: [
-              {
-                name: "B",
-                services: [{ name: "Link", href: "https://example.test" }, { name: "Widget only" }],
-                groups: [],
-              },
-            ],
-          },
-        ],
-        "/api/bookmarks": [
-          {
-            name: "Bookmarks",
-            bookmarks: [{ name: "Docs", href: "https://docs.example.test" }],
-          },
-        ],
-      },
-    );
-    expect(state.quickProps.servicesAndBookmarks.map((item) => item.name)).toEqual(["Docs", "Link"]);
+  it("opens search with Ctrl K, /, or by typing", async () => {
+    await mount();
+    fireEvent.keyDown(document.body, { key: "d" });
+    expect(state.boardProps.search).toMatchObject({ open: true, query: "d" });
+    act(() => state.boardProps.search.onClose());
+    expect(state.boardProps.search.open).toBe(false);
+    fireEvent.keyDown(document.body, { key: "/" });
+    expect(state.boardProps.search).toMatchObject({ open: true, query: "" });
     fireEvent.keyDown(document, { key: "k", ctrlKey: true });
-    expect(screen.getByTestId("quick-launch")).toHaveTextContent("open");
-    fireEvent.keyDown(document, { key: "k", ctrlKey: true });
-    expect(screen.getByTestId("quick-launch")).toHaveTextContent("closed");
+    expect(state.boardProps.search.open).toBe(false);
   });
+
   it("refreshes native render data and CSS after editing without replacing healthy board nodes", async () => {
     state.data = {
       settings: {},
