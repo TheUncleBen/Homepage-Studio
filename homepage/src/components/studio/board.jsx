@@ -21,7 +21,7 @@ import {
   COLUMNS,
   firstPageId,
   freePageName,
-  GAP,
+  gapOf,
   MAX_PAGES,
   mergePage,
   movePage,
@@ -442,9 +442,10 @@ export default function StudioBoard({
     () => projectBoard(!editing && width < PHONE_WIDTH ? withoutPhoneHidden(board, settings) : board, width),
     [board, width, editing, settings],
   );
+  const gap = gapOf(settings);
   const geometry = useMemo(
-    () => new Map(projection.units.map((unit) => [unit.id, pixelRect(unit.rect, width, projection.columns)])),
-    [projection, width],
+    () => new Map(projection.units.map((unit) => [unit.id, pixelRect(unit.rect, width, projection.columns, gap)])),
+    [projection, width, gap],
   );
   // Tab follows the projected layout (row, then column) without reordering
   // native hosts in the DOM.
@@ -796,7 +797,7 @@ export default function StudioBoard({
     const element = event.currentTarget;
     element?.setPointerCapture?.(event.pointerId);
     let initialProjection = projectBoard(initial, width);
-    let column = (width + GAP) / initialProjection.columns;
+    let column = (width + gap) / initialProjection.columns;
     // Dragging onto another page's tab: drop to send the widget to the end of
     // that page, or hold for a moment to open the page and place it exactly.
     let pageTarget = null;
@@ -830,11 +831,11 @@ export default function StudioBoard({
         const moved = moveToPage(wholeRef.current, id, next);
         initial = pageBoard(moved, next);
         initialProjection = projectBoard(initial, width);
-        column = (width + GAP) / initialProjection.columns;
+        column = (width + gap) / initialProjection.columns;
         unit = unitsForBoard(initial).find((item) => item.id === id);
         const bounds = canvas.current.getBoundingClientRect();
         const cellX = Math.floor(((point.x - bounds.left) / column) * (COLUMNS / initialProjection.columns));
-        const cellY = Math.max(0, Math.floor((point.y - bounds.top) / (ROW_HEIGHT + GAP)));
+        const cellY = Math.max(0, Math.floor((point.y - bounds.top) / (ROW_HEIGHT + gap)));
         initial = moveUnit(initial, id, { ...unit.rect, x: Math.max(0, cellX), y: cellY });
         unit = unitsForBoard(initial).find((item) => item.id === id);
         initialProjection = projectBoard(initial, width);
@@ -861,7 +862,7 @@ export default function StudioBoard({
         if (pageTarget) return;
       }
       const dx = Math.round((((moveEvent.clientX - start.x) / column) * COLUMNS) / initialProjection.columns);
-      const dy = Math.round((moveEvent.clientY - start.y) / (ROW_HEIGHT + GAP));
+      const dy = Math.round((moveEvent.clientY - start.y) / (ROW_HEIGHT + gap));
       const rect = clampRect(
         mode === "resize"
           ? { ...unit.rect, w: unit.rect.w + dx, h: unit.rect.h + dy }
@@ -894,7 +895,7 @@ export default function StudioBoard({
         const targetMinimum = unitMinimum(initial, other.id);
         const requiredHeight = Math.max(movingMinimum.h + 1, targetMinimum.h + (other.kind === "stack" ? 0 : 1), 3);
         if (unit.rect.h < requiredHeight || unit.rect.w < Math.max(movingMinimum.w, targetMinimum.w)) return false;
-        const pixels = pixelRect(other.rect, width, initialProjection.columns);
+        const pixels = pixelRect(other.rect, width, initialProjection.columns, gap);
         return (
           point.x > pixels.left + pixels.width * 0.2 &&
           point.x < pixels.left + pixels.width * 0.8 &&
@@ -1917,9 +1918,9 @@ export default function StudioBoard({
         onClickCapture={editing ? selectByClick : undefined}
         onPointerDown={editing ? startMarquee : undefined}
         style={{
-          height: board.panels.length ? projection.rows * (ROW_HEIGHT + GAP) + 32 : 480,
-          "--studio-grid-column": `${(width + GAP) / projection.columns}px`,
-          "--studio-grid-row": `${ROW_HEIGHT + GAP}px`,
+          height: board.panels.length ? projection.rows * (ROW_HEIGHT + gap) + 32 : 480,
+          "--studio-grid-column": `${(width + gap) / projection.columns}px`,
+          "--studio-grid-row": `${ROW_HEIGHT + gap}px`,
         }}
       >
         {moving &&

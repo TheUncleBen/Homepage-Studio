@@ -3,6 +3,12 @@
 export const COLUMNS = 24;
 export const ROW_HEIGHT = 36;
 export const GAP = 12;
+// Dashboard Appearance › Spacing: the space between widgets, in pixels.
+export const SPACING = Object.freeze({ compact: 6, default: GAP, roomy: 20 });
+export const gapOf = (settings) => {
+  const spacing = settings?.studioTheme?.spacing;
+  return typeof spacing === "string" && Object.hasOwn(SPACING, spacing) ? SPACING[spacing] : GAP;
+};
 // Narrow screens: tablets use 16 columns (cards snap to halves), phones 8.
 export const TABLET_COLUMNS = 16;
 export const PHONE_COLUMNS = 8;
@@ -319,13 +325,13 @@ export function projectBoard(board, width) {
   return projectColumns(board, width < PHONE_WIDTH ? PHONE_COLUMNS : width < 940 ? TABLET_COLUMNS : COLUMNS);
 }
 
-export function pixelRect(rect, width, columns = COLUMNS) {
-  const column = (width + GAP) / columns;
+export function pixelRect(rect, width, columns = COLUMNS, gap = GAP) {
+  const column = (width + gap) / columns;
   return {
     left: rect.x * column,
-    top: rect.y * (ROW_HEIGHT + GAP),
-    width: Math.max(0, rect.w * column - GAP),
-    height: rect.h * (ROW_HEIGHT + GAP) - GAP,
+    top: rect.y * (ROW_HEIGHT + gap),
+    width: Math.max(0, rect.w * column - gap),
+    height: rect.h * (ROW_HEIGHT + gap) - gap,
   };
 }
 

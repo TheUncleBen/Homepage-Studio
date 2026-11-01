@@ -466,3 +466,13 @@ describe("Snap guides", () => {
     expect(snapGuides(rects, "missing")).toEqual([]);
   });
 });
+
+describe("spacing", () => {
+  it("uses the dashboard's spacing between widgets", async () => {
+    const { gapOf, pixelRect } = await import("./geometry.mjs");
+    expect(gapOf({})).toBe(12);
+    expect(gapOf({ studioTheme: { spacing: "roomy" } })).toBe(20);
+    expect(gapOf({ studioTheme: { spacing: "toString" } })).toBe(12);
+    expect(pixelRect({ x: 0, y: 1, w: 2, h: 2 }, 234, 24, 6)).toEqual({ left: 0, top: 42, width: 14, height: 78 });
+  });
+});

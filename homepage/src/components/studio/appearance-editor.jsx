@@ -11,6 +11,7 @@ import {
   hexColor,
 } from "./appearance.mjs";
 import { BackgroundField, familyOf, FILL_FAMILIES } from "./background-picker";
+import { SPACING } from "./geometry.mjs";
 import LogoEditor from "./logo-editor";
 import { BUILT_IN_LOOK, readLook, setOverride } from "./look.mjs";
 import { Group, Row, Segmented, Switch } from "./ui";
@@ -269,6 +270,20 @@ export default function AppearanceEditor({ settings, platform, logo, onLogoChang
                   ["square", "Square"],
                   ["default", "Default"],
                   ["round", "Round"],
+                ]}
+              />
+            </Row>
+            <Row label="Spacing" info="The space between widgets.">
+              <Segmented
+                label="Spacing"
+                value={
+                  Object.hasOwn(SPACING, settings.studioTheme?.spacing ?? "") ? settings.studioTheme.spacing : "default"
+                }
+                onChange={(value) => change({ spacing: value === "default" ? undefined : value })}
+                options={[
+                  ["compact", "Compact"],
+                  ["default", "Default"],
+                  ["roomy", "Roomy"],
                 ]}
               />
             </Row>
