@@ -36,7 +36,9 @@ import {
   projectBoard,
   removePage,
   ROW_HEIGHT,
+  snapGuides,
   stackBoard,
+  tidyBoard,
   unitMinimum,
   unitsForBoard,
   updatePage,
@@ -1763,6 +1765,17 @@ export default function StudioBoard({
               Widgets
             </button>
           )}
+          <button
+            className="studio-button studio-quiet"
+            disabled={controlsDisabled || tidyBoard(board) === board}
+            title="Close the gaps on this page. Each widget slides straight up."
+            onClick={() => {
+              if (changeBoard(tidyBoard(boardRef.current))) showToast("Tidied up", true);
+            }}
+          >
+            <StudioIcon name="grid" size={16} />
+            Tidy up
+          </button>
           <span className="studio-toolbar-spacer" />
           <span className="studio-muted">{dirty ? "Unsaved arrangement" : ""}</span>
           <button
@@ -1907,6 +1920,19 @@ export default function StudioBoard({
           "--studio-grid-row": `${ROW_HEIGHT + GAP}px`,
         }}
       >
+        {moving &&
+          snapGuides(geometry, moving).map((line) => (
+            <div
+              key={`${line.vertical ? "v" : "h"}${line.at}`}
+              className="studio-snap-guide"
+              aria-hidden="true"
+              style={
+                line.vertical
+                  ? { left: line.at - 0.5, top: line.from, width: 1, height: line.to - line.from }
+                  : { top: line.at - 0.5, left: line.from, height: 1, width: line.to - line.from }
+              }
+            />
+          ))}
         {marquee && (
           <div
             className="studio-marquee"
@@ -2233,7 +2259,12 @@ export default function StudioBoard({
                   onClose={closeModal}
                 />
               ) : modal.type === "bulkLook" ? (
-                <BulkLookEditor panels={selectedPanels()} onApply={bulkLook} onCancel={closeModal} />
+                <BulkLookEditor
+                  panels={selectedPanels()}
+                  savedLooks={wholeBoard.looks}
+                  onApply={bulkLook}
+                  onCancel={closeModal}
+                />
               ) : modal.type === "bulkSize" ? (
                 <BulkSizeEditor
                   units={unitsForBoard(board).filter((unit) => selection.includes(unit.id))}

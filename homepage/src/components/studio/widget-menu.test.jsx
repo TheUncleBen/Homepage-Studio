@@ -227,3 +227,17 @@ describe("Several widgets at once", () => {
     expect(writes.at(-1).body.ids.sort()).toEqual(["clock", "weather"]);
   });
 });
+
+describe("Tidy up", () => {
+  it("closes gaps on the page in one undoable step, and is off when there are none", async () => {
+    const gappy = structuredClone(twoPages);
+    gappy.panels[1].rect = { x: 8, y: 9, w: 8, h: 6 };
+    const { writes } = await mount({ board: gappy, mode: "edit" });
+    fireEvent.click(screen.getByRole("button", { name: "Tidy up" }));
+    expect(await screen.findByText("Tidied up")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tidy up" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save arrangement" }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0].body.board.panels.find((item) => item.id === "weather").rect.y).toBe(0);
+  });
+});

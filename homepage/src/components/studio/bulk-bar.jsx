@@ -52,7 +52,7 @@ export function applyChanges(panels, { look = {}, behaviour = {} }, inherited) {
 // Look and behaviour for several widgets at once. Only the sections every
 // selected widget has are shown; a row where they differ says "Mixed" until
 // a value is picked, and only what was changed is applied.
-export function BulkLookEditor({ panels, onApply, onCancel }) {
+export function BulkLookEditor({ panels, savedLooks, onApply, onCancel }) {
   const settings = useContext(SettingsContext)?.settings;
   const inheritedLook = resolvedLook(settings, null);
   const inheritedBehaviour = resolvedBehaviour(settings, null);
@@ -76,6 +76,7 @@ export function BulkLookEditor({ panels, onApply, onCancel }) {
           behaviour={behaviour}
           inheritedLook={inheritedLook}
           inheritedBehaviour={inheritedBehaviour}
+          savedLooks={savedLooks}
           onLook={(next) =>
             setChanges((current) => ({
               ...current,

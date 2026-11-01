@@ -89,6 +89,61 @@ function applyRectangles(board, rectangles) {
   return changed ? { ...board, panels, stacks } : board;
 }
 
+// Snap guides: while a widget moves, the edges it shares with other widgets
+// (left, right, top or bottom, in pixels) as lines spanning both.
+export function snapGuides(rects, movingId) {
+  const moving = rects.get(movingId);
+  if (!moving) return [];
+  const edges = (rect) => ({
+    left: rect.left,
+    right: rect.left + rect.width,
+    top: rect.top,
+    bottom: rect.top + rect.height,
+  });
+  const m = edges(moving);
+  const lines = new Map();
+  const near = (a, b) => Math.abs(a - b) < 1;
+  for (const [id, rect] of rects) {
+    if (id === movingId || rect.display === "none") continue;
+    const o = edges(rect);
+    for (const side of ["left", "right"])
+      for (const other of ["left", "right"])
+        if (near(m[side], o[other])) {
+          const key = `v${Math.round(m[side])}`;
+          const line = lines.get(key) || { vertical: true, at: m[side], from: m.top, to: m.bottom };
+          lines.set(key, { ...line, from: Math.min(line.from, o.top), to: Math.max(line.to, o.bottom) });
+        }
+    for (const side of ["top", "bottom"])
+      for (const other of ["top", "bottom"])
+        if (near(m[side], o[other])) {
+          const key = `h${Math.round(m[side])}`;
+          const line = lines.get(key) || { vertical: false, at: m[side], from: m.left, to: m.right };
+          lines.set(key, { ...line, from: Math.min(line.from, o.left), to: Math.max(line.to, o.right) });
+        }
+  }
+  return [...lines.values()];
+}
+
+// Tidy up: every widget slides straight up into the free space above it, in
+// reading order, so gaps close and nothing changes column or overlaps.
+export function tidyBoard(board) {
+  const placed = [];
+  const rectangles = new Map();
+  for (const unit of unitsForBoard(board).sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)) {
+    let rect = { ...unit.rect, y: 0 };
+    let collisions = placed.filter((other) => intersects(rect, other));
+    while (collisions.length) {
+      rect = { ...rect, y: Math.max(...collisions.map((other) => other.y + other.h)) };
+      collisions = placed.filter((other) => intersects(rect, other));
+    }
+    // Never further down than it was.
+    if (rect.y > unit.rect.y) rect = { ...unit.rect };
+    placed.push(rect);
+    rectangles.set(unit.id, rect);
+  }
+  return applyRectangles(board, rectangles);
+}
+
 export function moveUnit(board, id, rect) {
   const units = unitsForBoard(board);
   const moved = units.find((unit) => unit.id === id);

@@ -50,3 +50,18 @@ test('new content lands on the requested page in its first free spot', () => {
   assert.deepEqual(onHome.panels.find(p => p.id === 'n').rect, { x: 0, y: 0, w: 6, h: 2 });
   assert.equal(reconcileBoard([source('a'), source('n')], previous, { pageId: 'gone' }).panels[1].pageId, 'home');
 });
+
+test('saved looks are named, unique, look-only, and kept through reconcile and saves', () => {
+  const looks = [{ id: 'night', name: ' Night ', look: { fill: 'solid', colour: '#336699', corners: 'round' } }];
+  const board = validateStoredBoard(base([{ ...source('a'), rect: { x: 0, y: 0, w: 8, h: 6 } }], { looks }));
+  assert.deepEqual(board.looks, [{ id: 'night', name: 'Night', look: { fill: 'solid', colour: '#336699', corners: 'round' } }]);
+  // None saved: no key at all (Rule 2).
+  assert.equal('looks' in validateStoredBoard(base([])), false);
+  assert.throws(() => validateStoredBoard(base([], { looks: [...looks, { id: 'b', name: 'night', look: { edge: 'none' } }] })), /already a saved look/);
+  assert.throws(() => validateStoredBoard(base([], { looks: [{ id: 'b', name: 'Empty', look: {} }] })), /needs look settings/);
+  assert.throws(() => validateStoredBoard(base([], { looks: [{ id: 'b', name: 'V', look: { values: [] } }] })), /no widget values/);
+  assert.throws(() => validateStoredBoard(base([], { looks: [{ id: 'b', name: 'Bad', look: { fill: 'neon' } }] })), /offered choices/);
+  assert.throws(() => validateStoredBoard(base([], { looks: Array.from({ length: 31 }, (_, i) => ({ id: `l${i}`, name: `L${i}`, look: { edge: 'none' } })) })), /at most 30/);
+  assert.deepEqual(reconcileBoard([source('a')], board).looks, board.looks);
+  assert.deepEqual(validateBoardChange(board, [source('a')]).looks, board.looks);
+});

@@ -3771,3 +3771,70 @@ a.studio-card-identity:hover .studio-card-name strong {
     pointer-events: none;
   }
 }
+.studio-snap-guide {
+  position: absolute;
+  z-index: 29;
+  background: var(--studio-accent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* ---- Saved looks --------------------------------------------------------- */
+.studio-saved-looks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.studio-saved-look {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--studio-line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.studio-chip {
+  min-height: 30px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--studio-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.studio-chip[aria-pressed="true"] {
+  background: var(--studio-accent-soft);
+  font-weight: 600;
+}
+.studio-chip-add {
+  border: 1px dashed var(--studio-line-strong, var(--studio-line));
+  color: var(--studio-muted);
+}
+.studio-chip:hover,
+.studio-chip:focus-visible,
+.studio-chip-remove:hover,
+.studio-chip-remove:focus-visible {
+  background: color-mix(in srgb, var(--studio-text) 9%, transparent);
+}
+.studio-chip-remove {
+  min-width: 28px;
+  min-height: 30px;
+  border: 0;
+  border-left: 1px solid var(--studio-line);
+  background: transparent;
+  color: var(--studio-muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+.studio-saved-look-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.studio-saved-look-name input {
+  flex: 1 1 160px;
+  min-width: 0;
+}

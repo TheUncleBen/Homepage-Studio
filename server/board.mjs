@@ -98,6 +98,25 @@ function lookOf(value, label) {
   }
 }
 
+// Saved looks: a named look (layout, fill, colours, edges…) to reuse on
+// other widgets. Never a widget's own value arrangement.
+export const MAX_SAVED_LOOKS = 30;
+export function validateSavedLooks(value) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > MAX_SAVED_LOOKS) fail(`Keep at most ${MAX_SAVED_LOOKS} saved looks.`);
+  const ids = new Set(), names = new Set();
+  return value.map((entry) => {
+    if (!object(entry) || !idOK(entry.id) || ids.has(entry.id)) fail('Each saved look needs a unique identity.');
+    const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+    if (!name || name.length > 40 || /[\u0000-\u001f]/.test(name)) fail('Name a saved look with 1 to 40 characters.');
+    if (names.has(name.toLocaleLowerCase())) fail(`There is already a saved look called “${name}”.`);
+    ids.add(entry.id); names.add(name.toLocaleLowerCase());
+    const { look } = lookOf({ look: entry.look }, `Saved look “${name}”`);
+    if (!look || look.values) fail(`Saved look “${name}” needs look settings and no widget values.`);
+    return { id: entry.id, name, look };
+  });
+}
+
 export function validatePages(value) {
   if (value == null) return [{ ...DEFAULT_PAGE }];
   if (!Array.isArray(value) || value.length < 1 || value.length > MAX_PAGES) fail(`A dashboard has 1 to ${MAX_PAGES} pages.`);
@@ -160,7 +179,8 @@ export function validateStoredBoard(value) {
   });
   // A stacked panel lives on its stack's page.
   for (const stack of stacks) for (const id of stack.panelIds) panels.find((p) => p.id === id).pageId = stack.pageId;
-  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages, panels, stacks };
+  const looks = validateSavedLooks(value.looks);
+  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages, panels, stacks, ...(looks.length ? { looks } : {}) };
 }
 
 export function intersects(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
@@ -329,7 +349,7 @@ export function reconcileBoard(sources, previous, { pageId } = {}) {
     const others = [...stacks.filter((s) => s.pageId === old.pageId).map((s) => s.rect), ...panels.filter((p) => p.id !== panel.id && !stacked.has(p.id) && p.pageId === old.pageId).map((p) => p.rect)];
     panel.rect = others.some((r) => intersects(old.rect, r)) ? nextPosition(old.rect, others) : { ...old.rect };
   }
-  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages, panels, stacks };
+  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages, panels, stacks, ...(previous.looks ? { looks: previous.looks } : {}) };
 }
 
 export function validateBoardChange(input, sources) {
@@ -347,5 +367,5 @@ export function validateBoardChange(input, sources) {
   const stacked = new Set(value.stacks.flatMap((s) => s.panelIds));
   const units = [...value.stacks.map((s) => ({ id: s.id, rect: s.rect, pageId: s.pageId })), ...panels.filter((p) => !stacked.has(p.id)).map((p) => ({ id: p.id, rect: p.rect, pageId: p.pageId }))];
   for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) if (units[i].pageId === units[j].pageId && intersects(units[i].rect, units[j].rect)) fail('Dashboard panels overlap. Move the selected panel to a free grid position.');
-  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages: value.pages, panels, stacks: value.stacks };
+  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages: value.pages, panels, stacks: value.stacks, ...(value.looks ? { looks: value.looks } : {}) };
 }

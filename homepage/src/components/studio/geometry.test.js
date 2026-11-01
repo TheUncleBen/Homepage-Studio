@@ -430,3 +430,39 @@ describe("Studio grid geometry", () => {
     expect(mergePage(whole, whole)).toBe(whole);
   });
 });
+
+describe("Tidy up", () => {
+  it("slides every widget straight up into free space, in reading order", async () => {
+    const { tidyBoard } = await import("./geometry.mjs");
+    const board = {
+      pages: [{ id: "home", name: "Home" }],
+      panels: [
+        { id: "a", rect: { x: 0, y: 4, w: 6, h: 2 } },
+        { id: "b", rect: { x: 6, y: 0, w: 6, h: 3 } },
+        { id: "c", rect: { x: 0, y: 9, w: 12, h: 2 } },
+      ],
+      stacks: [],
+    };
+    const tidy = tidyBoard(board);
+    expect(Object.fromEntries(tidy.panels.map((panel) => [panel.id, panel.rect.y]))).toEqual({ a: 0, b: 0, c: 3 });
+    // A tidy page stays as it is.
+    expect(tidyBoard(tidy)).toBe(tidy);
+  });
+});
+
+describe("Snap guides", () => {
+  it("draws a line along each edge the moving widget shares with another", async () => {
+    const { snapGuides } = await import("./geometry.mjs");
+    const rects = new Map([
+      ["moving", { left: 100, top: 200, width: 100, height: 50 }],
+      ["above", { left: 100, top: 0, width: 300, height: 40 }],
+      ["beside", { left: 300, top: 200, width: 100, height: 80 }],
+      ["apart", { left: 500, top: 500, width: 10, height: 10 }],
+    ]);
+    const lines = snapGuides(rects, "moving");
+    expect(lines).toContainEqual({ vertical: true, at: 100, from: 0, to: 250 });
+    expect(lines).toContainEqual({ vertical: false, at: 200, from: 100, to: 400 });
+    expect(lines).toHaveLength(2);
+    expect(snapGuides(rects, "missing")).toEqual([]);
+  });
+});

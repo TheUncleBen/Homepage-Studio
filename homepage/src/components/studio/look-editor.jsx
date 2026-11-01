@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import { BackgroundAdjust, BackgroundGrid, familyOf, FILL_FAMILIES } from "./background-picker";
 import { useCardTheme } from "./card-look";
@@ -34,6 +34,100 @@ export function sharedSections(kinds) {
 
 function MixedNote({ value }) {
   return value === MIXED ? <span className="studio-mixed-note">Mixed</span> : null;
+}
+
+const newLookId = () =>
+  globalThis.crypto?.randomUUID?.() || `look-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const lookOnly = (look = {}) => {
+  const { values: _values, ...rest } = look;
+  return rest;
+};
+const sameLook = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+
+// Named looks to reuse on other widgets: pick one to apply it, or save this
+// widget's look under a name. Only shown when there is something to pick or
+// something to save.
+function SavedLooks({ saved = [], look, onApply, onChange }) {
+  const [naming, setNaming] = useState(null);
+  const current = lookOnly(look);
+  const canSave =
+    Boolean(onChange) && Object.keys(current).length > 0 && !saved.some((entry) => sameLook(entry.look, current));
+  if (!saved.length && !canSave) return null;
+  const name = (naming ?? "").trim();
+  const taken = saved.some((entry) => entry.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+  const save = () => {
+    if (!name || taken || name.length > 40) return;
+    const id = newLookId();
+    onChange([...saved, { id, name, look: current }]);
+    setNaming(null);
+  };
+  return (
+    <Row
+      label="Saved looks"
+      stacked
+      info="Name this look to reuse it on other widgets. Picking one replaces the look, not the widget's values."
+    >
+      <div className="studio-saved-looks">
+        {saved.map((entry) => (
+          <span key={entry.id} className="studio-saved-look">
+            <button
+              type="button"
+              className="studio-chip"
+              aria-pressed={sameLook(entry.look, current)}
+              onClick={() => onApply(entry.look)}
+            >
+              {entry.name}
+            </button>
+            {onChange && (
+              <button
+                type="button"
+                className="studio-chip-remove"
+                aria-label={`Forget saved look ${entry.name}`}
+                title="Forget this saved look"
+                onClick={() => onChange(saved.filter((item) => item.id !== entry.id))}
+              >
+                ×
+              </button>
+            )}
+          </span>
+        ))}
+        {canSave && naming === null && (
+          <button type="button" className="studio-chip studio-chip-add" onClick={() => setNaming("")}>
+            + Save this look
+          </button>
+        )}
+      </div>
+      {naming !== null && (
+        <div className="studio-saved-look-name">
+          <input
+            aria-label="Name for this look"
+            placeholder="For example Night"
+            maxLength={40}
+            value={naming}
+            autoFocus
+            onChange={(event) => setNaming(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                save();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setNaming(null);
+              }
+            }}
+          />
+          <button type="button" className="studio-button studio-quiet" onClick={() => setNaming(null)}>
+            Cancel
+          </button>
+          <button type="button" className="studio-button studio-primary" disabled={!name || taken} onClick={save}>
+            Save
+          </button>
+          {taken && <span className="studio-field-error">That name is taken.</span>}
+        </div>
+      )}
+    </Row>
+  );
 }
 
 // A row that only exists for the choice above it, drawn indented under it.
@@ -193,6 +287,8 @@ export default function LookEditor({
   onPage,
   part = "all",
   sections,
+  savedLooks,
+  onSavedLooks,
 }) {
   const show = sections || lookSections(kind);
   // The dialog puts Look and Status above the widget's own settings, and
@@ -222,6 +318,12 @@ export default function LookEditor({
     <div className="studio-look-editor">
       {top && (
         <Group title="Look">
+          <SavedLooks
+            saved={savedLooks}
+            look={look}
+            onChange={onSavedLooks}
+            onApply={(saved) => onLook({ ...saved, ...(look.values !== undefined ? { values: look.values } : {}) })}
+          />
           {show.values && (
             <>
               <Choice

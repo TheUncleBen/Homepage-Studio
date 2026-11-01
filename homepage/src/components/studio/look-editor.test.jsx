@@ -217,3 +217,34 @@ describe("uploaded backgrounds", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("saved looks", () => {
+  it("is offered only when there is a look to save or one to pick", () => {
+    renderEditor({ look: {}, savedLooks: [], onSavedLooks: vi.fn() });
+    expect(screen.queryByText("Saved looks")).toBeNull();
+  });
+
+  it("names this widget's look without its values, and applies a saved look keeping them", () => {
+    const onSavedLooks = vi.fn();
+    const values = [{ field: "users", hero: true }];
+    const { onLook } = renderEditor({
+      look: { fill: "solid", corners: "round", values },
+      savedLooks: [{ id: "n", name: "Night", look: { edge: "none" } }],
+      onSavedLooks,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "+ Save this look" }));
+    const input = screen.getByRole("textbox", { name: "Name for this look" });
+    fireEvent.change(input, { target: { value: "night" } });
+    expect(screen.getByText("That name is taken.")).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "Bold" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSavedLooks).toHaveBeenCalledWith([
+      { id: "n", name: "Night", look: { edge: "none" } },
+      expect.objectContaining({ name: "Bold", look: { fill: "solid", corners: "round" } }),
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Night" }));
+    expect(onLook).toHaveBeenCalledWith({ edge: "none", values });
+    fireEvent.click(screen.getByRole("button", { name: "Forget saved look Night" }));
+    expect(onSavedLooks).toHaveBeenLastCalledWith([]);
+  });
+});

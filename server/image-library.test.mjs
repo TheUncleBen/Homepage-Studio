@@ -52,11 +52,11 @@ test('image usage lists every widget, page, default and file that uses an image'
   const id = 'a'.repeat(24);
   const ref = { source: 'library', id };
   const usedIn = imageUsage(id, {
-    board: { panels: [{ id: 'p', title: 'Jellyfin', look: { background: ref } }, { id: 'q', look: {} }], pages: [{ id: 'm', name: 'Media', background: ref }, { id: 'n', name: 'Films', icon: `/studio/api/images/${id}` }] },
+    board: { panels: [{ id: 'p', title: 'Jellyfin', look: { background: ref } }, { id: 'q', look: {} }], pages: [{ id: 'm', name: 'Media', background: ref }, { id: 'n', name: 'Films', icon: `/studio/api/images/${id}` }], looks: [{ id: 'l', name: 'Night', look: { fill: 'picture', background: ref } }] },
     settings: { studioTheme: { card: { background: ref }, pageBackground: ref } },
     files: { 'services.yaml': `icon: /studio/api/images/${id}`, 'bookmarks.yaml': '' },
   });
-  assert.deepEqual(usedIn.map(place => place.name), ['Jellyfin', 'Media', 'Films icon', 'Card background', 'Page background', 'services.yaml']);
+  assert.deepEqual(usedIn.map(place => place.name), ['Jellyfin', 'Saved look “Night”', 'Media', 'Films icon', 'Card background', 'Page background', 'services.yaml']);
   assert.deepEqual(imageUsage('b'.repeat(24), { board: {}, settings: {} }), []);
 });
 

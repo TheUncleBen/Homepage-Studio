@@ -225,14 +225,17 @@ export default function ContentEditor({
   const [look, setLook] = useState(boardPanel?.look);
   const [behaviour, setBehaviour] = useState(boardPanel?.behaviour);
   const [page, setPage] = useState(initialPage);
+  const [savedLooks, setSavedLooks] = useState(wholeBoard?.looks || []);
   const lookChanged =
     Boolean(boardPanel) &&
     (JSON.stringify(look ?? null) !== JSON.stringify(boardPanel.look ?? null) ||
       JSON.stringify(behaviour ?? null) !== JSON.stringify(boardPanel.behaviour ?? null) ||
-      page !== initialPage);
+      page !== initialPage ||
+      JSON.stringify(savedLooks) !== JSON.stringify(wholeBoard.looks || []));
   const nextBoard = () => {
     let next = {
       ...wholeBoard,
+      ...(savedLooks.length ? { looks: savedLooks } : { looks: undefined }),
       panels: wholeBoard.panels.map((item) => {
         if (item.id !== boardPanel.id) return item;
         const { look: _look, behaviour: _behaviour, ...rest } = item;
@@ -315,6 +318,8 @@ export default function ContentEditor({
         onLook: setLook,
         onBehaviour: setBehaviour,
         onPage: stacked ? undefined : setPage,
+        savedLooks,
+        onSavedLooks: setSavedLooks,
       }
     : null;
   const changedGroup = source?.group === group ? source?.groupPath || group : group;
