@@ -2054,8 +2054,14 @@
         drawPreview(item.target, item.target.previewEntry);
       }
     }, { rootMargin: '800px 0px' }) : null;
+    // The scale is set in the next frame, and only when it changes: setting
+    // it inside the observer can resize the row it observes, which browsers
+    // report as a ResizeObserver loop error (WebKit does).
     const previewSizer = 'ResizeObserver' in window ? new ResizeObserver(entries => {
-      for (const item of entries) item.target.style.setProperty('--preview-scale', String(item.contentRect.width / PREVIEW_WIDTH));
+      const scales = entries.map(item => [item.target, String(item.contentRect.width / PREVIEW_WIDTH)]);
+      requestAnimationFrame(() => {
+        for (const [target, scale] of scales) if (target.style.getPropertyValue('--preview-scale') !== scale) target.style.setProperty('--preview-scale', scale);
+      });
     }) : null;
     function preview(entry) {
       const holder = h('div', { class: 'preview', 'aria-hidden': 'true' }, h('span', { class: 'preview-placeholder' }, avatar(entry.name)));
