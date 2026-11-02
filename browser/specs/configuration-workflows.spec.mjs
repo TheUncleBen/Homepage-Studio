@@ -16,7 +16,7 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
     '',
   ].join('\n'));
   await dialog.getByRole('radio', { name: 'Options', exact: true }).click();
-  await dialog.getByLabel(/^Dashboard title/).fill('Configured through settings');
+  await dialog.getByLabel('Tab title', { exact: true }).fill('Configured through settings');
   await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
   // Saved settings return to the Dashboards page.
   await page.waitForURL(`**${DASHBOARDS}`);
@@ -114,11 +114,11 @@ test('concurrent file and arrangement saves retain the local draft until explici
   await openEditor(page);
   await page.getByRole('button', { name: /^Move Conflict fixture\. Use arrow keys/ }).press('ArrowDown');
   const tile = page.locator('[data-panel-kind="service"][aria-label="Conflict fixture"]');
-  await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(88);
+  await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(48); // One row: 36 px plus the 12 px gap.
   const externalAgain = await saveFiles(request, { settingsYaml: 'title: A second concurrent change\n' });
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.locator('.studio-error[role="alert"]')).toContainText('Another change was saved');
-  await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(88);
+  await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(48);
   expect((await studioApi(request, '/dashboard/studio/api/board')).revision).toBe(externalAgain.revision);
   await page.getByRole('button', { name: 'Reload current configuration', exact: true }).click();
   await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(0);

@@ -1,4 +1,4 @@
-import { expect, finishArrangement, mouseDrag, openEditor, setPanelSize, studioApi, test } from '../helpers/dashboard.mjs';
+import { expect, finishArrangement, mouseDrag, openEditor, setPanelSize, stackSelected, studioApi, test } from '../helpers/dashboard.mjs';
 import { activePanel, carousel, expectPageFits } from '../helpers/engineering.mjs';
 import { installDenseResponses, installEmbeddedDocument, seedDenseContent, seedEmbeddedContent } from '../helpers/native-fixtures.mjs';
 
@@ -136,7 +136,7 @@ test('an actual native iframe keeps its document and controls through move, resi
   const stackBoth = async () => {
     await page.getByRole('checkbox', { name: `Select ${source.title}`, exact: true }).check();
     await page.getByRole('checkbox', { name: 'Select Stack companion', exact: true }).check();
-    await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
+    await stackSelected(page);
   };
   await stackBoth();
   await expect(carousel(page)).toHaveCount(1);

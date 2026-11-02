@@ -8,6 +8,9 @@ import { Group, Row } from "./ui";
 
 import { SettingsContext } from "utils/contexts/settings";
 
+// "1 widget", "3 widgets".
+export const widgetCount = (count) => `${count} widget${count === 1 ? "" : "s"}`;
+
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // What several widgets have in common: a setting they share shows its value,
@@ -102,7 +105,7 @@ export function BulkLookEditor({ panels, savedLooks, onApply, onCancel }) {
           disabled={!count}
           onClick={() => onApply(changes, { look: inheritedLook, behaviour: inheritedBehaviour })}
         >
-          Apply to {panels.length} widgets
+          Apply to {widgetCount(panels.length)}
         </button>
       </footer>
     </>
@@ -171,7 +174,7 @@ export function BulkSizeEditor({ units, onApply, onCancel }) {
           disabled={!valid || !changed}
           onClick={() => onApply({ w: width, h: height })}
         >
-          Apply to {units.length} widgets
+          Apply to {widgetCount(units.length)}
         </button>
       </footer>
     </>
@@ -191,7 +194,7 @@ export function DeleteWidgetsConfirm({ count, discovered, onDelete, onCancel, pe
           Keep them
         </button>
         <button type="button" className="studio-button studio-danger" disabled={pending} onClick={onDelete}>
-          Delete {count} widgets
+          Delete {widgetCount(count)}
         </button>
       </div>
     </div>

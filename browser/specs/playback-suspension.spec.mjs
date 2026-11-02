@@ -1,7 +1,7 @@
 import { expect, studioApi, test } from '../helpers/dashboard.mjs';
 import { activePanel, carousel, seedPlayback } from '../helpers/engineering.mjs';
 
-test('native content focus, offscreen position and Quick Launch suspend the remaining visible playback time', async ({ page, request }) => {
+test('native content focus, offscreen position and Search suspend the remaining visible playback time', async ({ page, request }) => {
   await seedPlayback(request);
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
   await page.goto('/dashboard');
@@ -41,14 +41,14 @@ test('native content focus, offscreen position and Quick Launch suspend the rema
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', firstId);
 
   await page.clock.fastForward(500);
-  await page.getByRole('button', { name: 'Quick Launch', exact: true }).click();
-  const quickLaunch = page.locator('.studio-quicklaunch input');
-  await expect(quickLaunch).toBeVisible();
+  await page.getByRole('navigation', { name: 'Studio', exact: true }).getByRole('button', { name: 'Search', exact: true }).click();
+  const find = page.getByRole('combobox', { name: 'Search this dashboard and the web', exact: true });
+  await expect(find).toBeVisible();
   await expect(stack.locator('.studio-playback-status')).toHaveText('Waiting');
   await page.clock.fastForward(60000);
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', firstId);
   await page.keyboard.press('Escape');
-  await expect(quickLaunch).not.toBeVisible();
+  await expect(find).not.toBeVisible();
   await stack.scrollIntoViewIfNeeded();
   await expect(stack.locator('.studio-playback-status')).toHaveText('Playing');
   await page.clock.fastForward(1499);

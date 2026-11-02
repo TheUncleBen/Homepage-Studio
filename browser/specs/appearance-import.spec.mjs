@@ -16,7 +16,8 @@ test('appearance persists, follows device changes and preserves native state and
   });
   await page.emulateMedia({ colorScheme: 'light' });
   let dialog = await openSettings(page);
-  await dialog.getByRole('radiogroup', { name: 'Display mode', exact: true }).getByRole('radio', { name: 'Auto', exact: true }).click();
+  // Follow device is the default mode, so the dashboard stores no mode.
+  await expect(dialog.getByRole('radiogroup', { name: 'Display mode', exact: true }).getByRole('radio', { name: 'Follow device', exact: true })).toHaveAttribute('aria-checked', 'true');
   // The accent follows the platform until the dashboard chooses its own.
   await dialog.getByRole('group', { name: 'Accent', exact: true }).getByRole('button', { name: 'Ocean', exact: true }).click();
   await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
@@ -24,16 +25,16 @@ test('appearance persists, follows device changes and preserves native state and
   const search = page.locator('[data-panel-kind="informationWidget"]').getByRole('combobox');
   await expect(search).toBeVisible();
   await expect(page.locator('html')).toHaveClass(/light/);
-  await expect.poll(() => token(page, '--studio-bg')).toBe('#f4f3f6');
+  await expect.poll(() => token(page, '--studio-bg')).toBe('#f3f1ec');
   const saved = await studioApi(request, '/dashboard/studio/api/state');
-  expect(saved.settingsConfig).toMatchObject({ title: 'Appearance fixture', 'x-retained': null, studioTheme: { mode: 'system', accent: '#81a8c8' } });
+  expect(saved.settingsConfig).toMatchObject({ title: 'Appearance fixture', 'x-retained': null, studioTheme: { accent: '#81a8c8' } });
   // Following the device needs no reload: the same input keeps its query.
   await search.fill('A native query that survives theme changes');
   const originalInput = await search.elementHandle();
   const history = await studioApi(request, '/dashboard/studio/api/backups');
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveClass(/dark/);
-  await expect.poll(() => token(page, '--studio-bg')).toBe('#111115');
+  await expect.poll(() => token(page, '--studio-bg')).toBe('#121314');
   expect(await studioApi(request, '/dashboard/studio/api/backups')).toEqual(history);
   await expect(search).toHaveValue('A native query that survives theme changes');
   expect(await search.evaluate((node, before) => node === before, originalInput)).toBe(true);
@@ -50,7 +51,7 @@ test('appearance persists, follows device changes and preserves native state and
   // the order of the head elements.
   await backToLive(page);
   await expect.poll(() => token(page, '--studio-accent')).toBe('#c1b6cc');
-  expect((await studioApi(request, '/dashboard/studio/api/state')).settingsConfig.studioTheme).toEqual({ mode: 'system', accent: '#91b09e' });
+  expect((await studioApi(request, '/dashboard/studio/api/state')).settingsConfig.studioTheme).toEqual({ accent: '#91b09e' });
 });
 
 test('a downloaded dashboard imports only after confirmation and restores exact native files, identities and stacks', { tag: '@cross-engine' }, async ({ page, request }) => {

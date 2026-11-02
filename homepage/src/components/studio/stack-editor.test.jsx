@@ -5,6 +5,40 @@ import { describe, expect, it, vi } from "vitest";
 import StackEditor, { PositionEditor } from "./stack-editor";
 
 describe("Stack playback editor", () => {
+  it("explains a resize when stacking widgets that already share a size", () => {
+    const panel = (id, h) => ({
+      id,
+      kind: "informationWidget",
+      title: id,
+      group: "",
+      nativeLocator: { type: "greeting" },
+      rect: { x: 0, y: 0, w: 5, h },
+    });
+    const stack = {
+      id: "stack",
+      panelIds: ["a", "b"],
+      rect: { x: 0, y: 0, w: 5, h: 5 },
+      playback: {
+        mode: "manual",
+        intervalMs: 10000,
+        manualHoldMs: 30000,
+        transition: "horizontal",
+        transitionDurationMs: 250,
+        loop: true,
+      },
+    };
+    const callbacks = { onApply: vi.fn(), onClose: vi.fn(), onPanelEdit: vi.fn() };
+    const same = { version: 3, panels: [panel("a", 3), panel("b", 3)], stacks: [] };
+    const { unmount } = render(<StackEditor stack={stack} board={same} fitting {...callbacks} />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "A stack needs room for its controls, so these widgets will be 5 × 5.",
+    );
+    unmount();
+    const mixed = { version: 3, panels: [panel("a", 3), panel("b", 4)], stacks: [] };
+    render(<StackEditor stack={stack} board={mixed} fitting {...callbacks} />);
+    expect(screen.getByRole("status")).toHaveTextContent("These widgets have different sizes. They will all be 5 × 5.");
+  });
+
   it("applies and reopens the selected manual delay without shortening a longer normal interval", () => {
     const stack = {
       id: "stack",

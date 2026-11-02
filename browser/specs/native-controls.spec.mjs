@@ -1,6 +1,6 @@
 import {
   addBookmark, addInformation, chooseContent, DASHBOARDS, expect, finishArrangement,
-  mouseDrag, openEditor, origin, panelPixels, seedServicePanels, setPanelSize,
+  mouseDrag, openEditor, origin, panelPixels, seedServicePanels, setPanelSize, stackSelected,
   studioApi, test, touchSession,
 } from '../helpers/dashboard.mjs';
 import { playback, seedNative, seedPlayback } from '../helpers/engineering.mjs';
@@ -11,8 +11,8 @@ const servicePanel = (page, title) => page.locator(`[data-panel-kind="service"][
 
 test('pointer placement and resize persist independently; Escape cancels an active drag', { tag: '@cross-engine' }, async ({ page, request }) => {
   await seedServicePanels(request, [
-    { name: 'Pointer tile', rect: { x: 0, y: 0, w: 4, h: 3 } },
-    { name: 'Unchanged tile', rect: { x: 8, y: 4, w: 4, h: 3 } },
+    { name: 'Pointer tile', rect: { x: 0, y: 0, w: 5, h: 3 } },
+    { name: 'Unchanged tile', rect: { x: 12, y: 4, w: 5, h: 3 } },
   ]);
   await page.goto('/dashboard');
   const tile = servicePanel(page, 'Pointer tile');
@@ -36,8 +36,8 @@ test('pointer placement and resize persist independently; Escape cancels an acti
   expect(await panelPixels(other)).toEqual(otherBefore);
   await finishArrangement(page);
   const saved = await studioApi(request, '/dashboard/studio/api/board');
-  expect(saved.board.panels.find(panel => panel.title === 'Pointer tile').rect).toEqual({ x: 2, y: 1, w: 6, h: 4 });
-  expect(saved.board.panels.find(panel => panel.title === 'Unchanged tile').rect).toEqual({ x: 8, y: 4, w: 4, h: 3 });
+  expect(saved.board.panels.find(panel => panel.title === 'Pointer tile').rect).toEqual({ x: 2, y: 1, w: 7, h: 4 });
+  expect(saved.board.panels.find(panel => panel.title === 'Unchanged tile').rect).toEqual({ x: 12, y: 4, w: 5, h: 3 });
   await page.goto('/dashboard');
   await expect.poll(() => panelPixels(tile)).toEqual(resized);
 });
@@ -47,9 +47,10 @@ test.describe('touch direct manipulation', () => {
 
   test('vertical scrolling on the live dashboard never arranges; in the editor a finger on the move handle moves and deliberately stacks a panel', async ({ page, request }) => {
     await seedServicePanels(request, [
-      { name: 'Touch source', rect: { x: 0, y: 0, w: 4, h: 3 } },
-      { name: 'Touch target', rect: { x: 0, y: 3, w: 4, h: 3 } },
-      { name: 'Scroll fixture', rect: { x: 0, y: 8, w: 4, h: 3 } },
+      { name: 'Touch source', rect: { x: 0, y: 0, w: 5, h: 3 } },
+      { name: 'Touch target', rect: { x: 0, y: 3, w: 5, h: 3 } },
+      // Far enough down that the phone page scrolls.
+      { name: 'Scroll fixture', rect: { x: 0, y: 20, w: 5, h: 3 } },
     ]);
     await page.goto('/dashboard');
     const source = servicePanel(page, 'Touch source');
@@ -63,14 +64,15 @@ test.describe('touch direct manipulation', () => {
     };
     const handle = page.getByRole('button', { name: /^Move Touch source\. Use arrow keys/ });
     try {
-      let point = await center(source.locator('.studio-panel-header'));
+      // The live card has no editing bar; a finger on the card itself scrolls.
+      let point = await center(source);
       const scrollBefore = await page.evaluate(() => scrollY);
       await touch.start(point.x, point.y);
       await touch.move(point, { x: point.x, y: point.y - 100 });
       await touch.end();
       await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(scrollBefore + 20);
       // A held finger on the live dashboard does nothing either.
-      point = await center(source.locator('.studio-panel-header'));
+      point = await center(source);
       await touch.start(point.x, point.y);
       await page.waitForTimeout(900);
       await touch.end();
@@ -79,6 +81,8 @@ test.describe('touch direct manipulation', () => {
 
       await openEditor(page);
       const before = await panelPixels(source);
+      // On a touch screen a widget shows its controls once tapped.
+      await source.tap();
       point = await center(handle);
       await touch.start(point.x, point.y);
       await touch.move(point, { x: point.x, y: point.y + 100 });
@@ -95,6 +99,7 @@ test.describe('touch direct manipulation', () => {
 
       await openEditor(page);
       await expect.poll(() => panelPixels(source)).toEqual(before);
+      await source.tap();
       point = await center(handle);
       const targetBounds = await target.boundingBox();
       await touch.start(point.x, point.y);
@@ -211,8 +216,10 @@ test.describe('phone delete confirmation', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
   test('Delete brings its confirmation into view with focus on Keep it, which returns focus to Delete', async ({ page, request }) => {
-    await seedServicePanels(request, [{ name: 'Delete fixture', rect: { x: 0, y: 0, w: 4, h: 3 } }]);
+    await seedServicePanels(request, [{ name: 'Delete fixture', rect: { x: 0, y: 0, w: 5, h: 3 } }]);
     await openEditor(page);
+    // On a touch screen a widget shows its controls once tapped.
+    await servicePanel(page, 'Delete fixture').tap();
     await page.getByRole('button', { name: 'Edit Delete fixture', exact: true }).click();
     const dialog = page.getByRole('dialog');
     const remove = dialog.getByRole('button', { name: 'Delete', exact: true });
@@ -247,8 +254,10 @@ test.describe('selection checkbox target size', () => {
     test.describe(label, () => {
       test.use(use);
       test(`the editor's selection target is at least ${minimum} px and toggles from its edge`, async ({ page, request }) => {
-        await seedServicePanels(request, [{ name: 'Target tile', rect: { x: 0, y: 0, w: 4, h: 3 } }]);
+        await seedServicePanels(request, [{ name: 'Target tile', rect: { x: 0, y: 0, w: 5, h: 3 } }]);
         await openEditor(page);
+        // On a touch screen a widget shows its controls once tapped.
+        if (use.hasTouch) await servicePanel(page, 'Target tile').tap();
         const checkbox = page.getByRole('checkbox', { name: 'Select Target tile', exact: true });
         const target = page.locator('.studio-select-target').filter({ has: checkbox });
         const bounds = await target.boundingBox();
@@ -293,7 +302,7 @@ test.describe('selection checkbox target size', () => {
         await expect(checkbox).not.toBeChecked();
         await expect(shell).not.toHaveClass(/\bstudio-selected\b/);
         // Selection never rearranged anything.
-        await expect(page.getByText('Unsaved arrangement', { exact: true })).toHaveCount(0);
+        await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
         // The target does not change the stack header's height.
         const header = shell.locator('.studio-stack-header');
         const height = (await header.boundingBox()).height;
@@ -317,7 +326,7 @@ test('native search state survives stacking and moving out in the editor; bookma
   await setPanelSize(page, 'Browser bookmark', 5, 3);
   await page.getByRole('checkbox', { name: 'Select Search', exact: true }).check();
   await page.getByRole('checkbox', { name: 'Select Browser bookmark', exact: true }).check();
-  await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
+  await stackSelected(page);
   await expect(carousel(page)).toHaveCount(1);
   await expect(input).toHaveValue('Native search state retained');
   expect(await input.evaluate((node, original) => node === original, originalInput)).toBe(true);
@@ -413,7 +422,7 @@ test('the native Custom API widget renders an actual private proxy response', as
   await setPanelSize(page, 'Browser bookmark', 5, 3);
   await page.getByRole('checkbox', { name: 'Select Greeting', exact: true }).check();
   await page.getByRole('checkbox', { name: 'Select Browser bookmark', exact: true }).check();
-  await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
+  await stackSelected(page);
   await finishArrangement(page);
   await page.goto('/dashboard');
   await expect(widget).toContainText('ready');

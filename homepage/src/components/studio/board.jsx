@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { studioRequest } from "./api.mjs";
 import AppearanceOnlyEditor from "./appearance-only-editor";
 import { PageBackgroundEditor } from "./background-picker";
-import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm } from "./bulk-bar";
+import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm, widgetCount } from "./bulk-bar";
 import CardBackground from "./card-background";
 import { ChartFullView, chartRanges } from "./card-chart";
 import { canRefresh, refreshCards, resolvedBehaviour, resolvedLook, useCardTheme } from "./card-look";
@@ -1389,7 +1389,7 @@ export default function StudioBoard({
     };
     if (commitWhole(next)) {
       dismissEditor();
-      showToast(`Changed ${changed.size} widgets`, true);
+      showToast(`Changed ${widgetCount(changed.size)}`, true);
     }
   };
   const bulkSize = ({ w, h }) => {
@@ -1400,7 +1400,7 @@ export default function StudioBoard({
     }
     if (changeBoard(view)) {
       dismissEditor();
-      showToast(`Resized ${selection.length} widgets`, true);
+      showToast(`Resized ${widgetCount(selection.length)}`, true);
     }
   };
   // Duplicate and delete change the configuration files, so they save at once.
@@ -1423,7 +1423,7 @@ export default function StudioBoard({
         const state = await bulkContent.save("/studio/api/widgets-duplicate");
         if (!state) return;
         setSelection(state.ids || []);
-        showToast(`Duplicated ${state.ids?.length || 0} widgets`);
+        showToast(`Duplicated ${widgetCount(state.ids?.length || 0)}`);
       } catch (err) {
         setError(err);
       }
@@ -1432,7 +1432,7 @@ export default function StudioBoard({
       const count = selectedPanels().length;
       setModal({ type: "bulkDelete", pending: true });
       try {
-        if (await bulkContent.save("/studio/api/widgets-delete")) showToast(`Deleted ${count} widgets`);
+        if (await bulkContent.save("/studio/api/widgets-delete")) showToast(`Deleted ${widgetCount(count)}`);
       } catch (err) {
         setModal({ type: "bulkDelete" });
         setError(err);
@@ -1584,7 +1584,7 @@ export default function StudioBoard({
           applyLook(
             sameType.map((item) => item.id),
             panel.look || {},
-            `Look used on ${sameType.length} ${typeName(panel, catalog)} widgets`,
+            `Look used on ${sameType.length} ${typeName(panel, catalog)} widget${sameType.length === 1 ? "" : "s"}`,
           ),
       },
       "-",
@@ -1779,7 +1779,7 @@ export default function StudioBoard({
     moveHere: "Move widgets here",
     bulkLook: `Look for ${selection.length} selected`,
     bulkSize: "Size",
-    bulkDelete: `Delete ${modal?.type === "bulkDelete" ? selectedCount : ""} widgets?`,
+    bulkDelete: `Delete ${widgetCount(selectedCount)}?`,
   };
 
   return (

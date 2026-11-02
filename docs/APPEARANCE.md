@@ -77,6 +77,8 @@ Studio decides the page background and the colours of Homepage's own widgets: a 
 
 For finer control, open **Dashboard settings → Configuration files**, select `custom.css`, edit it, and save. The native custom stylesheet is refreshed after the save without reloading healthy widgets. Studio's generated defaults have zero CSS specificity, so normal `:root` overrides keep precedence even after settings updates reorder Next.js head elements.
 
+Studio's own card styles load after `custom.css`, so a rule for a Studio class needs one more class than Studio's own rule to win. For example, `.studio-panel .studio-card-name small { color: #224466; }` changes a card's description, where `.studio-card-name small` alone would not.
+
 The most useful semantic variables are:
 
 | Variable | Purpose |
