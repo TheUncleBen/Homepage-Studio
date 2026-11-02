@@ -1625,18 +1625,6 @@ body {
   .studio-topbar {
     padding: 0 12px;
   }
-  /* The editor's tools pair up on a phone; a lone last tool sits centred
-     at the same width rather than stranded on the left. */
-  .studio-edit-mode .studio-board-toolbar {
-    justify-content: center;
-  }
-  .studio-edit-mode .studio-board-toolbar > .studio-button {
-    flex: 1 1 calc(50% - 4.5px);
-    max-width: calc(50% - 4.5px);
-  }
-  .studio-edit-mode .studio-toolbar-spacer {
-    display: none;
-  }
   .studio-top-actions {
     gap: 4px;
   }
@@ -2446,9 +2434,35 @@ body {
   gap: 4px;
   overflow: hidden;
 }
-.studio-pages-editing {
+.studio-pages-scroll {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow-x: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+}
+.studio-pages-scroll::-webkit-scrollbar {
+  display: none;
+}
+.studio-pages-editing .studio-page-add {
+  flex: none;
+}
+@media (max-width: 680px) {
+  .studio-page-add-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .studio-pages-editing .studio-page-add {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
 }
 .studio-pages-measure {
   position: absolute;
@@ -2847,9 +2861,12 @@ body {
   color: inherit;
   text-decoration: none;
 }
-a.studio-card-identity:hover .studio-card-name strong {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+/* Only a real pointer hovers; a tap must not leave the title underlined. */
+@media (hover: hover) {
+  a.studio-card-identity:hover .studio-card-name strong {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
 }
 .studio-card-logo {
   display: inline-grid;
@@ -3069,6 +3086,15 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-card:has(.studio-values-charted) {
   height: 100%;
   min-height: 0;
+  gap: 6px;
+}
+.studio-values-charted {
+  gap: 4px;
+}
+.studio-values-charted .studio-chart-line,
+.studio-values-charted .studio-chart-area,
+.studio-values-charted .studio-chart-bar {
+  min-height: 20px;
 }
 .studio-card:has(.studio-values-charted) .studio-card-body,
 .studio-values-charted {
@@ -4454,4 +4480,144 @@ svg.studio-chart-gauge {
 .studio-connection-actions > .studio-connection-form {
   order: 3;
   flex-basis: 100%;
+}
+
+/* ---- Editing bar (board 14): one light row --------------------------- */
+.studio-edit-bar {
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 14px 0 12px;
+}
+.studio-editing-pill {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--studio-status-warn, #e0a03b) 45%, transparent);
+  background: color-mix(in srgb, var(--studio-status-warn, #e0a03b) 14%, transparent);
+  color: var(--studio-status-warn, #e0a03b);
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 4px;
+}
+.studio-edit-bar > .studio-button,
+.studio-edit-bar > .studio-icon-button {
+  flex: none;
+}
+.studio-edit-bar-note {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+@media (hover: none) {
+  /* No keyboard to speak of: its shortcuts sheet steps aside. */
+  .studio-shortcuts-button {
+    display: none;
+  }
+}
+@media (max-width: 680px) {
+  .studio-edit-bar {
+    gap: 4px;
+    padding: 10px 0;
+  }
+  /* Widgets and Tidy up keep their icons and names for screen readers. */
+  .studio-edit-bar .studio-edit-bar-label,
+  .studio-edit-bar-note {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .studio-edit-bar > .studio-button:has(.studio-edit-bar-label) {
+    min-width: 44px;
+    padding: 0 10px;
+  }
+  .studio-edit-bar > .studio-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+}
+@media (max-width: 480px) {
+  .studio-editing-pill {
+    display: none;
+  }
+}
+
+/* Phone: the selection bar wraps to fit the screen instead of scrolling
+   its last actions out of reach. */
+@media (max-width: 680px) {
+  .studio-bulk-bar {
+    left: 12px;
+    right: 12px;
+    transform: none;
+    max-width: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    overflow: visible;
+    padding: 8px;
+    gap: 6px;
+  }
+  .studio-bulk-count {
+    flex-basis: 100%;
+    margin: 0;
+    text-align: center;
+  }
+  .studio-bulk-bar .studio-button {
+    flex: 1 1 calc(33.333% - 6px);
+    min-height: 44px;
+    justify-content: center;
+  }
+  .studio-has-bulk .studio-toast {
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + 160px);
+  }
+}
+
+/* Editing: selecting widgets (Shift-click, a box) never selects their text.
+   Fields inside a widget, such as a search box, still take text. */
+.studio-edit-mode .studio-panel {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.studio-edit-mode .studio-panel :is(input, textarea) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Touch: edit controls are large targets (44 px; the resize corner 44 by
+   36 so it never meets the controls above it on a two-row tile). */
+@media (pointer: coarse) {
+  .studio-edit-mode .studio-panel:not(.studio-stacked-panel) > .studio-panel-slide > .studio-panel-header {
+    top: 4px;
+    right: 4px;
+    padding: 2px;
+  }
+  .studio-edit-mode .studio-panel-header .studio-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .studio-edit-mode .studio-resize-handle {
+    bottom: 0;
+    right: 0;
+    width: 44px;
+    height: 36px;
+  }
+}
+/* While editing, a status history's text and a widget's own field (a search
+   box) stay clear of the controls that float over the card. */
+.studio-edit-mode .studio-status-history {
+  padding-right: 28px;
+}
+.studio-edit-mode .studio-panel:has(.studio-native-content input:not([type="checkbox"])) .studio-native-content {
+  padding-right: 112px;
+}
+@media (pointer: coarse) {
+  .studio-edit-mode .studio-tools-shown .studio-status-history,
+  .studio-edit-mode .studio-selected .studio-status-history {
+    padding-right: 46px;
+  }
+  .studio-edit-mode .studio-panel:has(.studio-native-content input:not([type="checkbox"])) .studio-native-content {
+    padding-right: 150px;
+  }
 }

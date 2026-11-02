@@ -212,6 +212,7 @@ function ShortcutsSheet({ editing, pages }) {
     !editing && ["Ctrl / ⌘ K, or type", "Search"],
     editing && ["Ctrl / ⌘ Z", "Undo"],
     editing && ["Ctrl / ⌘ Shift Z", "Redo"],
+    editing && ["Ctrl / ⌘ S", "Save and keep editing"],
     editing && ["Arrow keys", "Move the selected widget"],
     editing && ["Shift + arrow keys", "Resize the selected widget"],
     editing && ["Esc", "Cancel a drag, or clear the selection"],
@@ -1246,6 +1247,12 @@ export default function StudioBoard({
         setModal({ type: "pageLink", url });
       }
     },
+    // Esc while naming a page just added takes it back (board 14), quietly.
+    cancelAdd: (id, previous) => {
+      if (pageBoard(wholeRef.current, id).panels.length) return;
+      const target = pages.some((item) => item.id === previous) ? previous : pages.find((item) => item.id !== id)?.id;
+      if (target && commitWhole(removePage(wholeRef.current, id, target))) showPage(target, { replace: true });
+    },
     remove: (page) => {
       const units = pageBoard(wholeRef.current, page.id);
       if (!units.panels.length) {
@@ -1673,6 +1680,12 @@ export default function StudioBoard({
         else undo();
         return;
       }
+      // Save and keep editing.
+      if (editing && command && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        if (dirty && !controlsDisabled) saveArrangement(false);
+        return;
+      }
       if (editing && command && !event.altKey && event.key.toLowerCase() === "y") {
         event.preventDefault();
         redo();
@@ -1805,32 +1818,6 @@ export default function StudioBoard({
           actions={pageActions}
         />
       </StudioTopBar>
-      {editorPage && (canArrange || accessLoading) && (
-        <header className="studio-page-header studio-editor-header">
-          <div>
-            <p className="studio-eyebrow">Editing</p>
-            <h1>{access?.dashboard?.name || settings?.title || "Dashboard"}</h1>
-          </div>
-          <div className="studio-header-actions">
-            <button
-              className="studio-button studio-quiet"
-              disabled={saving}
-              onClick={() => {
-                // An unsaved arrangement uses the same explicit discard
-                // confirmation as editor drafts.
-                if (dirty) setModal({ type: "discardArrangement" });
-                else leave();
-              }}
-            >
-              Cancel
-            </button>
-            <button className="studio-button studio-primary" disabled={controlsDisabled} onClick={finishEditing}>
-              <StudioIcon name="check" size={16} />
-              {saving ? "Saving…" : "Done"}
-            </button>
-          </div>
-        </header>
-      )}
       <ErrorMessage
         arrangement
         error={error || sourceConflict || loadError}
@@ -1846,16 +1833,20 @@ export default function StudioBoard({
               }
         }
       />
+      {/* Editing (board 14): one light row. The dashboard's name is already in
+          the top bar; every tool stays, the ones a phone can't use step aside. */}
       {editing && (
-        <div className="studio-board-toolbar">
+        <div className="studio-board-toolbar studio-edit-bar" role="toolbar" aria-label="Editing">
+          <span className="studio-editing-pill">Editing</span>
           {isAdmin && (
             <button
               className="studio-button studio-quiet"
               disabled={controlsDisabled}
+              aria-label="Widgets"
               onClick={() => openEditor("picker")}
             >
               <StudioIcon name="plus" size={16} />
-              Widgets
+              <span className="studio-edit-bar-label">Widgets</span>
             </button>
           )}
           <button
@@ -1867,10 +1858,8 @@ export default function StudioBoard({
             }}
           >
             <StudioIcon name="grid" size={16} />
-            Tidy up
+            <span className="studio-edit-bar-label">Tidy up</span>
           </button>
-          <span className="studio-toolbar-spacer" />
-          <span className="studio-muted">{dirty ? "Unsaved arrangement" : ""}</span>
           <button
             type="button"
             className="studio-icon-button"
@@ -1893,9 +1882,13 @@ export default function StudioBoard({
           >
             <StudioIcon name="redo" size={17} />
           </button>
+          <span className="studio-toolbar-spacer" />
+          <span className="studio-muted studio-edit-bar-note" role="status">
+            {dirty ? "Unsaved changes" : ""}
+          </span>
           <button
             type="button"
-            className="studio-icon-button"
+            className="studio-icon-button studio-shortcuts-button"
             aria-label="Keyboard shortcuts"
             aria-keyshortcuts="Shift+?"
             title="Keyboard shortcuts (?)"
@@ -1903,15 +1896,33 @@ export default function StudioBoard({
           >
             <StudioIcon name="keyboard" size={17} />
           </button>
+          {/* Save keeps editing; Done saves and leaves. One primary button. */}
           {dirty && (
             <button
-              className="studio-button studio-primary"
+              className="studio-button studio-quiet"
               disabled={controlsDisabled}
+              title="Save and keep editing (Ctrl / ⌘ S)"
               onClick={() => saveArrangement(false)}
             >
-              Save arrangement
+              Save
             </button>
           )}
+          <button
+            className="studio-button studio-quiet"
+            disabled={saving}
+            onClick={() => {
+              // An unsaved arrangement uses the same explicit discard
+              // confirmation as editor drafts.
+              if (dirty) setModal({ type: "discardArrangement" });
+              else leave();
+            }}
+          >
+            Cancel
+          </button>
+          <button className="studio-button studio-primary" disabled={controlsDisabled} onClick={finishEditing}>
+            <StudioIcon name="check" size={16} />
+            {saving ? "Saving…" : "Done"}
+          </button>
           {unitMenu && (
             <Menu
               key={unitMenu.pages ? "pages" : "actions"}

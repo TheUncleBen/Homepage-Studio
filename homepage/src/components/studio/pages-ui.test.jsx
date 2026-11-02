@@ -121,9 +121,21 @@ describe("Pages on a dashboard", () => {
     await within(nav).findByRole("button", { name: "New page" });
     fireEvent.keyDown(document.body, { key: "z", ctrlKey: true, shiftKey: true });
     await within(nav).findByRole("button", { name: "Network" });
-    fireEvent.click(screen.getByRole("button", { name: "Save arrangement" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0].body.board.pages.map((page) => page.name)).toEqual(["Overview", "Network", "Media"]);
+  });
+
+  it("Esc while naming a new page takes it back; Enter keeps it as New page", async () => {
+    await mount({ mode: "edit" });
+    const nav = screen.getByRole("navigation", { name: "Pages" });
+    fireEvent.click(screen.getByRole("button", { name: "Add page" }));
+    fireEvent.keyDown(await screen.findByRole("textbox", { name: "Page name" }), { key: "Escape" });
+    await waitFor(() => expect(within(nav).queryByRole("button", { name: "New page" })).toBeNull());
+    expect(within(nav).getByRole("button", { name: "Overview" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Add page" }));
+    fireEvent.keyDown(await screen.findByRole("textbox", { name: "Page name" }), { key: "Enter" });
+    await within(nav).findByRole("button", { name: "New page" });
   });
 
   it("refuses a duplicate page name while typing", async () => {
@@ -149,7 +161,7 @@ describe("Pages on a dashboard", () => {
     await screen.findByTestId("native-plex");
     expect(screen.getByTestId("native-clock")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Pages" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save arrangement" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0].body.board.pages).toEqual([{ id: "home", name: "Overview" }]);
     expect(writes[0].body.board.panels.every((item) => item.pageId === "home")).toBe(true);

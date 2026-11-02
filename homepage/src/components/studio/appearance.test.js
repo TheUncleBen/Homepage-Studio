@@ -13,8 +13,8 @@ import {
 } from "./appearance.mjs";
 
 describe("appearance settings", () => {
-  it("keeps the empty dashboard dark and respects an existing native light theme", () => {
-    expect(appearanceConfig()).toEqual({ mode: "dark", accent: "#b299be", base: "graphite" });
+  it("follows the device on an empty dashboard and respects an existing native light theme", () => {
+    expect(appearanceConfig()).toEqual({ mode: "system", accent: "#b299be", base: "graphite" });
     expect(appearanceTokens({ theme: "light" }).mode).toBe("light");
     expect(appearanceTokens({ theme: "light", studioTheme: { mode: "dark" } }).mode).toBe("dark");
   });

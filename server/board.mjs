@@ -254,7 +254,7 @@ const INFO_WIDGET_NAMES = {
   resources: 'Resources',
   search: 'Search',
   stocks: 'Stocks',
-  unifi_console: 'Unifi Controller',
+  unifi_console: 'UniFi Controller',
   weatherapi: 'WeatherAPI',
 };
 

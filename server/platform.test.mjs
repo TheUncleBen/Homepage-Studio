@@ -24,7 +24,10 @@ test('the platform default look starts at the defaults, saves with a revision an
 });
 
 test('the Studio page theme follows the platform mode and accent, and Auto follows the device', () => {
-  const dark = studioThemeCss(DEFAULT_PLATFORM);
+  // New installs follow the device (owner choice, 2 Nov 2026).
+  assert.equal(DEFAULT_PLATFORM.mode, 'system');
+  assert.match(studioThemeCss(DEFAULT_PLATFORM), /@media \(prefers-color-scheme: light\)/);
+  const dark = studioThemeCss({ ...DEFAULT_PLATFORM, mode: 'dark' });
   assert.match(dark, /^:root\{color-scheme:dark;--bg:#121314;/);
   assert.match(dark, new RegExp(`--accent:${DEFAULT_PLATFORM.accent};`));
   assert.match(dark, /--ok-text:#b8e0c6;/);

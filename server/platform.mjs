@@ -16,7 +16,7 @@ export const PLATFORM_FILE = 'studio-platform.json';
 export const PLATFORM_CSS_FILE = 'studio-platform.css';
 export const MAX_PLATFORM_CSS_BYTES = 256 * 1024;
 const MAX_PLATFORM_BYTES = 16 * 1024;
-export const DEFAULT_PLATFORM = Object.freeze({ mode: 'dark', accent: '#b299be', base: DEFAULT_BASE, background: null });
+export const DEFAULT_PLATFORM = Object.freeze({ mode: 'system', accent: '#b299be', base: DEFAULT_BASE, background: null });
 
 // Studio's own pages (sign-in, Dashboards, My account, Administration) wear
 // the platform look too: the same tokens a dashboard computes, under the

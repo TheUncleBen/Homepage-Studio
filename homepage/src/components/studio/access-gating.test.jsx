@@ -112,7 +112,7 @@ describe("dashboard controls follow the sign-in access level", () => {
   it("an arranger can move panels on the editor page and change the appearance on the settings page, but not edit widgets", async () => {
     const edit = mount({ authEnabled: true, level: "arrange", user }, "edit");
     await waitFor(() => expect(screen.getByText("Done", { selector: "button" })).toBeEnabled());
-    expect(screen.queryByText("Widgets", { selector: "button" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Widgets" })).toBeNull();
     expect(screen.queryByLabelText("Edit Clock")).toBeNull();
     expect(screen.getByLabelText("Edit Found")).toBeInTheDocument();
     expect(edit.fetch.mock.calls.some(([path]) => path === "/studio/api/state")).toBe(false);
@@ -124,7 +124,7 @@ describe("dashboard controls follow the sign-in access level", () => {
 
   it("an administrator, or a server without sign-in, gets every editor control and no account menu without sign-in", async () => {
     mount({ authEnabled: false, level: "admin", user: null }, "edit");
-    await waitFor(() => expect(screen.getByText("Widgets", { selector: "button" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Widgets" })).toBeEnabled());
     expect(screen.getByLabelText("Edit Clock")).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Account/)).toBeNull();
     expect(screen.queryByText("Dashboards", { selector: "a" })).toBeNull();

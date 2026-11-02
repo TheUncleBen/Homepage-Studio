@@ -120,7 +120,7 @@ describe("Widget menu while editing", () => {
     expect(await screen.findByText("Look copied")).toBeInTheDocument();
     fireEvent.click(within(await menuFor("weather")).getByRole("menuitem", { name: /Paste look/ }));
     expect(await screen.findByText("Look pasted")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save arrangement" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     const saved = writes[0].body.board.panels.find((item) => item.id === "weather");
     expect(saved.look).toEqual({ corners: "round", edge: "shadow" });
@@ -132,7 +132,7 @@ describe("Widget menu while editing", () => {
     const { writes } = await mount({ mode: "edit" });
     fireEvent.click(within(await menuFor("clock")).getByRole("menuitem", { name: /every datetime widget/ }));
     expect(await screen.findByText("Look used on 2 datetime widgets")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save arrangement" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     const looks = Object.fromEntries(writes[0].body.board.panels.map((item) => [item.id, item.look]));
     expect(looks).toEqual({
@@ -208,7 +208,7 @@ describe("Several widgets at once", () => {
     fireEvent.click(within(dialog).getByRole("radio", { name: "Square" }));
     fireEvent.click(apply);
     expect(await screen.findByText("Changed 2 widgets")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save arrangement" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     const looks = Object.fromEntries(writes[0].body.board.panels.map((item) => [item.id, item.look]));
     // Only the changed setting is applied; each keeps its own edge.
@@ -237,7 +237,7 @@ describe("Tidy up", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tidy up" }));
     expect(await screen.findByText("Tidied up")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tidy up" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Save arrangement" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0].body.board.panels.find((item) => item.id === "weather").rect.y).toBe(0);
   });

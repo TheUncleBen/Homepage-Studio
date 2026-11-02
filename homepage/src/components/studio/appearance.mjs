@@ -151,11 +151,12 @@ function readable(color, backgrounds, minimum = 4.5) {
 export function appearanceConfig(settings = {}) {
   const raw = settings.studioTheme;
   const custom = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  // Follow device unless chosen (owner choice, 2 Nov 2026).
   const mode = ["dark", "light", "system"].includes(custom.mode)
     ? custom.mode
-    : settings.theme === "light"
-      ? "light"
-      : "dark";
+    : ["dark", "light"].includes(settings.theme)
+      ? settings.theme
+      : "system";
   const base = Object.hasOwn(BASES, custom.base) ? custom.base : DEFAULT_BASE;
   return { mode, accent: hexColor(custom.accent) || DEFAULT_ACCENT, base };
 }

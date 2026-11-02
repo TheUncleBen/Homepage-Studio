@@ -33,7 +33,10 @@ function LiveTabs({ board, pages, currentId, onSelect, dropTarget }) {
   useLayoutEffect(() => {
     const update = () => {
       if (!holder.current || !measure.current) return;
-      const available = holder.current.clientWidth;
+      // The tabs sit inside the bar's padding.
+      const style = getComputedStyle(holder.current);
+      const available =
+        holder.current.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
       const widths = [...measure.current.children].map((child) => child.getBoundingClientRect().width + 4);
       const total = widths.reduce((sum, value) => sum + value, 0);
       if (total <= available || !available) return setFit(pages.length);
@@ -111,7 +114,7 @@ function LiveTabs({ board, pages, currentId, onSelect, dropTarget }) {
   );
 }
 
-function RenameField({ board, page, onDone, onCancel }) {
+function RenameField({ board, page, onDone, onCancel, onEscape = onCancel }) {
   const [value, setValue] = useState(page.name);
   const input = useRef(null);
   const finished = useRef(false);
@@ -146,7 +149,7 @@ function RenameField({ board, page, onDone, onCancel }) {
             event.preventDefault();
             event.stopPropagation();
             finished.current = true;
-            onCancel();
+            onEscape();
           }
         }}
       />
@@ -161,7 +164,18 @@ function RenameField({ board, page, onDone, onCancel }) {
 
 // Editing: the same tabs plus a grip to reorder, a menu on the current page,
 // rename in place and Add page.
-function EditTabs({ board, pages, currentId, onSelect, disabled, dropTarget, actions, renaming, setRenaming }) {
+function EditTabs({
+  board,
+  pages,
+  currentId,
+  onSelect,
+  disabled,
+  dropTarget,
+  actions,
+  renaming,
+  setRenaming,
+  onCancelRename,
+}) {
   const [menu, setMenu] = useState(null);
   const [drag, setDrag] = useState(null);
   const tabs = useRef(new Map());
@@ -206,79 +220,94 @@ function EditTabs({ board, pages, currentId, onSelect, disabled, dropTarget, act
   };
   const index = pages.findIndex((page) => page.id === currentId);
   const current = pages[index];
+  const scroller = useRef(null);
+  // The page being edited is always in view.
+  useEffect(() => {
+    tabs.current.get(currentId)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [currentId]);
   const openMenu = (event) => {
     const box = event.currentTarget.getBoundingClientRect();
     setMenu({ x: box.left, y: box.bottom + 4, from: event.currentTarget });
   };
   return (
     <nav className="studio-pages studio-pages-editing" aria-label="Pages">
-      {order.map((page) =>
-        renaming === page.id ? (
-          <RenameField
-            key={page.id}
-            board={board}
-            page={page}
-            onDone={(name) => {
-              setRenaming(null);
-              actions.rename(page.id, name);
-            }}
-            onCancel={() => setRenaming(null)}
-          />
-        ) : (
-          <span
-            key={page.id}
-            ref={(node) => (node ? tabs.current.set(page.id, node) : tabs.current.delete(page.id))}
-            className={`studio-page-tab${dropTarget === page.id ? " studio-page-drop" : ""}${drag?.id === page.id ? " studio-page-dragging" : ""}`}
-            data-page-drop={page.id}
-            aria-current={page.id === currentId ? "page" : undefined}
-          >
-            {pages.length > 1 && (
-              <span
-                className="studio-page-grip"
-                aria-hidden="true"
-                title="Drag to reorder"
-                onPointerDown={(event) => startDrag(event, page)}
-              >
-                <StudioIcon name="grip" size={12} />
-              </span>
-            )}
-            <button
-              type="button"
-              className="studio-page-select"
-              disabled={disabled}
-              aria-pressed={page.id === currentId}
-              title={page.id === currentId ? "Double-click or press F2 to rename" : undefined}
-              onClick={() => onSelect(page.id)}
-              onDoubleClick={() => !disabled && setRenaming(page.id)}
-              onKeyDown={(event) => {
-                if (event.key === "F2" && !disabled) {
-                  event.preventDefault();
-                  setRenaming(page.id);
-                }
+      {/* The tabs scroll; Add page stays in view after them. */}
+      <div className="studio-pages-scroll" ref={scroller}>
+        {order.map((page) =>
+          renaming === page.id ? (
+            <RenameField
+              key={page.id}
+              board={board}
+              page={page}
+              onDone={(name) => {
+                setRenaming(null);
+                actions.rename(page.id, name);
               }}
+              onCancel={() => setRenaming(null)}
+              onEscape={() => onCancelRename(page.id)}
+            />
+          ) : (
+            <span
+              key={page.id}
+              ref={(node) => (node ? tabs.current.set(page.id, node) : tabs.current.delete(page.id))}
+              className={`studio-page-tab${dropTarget === page.id ? " studio-page-drop" : ""}${drag?.id === page.id ? " studio-page-dragging" : ""}`}
+              data-page-drop={page.id}
+              aria-current={page.id === currentId ? "page" : undefined}
             >
-              <PageLabel page={page} />
-            </button>
-            {page.id === currentId && (
+              {pages.length > 1 && (
+                <span
+                  className="studio-page-grip"
+                  aria-hidden="true"
+                  title="Drag to reorder"
+                  onPointerDown={(event) => startDrag(event, page)}
+                >
+                  <StudioIcon name="grip" size={12} />
+                </span>
+              )}
               <button
                 type="button"
-                className="studio-page-menu-button"
-                aria-label={`${page.name} page options`}
-                aria-haspopup="menu"
-                aria-expanded={Boolean(menu)}
+                className="studio-page-select"
                 disabled={disabled}
-                onClick={openMenu}
+                aria-pressed={page.id === currentId}
+                title={page.id === currentId ? "Double-click or press F2 to rename" : undefined}
+                onClick={() => onSelect(page.id)}
+                onDoubleClick={() => !disabled && setRenaming(page.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "F2" && !disabled) {
+                    event.preventDefault();
+                    setRenaming(page.id);
+                  }
+                }}
               >
-                <StudioIcon name="more" size={15} />
+                <PageLabel page={page} />
               </button>
-            )}
-          </span>
-        ),
-      )}
+              {page.id === currentId && (
+                <button
+                  type="button"
+                  className="studio-page-menu-button"
+                  aria-label={`${page.name} page options`}
+                  aria-haspopup="menu"
+                  aria-expanded={Boolean(menu)}
+                  disabled={disabled}
+                  onClick={openMenu}
+                >
+                  <StudioIcon name="more" size={15} />
+                </button>
+              )}
+            </span>
+          ),
+        )}
+      </div>
       {actions.canAdd && (
-        <button type="button" className="studio-page-add" disabled={disabled} onClick={actions.add}>
+        <button
+          type="button"
+          className="studio-page-add"
+          disabled={disabled}
+          aria-label="Add page"
+          onClick={actions.add}
+        >
           <StudioIcon name="plus" size={14} />
-          Add page
+          <span className="studio-page-add-label">Add page</span>
         </button>
       )}
       {menu && current && (
@@ -327,7 +356,8 @@ function EditTabs({ board, pages, currentId, onSelect, disabled, dropTarget, act
               icon: "arrowRight",
               onSelect: () => actions.move(current.id, index + 1),
             },
-            index > 0 && {
+            // With two pages before it, Move left already does this.
+            index > 1 && {
               id: "first",
               label: "Make first page",
               icon: "home",
@@ -351,14 +381,33 @@ function EditTabs({ board, pages, currentId, onSelect, disabled, dropTarget, act
 
 export default function PageTabs({ editing, pages, ...props }) {
   const [renaming, setRenaming] = useState(null);
-  const { actions } = props;
+  // A page just added and the page before it, so Esc can take it back.
+  const [added, setAdded] = useState(null);
+  const { actions, currentId } = props;
   const add = useCallback(() => {
     const id = actions.add();
-    if (id) setRenaming(id);
-  }, [actions]);
+    if (id) {
+      setRenaming(id);
+      setAdded({ id, previous: currentId });
+    }
+  }, [actions, currentId]);
   if (editing)
     return (
-      <EditTabs pages={pages} {...props} actions={{ ...actions, add }} renaming={renaming} setRenaming={setRenaming} />
+      <EditTabs
+        pages={pages}
+        {...props}
+        actions={{ ...actions, add }}
+        renaming={renaming}
+        setRenaming={(id) => {
+          if (id === null) setAdded(null);
+          setRenaming(id);
+        }}
+        onCancelRename={(id) => {
+          setRenaming(null);
+          if (added?.id === id) actions.cancelAdd?.(id, added.previous);
+          setAdded(null);
+        }}
+      />
     );
   // One page: no tab bar at all, exactly like a dashboard without pages.
   if (pages.length < 2) return null;
