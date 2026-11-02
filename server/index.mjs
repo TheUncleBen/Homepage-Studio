@@ -936,7 +936,7 @@ export function createStudioServer(options = {}) {
   // ---- Sign-in gate ---------------------------------------------------------
   function wantsNavigation(req) {
     return ['GET', 'HEAD'].includes(req.method) && String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html')
-      && (!/^\/(?:[^/]+\/)?(?:api|studio)\//.test(String(req.url).split('?')[0]) || /^\/(?:[^/]+\/)?studio\/(?:edit|settings)$/.test(String(req.url).split('?')[0]));
+      && (!/^\/(?:[^/]+\/)?(?:api|studio)\//.test(String(req.url).split('?')[0]) || /^\/(?:(?:[^/]+\/)?studio\/(?:edit|settings)|studio\/)$/.test(String(req.url).split('?')[0]));
   }
   // The sign-in pages refuse to be framed, so a signed-out dashboard inside
   // another site (for example a Home Assistant panel) gets this page instead
@@ -1321,18 +1321,29 @@ export function createStudioServer(options = {}) {
   // dashboard that fails is skipped until the next run.
   const collectMs = options.collectMs ?? 60000;
   let collecting = false;
+  // A failure is logged once, not every minute, until a run gets through.
+  // Before the first setup the dashboards aren't ready; that's expected.
+  const reported = new Set();
+  const collectFailed = error => {
+    const code = error.code || error.name;
+    if (code === 'DASHBOARDS_NOT_READY' || reported.has(code)) return;
+    reported.add(code);
+    console.error('Chart history collection failed:', code);
+  };
   const collector = collectMs > 0 ? setInterval(async () => {
     if (collecting || applicationClosing) return;
     collecting = true;
+    let failed = false;
     try {
       const manifest = await prepareRegistry();
       for (const entry of manifest.dashboards) {
         if (applicationClosing) break;
         if (entry.archived || (!entry.slug && entry.id !== 'default')) continue;
         try { await forDashboard(entry).collectHistory(entry); }
-        catch (error) { console.error('Chart history collection failed:', error.code || error.name); }
+        catch (error) { failed = true; collectFailed(error); }
       }
-    } catch (error) { console.error('Chart history collection failed:', error.code || error.name); }
+      if (!failed) reported.clear();
+    } catch (error) { collectFailed(error); }
     finally { collecting = false; }
   }, collectMs) : null;
   collector?.unref();

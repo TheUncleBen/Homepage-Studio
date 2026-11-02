@@ -187,6 +187,10 @@ test('members only reach dashboards shared with them, at the shared level', asyn
   assert.equal(home.status, 307);
   assert.equal(home.headers.location, '/studio/dashboards');
   for (const target of ['/studio', '/studio/']) {
+    // Signed out, both ask for sign-in the same way.
+    const signedOut = await request(target, { headers: html });
+    assert.equal(signedOut.status, 302, target);
+    assert.match(signedOut.headers.location, /^\/studio\/auth\/sign-in\?next=/, target);
     const studio = await request(target, { cookie: member.cookie, headers: html });
     assert.equal(studio.status, 307, target);
     assert.equal(studio.headers.location, '/studio/dashboards', target);
