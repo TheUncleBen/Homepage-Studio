@@ -6,7 +6,7 @@
   "description": "Direct editing, flexible native panels and widget stacks for Homepage",
   "scripts": {
     "start": "node server/index.mjs",
-    "test": "node --test server/*.test.mjs server/auth/*.test.mjs",
+    "test": "node --test --test-timeout=120000 --test-force-exit server/*.test.mjs server/auth/*.test.mjs",
     "catalog": "node scripts/build-catalog.mjs"
   },
   "engines": {
