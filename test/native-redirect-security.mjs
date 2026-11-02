@@ -31,8 +31,8 @@ function get(url, options = {}) {
   });
 }
 
-test('the native graph installs the exact reviewed redirect security fix', () => {
-  assert.equal(installedVersion, '1.16.1');
+test('the native graph installs the exact reviewed redirect security release (1.16.2: GHSA-4vjg-vx72-qq4g patched in cab0267)', () => {
+  assert.equal(installedVersion, '1.16.2');
 });
 
 test('native dependency strips object and array credential headers across origins', async t => {
