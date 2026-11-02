@@ -1177,7 +1177,42 @@
   // until it sets its own (dashboard settings → Appearance). The swatches
   // match the dashboard's own picker (homepage/src/components/studio/appearance.mjs).
   const ACCENT_PRESETS = [['Eggplant', '#b299be'], ['Teal', '#5fb3a1'], ['Ocean', '#81a8c8'], ['Sage', '#91b09e'], ['Amber', '#d9a35b'], ['Rose', '#d48a96']];
-  const BASES = [['graphite', 'Graphite'], ['slate', 'Slate'], ['midnight', 'Midnight'], ['forest', 'Forest'], ['sand', 'Sand'], ['eggplant', 'Eggplant']];
+  // Base swatches, as on the dashboard's own picker: each base's page and
+  // card colours in the mode the default look shows.
+  function baseSwatches(initial, choices, initialMode) {
+    let current = initial;
+    const holder = h('div', { class: 'base-swatches', role: 'radiogroup', 'aria-label': 'Base' });
+    const buttons = choices.map(choice => h('button', { type: 'button', role: 'radio', class: 'base-swatch', onclick: () => pick(choice.id) }, h('span', { 'aria-hidden': 'true' }), choice.name));
+    function sync() {
+      const index = Math.max(0, choices.findIndex(choice => choice.id === current));
+      buttons.forEach((button, position) => { button.setAttribute('aria-checked', String(choices[position].id === current)); button.tabIndex = position === index ? 0 : -1; });
+    }
+    function pick(id, focus) {
+      current = id; sync();
+      if (focus) buttons[choices.findIndex(choice => choice.id === id)].focus();
+    }
+    holder.showMode = mode => {
+      const dark = mode === 'dark' || (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      buttons.forEach((button, position) => {
+        const colours = choices[position][dark ? 'dark' : 'light'];
+        button.style.setProperty('--swatch-page', colours.page);
+        button.style.setProperty('--swatch-card', colours.card);
+        button.style.setProperty('--swatch-line', colours.line);
+      });
+    };
+    holder.addEventListener('keydown', event => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+      if (!step || !choices.length) return;
+      event.preventDefault();
+      const index = Math.max(0, choices.findIndex(choice => choice.id === current));
+      pick(choices[(index + step + choices.length) % choices.length].id, true);
+    });
+    holder.append(...buttons);
+    sync();
+    holder.showMode(initialMode);
+    Object.defineProperty(holder, 'value', { get: () => current });
+    return holder;
+  }
   async function platformAppearance() {
     let platform = await call('/studio/api/platform');
     const holder = h('div', { class: 'stack' });
@@ -1185,8 +1220,8 @@
       const box = notice();
       if (success) say(box, success, 'ok');
       let accent = platform.accent;
-      const mode = segmented({ value: platform.mode, label: 'Display mode', options: [['system', 'Follow device'], ['dark', 'Dark'], ['light', 'Light']] });
-      const base = segmented({ value: platform.base, label: 'Base', options: BASES });
+      const base = baseSwatches(platform.base, platform.baseChoices || [], platform.mode);
+      const mode = segmented({ value: platform.mode, label: 'Display mode', options: [['system', 'Follow device'], ['dark', 'Dark'], ['light', 'Light']], onChange: base.showMode });
       const picker = h('input', { type: 'color', class: 'color-well', tabindex: '-1', 'aria-hidden': 'true', value: platform.accent });
       const hex = h('input', { type: 'text', maxlength: 7, value: platform.accent, spellcheck: 'false', autocomplete: 'off', 'aria-label': 'Accent color' });
       const hexRow = row('Hex', hex);
@@ -1226,7 +1261,8 @@
           row('Page background', background, { info: 'One of Studio’s built-in backgrounds. Every dashboard and page without its own Page background uses it.' })),
         group({ title: 'Platform CSS', info: 'Loaded on every dashboard before its own custom.css, which can override it. An administrator can switch it off for one dashboard in its settings.' },
           h('div', { class: 'code-row' }, css)),
-        box, h('div', { class: 'actions' }, save));
+        // The result shows beside the button that caused it.
+        h('div', { class: 'actions' }, save), box);
       form.addEventListener('submit', event => {
         event.preventDefault();
         busy(save, 'Saving…', async () => {
@@ -1330,9 +1366,11 @@
       });
     });
     function draw() {
-      put(holder, toolbar(upload, create, input), message,
+      // The list first, under its heading; its actions right below it.
+      put(holder, message,
         group({ title: 'Backups', aside: items.length ? String(items.length) : null, info: 'A backup holds every dashboard, the dashboard list, the default look, people and sign-in settings. Backups are kept in the state volume, so the command line can restore one if these pages can’t be reached (docs/OPERATIONS.md). Store a downloaded backup like a password: it includes any API key written into a dashboard’s files.' },
-          items.length ? items.map(item => navRow({ leading: icon('archive', 18), title: when(Date.parse(item.createdAt)), detail: [fileSize(item.bytes), BACKUP_KINDS[item.kind]].filter(Boolean).join(' · '), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'No backups yet.' })));
+          items.length ? items.map(item => navRow({ leading: icon('archive', 18), title: when(Date.parse(item.createdAt)), detail: [fileSize(item.bytes), BACKUP_KINDS[item.kind]].filter(Boolean).join(' · '), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'No backups yet.' })),
+        toolbar(upload, create, input));
     }
     put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
     load();
@@ -2015,7 +2053,7 @@
         previewObserver.unobserve(item.target);
         drawPreview(item.target, item.target.previewEntry);
       }
-    }, { rootMargin: '200px 0px' }) : null;
+    }, { rootMargin: '800px 0px' }) : null;
     const previewSizer = 'ResizeObserver' in window ? new ResizeObserver(entries => {
       for (const item of entries) item.target.style.setProperty('--preview-scale', String(item.contentRect.width / PREVIEW_WIDTH));
     }) : null;

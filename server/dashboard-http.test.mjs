@@ -364,7 +364,13 @@ test('browser navigation to an unavailable dashboard gets an accessible page; AP
   assert.equal((await f.mutate({ action: 'update', id: child.id, name: 'House', slug: 'house' })).status, 200);
   const garage = await f.create('garage');
   assert.equal((await f.mutate({ action: 'archive', id: garage.id, confirmed: true })).status, 200);
-  for (const target of ['/family', '/family/settings?x=<script>', '/garage', '/no-such-dashboard', '/%3Cscript%3Ealert(1)']) {
+  // /studio is the Dashboards page; a mistyped Studio page gets the page too.
+  for (const target of ['/studio', '/studio/']) {
+    const sent = await f.request(target, { headers: html });
+    assert.equal(sent.status, 307, target);
+    assert.equal(sent.headers.location, '/studio/dashboards', target);
+  }
+  for (const target of ['/family', '/family/settings?x=<script>', '/garage', '/no-such-dashboard', '/%3Cscript%3Ealert(1)', '/studio/no-such-page']) {
     const page = await f.request(target, { headers: html });
     assert.equal(page.status, 404, target);
     assert.equal(page.headers['content-type'], 'text/html; charset=utf-8', target);

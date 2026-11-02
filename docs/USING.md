@@ -104,9 +104,8 @@ Dashboards page asks for one, suggesting `dashboard`, and nothing else opens
 until it's saved. You can change it later with **⋯ → Rename or change address** in its row.
 
 A new dashboard is empty. In the editor it shows a short note, *A clean
-slate*, and an **Add your first widget** button. Group buttons (**All
-content** and one per native group) filter the live dashboard when it has at
-least two groups.
+slate*, and an **Add your first widget** button. To split a dashboard into
+sections, add pages (below).
 
 The board is a 24-column grid of 36 px rows. In a narrower window (or a
 tablet) it shows the same layout on 16 columns, and on a phone on 8, keeping
@@ -191,17 +190,21 @@ puts the panel back.
 - **Size** (with one panel selected) sets **Column**, **Row**, **Width** and
   **Height** as numbers. A value that's out of range is flagged and **Apply**
   stays off until it's fixed.
-- The keyboard button under the editor's title lists every shortcut.
+- The keyboard button in the editing bar lists every shortcut (on devices with
+  a keyboard).
 
 Panels snap to the grid and can't overlap. Content has a minimum size, so a
 panel won't shrink below what its widget needs.
 
 ### Saving or cancelling
 
-While you edit, the toolbar offers **Save arrangement**, which saves and keeps
-you in the editor. On wider screens the toolbar also says **Unsaved
-arrangement**. In the header:
+The editing bar along the top holds **Widgets** (add one), **Tidy up**,
+**Undo** and **Redo** on the left, and **Save**, **Cancel** and **Done** on the
+right, with **Unsaved changes** beside them while there are any. On a phone the
+left-hand buttons show icons only.
 
+- **Save** (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd>) saves and keeps you
+  in the editor.
 - **Done** saves and goes back to the Dashboards page.
 - **Cancel** goes back to the Dashboards page. If you have moves, sizes or stacks that aren't
   saved, it first asks **Discard unsaved changes?** with **Keep editing**

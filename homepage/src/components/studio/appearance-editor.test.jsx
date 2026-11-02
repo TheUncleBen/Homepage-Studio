@@ -58,7 +58,8 @@ describe("dashboard appearance controls", () => {
     });
     fireEvent.click(screen.getByRole("radio", { name: "Follow device" }));
     expect(onChange.mock.lastCall[0]).not.toHaveProperty("theme");
-    expect(onChange.mock.lastCall[0].studioTheme.mode).toBe("system");
+    // Follow device is the built-in default, so choosing it stores nothing.
+    expect(onChange.mock.lastCall[0].studioTheme).not.toHaveProperty("mode");
   });
 
   it("shows the platform's values for rows the dashboard leaves alone, with no separate Default choice", () => {

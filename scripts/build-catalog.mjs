@@ -198,6 +198,12 @@ function applyReviewedCorrections(byType) {
   set('service', 'ntfy', 'password', ['string'], { description: 'Optional Basic authentication password; use together with username.' });
   set('service', 'qnap', 'volume', ['string'], { description: 'Optional QNAP volume name to show through the volumeUsage field; poolUsage otherwise aggregates volumes.' });
   set('info', 'datetime', 'locale', ['string'], { description: 'Optional locale for this clock. Format options use native Intl.DateTimeFormat settings.' });
+  // Text size is a choice of the sizes the widget's code knows (its docs leave
+  // out lg, the default). Format gets the Date & Time editor: what the time
+  // and the date show, with a live example; other Intl options stay in YAML.
+  const sizes = [['xs', 'Extra small'], ['sm', 'Small'], ['md', 'Medium'], ['lg', 'Large'], ['xl', 'Extra large'], ['2xl', '2× large'], ['3xl', '3× large'], ['4xl', '4× large']];
+  set('info', 'datetime', 'text_size', ['string'], { label: 'Text size', choices: sizes.map(([value]) => value), defaultChoice: 'lg', choiceLabels: Object.fromEntries(sizes) });
+  set('info', 'datetime', 'format', ['object'], { label: 'Shows', editor: 'dateTimeFormat', description: 'What the clock writes. More Intl.DateTimeFormat options, such as hour or weekday on their own, can be set in YAML.' });
   set('info', 'glances', 'disk', ['string', 'array'], { description: 'One mount path or a list of mount paths reported by Glances.' });
   set('info', 'resources', 'network', ['boolean', 'string'], { description: 'false disables network; true uses the default interface; a string selects an interface. A named host interface requires the documented read-only /sys mount.' });
   for (const key of ['username', 'password']) set('service', 'rutorrent', key, ['string', 'boolean'], { description: 'Use a credential string, omit when unnecessary, or use the native boolean false to disable it. Boolean true is not a credential.' });
@@ -276,7 +282,7 @@ function applyReviewedCorrections(byType) {
     ],
   });
   note('info', 'resources', 'CPU and memory describe container usage. Disks must be mounted into the Homepage container. Glances provides separate host/remote statistics.');
-  note('info', 'openmeteo', 'Provide coordinates or deliberately use browser location. Browser geolocation requires a secure context; VPN or private-network access alone does not make HTTP a secure context.');
+  note('info', 'openmeteo', 'Without a latitude and longitude, the card says “Click to allow” and, once clicked, uses the location of the browser viewing it. That works only over HTTPS or on localhost; a VPN or private network alone is not enough. Enter both to show one place for everyone.');
   // These pages introduce each list in preceding prose rather than in its
   // "Allowed fields" line. Retain the documented context explicitly.
   for (const [type, contexts] of [['azuredevops', ['Pipelines', 'Pull requests']], ['uptimerobot', ['Monitor-Specific API Key', 'Read-Only API Key']]]) {

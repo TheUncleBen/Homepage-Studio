@@ -22,7 +22,7 @@ import useSystemTheme from "./use-system-theme";
 // Administration → Appearance, or the built-in Graphite and eggplant.
 function platformDefaults(platform) {
   return {
-    mode: ["dark", "light", "system"].includes(platform?.mode) ? platform.mode : "dark",
+    mode: ["dark", "light", "system"].includes(platform?.mode) ? platform.mode : "system",
     accent: hexColor(platform?.accent) || DEFAULT_ACCENT,
     base: Object.hasOwn(BASES, platform?.base) ? platform.base : DEFAULT_BASE,
   };
@@ -346,7 +346,12 @@ export default function AppearanceEditor({ settings, platform, logo, name, onLog
               <i />
             </span>
           </div>
-          <span className="studio-appearance-preview-action">Add a widget</span>
+          {/* The accent as Studio uses it: a selected tab's marker, not a
+              button that looks clickable. */}
+          <span className="studio-appearance-preview-tabs" aria-hidden="true">
+            <span className="is-on">Home</span>
+            <span>Media</span>
+          </span>
         </div>
       </div>
       {onLogoChange && <LogoEditor logo={logo} onChange={onLogoChange} />}

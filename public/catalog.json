@@ -15417,11 +15417,32 @@
           ],
           "exampleValue": "xl",
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/info/datetime/"
+          "source": "https://gethomepage.dev/widgets/info/datetime/",
+          "choices": [
+            "xs",
+            "sm",
+            "md",
+            "lg",
+            "xl",
+            "2xl",
+            "3xl",
+            "4xl"
+          ],
+          "defaultChoice": "lg",
+          "choiceLabels": {
+            "xs": "Extra small",
+            "sm": "Small",
+            "md": "Medium",
+            "lg": "Large",
+            "xl": "Extra large",
+            "2xl": "2× large",
+            "3xl": "3× large",
+            "4xl": "4× large"
+          }
         },
         {
           "key": "format",
-          "label": "Format",
+          "label": "Shows",
           "type": "object",
           "valueTypes": [
             "object"
@@ -15430,7 +15451,9 @@
             "timeStyle": "short"
           },
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/info/datetime/"
+          "source": "https://gethomepage.dev/widgets/info/datetime/",
+          "editor": "dateTimeFormat",
+          "description": "What the clock writes. More Intl.DateTimeFormat options, such as hour or weekday on their own, can be set in YAML."
         },
         {
           "key": "locale",
@@ -16034,7 +16057,7 @@
       ],
       "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON.",
       "setupNotes": [
-        "Provide coordinates or deliberately use browser location. Browser geolocation requires a secure context; VPN or private-network access alone does not make HTTP a secure context."
+        "Without a latitude and longitude, the card says “Click to allow” and, once clicked, uses the location of the browser viewing it. That works only over HTTPS or on localhost; a VPN or private network alone is not enough. Enter both to show one place for everyone."
       ],
       "guide": [
         {

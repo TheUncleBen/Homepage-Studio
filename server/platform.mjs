@@ -51,6 +51,13 @@ export const BACKGROUND_CHOICES = Object.freeze([
   ...ABSTRACT.map(({ id, name }) => ({ id, name, family: 'Abstract' })),
   ...PATTERNS.map(({ id, name }) => ({ id, name, family: 'Patterns' })),
 ]);
+// The Base swatches on the Administration page draw each base as the
+// dashboard's picker does: its page, card and line colours in each mode.
+export const BASE_CHOICES = Object.freeze(Object.entries(BASES).map(([id, base]) => ({
+  id,
+  name: base.name,
+  ...Object.fromEntries(['dark', 'light'].map(mode => [mode, { page: base[mode].bg, card: base[mode].raised, line: base[mode]['line-strong'] }])),
+})));
 function validBackground(value) {
   if (value === null) return null;
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['source', 'id'].includes(key)) || value.source !== 'builtin' || typeof value.id !== 'string' || !builtInFamily(value.id)) invalid('Choose one of the built-in backgrounds, or none.');

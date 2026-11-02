@@ -22,8 +22,8 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
-| Text size | `text_size` | Text | Example: `xl`. |
-| Format | `format` | Settings (name: value) |  |
+| Text size | `text_size` | Text | A choice in the dialog: Extra small (`xs`), Small (`sm`), Medium (`md`), Large (`lg`, the default when left out), Extra large (`xl`), 2× large (`2xl`), 3× large (`3xl`), 4× large (`4xl`). |
+| Shows | `format` | Settings (name: value) | What the clock writes. More Intl.DateTimeFormat options, such as hour or weekday on their own, can be set in YAML. |
 | Locale | `locale` | Text | Optional locale for this clock. Format options use native Intl.DateTimeFormat settings. |
 
 ## Examples

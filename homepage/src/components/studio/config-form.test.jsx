@@ -141,10 +141,7 @@ describe("Coherent native option drafts", () => {
         fields={[{ key: "fields", label: "Visible fields", type: "array", choices: ["healthy", "total"] }]}
       />,
     );
-    expect(screen.getByRole("switch", { name: "Its usual set" })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
+    expect(screen.getByRole("switch", { name: "Its usual set" })).toHaveAttribute("aria-checked", "false");
     expect(screen.getByRole("switch", { name: "Total" })).toHaveAttribute("aria-checked", "true");
   });
   it("shows a widget's versions as a choice, with the default chosen and nothing written until another is picked", () => {
@@ -171,6 +168,42 @@ describe("Coherent native option drafts", () => {
     // A value the documentation doesn't list stays visible and chosen.
     render(<Fixture initial={{ version: 3 }} fields={[versionField]} />);
     expect(screen.getByRole("radio", { name: "Version 3" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("offers Date & Time's text size as a list and its format as Time and Date choices", () => {
+    const fields = [
+      {
+        key: "text_size",
+        label: "Text size",
+        type: "string",
+        valueTypes: ["string"],
+        choices: ["xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl"],
+        defaultChoice: "lg",
+        choiceLabels: { xs: "Extra small", lg: "Large", xl: "Extra large" },
+      },
+      { key: "format", label: "Shows", type: "object", valueTypes: ["object"], editor: "dateTimeFormat" },
+    ];
+    const { unmount } = render(<Fixture initial={{ format: { timeStyle: "short", hour12: false } }} fields={fields} />);
+    expect(screen.getByLabelText("Text size")).toHaveValue("lg");
+    fireEvent.change(screen.getByLabelText("Text size"), { target: { value: "xl" } });
+    expect(screen.queryByText("timeStyle")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Time")).toHaveValue("short");
+    // With a time shown, no date style means no date.
+    expect(screen.getByLabelText("Date")).toHaveDisplayValue("Off");
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "full" } });
+    expect(JSON.parse(screen.getByTestId("config-value").textContent)).toEqual({
+      text_size: "xl",
+      format: { timeStyle: "short", hour12: false, dateStyle: "full" },
+    });
+    fireEvent.change(screen.getByLabelText("Text size"), { target: { value: "lg" } });
+    fireEvent.change(screen.getByLabelText("Time"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "" } });
+    expect(JSON.parse(screen.getByTestId("config-value").textContent)).toEqual({ format: { hour12: false } });
+    unmount();
+    // Other Intl options keep the name/value editor, so nothing is lost.
+    render(<Fixture initial={{ format: { hour: "2-digit", minute: "2-digit" } }} fields={fields} />);
+    expect(screen.queryByLabelText("Time")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Shows" })).toBeInTheDocument();
   });
 
   it("does not replace a valid draft with invalid advanced YAML", () => {

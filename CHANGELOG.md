@@ -48,6 +48,14 @@ in older entries below are history only.
 - **Editing.** A widget menu (right-click or hold), multi-select with a
   selection bar, saved looks, Tidy up, snap guides and a freshness note with
   **Refresh now**. On a phone a widget's controls show only after you tap it.
+  One editing bar holds Widgets, Tidy up, Undo, Redo, **Save**
+  (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd>, keeps editing), Cancel and Done.
+- **Full view** of a chart has time and value axes with gridlines; percentages
+  get their own axis on the right. A chart's time range starts where its
+  collected data starts.
+- **Follow device** is the default mode for new deployments.
+- **Date & Time** in a card shows the time large with the date under it, and
+  its options are choices (Time, Date, Text size) rather than raw settings.
 
 ### Polished Studio pages, backups in the app, email in Studio's look
 

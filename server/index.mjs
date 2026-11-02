@@ -26,7 +26,7 @@ const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'pass
 import { createPersonalStore } from './personal.mjs';
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
 import { LookError, STATUS_SHOW, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
-import { BACKGROUND_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
+import { BACKGROUND_CHOICES, BASE_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
 import { createAuthService } from './auth/service.mjs';
@@ -105,8 +105,9 @@ const UNAVAILABLE_PAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; 
 function wantsHtmlPage(req) {
   if (!['GET', 'HEAD'].includes(req.method)) return false;
   const path = String(req.url || '').split('?')[0];
-  // Editor and native API routes, at the root or under a dashboard address.
-  if (/^\/(?:[^/]+\/)?(?:api|studio)(?:\/|$)/.test(path)) return false;
+  // Native and Studio API routes, at the root or under a dashboard address.
+  // Studio's own pages (a mistyped /studio/… address) get the page.
+  if (/^\/(?:[^/]+\/)?(?:api|studio\/api)(?:\/|$)/.test(path)) return false;
   return String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html');
 }
 function renderUnavailablePage(status) {
@@ -1182,12 +1183,12 @@ export function createStudioServer(options = {}) {
       }
       if (path === '/studio/api/platform') {
         if (!isAdmin) return forbidden(res, 'Only administrators can change the platform appearance.');
-        if (req.method === 'GET') return json(res, 200, { ...(await platform.read()), backgroundChoices: BACKGROUND_CHOICES });
+        if (req.method === 'GET') return json(res, 200, { ...(await platform.read()), backgroundChoices: BACKGROUND_CHOICES, baseChoices: BASE_CHOICES });
         if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST for the platform appearance.' });
         // Platform CSS reaches every dashboard, so saving it needs a recent
         // sign-in, as a dashboard's own custom.css does.
         if (auth && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
-        return json(res, 200, { ...(await platform.update(await readBody(req))), backgroundChoices: BACKGROUND_CHOICES });
+        return json(res, 200, { ...(await platform.update(await readBody(req))), backgroundChoices: BACKGROUND_CHOICES, baseChoices: BASE_CHOICES });
       }
       // Full backups (server/backups.mjs), for administrators. Everything but
       // the list needs a recent sign-in: a backup holds every secret Studio has.
@@ -1227,6 +1228,11 @@ export function createStudioServer(options = {}) {
         return json(res, 400, { error: 'Unknown backup action.', code: 'INVALID_BACKUP_ACTION' });
       }
       if (!auth && ['/studio/dashboards', '/studio/admin'].includes(path) && ['GET', 'HEAD'].includes(req.method)) return sendStudioPage(res, path.slice('/studio/'.length), siteName());
+      // /studio on its own is a natural address to type: it is the Dashboards page.
+      if (['/studio', '/studio/'].includes(path) && ['GET', 'HEAD'].includes(req.method)) {
+        res.writeHead(307, { location: '/studio/dashboards', 'cache-control': 'no-store', 'content-length': 0 });
+        return res.end();
+      }
       if (!auth && req.method === 'GET' && path.startsWith('/studio/auth/assets/')) return await sendStudioAsset(res, path);
       // The bare address: the person's landing dashboard, or the Dashboards page.
       if (path === '/' && ['GET', 'HEAD'].includes(req.method)) {

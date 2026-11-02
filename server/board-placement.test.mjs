@@ -134,7 +134,8 @@ test('new content starts compact: links and info 6x2, integrations 6x4, never un
   assert.deepEqual(newPanelSize({ kind: 'service' }), { w: 6, h: 2 });
   assert.deepEqual(newPanelSize({ kind: 'bookmark' }), { w: 6, h: 2 });
   assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'datetime' } }), { w: 6, h: 2 });
-  assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'resources' } }), { w: 8, h: 4 });
+  assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'resources' } }), { w: 8, h: 2 });
+  assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'longhorn' } }), { w: 8, h: 4 });
   assert.deepEqual(newPanelSize({ kind: 'serviceWidget', nativeLocator: { type: 'customapi' } }), { w: 6, h: 4 });
   assert.deepEqual(newPanelSize({ kind: 'serviceWidget', nativeLocator: { type: 'calendar' } }), { w: 12, h: 9 });
 });

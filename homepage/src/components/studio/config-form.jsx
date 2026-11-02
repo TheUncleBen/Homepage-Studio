@@ -1,4 +1,5 @@
 import { dump, load } from "js-yaml";
+import { useTranslation } from "next-i18next/pages";
 import { useEffect, useId, useState } from "react";
 
 import { CONNECTION_FIELDS, ConnectionChooser, ConnectionSave, ConnectionTest, savedConnectionId } from "./connections";
@@ -29,7 +30,7 @@ export const SERVICE_FIELDS = [
 ];
 export const SETTINGS_FIELDS = [
   { key: "title", label: "Dashboard title", type: "string" },
-  { key: "description", label: "Description", type: "string" },
+  { key: "description", label: "Description", type: "string", exampleValue: "A line under the title" },
   { key: "language", label: "Language", type: "string", exampleValue: "en" },
   {
     key: "target",
@@ -162,20 +163,43 @@ function Field({ field, value, onChange, onError }) {
     kind === "string" && typeof field.exampleValue === "string" && !field.sensitive ? field.exampleValue : "";
   // A field with documented choices, such as which release of the app a
   // widget talks to. Leaving it out means the first, default choice.
-  const choiceList = kind === "number" && field.choiceLabels && field.choices?.length;
+  const choiceList = ["number", "string"].includes(kind) && field.choiceLabels && field.choices?.length;
   const fallback = choiceList ? String(field.defaultChoice ?? field.choices[0]) : "";
+  const choiceOptions = choiceList
+    ? [
+        ...field.choices.map((choice) => [String(choice), field.choiceLabels[String(choice)] ?? String(choice)]),
+        ...(text && !field.choices.map(String).includes(text)
+          ? [[text, kind === "number" ? `Version ${text}` : text]]
+          : []),
+      ]
+    : [];
+  const dateTime =
+    field.editor === "dateTimeFormat" &&
+    kind === "object" &&
+    (value === undefined || (isObject(value) && Object.keys(value).every((key) => DATE_TIME_KEYS.includes(key))));
   let control;
-  if (choiceList)
+  if (choiceList && choiceOptions.length > 4)
+    control = (
+      <select
+        id={id}
+        value={text || fallback}
+        onChange={(event) => update(event.target.value === fallback ? "" : event.target.value)}
+      >
+        {choiceOptions.map(([option, name]) => (
+          <option key={option} value={option}>
+            {name}
+          </option>
+        ))}
+      </select>
+    );
+  else if (choiceList)
     control = (
       <Segmented
         id={id}
         label={label}
         value={text || fallback}
         onChange={(next) => update(next === fallback ? "" : next)}
-        options={[
-          ...field.choices.map((choice) => [String(choice), field.choiceLabels[String(choice)] ?? String(choice)]),
-          ...(text && !field.choices.map(String).includes(text) ? [[text, `Version ${text}`]] : []),
-        ]}
+        options={choiceOptions}
       />
     );
   else if (kind === "boolean")
@@ -252,12 +276,32 @@ function Field({ field, value, onChange, onError }) {
         )}
       </div>
     );
+  if (dateTime)
+    return (
+      <DateTimeFormat
+        id={id}
+        value={value}
+        info={field.description}
+        onChange={(next) => update(next === undefined ? "" : JSON.stringify(next))}
+      />
+    );
   return (
     <Row
       label={label}
-      htmlFor={choiceList || kind === "boolean" || flatObject || flatList || field.icon ? undefined : id}
+      htmlFor={
+        (choiceList && choiceOptions.length <= 4) || kind === "boolean" || flatObject || flatList || field.icon
+          ? undefined
+          : id
+      }
       info={field.description}
-      stacked={choiceList || structured || flatObject || flatList || field.icon || field.valueTypes?.length > 1}
+      stacked={
+        (choiceList && choiceOptions.length <= 4) ||
+        structured ||
+        flatObject ||
+        flatList ||
+        field.icon ||
+        field.valueTypes?.length > 1
+      }
       className={error ? "studio-row-invalid" : ""}
     >
       {field.valueTypes?.length > 1 && (
@@ -279,6 +323,57 @@ function Field({ field, value, onChange, onError }) {
         </small>
       )}
     </Row>
+  );
+}
+
+// Date & Time's format as two choices: how the time and the date are written,
+// each with an example of today. Any other Intl option keeps the YAML or the
+// name/value editor, so nothing set there is lost.
+const DATE_TIME_KEYS = ["timeStyle", "dateStyle", "hour12", "hourCycle", "timeZone"];
+const STYLES = [
+  ["short", "Short"],
+  ["medium", "Medium"],
+  ["long", "Long"],
+  ["full", "Full"],
+];
+function DateTimeFormat({ id, value, info, onChange }) {
+  // Examples in the dashboard's language, as the card writes them.
+  const { i18n } = useTranslation();
+  const now = new Date();
+  const example = (options) => {
+    try {
+      return new Intl.DateTimeFormat(i18n?.language || undefined, { ...options, timeZone: value?.timeZone }).format(
+        now,
+      );
+    } catch {
+      return "";
+    }
+  };
+  const time = value?.timeStyle ?? "";
+  const set = (key, next) => {
+    const result = { ...(value || {}) };
+    if (next) result[key] = next;
+    else delete result[key];
+    onChange(Object.keys(result).length ? result : undefined);
+  };
+  const row = (key, label, none, help) => (
+    <Row label={label} htmlFor={`${id}-${key}`} info={help}>
+      <select id={`${id}-${key}`} value={value?.[key] ?? ""} onChange={(event) => set(key, event.target.value)}>
+        <option value="">{none}</option>
+        {STYLES.map(([style, name]) => (
+          <option key={style} value={style}>
+            {`${name} · ${example({ [key]: style })}`}
+          </option>
+        ))}
+      </select>
+    </Row>
+  );
+  return (
+    <>
+      {row("timeStyle", "Time", "Off", info)}
+      {/* With the time off and no date style, the widget writes the date in numbers. */}
+      {row("dateStyle", "Date", time ? "Off" : `Numbers · ${example({})}`)}
+    </>
   );
 }
 
@@ -584,19 +679,24 @@ export default function ConfigForm({
   const options = shown.filter((field) => !picker(field) && !connection.includes(field));
   return (
     <div className="studio-config-form">
-      <Segmented
-        label="Configuration view"
-        value={tab}
-        onChange={(next) => {
-          if (next === "yaml" && tab !== "yaml")
-            setYaml(dump(value, { noRefs: true, lineWidth: 100, sortKeys: false }));
-          setTab(next);
-        }}
-        options={[
-          ["fields", "Options", { disabled: Boolean(error), describedBy: error ? yamlErrorId : undefined }],
-          ["yaml", "YAML", { disabled: fieldErrorIds.length > 0, describedBy: fieldErrorIds.join(" ") || undefined }],
-        ]}
-      />
+      <div className="studio-config-view">
+        <span className="studio-muted" aria-hidden="true">
+          Edit as
+        </span>
+        <Segmented
+          label="Configuration view"
+          value={tab}
+          onChange={(next) => {
+            if (next === "yaml" && tab !== "yaml")
+              setYaml(dump(value, { noRefs: true, lineWidth: 100, sortKeys: false }));
+            setTab(next);
+          }}
+          options={[
+            ["fields", "Options", { disabled: Boolean(error), describedBy: error ? yamlErrorId : undefined }],
+            ["yaml", "YAML", { disabled: fieldErrorIds.length > 0, describedBy: fieldErrorIds.join(" ") || undefined }],
+          ]}
+        />
+      </div>
       {tab === "fields" ? (
         <>
           {connection.length > 0 && (
@@ -613,7 +713,14 @@ export default function ConfigForm({
               {connectionRows.map(fieldRow)}
               {/* Test and Save as a connection share one row. */}
               <div className="studio-connection-actions">
-                {testable && connectionKeys.includes("url") && <ConnectionTest value={value} />}
+                {testable && connectionKeys.includes("url") && (
+                  // A new widget's draft has no type yet; testable names it.
+                  <ConnectionTest
+                    value={
+                      typeof testable === "string" && value.type === undefined ? { ...value, type: testable } : value
+                    }
+                  />
+                )}
                 {offersSaved && !savedConnection && (
                   <ConnectionSave
                     value={value}

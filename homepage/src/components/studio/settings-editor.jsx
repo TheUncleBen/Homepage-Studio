@@ -262,11 +262,11 @@ export default function SettingsEditor({
             />
             <Group>
               <Row
-                label="Platform CSS"
-                info="The CSS an administrator sets for every dashboard in Administration → Appearance. It loads before this dashboard's own custom.css."
+                label="Administrator's CSS"
+                info="Custom CSS an administrator sets for every dashboard in Administration → Appearance (Platform CSS). It loads before this dashboard's own custom.css."
               >
                 <Switch
-                  label="Load the platform CSS"
+                  label="Also load the administrator's CSS"
                   checked={draft.studioTheme?.platformCss !== false}
                   onChange={(on) => {
                     const studioTheme = {
@@ -692,8 +692,9 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
           Download snapshot
         </button>
         <span className="studio-footer-spacer" />
+        {/* Dismiss words: Cancel beside a main action, Done where there is none. */}
         <button className="studio-button studio-quiet" disabled={busy} onClick={onClose}>
-          Close
+          Cancel
         </button>
         <button className="studio-button studio-primary" disabled={(!chosen && !archive) || busy} onClick={restore}>
           {pending

@@ -48,7 +48,9 @@ describe("Custom API empty mappings hint", () => {
 
   it("shows a non-blocking hint while mappings are empty and hides it once one is added", () => {
     renderEditor(customApi);
-    expect(screen.getByRole("status")).toHaveTextContent(
+    // A new widget with an address also offers Test connection, whose result is a status too.
+    expect(screen.getByRole("button", { name: "Test connection" })).toBeInTheDocument();
+    expect(screen.getByText(/has no/)).toHaveTextContent(
       "This Custom API widget has no mappings yet, so its panel will be empty.",
     );
     fireEvent.change(screen.getByLabelText("Name"), {

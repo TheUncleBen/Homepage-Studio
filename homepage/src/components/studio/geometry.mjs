@@ -20,8 +20,9 @@ export const PHONE_WIDTH = 560;
 export function panelMinimum(panel) {
   if (panel.kind === "service" || panel.kind === "bookmark") return { w: 5, h: 2 };
   if (panel.kind === "informationWidget") {
-    if (["resources", "kubernetes", "longhorn"].includes(panel.nativeLocator?.type)) return { w: 8, h: 4 };
-    return { w: panel.nativeLocator?.type === "search" ? 8 : 5, h: 2 };
+    // Resources is one row of meters; its card is one grid row tall.
+    if (["kubernetes", "longhorn"].includes(panel.nativeLocator?.type)) return { w: 8, h: 4 };
+    return { w: ["resources", "search"].includes(panel.nativeLocator?.type) ? 8 : 5, h: 2 };
   }
   if (panel.kind === "serviceWidget") {
     if (panel.nativeLocator?.type === "calendar") return { w: 12, h: 9 };

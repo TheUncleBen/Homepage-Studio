@@ -1545,6 +1545,9 @@ body {
   font-size: 14px;
 }
 .studio-appearance-preview {
+  /* Stays in view while the settings beside it scroll. */
+  position: sticky;
+  top: 12px;
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -1595,14 +1598,16 @@ body {
   width: 65%;
   background: var(--studio-accent);
 }
-.studio-appearance-preview-action {
-  align-self: flex-start;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--studio-accent-solid);
-  color: var(--studio-accent-contrast);
-  font-size: 11px;
-  font-weight: 600;
+.studio-appearance-preview-tabs {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--studio-muted);
+}
+.studio-appearance-preview-tabs > .is-on {
+  color: var(--studio-text);
+  box-shadow: inset 0 -2px 0 var(--studio-accent);
+  padding-bottom: 3px;
 }
 @media (max-width: 1100px) {
   .studio-app {
@@ -2777,6 +2782,19 @@ body {
 .studio-page-choice select {
   width: fit-content;
 }
+/* Selects outside a form row (delete page, move here, new widgets found)
+   look like the form's own, not a white native control. */
+:is(.studio-page-choice, .studio-move-here, .studio-discovered-page) select {
+  background: var(--studio-input);
+  border: 1px solid var(--studio-line-strong);
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: var(--studio-text);
+  font: inherit;
+  font-size: 12px;
+  min-height: 36px;
+}
+
 .studio-move-here fieldset {
   margin: 0 0 12px;
   padding: 0;
@@ -2934,6 +2952,13 @@ body {
 .studio-panel:has(.studio-card[data-alert]) {
   border-color: var(--studio-status-problem, #c4554d);
   --card-bg: color-mix(in srgb, var(--studio-status-problem, #c4554d) 12%, var(--studio-surface));
+}
+/* Why a card is red may wrap to a second line rather than be cut short. */
+.studio-card-name .studio-card-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
 }
 .studio-card-name .studio-card-note,
 .studio-status-down .studio-status-text {
@@ -4395,11 +4420,16 @@ svg.studio-chart-gauge {
 }
 
 /* Dashboard settings › Status colours. */
+/* One colour per line, aligned, rather than two and a stray third. */
 .studio-status-colours {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+.studio-config-view {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px 16px;
+  align-items: center;
+  gap: 10px;
 }
 .studio-status-colour {
   display: inline-flex;
@@ -4619,5 +4649,65 @@ svg.studio-chart-gauge {
   }
   .studio-edit-mode .studio-panel:has(.studio-native-content input:not([type="checkbox"])) .studio-native-content {
     padding-right: 150px;
+  }
+}
+/* Date & Time in a card: the time large, the date under it. Text size picks
+   the time's size; the largest still fits a one-row card. */
+.studio-datetime {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.studio-datetime-hero {
+  font-weight: 450;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+.studio-datetime-below {
+  color: var(--card-muted-text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.studio-datetime-xs {
+  font-size: 14px;
+}
+.studio-datetime-sm {
+  font-size: 16px;
+}
+.studio-datetime-md {
+  font-size: 18px;
+}
+.studio-datetime-lg {
+  font-size: 22px;
+}
+.studio-datetime-xl {
+  font-size: 28px;
+}
+.studio-datetime-2xl {
+  font-size: 32px;
+}
+.studio-datetime-3xl {
+  font-size: 38px;
+}
+.studio-datetime-4xl {
+  font-size: 44px;
+}
+/* Phone: a widget-dialog choice keeps its options on one line, sharing the
+   width; a long option wraps inside its own button rather than pushing the
+   last one to a line of its own. */
+@media (max-width: 560px) {
+  .studio-look-editor .studio-row-control > .studio-segmented {
+    flex-wrap: nowrap;
+    justify-self: stretch;
+  }
+  .studio-look-editor .studio-segmented > button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 4px 6px;
+    white-space: normal;
+    line-height: 1.15;
   }
 }

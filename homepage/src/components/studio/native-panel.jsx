@@ -1,5 +1,6 @@
 import { memo, useContext } from "react";
 
+import CardDateTime from "./card-datetime";
 import { CardLookContext } from "./card-look";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import { usePreferences, withDisplayPreferences } from "./preferences";
@@ -32,9 +33,12 @@ export default memo(function NativePanel({ panel, data, override }) {
         {resolved.kind === "serviceWidget" && (
           <WidgetCard service={resolved.service} widget={resolved.widget} groupName={resolved.groupName} />
         )}
-        {resolved.kind === "informationWidget" && (
-          <InformationWidget widget={withDisplayPreferences(resolved.widget, preferences)} style="clean" />
-        )}
+        {resolved.kind === "informationWidget" &&
+          (resolved.widget.type === "datetime" ? (
+            <CardDateTime options={withDisplayPreferences(resolved.widget, preferences).options ?? {}} />
+          ) : (
+            <InformationWidget widget={withDisplayPreferences(resolved.widget, preferences)} style="clean" />
+          ))}
         {resolved.kind === "bookmark" && <BookmarkCard bookmark={resolved.bookmark} />}
       </ErrorBoundary>
     );

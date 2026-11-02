@@ -186,6 +186,11 @@ test('members only reach dashboards shared with them, at the shared level', asyn
   const home = await request('/', { cookie: member.cookie, headers: html });
   assert.equal(home.status, 307);
   assert.equal(home.headers.location, '/studio/dashboards');
+  for (const target of ['/studio', '/studio/']) {
+    const studio = await request(target, { cookie: member.cookie, headers: html });
+    assert.equal(studio.status, 307, target);
+    assert.equal(studio.headers.location, '/studio/dashboards', target);
+  }
   assert.deepEqual((await request('/studio/api/overview', { cookie: member.cookie })).json.dashboards, []);
   assert.equal((await request('/studio/api/board', { cookie: member.cookie })).status, 404, 'an unshared dashboard looks like a missing one');
   assert.equal((await request('/studio/api/history?panel=missing&range=24h', { cookie: member.cookie })).status, 404);

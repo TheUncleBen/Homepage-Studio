@@ -11,8 +11,9 @@ keep the platform accent and choose its own display mode, for example.
 
 | Setting | What it does |
 | --- | --- |
-| **Mode** | Dark, Light or Auto (follows the device). Default: Dark |
-| **Accent** | A swatch (Eggplant, Graphite, Ocean, Sage) or **Custom**, which opens a colour picker and shows a **Hex** field. Default: Eggplant, `#b299be` |
+| **Mode** | Follow device, Dark or Light. Default: Follow device |
+| **Base** | The page, cards and lines: Graphite, Slate, Midnight, Forest, Sand or Eggplant, each with a dark and a light version, shown as swatches. Default: Graphite |
+| **Accent** | A swatch (Eggplant, Teal, Ocean, Sage, Amber, Rose) or **Custom**, which opens a colour picker and shows a **Hex** field. Default: Eggplant, `#b299be` |
 | **Page background** | Optional. One of Studio's built-in backgrounds, used by every dashboard and page that has no Page background of its own |
 | **Platform CSS** | Optional. Loaded on every dashboard before that dashboard's own `custom.css`, which can override it |
 
@@ -28,13 +29,13 @@ again replaces their change.
 Open the dashboard's **Settings** (on the **Dashboards** page, or
 `/<slug>/studio/settings`) and find **Appearance**:
 
-- **Mode**: **Default** follows the platform; Dark, Light or Auto sets this
-  dashboard's own.
+- **Mode**: Follow device, Dark or Light. Until you pick one, the dashboard
+  follows the platform's mode; picking the platform's own choice stores nothing.
 - **Accent**: the first swatch, **Default**, follows the platform accent; the
   others set this dashboard's own, and **Custom** takes any three- or
   six-digit hex color.
-- **Platform CSS → Load the platform CSS**: on by default. Administrators can
-  switch it off for one dashboard.
+- **Administrator's CSS**: loads the Platform CSS on this dashboard. On by
+  default. Administrators can switch it off for one dashboard.
 
 The preview changes with the draft. **Save settings** applies it to this
 dashboard and creates the usual recovery snapshot. Each dashboard stores its
