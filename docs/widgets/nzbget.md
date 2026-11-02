@@ -1,4 +1,4 @@
-# NZBget
+# NZBGet
 
 Integration · type `nzbget` · [Homepage documentation](https://gethomepage.dev/widgets/services/nzbget/)
 

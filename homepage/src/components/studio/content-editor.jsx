@@ -8,6 +8,8 @@ import ConfigForm, { LINK_FIELDS, SERVICE_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
 import { moveToPage, pageOf, pagesOf } from "./geometry.mjs";
+import { loadIndex } from "./icon-chooser";
+import { builtInIconUrl } from "./icon-source.mjs";
 import StudioIcon from "./icons";
 import LookEditor from "./look-editor";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
@@ -59,6 +61,12 @@ const ENDPOINT = {
   informationWidget: "info-widget",
   bookmark: "bookmark",
 };
+const KIND_HINT = {
+  service: "A link to an app, with its status.",
+  serviceWidget: "Live numbers from one of your apps.",
+  informationWidget: "Stands on its own, no app needed.",
+  bookmark: "A compact link.",
+};
 const LABEL = {
   service: "Service tile",
   serviceWidget: "Integration widget",
@@ -97,18 +105,33 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
       icon: "layout",
     })),
   ];
-  // In All, an information widget and an integration widget can share a name
-  // (Custom API, Glances, …); their subtitle names the kind so the two can be
-  // told apart.
-  const nameCounts = new Map();
-  for (const entry of entries) {
-    const key = (entry.name || entry.type).toLowerCase();
-    nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
-  }
-  const subtitle = (entry) =>
-    category === "all" && nameCounts.get((entry.name || entry.type).toLowerCase()) > 1
-      ? LABEL[entry.kind]
-      : entry.description || LABEL[entry.kind];
+  // Glances, Custom API and a few others exist both ways: as an integration
+  // (attached to one of your services, with its link and status) and as an
+  // information widget (on its own). The subtitle says which is which.
+  const subtitle = (entry) => entry.description || KIND_HINT[entry.kind];
+  const [logos, setLogos] = useState(null);
+  useEffect(() => {
+    let live = true;
+    loadIndex()
+      .then((icons) => {
+        if (live) setLogos(new Map(icons.map(([name]) => [name.replace(/[^a-z0-9]/g, ""), name])));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  // The app's own logo from the bundled set, when one matches its name.
+  const logoOf = (entry) => {
+    if (!logos || (entry.kind !== "serviceWidget" && entry.kind !== "informationWidget")) return null;
+    const keys = [entry.type, entry.name].map((text) =>
+      String(text || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, ""),
+    );
+    const name = keys.map((key) => logos.get(key)).find(Boolean);
+    return name ? builtInIconUrl(name) : null;
+  };
   const visible = entries.filter(
     (entry) =>
       (category === "all" || entry.kind === category) &&
@@ -186,7 +209,12 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
                 onClick={() => onChoose(entry)}
               >
                 <span className="studio-catalog-icon">
-                  <StudioIcon name={entry.icon} size={20} />
+                  {logoOf(entry) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={logoOf(entry)} alt="" width={22} height={22} loading="lazy" />
+                  ) : (
+                    <StudioIcon name={entry.icon} size={20} />
+                  )}
                 </span>
                 <span>
                   <strong>{entry.name || entry.type}</strong>

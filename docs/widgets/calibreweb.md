@@ -1,4 +1,4 @@
-# Calibre-web
+# Calibre-Web
 
 Integration · type `calibreweb` · [Homepage documentation](https://gethomepage.dev/widgets/services/calibre-web/)
 

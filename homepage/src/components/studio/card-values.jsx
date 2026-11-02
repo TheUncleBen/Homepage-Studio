@@ -68,7 +68,8 @@ export default function CardValues({ card, items: children }) {
   const trend = show === "numbers" && card.trend && card.trend !== "off" && hero;
   return (
     <div className={`studio-values studio-values-hero${charted ? " studio-values-charted" : ""}`}>
-      {hero && show !== "gauge" && (
+      {/* Gauge, donut and pie write their hero inside the chart (board 10). */}
+      {hero && !["gauge", "donut", "pie"].includes(show) && (
         <ValueSlotContext.Provider value={{ ...arranged.get(hero.key), slot: "hero" }}>
           {hero.child}
         </ValueSlotContext.Provider>

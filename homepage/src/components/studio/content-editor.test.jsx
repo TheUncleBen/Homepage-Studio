@@ -100,8 +100,8 @@ describe("Content picker names", () => {
     // The name stays as it is; the subtitle tells the two apart.
     const customApi = screen.getAllByRole("button", { name: /^Custom API/ });
     expect(customApi.map((item) => item.textContent)).toEqual([
-      "Custom APIInformation widget",
-      "Custom APIIntegration widget",
+      "Custom APIStands on its own, no app needed.",
+      "Custom APILive numbers from one of your apps.",
     ]);
     expect(screen.queryByText(/\(information widget\)/)).not.toBeInTheDocument();
     expect(screen.getByText("Date & Time")).toBeInTheDocument();

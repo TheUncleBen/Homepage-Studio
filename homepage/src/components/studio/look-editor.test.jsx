@@ -308,7 +308,10 @@ describe("Show as and charts", () => {
     const { onLook } = renderEditor({
       look: { show: "line" },
       inheritedLook: { ...BUILT_IN_LOOK, show: "line" },
-      chartFields: [{ field: "users", format: "number" }],
+      chartFields: [
+        { field: "users", format: "number" },
+        { field: "failed", format: "number" },
+      ],
       rangeChoices: ["1h", "6h", "24h", "7d"],
     });
     const colour = screen.getByRole("textbox", { name: "Chart colour for Users" });
@@ -352,5 +355,49 @@ describe("Status history on a service tile", () => {
     fireEvent.click(radio("Check by", "Off"));
     expect(onBehaviour).toHaveBeenLastCalledWith({ status: "off" });
     expect(onLook).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("names the line drawn as the hero, and hands the hero on when it moves below", () => {
+    const { onLook } = renderEditor({ look: { show: "numbers", layout: "hero" } });
+    expect(screen.getByRole("combobox", { name: "Where Users shows" }).value).toBe("hero");
+    expect(screen.getByRole("combobox", { name: "Where Failed shows" }).value).toBe("below");
+    fireEvent.change(screen.getByRole("combobox", { name: "Where Users shows" }), { target: { value: "below" } });
+    expect(onLook.mock.calls.at(-1)[0].values).toEqual([
+      { field: "users" },
+      { field: "failed", slot: "hero" },
+      { field: "logins" },
+    ]);
+  });
+
+  it("a gauge offers one value, from the percentages (Rule 1)", () => {
+    const { onLook } = renderEditor({
+      look: { show: "gauge" },
+      chartFields: [
+        { field: "users", format: "number" },
+        { field: "failed", format: "percent" },
+        { field: "logins", format: "percent" },
+      ],
+    });
+    const value = screen.getByRole("combobox", { name: "Value" });
+    expect(value.value).toBe("failed");
+    expect([...value.options].map((option) => option.value)).toEqual(["failed", "logins"]);
+    expect(screen.queryByRole("combobox", { name: "Where Users shows" })).toBe(null);
+    fireEvent.change(value, { target: { value: "logins" } });
+    expect(onLook.mock.calls.at(-1)[0].values).toEqual([
+      { field: "users" },
+      { field: "failed" },
+      { field: "logins", slot: "hero" },
+    ]);
+  });
+
+  it("status history has one range control, in Status", () => {
+    renderEditor({
+      look: { show: "status" },
+      behaviour: { status: "web" },
+      inheritedBehaviour: { ...BUILT_IN_BEHAVIOUR, status: "web" },
+    });
+    expect(screen.queryByRole("radiogroup", { name: "Time range" })).toBe(null);
+    expect(screen.getByRole("radiogroup", { name: "Uptime over" })).toBeTruthy();
+    expect(screen.getByRole("radiogroup", { name: "Style" })).toBeTruthy();
   });
 });

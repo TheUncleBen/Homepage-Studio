@@ -1,4 +1,4 @@
-# Unifi Controller
+# UniFi Controller
 
 Information widget · type `unifi_console` · [Homepage documentation](https://gethomepage.dev/widgets/info/unifi_controller/)
 

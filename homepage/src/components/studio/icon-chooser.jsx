@@ -13,7 +13,7 @@ const SHOWN = 120;
 let indexPromise = null;
 
 // The built-in logo index is fetched once, the first time a chooser opens.
-function loadIndex() {
+export function loadIndex() {
   if (!indexPromise)
     indexPromise = fetch(dashboardPath("/studio-icons/index.json"), { credentials: "same-origin" })
       .then((response) => {

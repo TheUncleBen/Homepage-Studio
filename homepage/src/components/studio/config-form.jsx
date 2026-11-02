@@ -451,7 +451,9 @@ function VisibleFields({ field, value, onChange }) {
   ];
   return (
     <Group
-      title={field.label || "Visible fields"}
+      // Not "Visible fields": Show (below) arranges and hides values; this
+      // is the widget's own list of which values it includes.
+      title="Values it includes"
       aside={
         selected.length
           ? field.maxItems
@@ -459,14 +461,14 @@ function VisibleFields({ field, value, onChange }) {
             : `${selected.length} shown`
           : undefined
       }
-      info={`The widget shows its own default fields until you turn that off and pick the fields to show, in order. With none picked, it shows its default fields.${
+      info={`The widget's own choice of values. It uses its usual set until you turn that off and pick values, in order. Show, further down, arranges and hides what it includes.${
         field.maxItems ? ` It can show up to ${field.maxItems}.` : ""
       }${contexts.length > 1 ? " Each set belongs to a different mode of the widget; choose from one set." : ""}`}
       className="studio-visible-fields"
     >
-      <Row label="Use the widget's default fields">
+      <Row label="Its usual set">
         <Switch
-          label="Use the widget's default fields"
+          label="Its usual set"
           checked={usingDefault}
           onChange={(next) => {
             setPicking(!next);
@@ -609,15 +611,18 @@ export default function ConfigForm({
                 />
               )}
               {connectionRows.map(fieldRow)}
-              {testable && connectionKeys.includes("url") && <ConnectionTest value={value} />}
-              {offersSaved && !savedConnection && (
-                <ConnectionSave
-                  value={value}
-                  keys={connectionKeys}
-                  onChange={wholeChange}
-                  onSaved={setSavedConnection}
-                />
-              )}
+              {/* Test and Save as a connection share one row. */}
+              <div className="studio-connection-actions">
+                {testable && connectionKeys.includes("url") && <ConnectionTest value={value} />}
+                {offersSaved && !savedConnection && (
+                  <ConnectionSave
+                    value={value}
+                    keys={connectionKeys}
+                    onChange={wholeChange}
+                    onSaved={setSavedConnection}
+                  />
+                )}
+              </div>
             </Group>
           )}
           {pickers.map((field) => (

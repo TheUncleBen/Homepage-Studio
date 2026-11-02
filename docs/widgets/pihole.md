@@ -1,4 +1,4 @@
-# PiHole
+# Pi-hole
 
 Integration · type `pihole` · [Homepage documentation](https://gethomepage.dev/widgets/services/pihole/)
 

@@ -1,4 +1,4 @@
-# WeatherAPI (source only)
+# WeatherAPI
 
 Information widget · type `weatherapi` · [Homepage documentation](https://gethomepage.dev/widgets/info/)
 

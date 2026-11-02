@@ -1,4 +1,4 @@
-# OPNSense
+# OPNsense
 
 Integration · type `opnsense` · [Homepage documentation](https://gethomepage.dev/widgets/services/opnsense/)
 

@@ -1,4 +1,4 @@
-# Adguard Home
+# AdGuard Home
 
 Integration · type `adguard` · [Homepage documentation](https://gethomepage.dev/widgets/services/adguard-home/)
 

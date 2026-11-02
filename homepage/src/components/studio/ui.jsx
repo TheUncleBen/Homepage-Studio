@@ -15,6 +15,14 @@ export function InfoButton({ label, open, onToggle, controls }) {
       aria-expanded={open}
       aria-controls={controls}
       onClick={onToggle}
+      // Esc closes the open note first, not the dialog around it.
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && open) {
+          event.preventDefault();
+          event.stopPropagation();
+          onToggle();
+        }
+      }}
     >
       <StudioIcon name="info" size={16} />
     </button>

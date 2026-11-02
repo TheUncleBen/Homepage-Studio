@@ -3062,7 +3062,27 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-chart {
   position: relative;
   flex: 1;
-  min-height: 48px;
+  min-height: 40px;
+}
+/* A chart card fits its tile: the chart gives way, nothing scrolls, so
+   focusing or tapping the chart never scrolls the header out of view. */
+.studio-card:has(.studio-values-charted) {
+  height: 100%;
+  min-height: 0;
+}
+.studio-card:has(.studio-values-charted) .studio-card-body,
+.studio-values-charted {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.studio-native-content:has(> .studio-card .studio-values-charted) {
+  overflow: clip;
+}
+.studio-chart-grid line {
+  stroke: color-mix(in srgb, var(--card-text) 10%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
 }
 .studio-chart-svg {
   position: absolute;
@@ -3071,37 +3091,80 @@ a.studio-card-identity:hover .studio-card-name strong {
   height: 100%;
   overflow: visible;
 }
+/* Donut and pie: the shape beside its legend (board 10). */
 .studio-chart-donut,
 .studio-chart-pie,
 .studio-chart-gauge {
-  display: flex;
+  min-height: 72px;
+}
+.studio-chart-parts {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 100%;
   align-items: center;
-  justify-content: center;
+  gap: 14px;
 }
 .studio-chart-round {
   height: 100%;
   max-height: 140px;
   aspect-ratio: 1;
 }
-.studio-chart-gauge-wrap {
-  position: relative;
-  display: flex;
+.studio-chart-parts .studio-chart-legend {
   flex-direction: column;
-  align-items: center;
-  width: 100%;
-  max-width: 220px;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
 }
-.studio-chart-gauge {
+.studio-chart-parts .studio-chart-legend li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 8px;
+}
+.studio-chart-parts .studio-chart-legend li > :not(.studio-chart-key) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Gauge: the arc fills the space it has, value and name inside it. */
+svg.studio-chart-gauge {
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 .studio-chart-track {
   stroke: color-mix(in srgb, var(--card-text) 12%, transparent);
 }
-.studio-chart-gauge-value {
-  margin-top: -1.6em;
-  font-size: 24px;
-  font-weight: 500;
+.studio-chart-centre {
+  fill: var(--card-text);
+  font-size: 16px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+.studio-chart-centre-label {
+  fill: var(--card-muted-text);
+  font-size: 7px;
+}
+.studio-chart-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.studio-chart-foot .studio-chart-legend {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(to left, transparent, #000 16px);
+}
+.studio-chart-foot .studio-chart-range {
+  flex: none;
+  margin-left: auto;
 }
 .studio-chart-range,
 .studio-chart-note {
@@ -3184,6 +3247,85 @@ a.studio-card-identity:hover .studio-card-name strong {
   height: min(48vh, 360px);
   --card-text: var(--studio-text);
   --card-muted-text: var(--studio-muted);
+}
+/* Full view axes: values left (and right for a second unit), time below. */
+.studio-full-plot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  column-gap: 8px;
+  row-gap: 4px;
+  height: min(48vh, 360px);
+  color: var(--studio-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.studio-full-plot.has-right {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.studio-full-plot .studio-full-chart {
+  grid-column: 2;
+  grid-row: 2;
+  height: auto;
+  min-height: 0;
+}
+.studio-axis {
+  position: relative;
+  grid-row: 2;
+}
+.studio-axis-left {
+  grid-column: 1;
+  text-align: right;
+}
+.studio-axis-right {
+  grid-column: 3;
+}
+.studio-axis > span {
+  position: absolute;
+  transform: translateY(50%);
+  white-space: nowrap;
+}
+.studio-axis-left > span {
+  right: 0;
+}
+.studio-axis-right > span {
+  left: 0;
+}
+.studio-axis > .studio-axis-sizer {
+  position: static;
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  transform: none;
+}
+.studio-axis-time {
+  position: relative;
+  grid-column: 2;
+  grid-row: 3;
+  height: 1.4em;
+}
+.studio-axis-time > span {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
+}
+.studio-axis-keys {
+  display: flex;
+  gap: 4px;
+  grid-row: 1;
+  align-items: center;
+}
+.studio-axis-keys-left {
+  grid-column: 1;
+  justify-content: flex-end;
+}
+.studio-axis-keys-right {
+  grid-column: 3;
+}
+.studio-chart-since {
+  margin: 0;
+  font-size: 12.5px;
 }
 .studio-full-view .studio-chart-legend {
   --card-text: var(--studio-text);
@@ -3464,6 +3606,22 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-value-list input {
   flex: 1 1 8rem;
   min-width: 0;
+}
+/* On a dialog wide enough, a row stays one line: the name gives way first. */
+@media (min-width: 640px) {
+  .studio-value-list > li {
+    flex-wrap: nowrap;
+  }
+  .studio-value-list > li > input {
+    flex-basis: 4rem;
+    min-width: 4rem;
+  }
+  .studio-value-list > li > .studio-value-rules {
+    flex-basis: 100%;
+  }
+  .studio-value-list > li:has(> .studio-value-rules) {
+    flex-wrap: wrap;
+  }
 }
 /* A chart line's colour sits in the row: a small swatch and its hex. */
 .studio-value-list .studio-colour-field {
@@ -4016,10 +4174,16 @@ a.studio-card-identity:hover .studio-card-name strong {
   transition: opacity 0.15s ease;
 }
 .studio-panel:hover .studio-freshness,
-.studio-panel:focus-within .studio-freshness,
+.studio-panel:has(:focus-visible) .studio-freshness,
 .studio-freshness[data-stale] {
   opacity: 1;
   pointer-events: auto;
+}
+/* On a chart or status history the note sits in the header row, so it
+   never covers what is drawn. */
+.studio-panel:has(.studio-values-charted, .studio-status-history) .studio-freshness {
+  top: 8px;
+  bottom: auto;
 }
 .studio-freshness[data-stale] {
   color: var(--studio-text);
@@ -4260,4 +4424,34 @@ a.studio-card-identity:hover .studio-card-name strong {
 .studio-colour-field .studio-field-error {
   flex-basis: 100%;
   text-align: right;
+}
+
+/* Connection: Test and Save as a connection on one row, the test's result
+   and the save form below them. */
+.studio-connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px 12px;
+}
+.studio-connection-actions:empty {
+  display: none;
+}
+.studio-connection-actions > .studio-connection-test,
+.studio-connection-actions > .studio-connection-save {
+  display: contents;
+}
+.studio-connection-actions .studio-connection-result {
+  order: 2;
+  flex-basis: 100%;
+  margin: 0;
+}
+.studio-connection-actions .studio-connection-result:empty {
+  display: none;
+}
+.studio-connection-actions > .studio-connection-form {
+  order: 3;
+  flex-basis: 100%;
 }

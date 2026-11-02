@@ -2107,13 +2107,19 @@ export default function StudioBoard({
             )}
           </div>
         )}
-        {!wholeBoard.panels.length && (
+        {/* Until the board arrives there is nothing to say about it being empty. */}
+        {!envelope && !loadError && (
+          <div className="studio-empty studio-loading" role="status">
+            <h2>Opening your dashboard…</h2>
+          </div>
+        )}
+        {envelope && !wholeBoard.panels.length && (
           <div className="studio-empty">
             <span className="studio-empty-icon">
               <StudioIcon name="layout" size={32} />
             </span>
             <p className="studio-eyebrow">A clean slate</p>
-            <h2>{envelope ? "Make room for what matters." : "Opening your dashboard…"}</h2>
+            <h2>Make room for what matters.</h2>
             {editorPage && isAdmin ? (
               <>
                 <p>
@@ -2177,7 +2183,7 @@ export default function StudioBoard({
           }
           onStackDrag={onStackDrag}
           onEdit={editPanel}
-          onFullView={setFullView}
+          onFullView={editing ? undefined : setFullView}
           canEdit={(panel) => isAdmin || Boolean(panel.nativeLocator?.discovered)}
           onSelect={select}
           onManipulate={manipulate}

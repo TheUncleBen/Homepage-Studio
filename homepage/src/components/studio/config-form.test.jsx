@@ -107,7 +107,7 @@ describe("Coherent native option drafts", () => {
     expect(screen.getByTestId("config-value")).toHaveTextContent("{}");
     // Nothing chosen means the widget's own default fields: one switch, on,
     // and no field switches until it is turned off.
-    const useDefault = screen.getByRole("switch", { name: "Use the widget's default fields" });
+    const useDefault = screen.getByRole("switch", { name: "Its usual set" });
     expect(useDefault).toHaveAttribute("aria-checked", "true");
     expect(screen.queryByRole("switch", { name: "Total" })).not.toBeInTheDocument();
     fireEvent.click(useDefault);
@@ -141,7 +141,7 @@ describe("Coherent native option drafts", () => {
         fields={[{ key: "fields", label: "Visible fields", type: "array", choices: ["healthy", "total"] }]}
       />,
     );
-    expect(screen.getByRole("switch", { name: "Use the widget's default fields" })).toHaveAttribute(
+    expect(screen.getByRole("switch", { name: "Its usual set" })).toHaveAttribute(
       "aria-checked",
       "false",
     );

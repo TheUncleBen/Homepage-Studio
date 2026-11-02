@@ -1,7 +1,8 @@
+import { useTranslation } from "next-i18next/pages";
 import { useId, useState } from "react";
 
 import { BackgroundAdjust, BackgroundGrid, familyOf, FILL_FAMILIES } from "./background-picker";
-import { PALETTE } from "./card-chart";
+import { PALETTE, partsFormat } from "./card-chart";
 import { useCardTheme } from "./card-look";
 import ColourField from "./colour-field";
 import StudioIcon from "./icons";
@@ -226,6 +227,8 @@ function RulesEditor({ row, onChange }) {
   };
   const warnId = useId();
   const problemId = useId();
+  const hintId = useId();
+  const unset = rules.warn === undefined && rules.problem === undefined;
   return (
     <div className="studio-value-rules" role="group" aria-label={`Colour rules for ${row.label}`}>
       <label htmlFor={warnId}>Warning from</label>
@@ -247,7 +250,8 @@ function RulesEditor({ row, onChange }) {
       <Switch
         label="Lower is worse"
         checked={Boolean(rules.lower)}
-        disabled={rules.warn === undefined && rules.problem === undefined}
+        disabled={unset}
+        describedBy={unset ? hintId : undefined}
         onChange={(checked) => {
           const next = { ...rules };
           if (checked) next.lower = true;
@@ -255,7 +259,15 @@ function RulesEditor({ row, onChange }) {
           onChange(next);
         }}
       />
-      <span className="studio-muted">Lower is worse</span>
+      <span className="studio-muted" aria-hidden="true">
+        Lower is worse
+      </span>
+      {/* It only changes what a threshold means, so it waits for one. */}
+      {unset && (
+        <span id={hintId} className="studio-muted studio-rules-hint">
+          Type a threshold first.
+        </span>
+      )}
     </div>
   );
 }
@@ -299,18 +311,99 @@ export function storedValues(rows, fields) {
   return stored;
 }
 
-function ValueList({ fields, values, layout, show = "numbers", onChange }) {
-  const rows = arrangeValues(fields, values);
+// The value a gauge draws: the chosen hero, else the first percentage, else
+// the first value (as card-chart's CardChart picks it).
+export function gaugeIndex(rows, formats = {}) {
+  const chosen = rows.findIndex((row) => row.slot === "hero");
+  if (chosen >= 0) return chosen;
+  const percent = rows.findIndex((row) => formats[row.field] === "percent");
+  return percent >= 0 ? percent : 0;
+}
+
+// The row a hero layout shows large: the chosen one, else the first shown.
+export function heroIndex(rows) {
+  const chosen = rows.findIndex((row) => row.slot === "hero");
+  return chosen >= 0 ? chosen : rows.findIndex((row) => row.slot !== "hidden");
+}
+
+// A gauge shows one value (Rule 1): a picker for it and its colour rules.
+function GaugeValue({ rows, formats, commit }) {
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const id = useId();
+  const index = gaugeIndex(rows, formats);
+  const row = rows[index];
+  const known = Object.keys(formats).length > 0;
+  const choices = rows.filter((entry) => !known || formats[entry.field] === "percent");
+  if (!row) return null;
+  const pick = (field) =>
+    commit(
+      rows.map((entry) => ({
+        ...entry,
+        slot: entry.field === field ? "hero" : entry.slot === "hero" ? undefined : entry.slot,
+      })),
+    );
+  return (
+    <>
+      <Row label="Value" htmlFor={id} info="A gauge shows one percentage against 100.">
+        <select id={id} value={row.field} onChange={(event) => pick(event.target.value)}>
+          {choices.map((entry) => (
+            <option key={entry.field} value={entry.field}>
+              {entry.name || entry.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className={`studio-button studio-quiet studio-rules-toggle${row.rules ? " is-set" : ""}`}
+          aria-expanded={rulesOpen}
+          onClick={() => setRulesOpen(!rulesOpen)}
+        >
+          {row.rules ? "Rules on" : "Rules"}
+        </button>
+      </Row>
+      {rulesOpen && (
+        <RulesEditor
+          row={row}
+          onChange={(rules) =>
+            commit(rows.map((entry, position) => (position === index ? { ...entry, rules } : entry)))
+          }
+        />
+      )}
+    </>
+  );
+}
+
+function ValueList({ fields, values, layout, show = "numbers", formats = {}, onChange }) {
+  const { t } = useTranslation();
+  // Widgets name their values with translation keys (adguard.queries).
+  const rows = arrangeValues(fields, values).map((row) => ({ ...row, label: t(row.label) }));
   const [rulesOpen, setRulesOpen] = useState(null);
+  // Donut and pie draw only the values in one format (card-chart partsFormat).
+  const partsUnit =
+    (show === "donut" || show === "pie") && Object.keys(formats).length
+      ? partsFormat(Object.entries(formats).map(([field, format]) => ({ field, format })))
+      : null;
   const coloured = ["line", "area", "bar", "donut", "pie"].includes(show);
   const commit = (next) => onChange(storedValues(next, fields));
+  // Donut and pie draw every shown value as a part, so there is no hero row.
+  const heroed = layout === "hero" && show !== "donut" && show !== "pie";
+  const hero = heroed ? heroIndex(rows) : -1;
   const update = (index, patch) => {
-    const next = rows.map((row, position) => {
+    let next = rows.map((row, position) => {
       if (position === index) return { ...row, ...patch };
       // One hero at a time: choosing a new one returns the old one below.
       if (patch.slot === "hero" && row.slot === "hero") return { ...row, slot: undefined };
       return row;
     });
+    // Moving the hero below hands the hero to the next shown value.
+    if (index === hero && patch.slot === "below") {
+      const following = next.findIndex((row, position) => position !== index && row.slot !== "hidden");
+      next = next.map((row, position) => {
+        if (position === index) return { ...row, slot: undefined };
+        if (position === following) return { ...row, slot: "hero" };
+        return row;
+      });
+    }
     commit(next);
   };
   const move = (index, step) => {
@@ -319,30 +412,36 @@ function ValueList({ fields, values, layout, show = "numbers", onChange }) {
     next.splice(index + step, 0, entry);
     commit(next);
   };
-  const slots =
-    layout === "hero"
-      ? [
-          ["hero", "Hero"],
-          ["below", "Below"],
-          ["hidden", "Hidden"],
-        ]
-      : [
-          ["below", "Shown"],
-          ["hidden", "Hidden"],
-        ];
-  // The colour each shown value gets on a chart unless it has its own, as
-  // the chart counts them (card-chart chartSeries). Picking that colour
-  // again stores nothing (Rule 2).
-  const shownSlot = (row) => (row.slot === "hero" && layout !== "hero" ? "below" : row.slot || "below");
+  if (show === "gauge") return <GaugeValue rows={rows} formats={formats} commit={commit} />;
+  const slots = heroed
+    ? [
+        ["hero", "Hero"],
+        ["below", "Below"],
+        ["hidden", "Hidden"],
+      ]
+    : [
+        ["below", "Shown"],
+        ["hidden", "Hidden"],
+      ];
+  // The colour each value gets on a chart unless it has its own, as the
+  // chart counts them (card-chart chartSeries): by its place among the
+  // charted values, hidden ones included, so hiding one recolours nothing.
+  // Picking that colour again stores nothing (Rule 2).
+  const shownSlot = (row, index) => {
+    if (index === hero) return "hero";
+    return row.slot === "hero" || !row.slot ? "below" : row.slot;
+  };
+  const known = Object.keys(formats).length > 0;
   const defaultColour = new Map(
     rows
-      .filter((row) => shownSlot(row) !== "hidden")
+      .filter((row) => !known || formats[row.field])
       .map((row, position) => [row.field, PALETTE[position % PALETTE.length]]),
   );
   return (
     <ol className="studio-value-list">
       {rows.map((row, index) => {
-        const slot = shownSlot(row);
+        if (partsUnit && (formats[row.field] || "plain") !== partsUnit) return null;
+        const slot = shownSlot(row, index);
         return (
           <li key={row.field}>
             <div className="studio-value-order">
@@ -392,7 +491,7 @@ function ValueList({ fields, values, layout, show = "numbers", onChange }) {
               <option value="short">1.2M</option>
               <option value="compact">1.2 M</option>
             </select>
-            {coloured && slot !== "hidden" && (
+            {coloured && slot !== "hidden" && (row.colour || defaultColour.has(row.field)) && (
               <ColourField
                 label={`Chart colour for ${row.label}`}
                 value={row.colour || defaultColour.get(row.field)}
@@ -502,20 +601,24 @@ export default function LookEditor({
                       ["xl", "XL"],
                     ]}
                   />
-                  {show.charts && effective.show === "numbers" && (
-                    <Choice
-                      label="Trend"
-                      value={effective.trend}
-                      onChange={(value) => setLook("trend", value)}
-                      options={[
-                        ["off", "Off"],
-                        ["hour", "Last hour"],
-                        ["day", "Yesterday"],
-                        ["week", "Last week"],
-                      ]}
-                      info="The change in the large value since then, from the history Studio keeps for this widget."
-                    />
-                  )}
+                  {/* A trend needs a number the collector can keep (Rule 1). */}
+                  {show.charts &&
+                    effective.show === "numbers" &&
+                    ((Array.isArray(chartFields) && chartFields.length > 0) ||
+                      (effective.trend && effective.trend !== "off")) && (
+                      <Choice
+                        label="Trend"
+                        value={effective.trend}
+                        onChange={(value) => setLook("trend", value)}
+                        options={[
+                          ["off", "Off"],
+                          ["hour", "Last hour"],
+                          ["day", "Yesterday"],
+                          ["week", "Last week"],
+                        ]}
+                        info="The change in the large value since then, from the history Studio keeps for this widget."
+                      />
+                    )}
                 </Dependent>
               )}
             </>
@@ -709,7 +812,7 @@ export default function LookEditor({
             <Dependent>
               {statusAddress && <StatusAddress check={acts.status} address={statusAddress} />}
               <Choice
-                label="Show as"
+                label="Style"
                 value={effective.status}
                 onChange={(value) => setLook("status", value)}
                 options={[
@@ -767,7 +870,8 @@ export default function LookEditor({
               </select>
             </Row>
           )}
-          {show.charts && (CHART_SHOWS.includes(effective.show) || effective.show === "status") && (
+          {/* Status history's range is Uptime over, in the Status section. */}
+          {show.charts && CHART_SHOWS.includes(effective.show) && (
             <Dependent>
               <Choice
                 label="Time range"
@@ -783,6 +887,9 @@ export default function LookEditor({
               values={look.values || []}
               layout={effective.show === "numbers" ? effective.layout : "hero"}
               show={effective.show}
+              formats={Object.fromEntries(
+                (Array.isArray(chartFields) ? chartFields : []).map((f) => [f.field, f.format]),
+              )}
               onChange={(values) => setLook("values", values)}
             />
           )}

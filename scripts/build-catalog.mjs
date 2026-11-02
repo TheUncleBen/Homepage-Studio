@@ -366,7 +366,11 @@ export async function buildCatalog(sourceDirectory) {
     }
   }
   const weather = byType.info.get('weatherapi');
-  if (weather) { weather.name = 'WeatherAPI (source only)'; weather.documentationStatus = 'registered-undocumented'; weather.setupNotes = ['A distinct native implementation exists in the source, but the pinned documentation has no dedicated WeatherAPI configuration page. Use advanced configuration with source review; this entry is not evidence of live-tested support.']; }
+  if (weather) { weather.name = 'WeatherAPI'; weather.documentationStatus = 'registered-undocumented'; weather.setupNotes = ['A distinct native implementation exists in the source, but the pinned documentation has no dedicated WeatherAPI configuration page. Use advanced configuration with source review; this entry is not evidence of live-tested support.']; }
+
+  // Product names as their makers write them (upstream page titles vary).
+  const NAMES = { adguard: 'AdGuard Home', pihole: 'Pi-hole', truenas: 'TrueNAS', opnsense: 'OPNsense', gitlab: 'GitLab', mikrotik: 'MikroTik', seerr: 'Seerr', unifi: 'UniFi Controller', unifi_console: 'UniFi Controller', healthchecks: 'Healthchecks', weatherapi: 'WeatherAPI', openwrt: 'OpenWrt', nzbget: 'NZBGet', calibreweb: 'Calibre-Web', coinmarketcap: 'CoinMarketCap', crowdsec: 'CrowdSec', pyload: 'pyLoad' };
+  for (const kind of ['service', 'info']) for (const [type, name] of Object.entries(NAMES)) if (byType[kind].has(type)) byType[kind].get(type).name = name;
 
   return {
     homepageVersion: HOMEPAGE_VERSION,

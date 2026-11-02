@@ -18,7 +18,7 @@
   "service": [
     {
       "type": "adguard",
-      "name": "Adguard Home",
+      "name": "AdGuard Home",
       "docs": "https://gethomepage.dev/widgets/services/adguard-home/",
       "fields": [
         {
@@ -1528,7 +1528,7 @@
     },
     {
       "type": "calibreweb",
-      "name": "Calibre-web",
+      "name": "Calibre-Web",
       "docs": "https://gethomepage.dev/widgets/services/calibre-web/",
       "fields": [
         {
@@ -1882,7 +1882,7 @@
     },
     {
       "type": "coinmarketcap",
-      "name": "Coin Market Cap",
+      "name": "CoinMarketCap",
       "docs": "https://gethomepage.dev/widgets/services/coin-market-cap/",
       "fields": [
         {
@@ -1982,7 +1982,7 @@
     },
     {
       "type": "crowdsec",
-      "name": "Crowdsec",
+      "name": "CrowdSec",
       "docs": "https://gethomepage.dev/widgets/services/crowdsec/",
       "fields": [
         {
@@ -4113,7 +4113,7 @@
     },
     {
       "type": "gitlab",
-      "name": "Gitlab",
+      "name": "GitLab",
       "docs": "https://gethomepage.dev/widgets/services/gitlab/",
       "fields": [
         {
@@ -4898,7 +4898,7 @@
     },
     {
       "type": "healthchecks",
-      "name": "Health checks",
+      "name": "Healthchecks",
       "docs": "https://gethomepage.dev/widgets/services/healthchecks/",
       "fields": [
         {
@@ -7150,7 +7150,7 @@
     },
     {
       "type": "mikrotik",
-      "name": "Mikrotik",
+      "name": "MikroTik",
       "docs": "https://gethomepage.dev/widgets/services/mikrotik/",
       "fields": [
         {
@@ -8253,7 +8253,7 @@
     },
     {
       "type": "nzbget",
-      "name": "NZBget",
+      "name": "NZBGet",
       "docs": "https://gethomepage.dev/widgets/services/nzbget/",
       "fields": [
         {
@@ -8760,7 +8760,7 @@
     },
     {
       "type": "openwrt",
-      "name": "OpenWRT",
+      "name": "OpenWrt",
       "docs": "https://gethomepage.dev/widgets/services/openwrt/",
       "fields": [
         {
@@ -8881,7 +8881,7 @@
     },
     {
       "type": "opnsense",
-      "name": "OPNSense",
+      "name": "OPNsense",
       "docs": "https://gethomepage.dev/widgets/services/opnsense/",
       "fields": [
         {
@@ -9563,27 +9563,8 @@
       ]
     },
     {
-      "type": "pialert",
-      "name": "Pialert",
-      "docs": "https://gethomepage.dev/widgets/services/",
-      "fields": [],
-      "defaults": {
-        "type": "pialert"
-      },
-      "example": "widget:\n  type: pialert",
-      "documentationStatus": "registry-only",
-      "coverage": "Registered native implementation without a complete dedicated documentation example in this pinned corpus. Advanced native configuration is required; integration behavior has not been live-tested.",
-      "sources": [
-        {
-          "path": "src/widgets/components.js",
-          "url": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/src/widgets/components.js",
-          "sha256": "0e8ac3ab2d2a9fb788aa2871543e147722144f127b2f836b22e6976185313f4f"
-        }
-      ]
-    },
-    {
       "type": "pihole",
-      "name": "PiHole",
+      "name": "Pi-hole",
       "docs": "https://gethomepage.dev/widgets/services/pihole/",
       "fields": [
         {
@@ -9672,6 +9653,25 @@
         {
           "type": "p",
           "text": "Note: by default the \"blocked\" and \"blocked_percent\" fields are merged e.g. \"1,234 (15%)\" but explicitly including the \"blocked_percent\" field will change them to display separately."
+        }
+      ]
+    },
+    {
+      "type": "pialert",
+      "name": "Pialert",
+      "docs": "https://gethomepage.dev/widgets/services/",
+      "fields": [],
+      "defaults": {
+        "type": "pialert"
+      },
+      "example": "widget:\n  type: pialert",
+      "documentationStatus": "registry-only",
+      "coverage": "Registered native implementation without a complete dedicated documentation example in this pinned corpus. Advanced native configuration is required; integration behavior has not been live-tested.",
+      "sources": [
+        {
+          "path": "src/widgets/components.js",
+          "url": "https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/src/widgets/components.js",
+          "sha256": "0e8ac3ab2d2a9fb788aa2871543e147722144f127b2f836b22e6976185313f4f"
         }
       ]
     },
@@ -10546,7 +10546,7 @@
     },
     {
       "type": "pyload",
-      "name": "Pyload",
+      "name": "pyLoad",
       "docs": "https://gethomepage.dev/widgets/services/pyload/",
       "fields": [
         {
@@ -11396,7 +11396,7 @@
     },
     {
       "type": "seerr",
-      "name": "Seerr Widget",
+      "name": "Seerr",
       "docs": "https://gethomepage.dev/widgets/services/seerr/",
       "fields": [
         {
@@ -13474,7 +13474,7 @@
     },
     {
       "type": "truenas",
-      "name": "TrueNas",
+      "name": "TrueNAS",
       "docs": "https://gethomepage.dev/widgets/services/truenas/",
       "fields": [
         {
@@ -13709,7 +13709,7 @@
     },
     {
       "type": "unifi",
-      "name": "Unifi Controller",
+      "name": "UniFi Controller",
       "docs": "https://gethomepage.dev/widgets/services/unifi-controller/",
       "fields": [
         {
@@ -16616,7 +16616,7 @@
     },
     {
       "type": "unifi_console",
-      "name": "Unifi Controller",
+      "name": "UniFi Controller",
       "docs": "https://gethomepage.dev/widgets/info/unifi_controller/",
       "fields": [
         {
@@ -16726,7 +16726,7 @@
     },
     {
       "type": "weatherapi",
-      "name": "WeatherAPI (source only)",
+      "name": "WeatherAPI",
       "docs": "https://gethomepage.dev/widgets/info/",
       "fields": [],
       "defaults": {},

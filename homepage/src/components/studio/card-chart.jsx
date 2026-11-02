@@ -101,15 +101,17 @@ export function Trend({ history, field, trend }) {
 export function chartSeries(history, card, labelOf) {
   if (!history?.fields?.length) return [];
   const arranged = new Map((card.values || []).map((value, order) => [value.field, { ...value, order }]));
+  // A value's colour follows its place among all values, hidden ones
+  // included, so hiding one recolours nothing.
   return history.fields
     .map((field, index) => ({ field, index, arranged: arranged.get(field.field) }))
-    .filter((entry) => entry.arranged?.slot !== "hidden")
     .sort((a, b) => (a.arranged?.order ?? Infinity) - (b.arranged?.order ?? Infinity))
     .map((entry, position) => ({
       ...entry,
       name: entry.arranged?.label || labelOf(entry.field.label || entry.field.field),
       colour: entry.arranged?.colour || PALETTE[position % PALETTE.length],
-    }));
+    }))
+    .filter((entry) => entry.arranged?.slot !== "hidden");
 }
 
 const W = 300;
@@ -155,20 +157,103 @@ export function scales(series, points) {
   return out;
 }
 
+// Round numbers for an axis: about `count` steps of 1, 2, 2.5 or 5 times a
+// power of ten, covering min to max.
+export function niceTicks(min, max, count = 4) {
+  const high0 = max > min ? max : min + 1;
+  const raw = (high0 - min) / count;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * magnitude).find((value) => value >= raw * (1 - 1e-9));
+  const low = Math.floor(min / step + 1e-9) * step;
+  const high = Math.ceil(high0 / step - 1e-9) * step;
+  const ticks = [];
+  for (let i = 0; low + i * step <= high + step / 2; i++) ticks.push(Number((low + i * step).toPrecision(12)));
+  return { min: ticks[0], max: ticks.at(-1), ticks };
+}
+
+// The full view's value axes (Ben, 2 Nov): lines in the same format share
+// one axis; the first line's format is on the left, a second format (a
+// percentage first) gets its own axis on the right. A percentage axis runs
+// 0 to 100.
+export function axes(series, points) {
+  const groups = [];
+  for (const entry of series) {
+    const format = entry.field.format || "plain";
+    let group = groups.find((item) => item.format === format);
+    if (!group) {
+      group = { format, entries: [] };
+      groups.push(group);
+    }
+    group.entries.push(entry);
+  }
+  const ranges = new Map();
+  const shown = [];
+  for (const group of groups) {
+    const range = scale(group.entries, points);
+    if (!range) continue;
+    const nice =
+      group.format === "percent" && range.min >= 0 && range.max <= 100
+        ? niceTicks(0, 100, 4)
+        : niceTicks(range.min, range.max);
+    for (const entry of group.entries) ranges.set(entry.field.field, nice);
+    shown.push({ ...group, range: nice });
+  }
+  // A percentage goes on the right when another unit is shown.
+  if (shown.length > 1 && shown[0].format === "percent") shown.push(shown.shift());
+  return { ranges, left: shown[0] || null, right: shown[1] || null };
+}
+
+// Where the collected numbers start: a chart whose history is shorter than
+// its range is drawn from its first number (with a note), not as a speck at
+// the right edge.
+export function dataStart(series, points, from) {
+  const first = points.find((point) => series.some((entry) => Number.isFinite(point[entry.index + 1])));
+  if (!first) return null;
+  return first[0] > from + (points.at(-1)[0] - from) * 0.05 ? first[0] : null;
+}
+
+const TIME_STEPS = [5, 10, 15, 30, 60, 120, 180, 240, 360, 720, 1440, 2880, 7200, 10080].map((m) => m * 60e3);
+// Time axis marks on round local times, about five across the span.
+export function timeTicks(from, to) {
+  const step = TIME_STEPS.find((value) => (to - from) / value <= 6) || TIME_STEPS.at(-1);
+  const offset = new Date(from).getTimezoneOffset() * 60e3;
+  const ticks = [];
+  for (let at = Math.ceil((from + offset) / step) * step - offset; at <= to; at += step) ticks.push(at);
+  return { ticks, step };
+}
+
+const fraction = (range, value) => (value - range.min) / (range.max - range.min || 1);
+
+function Grid({ grid }) {
+  if (!grid) return null;
+  return (
+    <g className="studio-chart-grid">
+      {grid.y.map((y) => (
+        <line key={`y${y}`} x1="0" x2={W} y1={H - y * H} y2={H - y * H} />
+      ))}
+      {grid.x.map((x) => (
+        <line key={`x${x}`} x1={x * W} x2={x * W} y1="0" y2={H} />
+      ))}
+    </g>
+  );
+}
+
 // Line and area: one path per value, gaps left open.
-function Lines({ series, points, from, to, area, hover }) {
-  const ranges = scales(series, points);
+function Lines({ series, points, from, to, area, hover, ranges: given, grid }) {
+  const ranges = given || scales(series, points);
   if (!ranges.size) return null;
   const x = (t) => ((t - from) / (to - from || 1)) * W;
   return (
     <svg className="studio-chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+      <Grid grid={grid} />
       {series.map((entry) => {
         const range = ranges.get(entry.field.field);
         if (!range) return null;
-        const y = (v) => H - ((v - range.min) / (range.max - range.min)) * H;
+        const y = (v) => H - fraction(range, v) * H;
         const segments = [];
         let current = [];
         for (const point of points) {
+          if (point[0] < from) continue;
           const value = point[entry.index + 1];
           if (Number.isFinite(value)) current.push([x(point[0]), y(value)]);
           else if (current.length) {
@@ -178,12 +263,14 @@ function Lines({ series, points, from, to, area, hover }) {
         }
         if (current.length) segments.push(current);
         return segments.map((segment, i) => {
-          const line = segment.map(([px, py], j) => `${j ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join("");
+          // A single number is drawn as a short level line, so it shows.
+          const drawn = segment.length === 1 ? [[segment[0][0] - 1.5, segment[0][1]], segment[0]] : segment;
+          const line = drawn.map(([px, py], j) => `${j ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join("");
           return (
             <g key={`${entry.field.field}-${i}`}>
               {area && (
                 <path
-                  d={`${line}L${segment.at(-1)[0].toFixed(1)},${H}L${segment[0][0].toFixed(1)},${H}Z`}
+                  d={`${line}L${drawn.at(-1)[0].toFixed(1)},${H}L${drawn[0][0].toFixed(1)},${H}Z`}
                   fill={entry.colour}
                   opacity="0.18"
                 />
@@ -198,40 +285,50 @@ function Lines({ series, points, from, to, area, hover }) {
   );
 }
 
-// Bars: the first value, one bar per step of the range.
-function Bars({ series, points, from, to }) {
-  const entry = series[0];
-  const values = points.filter((point) => Number.isFinite(point[entry.index + 1]));
-  const range = scale([entry], values);
-  if (!range || !values.length) return null;
-  const count = Math.min(48, values.length);
+// Bars: one group per step of the range, a bar for each value in it.
+function Bars({ series, points, from, to, ranges: given, grid }) {
+  const ranges = given || scales(series, points);
+  const inRange = points.filter((point) => point[0] >= from);
+  if (!ranges.size || !inRange.length) return null;
+  const count = Math.max(1, Math.min(48, inRange.length));
   const step = (to - from) / count;
-  const buckets = Array.from({ length: count }, (_, i) => {
-    const inside = values.filter((point) => point[0] >= from + i * step && point[0] < from + (i + 1) * step);
-    return inside.length ? inside.at(-1)[entry.index + 1] : null;
-  });
-  const width = W / count;
+  const slot = W / count;
+  const width = (slot * 0.7) / series.length;
   return (
     <svg className="studio-chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
-      {buckets.map((value, i) =>
-        Number.isFinite(value) ? (
-          <rect
-            key={i}
-            x={i * width + width * 0.15}
-            width={width * 0.7}
-            y={H - ((value - range.min) / (range.max - range.min)) * H}
-            height={((value - range.min) / (range.max - range.min)) * H}
-            fill={entry.colour}
-            rx="1"
-          />
-        ) : null,
-      )}
+      <Grid grid={grid} />
+      {series.map((entry, n) => {
+        const range = ranges.get(entry.field.field);
+        if (!range) return null;
+        return Array.from({ length: count }, (_, i) => {
+          const inside = inRange.filter(
+            (point) =>
+              Number.isFinite(point[entry.index + 1]) &&
+              point[0] >= from + i * step &&
+              (point[0] < from + (i + 1) * step || i === count - 1),
+          );
+          if (!inside.length) return null;
+          const share = Math.max(0, fraction(range, inside.at(-1)[entry.index + 1]));
+          return (
+            <rect
+              key={`${entry.field.field}-${i}`}
+              x={i * slot + slot * 0.15 + n * width}
+              width={width}
+              y={H - share * H}
+              height={share * H}
+              fill={entry.colour}
+              rx="1"
+            />
+          );
+        });
+      })}
     </svg>
   );
 }
 
-// Donut and pie: the latest values as parts of their total.
-function Parts({ series, latest, hole }) {
+// Donut and pie: the latest values as parts of their total. A donut writes
+// its hero's share in the middle (board 10).
+function Parts({ series, latest, hole, centre }) {
   const parts = series
     .map((entry) => ({ ...entry, value: latest?.values?.[entry.field.field] }))
     .filter((entry) => Number.isFinite(entry.value) && entry.value > 0);
@@ -247,52 +344,94 @@ function Parts({ series, latest, hole }) {
   };
   return (
     <svg className="studio-chart-round" viewBox="0 0 100 100" aria-hidden="true">
+      {hole && <circle cx="50" cy="50" r="40" fill="none" className="studio-chart-track" strokeWidth="12" />}
       {parts.map((entry, i) => {
         const start = starts[i];
         const sweep = (entry.value / total) * Math.PI * 2;
         const end = start + Math.min(sweep, Math.PI * 2 - 0.0001);
         return hole ? (
-          <path key={entry.field.field} d={arc(start, end, 38)} fill="none" stroke={entry.colour} strokeWidth="16" />
+          <path key={entry.field.field} d={arc(start, end, 40)} fill="none" stroke={entry.colour} strokeWidth="12" />
         ) : (
-          <path key={entry.field.field} d={`M50,50L${arc(start, end, 46).slice(1)}Z`} fill={entry.colour} />
+          <path key={entry.field.field} d={`M50,50L${arc(start, end, 48).slice(1)}Z`} fill={entry.colour} />
         );
       })}
-    </svg>
-  );
-}
-
-// Gauge: one percentage against 100, in its colour rule's colour.
-function Gauge({ entry, value, level }) {
-  const share = Math.max(0, Math.min(1, value / 100));
-  const start = Math.PI;
-  const end = Math.PI + share * Math.PI;
-  const point = (a) => `${50 + 40 * Math.cos(a)},${50 + 40 * Math.sin(a)}`;
-  const colour = level ? `var(--studio-status-${level})` : entry.colour;
-  return (
-    <svg className="studio-chart-gauge" viewBox="0 0 100 56" aria-hidden="true">
-      <path
-        d={`M${point(Math.PI)}A40,40 0 0 1 ${point(0)}`}
-        fill="none"
-        className="studio-chart-track"
-        strokeWidth="10"
-      />
-      {share > 0 && (
-        <path d={`M${point(start)}A40,40 0 0 1 ${point(end)}`} fill="none" stroke={colour} strokeWidth="10" />
+      {hole && centre && (
+        <>
+          <text x="50" y={centre.label ? 52 : 56} textAnchor="middle" className="studio-chart-centre">
+            {centre.value}
+          </text>
+          {centre.label && (
+            <text x="50" y="65" textAnchor="middle" className="studio-chart-centre-label">
+              {centre.label}
+            </text>
+          )}
+        </>
       )}
     </svg>
   );
 }
 
-function Legend({ series, latest, format }) {
+// Gauge: one percentage against 100, in its colour rule's colour, with the
+// value and its name inside the arc (board 10).
+function Gauge({ entry, value, text, level }) {
+  const share = Math.max(0, Math.min(1, value / 100));
+  const start = Math.PI;
+  const end = Math.PI + share * Math.PI;
+  const point = (a) => `${50 + 40 * Math.cos(a)},${52 + 40 * Math.sin(a)}`;
+  const colour = level ? `var(--studio-status-${level})` : entry.colour;
+  return (
+    <svg className="studio-chart-gauge" viewBox="0 0 100 60" aria-hidden="true">
+      <path
+        d={`M${point(Math.PI)}A40,40 0 0 1 ${point(0)}`}
+        fill="none"
+        className="studio-chart-track"
+        strokeWidth="9"
+        strokeLinecap="round"
+      />
+      {share > 0 && (
+        <path
+          d={`M${point(start)}A40,40 0 0 1 ${point(end)}`}
+          fill="none"
+          stroke={colour}
+          strokeWidth="9"
+          strokeLinecap="round"
+        />
+      )}
+      <text x="50" y="46" textAnchor="middle" className="studio-chart-centre">
+        {text}
+      </text>
+      <text x="50" y="56" textAnchor="middle" className="studio-chart-centre-label">
+        {entry.name}
+      </text>
+    </svg>
+  );
+}
+
+function Legend({ series, latest, format, share }) {
+  const total = share
+    ? series.reduce((sum, entry) => {
+        const value = latest?.values?.[entry.field.field];
+        return sum + (Number.isFinite(value) && value > 0 ? value : 0);
+      }, 0)
+    : 0;
   return (
     <ul className="studio-chart-legend">
-      {series.map((entry) => (
-        <li key={entry.field.field}>
-          <span className="studio-chart-key" style={{ background: entry.colour }} aria-hidden="true" />
-          {entry.name}
-          {latest && <strong>{format(entry.field, latest.values?.[entry.field.field])}</strong>}
-        </li>
-      ))}
+      {series.map((entry) => {
+        const value = latest?.values?.[entry.field.field];
+        return (
+          <li key={entry.field.field}>
+            <span className="studio-chart-key" style={{ background: entry.colour }} aria-hidden="true" />
+            {entry.name}
+            {latest && (
+              <strong>
+                {share && total
+                  ? `${Math.round(((Number.isFinite(value) ? value : 0) / total) * 100)}%`
+                  : format(entry.field, value)}
+              </strong>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -304,11 +443,51 @@ function summary(series, latest, format, rangeLabel) {
     .join(", ")}`;
 }
 
+// Donut and pie draw parts of a whole, so only values in one format: the
+// format most of the widget's values share (the first such on a tie).
+export function partsFormat(fields = []) {
+  const counts = new Map();
+  for (const field of fields) counts.set(field.format || "plain", (counts.get(field.format || "plain") || 0) + 1);
+  let best = null;
+  for (const [format, count] of counts) if (!best || count > counts.get(best)) best = format;
+  return best;
+}
+
+// The value a gauge or a donut's middle shows: the chosen hero, else (for a
+// gauge) the first percentage, else the first value.
+export function heroSeries(series, gauge = false) {
+  return (
+    series.find((entry) => entry.arranged?.slot === "hero") ||
+    (gauge && series.find((entry) => entry.field.format === "percent")) ||
+    series[0]
+  );
+}
+
+// Times in the dashboard's language, like its numbers.
+export function useTimeFormat() {
+  const { i18n } = useTranslation();
+  const locale = i18n?.language || undefined;
+  const safe = (at, options) => {
+    try {
+      return new Date(at).toLocaleString(locale, options);
+    } catch {
+      return new Date(at).toLocaleString(undefined, options);
+    }
+  };
+  return {
+    time: (at) => safe(at, { hour: "2-digit", minute: "2-digit" }),
+    day: (at) => safe(at, { month: "short", day: "numeric" }),
+    full: (at) => safe(at, { dateStyle: "medium", timeStyle: "short" }),
+  };
+}
+
 // The chart part of a card shown as a chart. The widget's live values are
-// drawn by CardValues above it.
+// drawn by CardValues above it (except donut, pie and gauge, which write
+// their own).
 export function CardChart({ card, onOpen }) {
   const { t } = useTranslation();
   const format = useFormatValue();
+  const when = useTimeFormat();
   const history = card.history;
   const labelOf = (label) => t(label);
   const series = useMemo(() => chartSeries(history, card, labelOf), [history, card]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -322,27 +501,53 @@ export function CardChart({ card, onOpen }) {
   const show = card.show;
   const round = show === "donut" || show === "pie";
   const now = history.latest.at;
-  const from = now - (RANGE_SPAN[card.chartRange] || RANGE_SPAN["24h"]);
+  const rangeFrom = now - (RANGE_SPAN[card.chartRange] || RANGE_SPAN["24h"]);
+  const since = CHART_SHOWS.includes(show) ? dataStart(series, history.points, rangeFrom) : null;
+  const from = since ?? rangeFrom;
   let body;
   if (show === "gauge") {
-    const entry = series.find((item) => item.field.format === "percent") || series[0];
+    const entry = heroSeries(series, true);
     const value = history.latest.values?.[entry.field.field];
     const rule = (card.values || []).find((item) => item.field === entry.field.field)?.rules;
+    body = <Gauge entry={entry} value={value} text={format(entry.field, value)} level={ruleLevel(rule, value)} />;
+  } else if (round) {
+    const unit = partsFormat(history.fields);
+    const parts = series.filter((entry) => (entry.field.format || "plain") === unit);
+    const hero = heroSeries(parts);
+    const total = parts.reduce((sum, entry) => {
+      const value = history.latest.values?.[entry.field.field];
+      return sum + (Number.isFinite(value) && value > 0 ? value : 0);
+    }, 0);
+    const heroValue = hero ? history.latest.values?.[hero.field.field] : undefined;
+    const centre =
+      show === "donut" && total && Number.isFinite(heroValue)
+        ? { value: `${Math.round((Math.max(0, heroValue) / total) * 100)}%`, label: hero.name }
+        : null;
     body = (
-      <div className="studio-chart-gauge-wrap">
-        <Gauge entry={entry} value={value} level={ruleLevel(rule, value)} />
-        <span className="studio-chart-gauge-value">{format(entry.field, value)}</span>
+      <div className="studio-chart-parts">
+        <Parts series={parts} latest={history.latest} hole={show === "donut"} centre={centre} />
+        <Legend series={parts} latest={history.latest} format={format} share={show === "pie"} />
       </div>
     );
-  } else if (round) body = <Parts series={series} latest={history.latest} hole={show === "donut"} />;
-  else if (show === "bar") body = <Bars series={series} points={history.points} from={from} to={now} />;
+  } else if (show === "bar") body = <Bars series={series} points={history.points} from={from} to={now} />;
   else body = <Lines series={series} points={history.points} from={from} to={now} area={show === "area"} />;
-  const label = CHART_SHOWS.includes(show) ? RANGE_LABELS[card.chartRange] : null;
+  const label = CHART_SHOWS.includes(show)
+    ? since
+      ? `Since ${when.time(since)}`
+      : RANGE_LABELS[card.chartRange]
+    : null;
   const content = (
     <>
       <div className={`studio-chart studio-chart-${show}`}>{body}</div>
-      {(round || series.length > 1) && <Legend series={series} latest={history.latest} format={format} />}
-      {label && <span className="studio-chart-range">{label}</span>}
+      {/* One line under the chart: the legend, then the range. */}
+      {((!round && show !== "gauge" && series.length > 1) || label) && (
+        <div className="studio-chart-foot">
+          {!round && show !== "gauge" && series.length > 1 && (
+            <Legend series={series} latest={history.latest} format={format} />
+          )}
+          {label && <span className="studio-chart-range">{label}</span>}
+        </div>
+      )}
     </>
   );
   // Charts over time open full size; the dialog adds ranges and exact values.
@@ -362,30 +567,69 @@ export function CardChart({ card, onOpen }) {
   );
 }
 
-// Full view (board 15): a chart widget full size, with a time range and the
-// exact values under the pointer.
+function AxisLabels({ group, side, format }) {
+  const { range } = group;
+  const meta = group.entries[0].field;
+  const labels = range.ticks.map((value) => [value, format(meta, value)]);
+  const widest = labels.reduce((best, [, text]) => (text.length > best.length ? text : best), "");
+  return (
+    <div className={`studio-axis studio-axis-${side}`} aria-hidden="true">
+      <span className="studio-axis-sizer">{widest}</span>
+      {labels.map(([value, text]) => (
+        <span key={value} style={{ bottom: `${fraction(range, value) * 100}%` }}>
+          {text}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function AxisKeys({ group, side }) {
+  return (
+    <div className={`studio-axis-keys studio-axis-keys-${side}`} aria-hidden="true">
+      {group.entries.map((entry) => (
+        <span key={entry.field.field} className="studio-chart-key" style={{ background: entry.colour }} />
+      ))}
+    </div>
+  );
+}
+
+// Full view (board 15): a chart widget full size, with value and time axes,
+// a time range and the exact values under the pointer.
 export function ChartFullView({ panel, card, title, ranges = Object.keys(RANGE_LABELS), onClose }) {
   const { t } = useTranslation();
   const format = useFormatValue();
+  const when = useTimeFormat();
   const [range, setRange] = useState(card.chartRange || "24h");
   const [hover, setHover] = useState(null);
   const id = useId();
   const { data: history } = useSWR(historyPath(panel.id, range), studioRequest, { refreshInterval: 60000 });
   const series = useMemo(() => chartSeries(history, card, (label) => t(label)), [history, card, t]);
+  const points = useMemo(() => history?.points || [], [history]);
   const now = history?.latest?.at ?? 0;
-  const span = RANGE_SPAN[range];
-  const from = now - span;
-  const point = hover !== null ? history?.points?.[hover] : null;
+  const since = series.length ? dataStart(series, points, now - RANGE_SPAN[range]) : null;
+  const from = since ?? now - RANGE_SPAN[range];
+  const span = now - from || 1;
+  const point = hover !== null ? points[hover] : null;
   const pick = (event) => {
-    if (!history?.points?.length) return;
+    if (!points.length) return;
     const box = event.currentTarget.getBoundingClientRect();
     const at = from + ((event.clientX - box.left) / box.width) * span;
-    let best = 0;
-    history.points.forEach((p, i) => {
-      if (Math.abs(p[0] - at) < Math.abs(history.points[best][0] - at)) best = i;
+    let best = -1;
+    points.forEach((p, i) => {
+      if (p[0] >= from && (best < 0 || Math.abs(p[0] - at) < Math.abs(points[best][0] - at))) best = i;
     });
-    setHover(best);
+    setHover(best < 0 ? null : best);
   };
+  const scaled = useMemo(() => axes(series, points), [series, points]);
+  const time = timeTicks(from, now);
+  const timeText = (at) => (time.step >= 86400e3 ? when.day(at) : when.time(at));
+  const grid = scaled.left
+    ? {
+        y: scaled.left.range.ticks.map((value) => fraction(scaled.left.range, value)),
+        x: time.ticks.map((at) => (at - from) / span),
+      }
+    : null;
   return (
     <StudioDialog title={title} eyebrow="Full view" onClose={onClose} wide>
       <div className="studio-dialog-body studio-full-view">
@@ -397,35 +641,62 @@ export function ChartFullView({ panel, card, title, ranges = Object.keys(RANGE_L
         />
         {!history ? (
           <p className="studio-chart-note">Loading…</p>
-        ) : !series.length ? (
+        ) : !series.length || !scaled.left ? (
           <p className="studio-chart-note">No history for this range yet.</p>
         ) : (
           <>
-            {/* The chart is described by the values list below it. */}
-            <div
-              className="studio-full-chart"
-              onPointerMove={pick}
-              onPointerLeave={() => setHover(null)}
-              aria-describedby={id}
-            >
-              {card.show === "bar" ? (
-                <Bars series={series} points={history.points} from={from} to={now} />
-              ) : (
-                <Lines
-                  series={series}
-                  points={history.points}
-                  from={from}
-                  to={now}
-                  area={card.show === "area"}
-                  hover={point?.[0]}
-                />
-              )}
+            <div className={`studio-full-plot${scaled.right ? " has-right" : ""}`}>
+              {scaled.right && <AxisKeys group={scaled.left} side="left" />}
+              {scaled.right && <AxisKeys group={scaled.right} side="right" />}
+              <AxisLabels group={scaled.left} side="left" format={format} />
+              {/* The chart is described by the values list below it. */}
+              <div
+                className="studio-full-chart"
+                onPointerMove={pick}
+                onPointerLeave={() => setHover(null)}
+                aria-describedby={id}
+              >
+                {card.show === "bar" ? (
+                  <Bars series={series} points={points} from={from} to={now} ranges={scaled.ranges} grid={grid} />
+                ) : (
+                  <Lines
+                    series={series}
+                    points={points}
+                    from={from}
+                    to={now}
+                    area={card.show === "area"}
+                    hover={point?.[0]}
+                    ranges={scaled.ranges}
+                    grid={grid}
+                  />
+                )}
+              </div>
+              {scaled.right && <AxisLabels group={scaled.right} side="right" format={format} />}
+              <div className="studio-axis-time" aria-hidden="true">
+                {time.ticks.map((at) => {
+                  const where = (at - from) / span;
+                  return (
+                    <span
+                      key={at}
+                      style={{
+                        left: `${where * 100}%`,
+                        transform: `translateX(${where < 0.06 ? 0 : where > 0.94 ? -100 : -50}%)`,
+                      }}
+                    >
+                      {timeText(at)}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
+            {since && (
+              <p className="studio-muted studio-chart-since">
+                Collecting since {when.full(since)}. The chart widens to the full range as Studio records more.
+              </p>
+            )}
             <div id={id} aria-live="polite">
               <p className="studio-muted">
-                {point
-                  ? new Date(point[0]).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })
-                  : "Now · point at the chart for exact values"}
+                {point ? when.full(point[0]) : "Now · point at the chart for exact values"}
               </p>
               <Legend
                 series={series}
@@ -468,6 +739,7 @@ export function statusBars(history) {
 }
 
 export function StatusHistory({ card }) {
+  const when = useTimeFormat();
   const range = card.chartRange || "24h";
   const { data: recent } = useSWR(card.id ? historyPath(card.id, "1h") : null, studioRequest, {
     refreshInterval: 60000,
@@ -480,7 +752,7 @@ export function StatusHistory({ card }) {
   if (!bars.length)
     return <p className="studio-chart-note">Collecting checks. A bar appears for each one, about once a minute.</p>;
   const uptime = uptimeOf(range === "1h" ? recent : longer);
-  const time = (at) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = when.time;
   const words = (bar) => `${time(bar.at)}: ${bar.up ? `Up${Number.isFinite(bar.ms) ? `, ${bar.ms} ms` : ""}` : "Down"}`;
   const down = bars.filter((bar) => !bar.up).length;
   return (

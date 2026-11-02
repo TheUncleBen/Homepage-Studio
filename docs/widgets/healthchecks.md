@@ -1,4 +1,4 @@
-# Health checks
+# Healthchecks
 
 Integration · type `healthchecks` · [Homepage documentation](https://gethomepage.dev/widgets/services/healthchecks/)
 

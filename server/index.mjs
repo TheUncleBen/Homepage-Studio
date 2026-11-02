@@ -4,7 +4,7 @@ import fs, { readFile } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createConfigStore, ConfigError, MAX_IMPORT_BYTES } from './config.mjs';
-import { BoardError } from './board.mjs';
+import { BoardError, infoWidgetLabel } from './board.mjs';
 import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute, sharedPublic } from './dashboards.mjs';
 import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug } from './dashboard-paths.mjs';
@@ -335,7 +335,7 @@ function createDashboardHandlers(options = {}) {
     const sources = [
       // A service's own settings, not its widgets: those are counted below.
       ...(current.services || []).map((entry) => [entry.name, entry.config && typeof entry.config === 'object' ? { ...entry.config, widget: undefined, widgets: undefined } : entry.config]),
-      ...(current.serviceWidgets || []).map((entry) => [`${current.services.find((service) => service.id === entry.serviceId)?.name || 'Service'} · ${entry.type}`, entry.config]),
+      ...(current.serviceWidgets || []).map((entry) => [`${current.services.find((service) => service.id === entry.serviceId)?.name || 'Service'} · ${infoWidgetLabel(entry.type)}`, entry.config]),
       ...(current.infoWidgets || []).map((entry) => [entry.type, entry.config]),
     ];
     return (id) => {

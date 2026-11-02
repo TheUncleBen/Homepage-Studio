@@ -2,7 +2,21 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { CardChart, chartRanges, chartSeries, historyRange, scales, statusBars, trendOf, uptimeOf } from "./card-chart";
+import {
+  CardChart,
+  axes,
+  chartRanges,
+  chartSeries,
+  dataStart,
+  heroSeries,
+  historyRange,
+  niceTicks,
+  scales,
+  statusBars,
+  timeTicks,
+  trendOf,
+  uptimeOf,
+} from "./card-chart";
 
 const HOUR = 3600e3;
 const NOW = 1_800_000_000_000;
@@ -69,7 +83,8 @@ describe("charts", () => {
     );
     expect(screen.getByText(/Collecting numbers/)).toBeTruthy();
     rerender(<CardChart card={{ show: "line", chartRange: "24h", history }} />);
-    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/Last 24 h/);
+    // Less history than the range: drawn from its first number, and says so.
+    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Since /);
     expect(document.querySelectorAll("path").length).toBe(3);
   });
 });
@@ -91,5 +106,55 @@ describe("status history", () => {
     expect(uptimeOf(checks)).toBeCloseTo(98.75);
     expect(uptimeOf({ fields: [], points: [] })).toBe(null);
     expect(statusBars(history)).toEqual([]);
+  });
+
+  it("full view: lines sharing a unit share an axis, a percentage gets the right-hand one (Ben, 2 Nov)", () => {
+    const series = chartSeries(history, {}, (label) => label);
+    const scaled = axes(series, history.points);
+    expect(scaled.right.format).toBe("percent");
+    expect(scaled.right.range).toEqual({ min: 0, max: 100, ticks: [0, 25, 50, 75, 100] });
+    expect(scaled.left.format).toBe("number");
+    expect(scaled.left.entries.map((entry) => entry.field.field)).toEqual(["queries", "blocked"]);
+    // Queries and Blocked are drawn against the same numbers.
+    expect(scaled.ranges.get("queries")).toBe(scaled.ranges.get("blocked"));
+    expect(niceTicks(16000, 84000)).toEqual({ min: 0, max: 100000, ticks: [0, 20000, 40000, 60000, 80000, 100000] });
+    expect(niceTicks(3, 3).ticks.length).toBeGreaterThan(1);
+  });
+
+  it("starts a short history at its first number, and marks round times", () => {
+    const series = chartSeries(history, {}, (label) => label);
+    expect(dataStart(series, history.points, NOW - 24 * HOUR)).toBe(NOW - 2 * HOUR);
+    expect(dataStart(series, history.points, NOW - 2 * HOUR)).toBe(null);
+    const { ticks, step } = timeTicks(NOW - 2 * HOUR, NOW);
+    expect(step).toBe(30 * 60e3);
+    expect(ticks.length).toBeGreaterThanOrEqual(4);
+    expect(ticks.every((at) => at >= NOW - 2 * HOUR && at <= NOW)).toBe(true);
+  });
+
+  it("hiding a line keeps the others' colours", () => {
+    const shown = chartSeries(history, {}, (label) => label);
+    const hidden = chartSeries(
+      history,
+      { values: [{ field: "Blocked today" }, { field: "queries", slot: "hidden" }] },
+      (l) => l,
+    );
+    expect(hidden.find((entry) => entry.field.field === "blocked").colour).toBe(
+      shown.find((entry) => entry.field.field === "blocked").colour,
+    );
+  });
+
+  it("a gauge shows the chosen value, else the first percentage", () => {
+    const series = chartSeries(history, { values: [{ field: "queries" }] }, (label) => label);
+    expect(heroSeries(series, true).field.field).toBe("Blocked today");
+    expect(heroSeries(series).field.field).toBe("queries");
+    const chosen = chartSeries(history, { values: [{ field: "blocked", slot: "hero" }] }, (label) => label);
+    expect(heroSeries(chosen, true).field.field).toBe("blocked");
+  });
+
+  it("donut writes its hero's share in the middle, its legend beside it", () => {
+    render(<CardChart card={{ show: "donut", chartRange: "24h", history, values: [{ field: "queries" }] }} />);
+    // 84000 of 102022 is 82 %.
+    expect(document.querySelector(".studio-chart-centre").textContent).toBe("82%");
+    expect(document.querySelector(".studio-chart-parts .studio-chart-legend")).toBeTruthy();
   });
 });

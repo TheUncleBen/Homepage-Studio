@@ -288,7 +288,10 @@ export function boardSources({ services, serviceWidgets, infoWidgets, bookmarks 
   }
   for (const w of serviceWidgets) {
     const s = services.find((v) => v.id === w.serviceId);
-    sources.push({ id: w.id, kind: 'serviceWidget', title: `${s.name} · ${w.type}`, group: s.group, nativeLocator: { serviceId: s.id, groupPath: s.groupPath, name: s.name, widgetIndex: w.index, sourceKey: w.sourceKey, sourceIndex: w.sourceIndex, proxyIndex: w.sourceKey === 'widget' ? -1 : w.sourceIndex, type: w.type } });
+    // A service's widget is called by the service's name; only a service
+    // with several widgets adds which one, by its readable name.
+    const several = serviceWidgets.filter((v) => v.serviceId === w.serviceId).length > 1;
+    sources.push({ id: w.id, kind: 'serviceWidget', title: several ? `${s.name} · ${infoWidgetLabel(w.type)}` : s.name, group: s.group, nativeLocator: { serviceId: s.id, groupPath: s.groupPath, name: s.name, widgetIndex: w.index, sourceKey: w.sourceKey, sourceIndex: w.sourceIndex, proxyIndex: w.sourceKey === 'widget' ? -1 : w.sourceIndex, type: w.type } });
   }
   const infoTitles = infoWidgetTitles(infoWidgets);
   for (const w of infoWidgets) sources.push({ id: w.id, kind: 'informationWidget', title: infoTitles.get(w), group: 'Information', nativeLocator: { index: w.index, type: w.type } });
