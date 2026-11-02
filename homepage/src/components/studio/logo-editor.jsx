@@ -66,7 +66,7 @@ export default function LogoEditor({ logo, onChange }) {
     }
     await send(
       { image: prepared.image },
-      `Logo saved. Shrunk from ${formatBytes(prepared.before)} to ${formatBytes(prepared.after)} (${prepared.width} × ${prepared.height}).`,
+      `Logo saved. Shrunk from ${formatBytes(prepared.before)} to ${formatBytes(prepared.after)} (${prepared.width}\u00a0×\u00a0${prepared.height}).`,
     );
   };
   return (

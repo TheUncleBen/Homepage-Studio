@@ -1758,8 +1758,9 @@ body {
 /* A dashboard's own logo, in its appearance settings. */
 .studio-logo-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   min-height: 60px;
   padding: 8px 16px;
 }
@@ -1771,8 +1772,13 @@ body {
   flex: none;
 }
 .studio-logo-name {
-  flex: 1;
+  flex: 1 1 6rem;
   min-width: 0;
+  white-space: nowrap;
+}
+/* On a narrow phone the buttons wrap under the preview, kept to the right. */
+.studio-logo-row .studio-pill-button:first-of-type {
+  margin-left: auto;
 }
 .studio-pill-button {
   min-height: 34px;
