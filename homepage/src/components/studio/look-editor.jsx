@@ -491,15 +491,19 @@ function ValueList({ fields, values, layout, show = "numbers", formats = {}, onC
               <option value="short">1.2M</option>
               <option value="compact">1.2 M</option>
             </select>
-            {coloured && slot !== "hidden" && (row.colour || defaultColour.has(row.field)) && (
-              <ColourField
-                label={`Chart colour for ${row.label}`}
-                value={row.colour || defaultColour.get(row.field)}
-                onChange={(colour) =>
-                  update(index, { colour: colour === defaultColour.get(row.field) ? undefined : colour })
-                }
-              />
-            )}
+            {coloured &&
+              (slot !== "hidden" && (row.colour || defaultColour.has(row.field)) ? (
+                <ColourField
+                  label={`Chart colour for ${row.label}`}
+                  value={row.colour || defaultColour.get(row.field)}
+                  onChange={(colour) =>
+                    update(index, { colour: colour === defaultColour.get(row.field) ? undefined : colour })
+                  }
+                />
+              ) : (
+                // Holds the colour's column, so every row lines up.
+                <span className="studio-value-no-colour" />
+              ))}
             <button
               type="button"
               className={`studio-button studio-quiet studio-rules-toggle${row.rules ? " is-set" : ""}`}

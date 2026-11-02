@@ -197,7 +197,7 @@ function applyReviewedCorrections(byType) {
   set('service', 'ntfy', 'username', ['string'], { description: 'Optional Basic authentication username; use together with password.' });
   set('service', 'ntfy', 'password', ['string'], { description: 'Optional Basic authentication password; use together with username.' });
   set('service', 'qnap', 'volume', ['string'], { description: 'Optional QNAP volume name to show through the volumeUsage field; poolUsage otherwise aggregates volumes.' });
-  set('info', 'datetime', 'locale', ['string'], { description: 'Optional locale for this clock. Format options use native Intl.DateTimeFormat settings.' });
+  set('info', 'datetime', 'locale', ['string'], { exampleValue: 'en-GB', description: 'Leave empty to follow the dashboard’s language. A language tag such as en-GB or de writes this clock in that language’s style.' });
   // Text size is a choice of the sizes the widget's code knows (its docs leave
   // out lg, the default). Format gets the Date & Time editor: what the time
   // and the date show, with a live example; other Intl options stay in YAML.

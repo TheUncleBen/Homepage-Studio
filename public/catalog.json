@@ -15462,10 +15462,10 @@
           "valueTypes": [
             "string"
           ],
-          "exampleValue": null,
+          "exampleValue": "en-GB",
           "sensitive": false,
           "source": "https://gethomepage.dev/widgets/info/datetime/",
-          "description": "Optional locale for this clock. Format options use native Intl.DateTimeFormat settings."
+          "description": "Leave empty to follow the dashboard’s language. A language tag such as en-GB or de writes this clock in that language’s style."
         }
       ],
       "defaults": {},

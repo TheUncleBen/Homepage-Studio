@@ -1896,33 +1896,37 @@ export default function StudioBoard({
           >
             <StudioIcon name="keyboard" size={17} />
           </button>
-          {/* Save keeps editing; Done saves and leaves. One primary button. */}
-          {dirty && (
+          {/* Save keeps editing; Done saves and leaves. One primary button.
+              The three stay together: on a narrow phone they move to a
+              second line as one group rather than off the screen. */}
+          <span className="studio-edit-bar-actions">
+            {dirty && (
+              <button
+                className="studio-button studio-quiet"
+                disabled={controlsDisabled}
+                title="Save and keep editing (Ctrl / ⌘ S)"
+                onClick={() => saveArrangement(false)}
+              >
+                Save
+              </button>
+            )}
             <button
               className="studio-button studio-quiet"
-              disabled={controlsDisabled}
-              title="Save and keep editing (Ctrl / ⌘ S)"
-              onClick={() => saveArrangement(false)}
+              disabled={saving}
+              onClick={() => {
+                // An unsaved arrangement uses the same explicit discard
+                // confirmation as editor drafts.
+                if (dirty) setModal({ type: "discardArrangement" });
+                else leave();
+              }}
             >
-              Save
+              Cancel
             </button>
-          )}
-          <button
-            className="studio-button studio-quiet"
-            disabled={saving}
-            onClick={() => {
-              // An unsaved arrangement uses the same explicit discard
-              // confirmation as editor drafts.
-              if (dirty) setModal({ type: "discardArrangement" });
-              else leave();
-            }}
-          >
-            Cancel
-          </button>
-          <button className="studio-button studio-primary" disabled={controlsDisabled} onClick={finishEditing}>
-            <StudioIcon name="check" size={16} />
-            {saving ? "Saving…" : "Done"}
-          </button>
+            <button className="studio-button studio-primary" disabled={controlsDisabled} onClick={finishEditing}>
+              <StudioIcon name="check" size={16} />
+              {saving ? "Saving…" : "Done"}
+            </button>
+          </span>
           {unitMenu && (
             <Menu
               key={unitMenu.pages ? "pages" : "actions"}

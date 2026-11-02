@@ -3658,20 +3658,19 @@ svg.studio-chart-gauge {
   flex: 1 1 8rem;
   min-width: 0;
 }
-/* On a dialog wide enough, a row stays one line: the name gives way first. */
+/* On a dialog wide enough, a row is one line of columns that line up from
+   row to row; the name gives way first, and nothing passes the edge. */
 @media (min-width: 640px) {
   .studio-value-list > li {
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: 28px minmax(3rem, 1fr) repeat(4, auto);
+    column-gap: 8px;
   }
   .studio-value-list > li > input {
-    flex-basis: 4rem;
-    min-width: 4rem;
+    min-width: 0;
   }
   .studio-value-list > li > .studio-value-rules {
-    flex-basis: 100%;
-  }
-  .studio-value-list > li:has(> .studio-value-rules) {
-    flex-wrap: wrap;
+    grid-column: 1 / -1;
   }
 }
 /* A chart line's colour sits in the row: a small swatch and its hex. */
@@ -3687,8 +3686,8 @@ svg.studio-chart-gauge {
   border: 1px solid var(--studio-line);
 }
 .studio-value-list .studio-colour-text {
-  flex: 0 0 6.5rem;
-  width: 6.5rem;
+  flex: 0 0 5.5rem;
+  width: 5.5rem;
   min-height: 28px;
   border: 1px solid var(--studio-line);
   background: var(--studio-input);
@@ -4533,6 +4532,23 @@ svg.studio-chart-gauge {
 .studio-edit-bar > .studio-icon-button {
   flex: none;
 }
+.studio-edit-bar-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: inherit;
+}
+/* Narrow phones: the bar wraps, and Save, Cancel and Done move down
+   together, kept to the right, rather than past the screen's edge. */
+@media (max-width: 480px) {
+  .studio-edit-bar {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .studio-edit-bar-actions {
+    margin-left: auto;
+  }
+}
 .studio-edit-bar-note {
   white-space: nowrap;
   overflow: hidden;
@@ -4704,10 +4720,21 @@ svg.studio-chart-gauge {
     justify-self: stretch;
   }
   .studio-look-editor .studio-segmented > button {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     min-width: 0;
     padding: 4px 6px;
     white-space: normal;
     line-height: 1.15;
   }
+}
+/* Full view: the time ranges share the dialog's width, so all five fit a
+   phone. */
+.studio-full-view > .studio-segmented {
+  display: flex;
+  width: 100%;
+}
+.studio-full-view > .studio-segmented > button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 4px 6px;
 }
