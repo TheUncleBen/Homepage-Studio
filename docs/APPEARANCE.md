@@ -49,8 +49,10 @@ does not insert defaults into an existing file.
 ## Logo
 
 Anyone who may arrange a dashboard can give it its own logo in its
-**Settings → Appearance → Logo**: **Upload logo** (PNG, JPEG, WebP or SVG, up
-to 256 KiB; a square image works best). It saves straight away, and shows next
+**Settings → Appearance → Logo**: **Upload logo** (PNG, JPEG, WebP or SVG; a
+square image of 512 × 512 px or larger works best). A picture over 256 KiB is
+shrunk in the browser before it is saved, and the message says by how much; an
+SVG must already be 256 KiB or less. It saves straight away, and shows next
 to the dashboard's name in the top bar and as its browser tab icon. **Use the
 Studio logo** goes back to the default. A duplicate keeps its source's logo.
 SVG files with scripts, embedded pages, event handlers or external references

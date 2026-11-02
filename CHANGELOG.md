@@ -56,6 +56,11 @@ in older entries below are history only.
 - **Follow device** is the default mode for new deployments.
 - **Date & Time** in a card shows the time large with the date under it, and
   its options are choices (Time, Date, Text size) rather than raw settings.
+- **Email** is one centred card: the logo and name at the top, the heading,
+  the button and the written-out link centred, the footer inside the card.
+- **Big logos are shrunk, not refused.** A PNG, JPEG or WebP logo over
+  256 KiB is resized in the browser (512 px, WebP) and the message says how
+  much it was shrunk. An SVG over 256 KiB is still refused.
 
 ### Polished Studio pages, backups in the app, email in Studio's look
 

@@ -26,7 +26,13 @@ export async function prepareImage(file, kind) {
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.84));
   // Keep the original when re-encoding would not make it smaller.
   const chosen = blob && (blob.size < file.size || scale < 1) ? blob : file;
-  return { image: await readAsDataUrl(chosen), before: file.size, after: chosen.size };
+  return {
+    image: await readAsDataUrl(chosen),
+    before: file.size,
+    after: chosen.size,
+    width: canvas.width,
+    height: canvas.height,
+  };
 }
 
 export function formatBytes(bytes) {
