@@ -1,45 +1,45 @@
-export const COLUMNS = 12;
-export const ROW_HEIGHT = 72;
-export const GAP = 16;
+// 24 columns of 36 px rows (owner-approved board 18): steps half as big as
+// before, so a card can fit its content exactly.
+export const COLUMNS = 24;
+export const ROW_HEIGHT = 36;
+export const GAP = 12;
+// Dashboard Appearance › Spacing: the space between widgets, in pixels.
+export const SPACING = Object.freeze({ compact: 6, default: GAP, roomy: 20 });
+export const gapOf = (settings) => {
+  const spacing = settings?.studioTheme?.spacing;
+  return typeof spacing === "string" && Object.hasOwn(SPACING, spacing) ? SPACING[spacing] : GAP;
+};
+// Narrow screens: tablets use 16 columns (cards snap to halves), phones 8.
+export const TABLET_COLUMNS = 16;
+export const PHONE_COLUMNS = 8;
+export const PHONE_WIDTH = 560;
 
 // Grid minima protect readable content space; overflowing native internals remain
 // scrollable, never scaled down. These are content-class limits, not a claim
 // that every service integration has identical layout needs.
 export function panelMinimum(panel) {
-  if (panel.kind === "service" || panel.kind === "bookmark")
-    return { w: 3, h: 2 };
+  if (panel.kind === "service" || panel.kind === "bookmark") return { w: 5, h: 2 };
   if (panel.kind === "informationWidget") {
-    if (
-      ["resources", "kubernetes", "longhorn"].includes(
-        panel.nativeLocator?.type,
-      )
-    )
-      return { w: 4, h: 3 };
-    return { w: panel.nativeLocator?.type === "search" ? 4 : 3, h: 2 };
+    // Resources is one row of meters; its card is one grid row tall.
+    if (["kubernetes", "longhorn"].includes(panel.nativeLocator?.type)) return { w: 8, h: 4 };
+    return { w: ["resources", "search"].includes(panel.nativeLocator?.type) ? 8 : 5, h: 2 };
   }
   if (panel.kind === "serviceWidget") {
-    if (panel.nativeLocator?.type === "calendar") return { w: 6, h: 5 };
-    if (["iframe", "mjpeg"].includes(panel.nativeLocator?.type))
-      return { w: 4, h: 5 };
-    if (["glances", "customapi"].includes(panel.nativeLocator?.type))
-      return { w: 4, h: 4 };
-    return { w: 4, h: 3 };
+    if (panel.nativeLocator?.type === "calendar") return { w: 12, h: 9 };
+    if (["iframe", "mjpeg"].includes(panel.nativeLocator?.type)) return { w: 8, h: 9 };
+    if (panel.nativeLocator?.type === "glances") return { w: 8, h: 7 };
+    return { w: 6, h: 4 };
   }
   return { w: 1, h: 1 };
 }
 
 export function unitMinimum(board, id) {
   const stack = board.stacks.find((item) => item.id === id);
-  const panels = board.panels.filter((panel) =>
-    stack ? stack.panelIds.includes(panel.id) : panel.id === id,
-  );
+  const panels = board.panels.filter((panel) => (stack ? stack.panelIds.includes(panel.id) : panel.id === id));
   const minima = panels.map(panelMinimum);
   return {
     w: Math.max(1, ...minima.map((minimum) => minimum.w)),
-    h: Math.max(
-      stack ? 3 : 1,
-      ...minima.map((minimum) => minimum.h + (stack ? 1 : 0)),
-    ),
+    h: Math.max(stack ? 5 : 1, ...minima.map((minimum) => minimum.h + (stack ? 2 : 0))),
   };
 }
 
@@ -52,20 +52,18 @@ function fitMinimum(rect, minimum) {
 }
 
 export function clampRect(rect = {}, columns = COLUMNS) {
-  const w = Math.max(1, Math.min(columns, Math.round(Number(rect.w) || 4)));
-  const h = Math.max(1, Math.min(1000, Math.round(Number(rect.h) || 3)));
+  const w = Math.max(1, Math.min(columns, Math.round(Number(rect.w) || 8)));
+  const h = Math.max(1, Math.min(2000, Math.round(Number(rect.h) || 6)));
   return {
     x: Math.max(0, Math.min(columns - w, Math.round(Number(rect.x) || 0))),
-    y: Math.max(0, Math.min(100000, Math.round(Number(rect.y) || 0))),
+    y: Math.max(0, Math.min(200000, Math.round(Number(rect.y) || 0))),
     w,
     h,
   };
 }
 
 export function intersects(a, b) {
-  return (
-    a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
-  );
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
 // True when a starts before b in reading order: top to bottom, then left to right.
@@ -98,6 +96,61 @@ function applyRectangles(board, rectangles) {
   return changed ? { ...board, panels, stacks } : board;
 }
 
+// Snap guides: while a widget moves, the edges it shares with other widgets
+// (left, right, top or bottom, in pixels) as lines spanning both.
+export function snapGuides(rects, movingId) {
+  const moving = rects.get(movingId);
+  if (!moving) return [];
+  const edges = (rect) => ({
+    left: rect.left,
+    right: rect.left + rect.width,
+    top: rect.top,
+    bottom: rect.top + rect.height,
+  });
+  const m = edges(moving);
+  const lines = new Map();
+  const near = (a, b) => Math.abs(a - b) < 1;
+  for (const [id, rect] of rects) {
+    if (id === movingId || rect.display === "none") continue;
+    const o = edges(rect);
+    for (const side of ["left", "right"])
+      for (const other of ["left", "right"])
+        if (near(m[side], o[other])) {
+          const key = `v${Math.round(m[side])}`;
+          const line = lines.get(key) || { vertical: true, at: m[side], from: m.top, to: m.bottom };
+          lines.set(key, { ...line, from: Math.min(line.from, o.top), to: Math.max(line.to, o.bottom) });
+        }
+    for (const side of ["top", "bottom"])
+      for (const other of ["top", "bottom"])
+        if (near(m[side], o[other])) {
+          const key = `h${Math.round(m[side])}`;
+          const line = lines.get(key) || { vertical: false, at: m[side], from: m.left, to: m.right };
+          lines.set(key, { ...line, from: Math.min(line.from, o.left), to: Math.max(line.to, o.right) });
+        }
+  }
+  return [...lines.values()];
+}
+
+// Tidy up: every widget slides straight up into the free space above it, in
+// reading order, so gaps close and nothing changes column or overlaps.
+export function tidyBoard(board) {
+  const placed = [];
+  const rectangles = new Map();
+  for (const unit of unitsForBoard(board).sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)) {
+    let rect = { ...unit.rect, y: 0 };
+    let collisions = placed.filter((other) => intersects(rect, other));
+    while (collisions.length) {
+      rect = { ...rect, y: Math.max(...collisions.map((other) => other.y + other.h)) };
+      collisions = placed.filter((other) => intersects(rect, other));
+    }
+    // Never further down than it was.
+    if (rect.y > unit.rect.y) rect = { ...unit.rect };
+    placed.push(rect);
+    rectangles.set(unit.id, rect);
+  }
+  return applyRectangles(board, rectangles);
+}
+
 export function moveUnit(board, id, rect) {
   const units = unitsForBoard(board);
   const moved = units.find((unit) => unit.id === id);
@@ -107,25 +160,16 @@ export function moveUnit(board, id, rect) {
   const placed = [moved];
   units
     .filter((unit) => unit.id !== id)
-    .sort(
-      (a, b) =>
-        a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
-    )
+    .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id))
     .forEach((unit) => {
       let candidate = clampRect(unit.rect);
-      let collisions = placed.filter((other) =>
-        intersects(candidate, other.rect),
-      );
+      let collisions = placed.filter((other) => intersects(candidate, other.rect));
       while (collisions.length) {
         candidate = {
           ...candidate,
-          y: Math.max(
-            ...collisions.map((other) => other.rect.y + other.rect.h),
-          ),
+          y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)),
         };
-        collisions = placed.filter((other) =>
-          intersects(candidate, other.rect),
-        );
+        collisions = placed.filter((other) => intersects(candidate, other.rect));
       }
       placed.push({ ...unit, rect: candidate });
     });
@@ -212,30 +256,21 @@ function projectEdge(edge, columns) {
   return Math.round((edge * columns) / COLUMNS);
 }
 
-// At 8 columns (tablets) panels snap to halves: a panel up to half the
-// desktop width (6 of 12) is half the tablet width, a wider one is full width.
-// Rows therefore fill the board two-up instead of leaving a narrow strip, and a
-// desktop row of three becomes two, then one (see projectColumns).
-const HALF = 4;
+// On tablets panels snap to halves: a panel up to half the desktop width is
+// half the tablet width, a wider one is full width. Rows therefore fill the
+// board two-up instead of leaving a narrow strip, and a desktop row of three
+// becomes two, then one (see projectColumns). On phones every unit is full width.
+const HALF = TABLET_COLUMNS / 2;
 function projectHalves(rect) {
   if (rect.w > COLUMNS / 2) return { ...rect, x: 0, w: 2 * HALF };
-  const left = Math.min(HALF, Math.round(projectEdge(rect.x, 8) / HALF) * HALF);
+  const left = Math.min(HALF, Math.round(projectEdge(rect.x, TABLET_COLUMNS) / HALF) * HALF);
   return { ...rect, x: left, w: HALF };
 }
 
 function projectRect(rect, columns) {
   if (columns === COLUMNS) return rect;
-  if (columns === 8) return projectHalves(rect);
-  const left = projectEdge(rect.x, columns);
-  const right = projectEdge(rect.x + rect.w, columns);
-  return clampRect(
-    {
-      ...rect,
-      x: left,
-      w: Math.max(columns === 4 ? 4 : 3, right - left),
-    },
-    columns,
-  );
+  if (columns === TABLET_COLUMNS) return projectHalves(rect);
+  return clampRect({ ...rect, x: 0, w: columns }, columns);
 }
 
 // Narrow projections reflow in reading order (left to right, then top to
@@ -244,13 +279,12 @@ function projectRect(rect, columns) {
 // unit placed before it, so tiles that fit side by side stay side by side on
 // shared edges. Otherwise it wraps: it takes the first free spot, scanning
 // rows from the previous unit's row and each row from the left, that reads
-// after the previous unit. At 8 columns a row of three 4-wide tiles becomes two
-// then one; at 4 columns every unit is full width, so each one simply follows
-// the last, as before. The 12-column desktop board is shown as stored.
+// after the previous unit. On tablets a row of three third-width tiles becomes
+// two then one; on phones every unit is full width, so each one simply
+// follows the last. The desktop board is shown as stored.
 function projectColumns(board, columns) {
   const units = unitsForBoard(board).sort(
-    (a, b) =>
-      a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
+    (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
   );
   const placed = [];
   const free = (rect) => !placed.some((other) => intersects(rect, other.rect));
@@ -268,15 +302,13 @@ function projectColumns(board, columns) {
         }
       }
     }
-    // The canonical 12-column board is disjoint; push any stray overlap down.
+    // The canonical desktop board is disjoint; push any stray overlap down.
     {
       let collisions = placed.filter((other) => intersects(rect, other.rect));
       while (collisions.length) {
         rect = {
           ...rect,
-          y: Math.max(
-            ...collisions.map((other) => other.rect.y + other.rect.h),
-          ),
+          y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)),
         };
         collisions = placed.filter((other) => intersects(rect, other.rect));
       }
@@ -286,31 +318,27 @@ function projectColumns(board, columns) {
   return {
     columns,
     units: placed,
-    rows: Math.max(4, ...placed.map((unit) => unit.rect.y + unit.rect.h)),
+    rows: Math.max(8, ...placed.map((unit) => unit.rect.y + unit.rect.h)),
   };
 }
 
 export function projectBoard(board, width) {
-  return projectColumns(board, width < 560 ? 4 : width < 940 ? 8 : COLUMNS);
+  return projectColumns(board, width < PHONE_WIDTH ? PHONE_COLUMNS : width < 940 ? TABLET_COLUMNS : COLUMNS);
 }
 
-export function pixelRect(rect, width, columns = COLUMNS) {
-  const column = (width + GAP) / columns;
+export function pixelRect(rect, width, columns = COLUMNS, gap = GAP) {
+  const column = (width + gap) / columns;
   return {
     left: rect.x * column,
-    top: rect.y * (ROW_HEIGHT + GAP),
-    width: Math.max(0, rect.w * column - GAP),
-    height: rect.h * (ROW_HEIGHT + GAP) - GAP,
+    top: rect.y * (ROW_HEIGHT + gap),
+    width: Math.max(0, rect.w * column - gap),
+    height: rect.h * (ROW_HEIGHT + gap) - gap,
   };
 }
 
 export function stackBoard(board, panelIds, id) {
-  const existingMembers = new Set(
-    board.stacks.flatMap((stack) => stack.panelIds),
-  );
-  const panels = board.panels.filter(
-    (panel) => panelIds.includes(panel.id) && !existingMembers.has(panel.id),
-  );
+  const existingMembers = new Set(board.stacks.flatMap((stack) => stack.panelIds));
+  const panels = board.panels.filter((panel) => panelIds.includes(panel.id) && !existingMembers.has(panel.id));
   if (panels.length < 2) return board;
   const origin = panels.reduce((a, b) => (a.rect.y < b.rect.y ? a : b));
   const rect = clampRect({
@@ -356,4 +384,186 @@ export function unstackBoard(board, id) {
     if (panel) next = moveUnit(next, panelId, panel.rect);
   });
   return next;
+}
+
+// Pages: each page is laid out on its own. Geometry works on one page at a
+// time through a page view, and changes are merged back into the whole board.
+export const firstPageId = (board) => board?.pages?.[0]?.id ?? "home";
+export const pageOf = (board, unit) => unit.pageId ?? firstPageId(board);
+
+export function pageBoard(board, pageId = firstPageId(board)) {
+  const onPage = (unit) => pageOf(board, unit) === pageId;
+  return {
+    ...board,
+    pageId,
+    panels: board.panels.filter(onPage),
+    stacks: board.stacks.filter(onPage),
+  };
+}
+
+export function mergePage(board, view) {
+  if (!view || view === board) return board;
+  const pageId = view.pageId ?? firstPageId(board);
+  const changed = new Map(view.panels.map((panel) => [panel.id, { ...panel, pageId }]));
+  const panels = board.panels.map((panel) => changed.get(panel.id) ?? panel);
+  const stacks = [
+    ...board.stacks.filter((stack) => pageOf(board, stack) !== pageId),
+    ...view.stacks.map((stack) => ({ ...stack, pageId })),
+  ];
+  const next = { ...board, panels, stacks };
+  delete next.pageId;
+  return next;
+}
+
+// ---- Pages ---------------------------------------------------------------
+
+export const MAX_PAGES = 20;
+export const PAGE_NAME_LIMIT = 40;
+
+export const pageSlug = (name) =>
+  String(name)
+    .toLocaleLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64) || "page";
+
+// The address of a page follows its name (#media), so a renamed page gets a
+// readable link. An id is accepted too, for links made before a rename.
+export function pageFromHash(board, hash) {
+  const key = decodeURIComponent(String(hash || "").replace(/^#/, "")).toLocaleLowerCase();
+  if (!key) return null;
+  const pages = board?.pages || [];
+  return (pages.find((page) => pageSlug(page.name) === key) || pages.find((page) => page.id === key))?.id ?? null;
+}
+
+export const pageHash = (board, pageId) => {
+  const page = board?.pages?.find((item) => item.id === pageId);
+  return page ? `#${pageSlug(page.name)}` : "";
+};
+
+// Checks a proposed page name the way the controller does. Returns a message
+// or null.
+export function pageNameProblem(board, name, exceptId) {
+  const trimmed = String(name ?? "").trim();
+  if (!trimmed) return "A page needs a name.";
+  if (trimmed.length > PAGE_NAME_LIMIT) return `A page name is at most ${PAGE_NAME_LIMIT} characters.`;
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) return "A page name cannot contain control characters.";
+  const lower = trimmed.toLocaleLowerCase();
+  if ((board?.pages || []).some((page) => page.id !== exceptId && page.name.toLocaleLowerCase() === lower))
+    return `There is already a page called “${trimmed}”.`;
+  return null;
+}
+
+function freePageId(board, base) {
+  const ids = new Set((board.pages || []).map((page) => page.id));
+  const stem = pageSlug(base).slice(0, 58);
+  if (!ids.has(stem)) return stem;
+  for (let index = 2; ; index += 1) if (!ids.has(`${stem}-${index}`)) return `${stem}-${index}`;
+}
+
+export function freePageName(board, base = "New page") {
+  const names = new Set((board.pages || []).map((page) => page.name.toLocaleLowerCase()));
+  if (!names.has(base.toLocaleLowerCase())) return base;
+  for (let index = 2; ; index += 1) if (!names.has(`${base} ${index}`.toLocaleLowerCase())) return `${base} ${index}`;
+}
+
+export const pagesOf = (board) => (board.pages?.length ? board.pages : [{ id: firstPageId(board), name: "Home" }]);
+
+export function addPage(board, name = freePageName(board), after) {
+  const pages = pagesOf(board);
+  if (pages.length >= MAX_PAGES) return { board, pageId: null };
+  const page = { id: freePageId(board, name), name };
+  const index = after ? pages.findIndex((item) => item.id === after) + 1 : pages.length;
+  const next = [...pages];
+  next.splice(index > 0 ? index : pages.length, 0, page);
+  return { board: { ...board, pages: next }, pageId: page.id };
+}
+
+export function updatePage(board, pageId, changes) {
+  return {
+    ...board,
+    pages: pagesOf(board).map((page) => {
+      if (page.id !== pageId) return page;
+      const next = { ...page, ...changes };
+      for (const key of Object.keys(changes)) if (changes[key] === undefined) delete next[key];
+      if (typeof next.name === "string") next.name = next.name.trim();
+      return next;
+    }),
+  };
+}
+
+export function movePage(board, pageId, toIndex) {
+  const pages = [...pagesOf(board)];
+  const from = pages.findIndex((page) => page.id === pageId);
+  if (from < 0) return board;
+  const target = Math.max(0, Math.min(pages.length - 1, toIndex));
+  if (target === from) return board;
+  const [page] = pages.splice(from, 1);
+  pages.splice(target, 0, page);
+  // Units without an explicit page belong to the first page; pin them before
+  // the order changes so they stay where they are.
+  const first = firstPageId(board);
+  const pin = (unit) => (unit.pageId ? unit : { ...unit, pageId: first });
+  return { ...board, pages, panels: board.panels.map(pin), stacks: board.stacks.map(pin) };
+}
+
+export const unitsOnPage = (board, pageId) => unitsForBoard(pageBoard(board, pageId));
+
+// Moves a standalone panel or a whole stack to another page. Without a
+// rectangle it lands at the end of that page, keeping its size.
+export function moveToPage(board, unitId, pageId, rect) {
+  const stack = board.stacks.find((item) => item.id === unitId);
+  const panel = stack ? null : board.panels.find((item) => item.id === unitId);
+  if (!stack && !panel) return board;
+  const from = pageOf(board, stack || panel);
+  const memberIds = new Set(stack ? stack.panelIds : [unitId]);
+  const source = stack || panel;
+  let placement = rect;
+  if (!placement) {
+    const bottom = Math.max(0, ...unitsOnPage(board, pageId).map((unit) => unit.rect.y + unit.rect.h));
+    placement = { ...source.rect, x: 0, y: bottom };
+  }
+  let next = {
+    ...board,
+    panels: board.panels.map((item) => (memberIds.has(item.id) ? { ...item, pageId } : item)),
+    stacks: board.stacks.map((item) => (item.id === unitId ? { ...item, pageId } : item)),
+  };
+  if (from !== pageId || rect) next = mergePage(next, moveUnit(pageBoard(next, pageId), unitId, placement));
+  return next;
+}
+
+// Deleting a page moves its units to another page (at the end, in their
+// current reading order), or drops them from the arrangement when `to` is
+// null (their native content is removed separately).
+export function removePage(board, pageId, to) {
+  const pages = pagesOf(board);
+  if (pages.length <= 1 || !pages.some((page) => page.id === pageId)) return board;
+  const remaining = pages.filter((page) => page.id !== pageId);
+  const first = firstPageId(board);
+  // Pin implicit first-page units before the first page can change.
+  let next = {
+    ...board,
+    panels: board.panels.map((unit) => (unit.pageId ? unit : { ...unit, pageId: first })),
+    stacks: board.stacks.map((unit) => (unit.pageId ? unit : { ...unit, pageId: first })),
+  };
+  const leaving = unitsOnPage(next, pageId).sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
+  if (to && remaining.some((page) => page.id === to)) {
+    const top = Math.max(0, ...unitsOnPage(next, to).map((unit) => unit.rect.y + unit.rect.h));
+    const offset = top - Math.min(...leaving.map((unit) => unit.rect.y), top);
+    for (const unit of leaving) next = moveToPage(next, unit.id, to, { ...unit.rect, y: unit.rect.y + offset });
+  } else {
+    const gone = new Set(
+      leaving.flatMap((unit) =>
+        unit.kind === "stack" ? next.stacks.find((s) => s.id === unit.id).panelIds : [unit.id],
+      ),
+    );
+    next = {
+      ...next,
+      panels: next.panels.filter((item) => !gone.has(item.id)),
+      stacks: next.stacks.filter((item) => pageOf(next, item) !== pageId),
+    };
+  }
+  return { ...next, pages: remaining };
 }

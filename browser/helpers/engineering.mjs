@@ -29,7 +29,8 @@ export async function seedPlayback(request, overrides = {}) {
     const search = board.panels.find(panel => panel.nativeLocator.type === 'search');
     const greeting = board.panels.find(panel => panel.nativeLocator.type === 'greeting');
     for (const panel of [search, greeting]) panel.rect = { x: 0, y: 0, w: 4, h: 3 };
-    board.panels.find(panel => panel.kind === 'service').rect = { x: 0, y: 20, w: 4, h: 3 };
+    // Far enough down (40 rows of 48 px) to scroll the stack out of view.
+    board.panels.find(panel => panel.kind === 'service').rect = { x: 0, y: 40, w: 5, h: 3 };
     board.stacks = [{ id: 'playback-fixture', panelIds: [search.id, greeting.id], rect: { x: 0, y: 0, w: 4, h: 3 }, playback: playback(overrides) }];
   });
 }

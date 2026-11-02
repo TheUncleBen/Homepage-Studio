@@ -1,4 +1,4 @@
-# OpenWRT
+# OpenWrt
 
 Integration · type `openwrt` · [Homepage documentation](https://gethomepage.dev/widgets/services/openwrt/)
 

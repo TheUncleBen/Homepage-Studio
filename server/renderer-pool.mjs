@@ -4,7 +4,8 @@ import net from 'node:net';
 import childProcess from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
-import { dashboardConfigDir, dashboardBasePath, validateDashboardId } from './dashboard-paths.mjs';
+import { dashboardConfigDir, dashboardBasePath, dashboardStateDir, validateDashboardId } from './dashboard-paths.mjs';
+import { CONNECTIONS_FILE } from './connections.mjs';
 
 const UPSTREAM_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
 const PROTOCOL = 1;
@@ -61,7 +62,7 @@ function health(origin, host, timeout) {
 }
 
 export function createRendererPool({
-  configRoot, appRoot, workerScript, allowedHosts = process.env.HOMEPAGE_ALLOWED_HOSTS,
+  configRoot, stateRoot, appRoot, workerScript, allowedHosts = process.env.HOMEPAGE_ALLOWED_HOSTS,
   buildRevision = process.env.STUDIO_BUILD_REVISION || 'unreleased',
   maxWorkers, idleMs, startupMs, workerEnv = {},
 } = {}) {
@@ -144,6 +145,8 @@ export function createRendererPool({
           NODE_ENV: 'production', HOSTNAME: '127.0.0.1', PORT: String(port),
           HOMEPAGE_CONFIG_DIR: record.configDir, HOMEPAGE_ALLOWED_HOSTS: hosts.join(','),
           STUDIO_DASHBOARD_ID: record.id, STUDIO_DASHBOARD_BASE_PATH: record.basePath,
+          // Saved connections the dashboard's widgets refer to (server/connections.mjs).
+          ...(stateRoot ? { STUDIO_CONNECTIONS_FILE: join(dashboardStateDir(resolve(stateRoot), record.id), CONNECTIONS_FILE) } : {}),
           STUDIO_RENDERER_INSTANCE: record.instance,
           // The platform default look each dashboard inherits (server/platform.mjs).
           STUDIO_PLATFORM_FILE: join(resolve(configRoot), 'studio-platform.json'),

@@ -1,12 +1,12 @@
+import { appearanceTokens } from "components/studio/appearance.mjs";
 import { withPageAuth } from "utils/auth";
 import { getSettings } from "utils/config/config";
-import themes from "utils/styles/themes";
 
 async function getProps({ res }) {
   const settings = getSettings();
 
-  const palette = themes[settings.color] || themes.slate;
-  const color = palette[settings.theme === "light" ? "light" : "dark"];
+  // The page colour of the dashboard's Studio base, in its own mode.
+  const color = appearanceTokens(settings, true).tokens.bg;
 
   const xml = `<?xml version="1.0" encoding="utf-8"?>
 <browserconfig>

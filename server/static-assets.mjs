@@ -69,7 +69,7 @@ export async function serveSharedAsset(req, res, rendererDir) {
     }
     if (!encoding) { res.writeHead(406, { 'cache-control': 'no-store', vary: 'Accept-Encoding' }); return res.end(); }
     const etag = '"' + stat.size.toString(16) + '-' + Math.trunc(stat.mtimeMs).toString(16) + '-' + encoding + '"';
-    const headers = { 'content-type': types[extname(target).toLowerCase()] || 'application/octet-stream', 'content-length': stat.size, 'x-content-type-options': 'nosniff', 'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=60', etag, 'last-modified': stat.mtime.toUTCString() };
+    const headers = { 'content-type': types[extname(target).toLowerCase()] || 'application/octet-stream', 'content-length': stat.size, 'x-content-type-options': 'nosniff', 'cache-control': immutable ? 'public, max-age=31536000, immutable' : pathname.startsWith('/studio-icons/webp/') ? 'public, max-age=86400' : 'public, max-age=60', etag, 'last-modified': stat.mtime.toUTCString() };
     if (negotiable) headers.vary = 'Accept-Encoding';
     if (encoding !== 'identity') headers['content-encoding'] = encoding;
     if (etagMatches(req.headers['if-none-match'], etag)) {

@@ -37,7 +37,7 @@ describe("Appearance settings save", () => {
     fireEvent.click(screen.getByRole("radio", { name: "YAML" }));
     fireEvent.click(screen.getByRole("radio", { name: "Light" }));
     expect(screen.getByLabelText("Item configuration YAML").value).toContain("mode: light");
-    fireEvent.click(screen.getByRole("button", { name: "Graphite", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Teal", exact: true }));
     fireEvent.change(screen.getByLabelText("Accent color"), {
       target: { value: "#nothex" },
     });
@@ -53,6 +53,18 @@ describe("Appearance settings save", () => {
         studioTheme: { mode: "light", accent: "#81a8c8" },
       },
     });
+  });
+
+  it("shows the language once and has no Quick Launch row", () => {
+    render(
+      <SettingsEditor
+        state={{ revision: "target", settingsConfig: { language: "de" } }}
+        onSaved={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByText("Language", { exact: true })).toHaveLength(1);
+    expect(screen.queryByText("Quick Launch")).toBeNull();
   });
 });
 
@@ -157,7 +169,7 @@ describe("Portable dashboard import", () => {
 
   it.each([
     ["incomplete", backupFile({ version: 1, files: { "settings.yaml": "{}" } }), /complete dashboard/],
-    ["oversized", backupFile({}, { size: 40 * 1024 * 1024 + 1 }), /40 MiB/],
+    ["oversized", backupFile({}, { size: 100 * 1024 * 1024 + 1 }), /100 MiB/],
     [
       "unreadable",
       backupFile(
@@ -355,7 +367,7 @@ describe("Snapshot action and age", () => {
     expect(snapshotActionLabel("snapshot-restored")).toBe("Snapshot restored");
     expect(snapshotActionLabel("dashboard-imported")).toBe("Dashboard imported");
     expect(snapshotActionLabel("info-widget-deleted")).toBe("Information widget deleted");
-    expect(Object.keys(SNAPSHOT_ACTION_LABELS)).toHaveLength(19);
+    expect(Object.keys(SNAPSHOT_ACTION_LABELS)).toHaveLength(23);
     for (const label of Object.values(SNAPSHOT_ACTION_LABELS)) expect(label).toMatch(/^[A-Z][a-z ]+$/);
     for (const action of [undefined, null, "", "future-operation", "constructor", "toString", 7])
       expect(snapshotActionLabel(action)).toBe("Saved change");

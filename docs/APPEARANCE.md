@@ -11,9 +11,10 @@ keep the platform accent and choose its own display mode, for example.
 
 | Setting | What it does |
 | --- | --- |
-| **Mode** | Dark, Light or Auto (follows the device). Default: Dark |
-| **Accent** | A swatch (Eggplant, Graphite, Ocean, Sage) or **Custom**, which opens a colour picker and shows a **Hex** field. Default: Eggplant, `#b299be` |
-| **Background** | Optional. An image address used by every dashboard without a background of its own |
+| **Mode** | Follow device, Dark or Light. Default: Follow device |
+| **Base** | The page, cards and lines: Graphite, Slate, Midnight, Forest, Sand or Eggplant, each with a dark and a light version, shown as swatches. Default: Graphite |
+| **Accent** | A swatch (Eggplant, Teal, Ocean, Sage, Amber, Rose) or **Custom**, which opens a colour picker and shows a **Hex** field. Default: Eggplant, `#b299be` |
+| **Page background** | Optional. One of Studio's built-in backgrounds, used by every dashboard and page that has no Page background of its own |
 | **Platform CSS** | Optional. Loaded on every dashboard before that dashboard's own `custom.css`, which can override it |
 
 **Save default look** takes effect straight away: dashboards open in the same
@@ -28,13 +29,13 @@ again replaces their change.
 Open the dashboard's **Settings** (on the **Dashboards** page, or
 `/<slug>/studio/settings`) and find **Appearance**:
 
-- **Mode**: **Default** follows the platform; Dark, Light or Auto sets this
-  dashboard's own.
+- **Mode**: Follow device, Dark or Light. Until you pick one, the dashboard
+  follows the platform's mode; picking the platform's own choice stores nothing.
 - **Accent**: the first swatch, **Default**, follows the platform accent; the
   others set this dashboard's own, and **Custom** takes any three- or
   six-digit hex color.
-- **Platform CSS → Load the platform CSS**: on by default. Administrators can
-  switch it off for one dashboard.
+- **Administrator's CSS**: loads the Platform CSS on this dashboard. On by
+  default. Administrators can switch it off for one dashboard.
 
 The preview changes with the draft. **Save settings** applies it to this
 dashboard and creates the usual recovery snapshot. Each dashboard stores its
@@ -48,8 +49,10 @@ does not insert defaults into an existing file.
 ## Logo
 
 Anyone who may arrange a dashboard can give it its own logo in its
-**Settings → Appearance → Logo**: **Upload logo** (PNG, JPEG, WebP or SVG, up
-to 256 KiB; a square image works best). It saves straight away, and shows next
+**Settings → Appearance → Logo**: **Upload logo** (PNG, JPEG, WebP or SVG; a
+square image of 512 × 512 px or larger works best). A picture over 256 KiB is
+shrunk in the browser before it is saved, and the message says by how much; an
+SVG must already be 256 KiB or less. It saves straight away, and shows next
 to the dashboard's name in the top bar and as its browser tab icon. **Use the
 Studio logo** goes back to the default. A duplicate keeps its source's logo.
 SVG files with scripts, embedded pages, event handlers or external references
@@ -68,13 +71,15 @@ studioTheme:
 
 `mode` accepts `dark`, `light`, or `system`; without `mode` or `accent` the dashboard follows the platform for that part, and `platformCss: false` stops the platform CSS loading on it. A fixed mode also updates Homepage's native `theme` setting. Follow device removes that fixed native setting and keeps the native widget theme synchronized with the browser's color-scheme preference. Changing the device preference does not save files or create snapshots. A native `theme: dark` or `theme: light` without a Studio mode also counts as the dashboard's own mode. 
 
-The chosen accent is used to derive text, controls, focus rings, borders, and soft selection backgrounds. Studio adjusts its derived foreground colors for readability against the light or dark neutral surfaces. The exact chosen hex stays in the file. Native status colors and integration-specific chart colors keep Homepage's behavior; the native `color` palette remains independently configurable below Appearance.
+The chosen accent is used to derive text, controls, focus rings, borders, and soft selection backgrounds. Studio adjusts its derived foreground colors for readability against the light or dark neutral surfaces. The exact chosen hex stays in the file. Native status colors and integration-specific chart colors keep Homepage's behavior; the native `color` palette is not offered, and follows the Studio base (see below).
 
-Background images and their native blur, brightness, saturation, and opacity settings remain available through the Background field and the YAML view; a dashboard without one uses the platform background image, if any. Widget dimensions and stack layout remain direct dashboard edits. There is no separate theme profile database or browser-only appearance setting to synchronize.
+Studio decides the page background and the colours of Homepage's own widgets: a dashboard sets **Page background** in its settings (or a page sets its own), and one without falls back to the platform Page background. Homepage's `background` and `color` keys in settings.yaml are not read; the widget palette follows the Studio base. Widget dimensions and stack layout remain direct dashboard edits. There is no separate theme profile database or browser-only appearance setting to synchronize.
 
 ## Custom CSS
 
 For finer control, open **Dashboard settings → Configuration files**, select `custom.css`, edit it, and save. The native custom stylesheet is refreshed after the save without reloading healthy widgets. Studio's generated defaults have zero CSS specificity, so normal `:root` overrides keep precedence even after settings updates reorder Next.js head elements.
+
+Studio's own card styles load after `custom.css`, so a rule for a Studio class needs one more class than Studio's own rule to win. For example, `.studio-panel .studio-card-name small { color: #224466; }` changes a card's description, where `.studio-card-name small` alone would not.
 
 The most useful semantic variables are:
 

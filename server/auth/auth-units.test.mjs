@@ -88,6 +88,8 @@ test('access levels default to administrator for anything not listed', () => {
   assert.deepEqual(requiredLevel('POST', '/studio/api/appearance'), { level: 'arrange' });
   assert.deepEqual(requiredLevel('GET', '/studio/api/state'), { level: 'admin', stepUp: false });
   assert.deepEqual(requiredLevel('POST', '/studio/api/service'), { level: 'admin', stepUp: false });
+  assert.deepEqual(requiredLevel('POST', '/studio/api/widgets-delete'), { level: 'admin', stepUp: false });
+  assert.deepEqual(requiredLevel('POST', '/studio/api/widgets-duplicate'), { level: 'admin', stepUp: false });
   assert.deepEqual(requiredLevel('POST', '/studio/api/save'), { level: 'admin', stepUp: true });
   assert.deepEqual(requiredLevel('GET', '/studio/api/export'), { level: 'admin', stepUp: true });
   assert.deepEqual(requiredLevel('GET', '/studio/api/backups/one.json'), { level: 'admin', stepUp: true });

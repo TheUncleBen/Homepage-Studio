@@ -1,8 +1,113 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
+import CardBackground, { backgroundSource } from "./card-background";
+import { useCardHistory } from "./card-chart";
+import {
+  CardLookContext,
+  fillColours,
+  resolvedBehaviour,
+  resolvedLook,
+  useCardTheme,
+  useLogoColour,
+  widgetFields,
+} from "./card-look";
+import Freshness from "./freshness";
+import { COLUMNS, GAP, ROW_HEIGHT } from "./geometry.mjs";
 import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
+import { CHART_SHOWS, REFRESH_MS, ruleLevel } from "./look.mjs";
+import { resolveNativePanel } from "./native-adapter.mjs";
 import NativePanel from "./native-panel";
+
+import { SettingsContext } from "utils/contexts/settings";
+
+const iconOf = (resolved) => resolved?.service?.icon || resolved?.bookmark?.icon || null;
+
+// How a card looks: built-in, then the dashboard's defaults, then its own.
+// Shared by the board and the widget dialog's live preview.
+export function useCardPresentation(panel, data, onEdit, onFullView) {
+  const settings = useContext(SettingsContext)?.settings;
+  const look = useMemo(() => resolvedLook(settings, panel), [settings, panel]);
+  const behaviour = useMemo(() => resolvedBehaviour(settings, panel), [settings, panel]);
+  const resolved = useMemo(() => resolveNativePanel(panel, data), [panel, data]);
+  const theme = useCardTheme();
+  const wantsLogo = (look.fill === "tint" || look.fill === "solid") && look.colour === "logo";
+  const logoColour = useLogoColour(iconOf(resolved), wantsLogo);
+  const colours = useMemo(() => fillColours(look, logoColour, theme), [look, logoColour, theme]);
+  // Charts, trends and colour rules read the history Studio collects.
+  const history = useCardHistory(panel, look);
+  const latest = history?.latest?.values;
+  const ruleAlert = (look.values || []).some((value) => ruleLevel(value.rules, latest?.[value.field]) === "problem");
+  const card = useMemo(
+    () => ({
+      id: panel.id,
+      layout: look.layout,
+      values: look.values,
+      header: look.header,
+      description: look.description,
+      status: look.status,
+      statusCheck: behaviour.status,
+      errors: behaviour.errors,
+      target: behaviour.target,
+      refreshMs: REFRESH_MS[behaviour.refresh],
+      onFix: onEdit ? () => onEdit(panel) : undefined,
+      reportFields: (fields) => widgetFields.set(panel.id, fields),
+      show: look.show,
+      chartRange: look.chartRange,
+      trend: look.layout === "hero" ? look.trend : "off",
+      history,
+      ruleAlert,
+      onFullView: onFullView && CHART_SHOWS.includes(look.show) ? () => onFullView(panel) : undefined,
+    }),
+    [panel, look, behaviour, onEdit, onFullView, history, ruleAlert],
+  );
+  const pictured =
+    (look.fill === "picture" || look.fill === "pattern") && Boolean(backgroundSource(look.background, theme));
+  const backdrop = pictured ? <CardBackground background={look.background} tokens={theme} /> : null;
+  const attributes = {
+    "data-layout": look.layout,
+    "data-fill": colours || pictured ? look.fill : "plain",
+    "data-edge": look.edge,
+    "data-corners": look.corners,
+    "data-numbers": look.numbers,
+    "data-align": look.align,
+    "data-hero": look.heroSize,
+  };
+  const colourStyle = colours
+    ? { "--card-fill": colours.fill, "--card-ink": colours.ink, "--card-muted": colours.muted }
+    : {};
+  return { look, behaviour, colours, card, attributes, colourStyle, backdrop };
+}
+
+// A card on its own, outside the board: the widget dialog's live preview.
+export function CardPreview({ panel, data, override, renderNative: RenderNative = NativePanel }) {
+  const { card, attributes, colourStyle, backdrop } = useCardPresentation(panel, data, undefined);
+  // Drawn at the widget's own size on a typical 1200 px wide board.
+  const rect = panel.rect || { w: 6, h: 4 };
+  const column = (1200 - (COLUMNS - 1) * GAP) / COLUMNS;
+  const size = {
+    width: `min(100%, ${Math.round(rect.w * column + (rect.w - 1) * GAP)}px)`,
+    height: Math.min(rect.h * ROW_HEIGHT + (rect.h - 1) * GAP, 280),
+  };
+  return (
+    <section
+      className="studio-panel studio-card-preview"
+      data-panel-kind={panel.kind}
+      aria-label={`Preview of ${panel.title}`}
+      style={{ ...colourStyle, ...size }}
+      {...attributes}
+    >
+      <div className="studio-panel-slide">
+        {backdrop}
+        <div className="studio-native-content" inert>
+          <CardLookContext.Provider value={{ ...card, reportFields: undefined }}>
+            <RenderNative panel={panel} data={data} override={override} />
+          </CardLookContext.Provider>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function PanelHost({
   panel,
@@ -23,20 +128,29 @@ export default function PanelHost({
   onStackDrag,
   onManual,
   onEdit,
+  onFullView,
   canEdit = true,
   onSelect,
   onManipulate,
   onUnitKey,
   onLongPress,
   renderNative: RenderNative = NativePanel,
+  // On phones, the widget last tapped while editing shows its controls.
+  toolsShown = false,
 }) {
   const nativeContent = useRef(null);
   const slide = useRef(null);
+  const { card, attributes, colourStyle, backdrop } = useCardPresentation(
+    panel,
+    data,
+    canEdit ? onEdit : undefined,
+    onFullView,
+  );
   const previousPresentation = useRef(null);
   const slideAnimation = useRef(null);
   const playback = controller?.();
   const press = useLongPress({
-    disabled: editing || busy || overlayOpen || Boolean(stack) || !onLongPress,
+    disabled: busy || overlayOpen || Boolean(stack) || !onLongPress,
     accepts: (event) => !event.target.closest("button,input"),
     onLongPress: (pointer) => onLongPress?.(panel.id, pointer),
   });
@@ -75,7 +189,7 @@ export default function PanelHost({
   // Mouse keeps header-only holds; the header handles its own presses.
   const bodyHeld = useRef(0);
   const bodyPress = useLongPress({
-    disabled: editing || busy || overlayOpen || !onLongPress,
+    disabled: busy || overlayOpen || !onLongPress,
     accepts: (event) =>
       event.pointerType === "touch" &&
       !event.target.closest(".studio-panel-header,.studio-resize-handle") &&
@@ -119,7 +233,11 @@ export default function PanelHost({
   }, []);
   const duration =
     reducedMotion || stack?.playback.transition === "none" ? 0 : (stack?.playback.transitionDurationMs ?? 250);
-  const style = { ...rect, "--studio-slide-duration": `${duration}ms` };
+  const style = {
+    ...rect,
+    "--studio-slide-duration": `${duration}ms`,
+    ...colourStyle,
+  };
   const memberIndex = stack?.panelIds.indexOf(panel.id) ?? 0;
   const snapshot = playback?.getSnapshot();
   const activeIndex = snapshot?.activeIndex ?? 0;
@@ -186,9 +304,10 @@ export default function PanelHost({
   useEffect(() => () => slideAnimation.current?.cancel(), []);
   return (
     <section
-      className={`studio-panel${stack ? " studio-stacked-panel" : ""}${selected ? " studio-selected" : ""}${moving ? " studio-moving" : ""}${!presented ? " studio-inactive" : ""}${!active ? " studio-noninteractive" : ""}`}
+      className={`studio-panel${stack ? " studio-stacked-panel" : ""}${selected ? " studio-selected" : ""}${toolsShown ? " studio-tools-shown" : ""}${moving ? " studio-moving" : ""}${!presented ? " studio-inactive" : ""}${!active ? " studio-noninteractive" : ""}`}
       data-panel-id={panel.id}
       data-panel-kind={panel.kind}
+      {...attributes}
       data-stack-id={stack?.id}
       aria-label={panel.title}
       aria-hidden={!active || undefined}
@@ -213,7 +332,11 @@ export default function PanelHost({
       }}
       onContextMenu={(event) => {
         // A recognized touch hold must not also open the native context menu.
-        if (Date.now() - bodyHeld.current < 1500) event.preventDefault();
+        if (Date.now() - bodyHeld.current < 1500) return event.preventDefault();
+        // While editing, a right-click anywhere on the widget opens its menu.
+        if (event.defaultPrevented || busy || !onLongPress || event.target.closest("input,textarea,select")) return;
+        event.preventDefault();
+        onLongPress(stack ? stack.id : panel.id, { clientX: event.clientX, clientY: event.clientY });
       }}
     >
       <div
@@ -225,7 +348,10 @@ export default function PanelHost({
           transition: dragOffset ? "none" : undefined,
         }}
       >
-        {!stack && (
+        {backdrop}
+        {/* The card draws its own logo and name. While editing, a small bar
+            on top holds selection, move and edit. */}
+        {!stack && editing && (
           <header
             className="studio-panel-header"
             onPointerDown={press.onPointerDown}
@@ -236,7 +362,7 @@ export default function PanelHost({
               press.cancel();
               if (busy || !onLongPress) return;
               event.preventDefault();
-              onLongPress?.(panel.id);
+              onLongPress?.(panel.id, { clientX: event.clientX, clientY: event.clientY });
             }}
           >
             {editing && (
@@ -251,7 +377,7 @@ export default function PanelHost({
                 />
               </label>
             )}
-            <span className="studio-panel-title">
+            <span className="studio-panel-title studio-sr-only">
               <small>{panel.group || (panel.kind === "informationWidget" ? "Information" : "Dashboard")}</small>
               <strong>{panel.title}</strong>
             </span>
@@ -292,8 +418,11 @@ export default function PanelHost({
             if (!event.currentTarget.contains(event.relatedTarget)) controller?.()?.setBlocked("content-focus", false);
           }}
         >
-          <RenderNative panel={panel} data={data} />
+          <CardLookContext.Provider value={card}>
+            <RenderNative panel={panel} data={data} />
+          </CardLookContext.Provider>
         </div>
+        {!editing && !stale && <Freshness panelId={panel.id} title={panel.title} />}
         {stale && (
           <div
             className="studio-panel-placeholder studio-panel-refresh"

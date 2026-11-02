@@ -1,15 +1,18 @@
 import { useTranslation } from "next-i18next/pages";
+import { serverSideTranslations } from "next-i18next/pages/serverSideTranslations";
 import Head from "next/head";
 import Script from "next/script";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import useSWR, { SWRConfig, useSWRConfig } from "swr";
 
-import QuickLaunch from "components/quicklaunch";
 import { studioRequest } from "components/studio/api.mjs";
-import { appearanceStyles, appearanceTokens } from "components/studio/appearance.mjs";
+import { appearanceStyles, appearanceTokens, nativePalette } from "components/studio/appearance.mjs";
 import StudioBoard from "components/studio/board";
 import { dashboardContext, dashboardPath } from "components/studio/dashboard-path.mjs";
-import { flattenServices } from "components/studio/native-adapter.mjs";
+import { iconHref } from "components/studio/icon-source.mjs";
+import { dashboardLanguage, viewerLanguage } from "components/studio/languages.mjs";
+import { keepsUpdatingHidden } from "components/studio/look.mjs";
+import { PreferencesContext, viewedSettings } from "components/studio/preferences";
 import useSystemTheme from "components/studio/use-system-theme";
 import { withPageAuth } from "utils/auth";
 import { getDashboardData } from "utils/config/dashboard";
@@ -19,11 +22,20 @@ import { SettingsContext } from "utils/contexts/settings";
 import { StudioRevisionContext } from "utils/contexts/studio-revision";
 import { ThemeContext } from "utils/contexts/theme";
 
-export const getServerSideProps = withPageAuth(async ({ res } = {}) => {
+export const getServerSideProps = withPageAuth(async ({ req, res } = {}) => {
   const data = await getDashboardData();
   if (data.initialSettings?.disableIndexing) res?.setHeader("X-Robots-Tag", "noindex, nofollow");
+  // The viewer's own language, set by the Studio controller from their
+  // preferences; the dashboard's language otherwise.
+  const language = viewerLanguage(req?.headers?.["x-studio-language"]);
+  const own = language && language !== dashboardLanguage(data.initialSettings) ? language : null;
   return {
-    props: { ...data, platformRevision: readPlatformDefaults()?.revision ?? null, studioDashboard: dashboardContext() },
+    props: {
+      ...data,
+      ...(own ? { ...(await serverSideTranslations(own)), viewerLocale: own } : {}),
+      platformRevision: readPlatformDefaults()?.revision ?? null,
+      studioDashboard: dashboardContext(),
+    },
   };
 });
 
@@ -31,7 +43,7 @@ export default function HomepageStudio(props) {
   // Native children such as Quick Launch read their original SWR keys during
   // SSR. Keep Homepage's sanitized fallback available to the whole page.
   return (
-    <SWRConfig value={{ fallback: props.fallback }}>
+    <SWRConfig value={{ fallback: props.fallback, refreshWhenHidden: keepsUpdatingHidden(props.initialSettings) }}>
       <StudioDashboard {...props} />
     </SWRConfig>
   );
@@ -39,6 +51,7 @@ export default function HomepageStudio(props) {
 
 function StudioDashboard({
   initialSettings,
+  viewerLocale = null,
   fallback,
   platformRevision = null,
   studioDashboard = { id: "default", basePath: "" },
@@ -60,6 +73,9 @@ function StudioDashboard({
     },
     refreshInterval: 30000,
   });
+  // The viewer's own preferences (Account › Preferences); defaults without sign-in.
+  const { data: personal } = useSWR("/studio/api/preferences", studioRequest, { revalidateOnFocus: true });
+  const preferences = useMemo(() => personal?.preferences || {}, [personal]);
   const [searching, setSearching] = useState(false);
   const [interactionBlocked, setInteractionBlocked] = useState(true);
   const [searchString, setSearchString] = useState("");
@@ -73,54 +89,31 @@ function StudioDashboard({
     return () => channel.close();
   }, [mutate]);
   const systemDark = useSystemTheme();
-  const settings = data?.settings || initialSettings;
+  const settings = viewedSettings(data?.settings || initialSettings, preferences, studioMode !== "live");
   const displayMode = appearanceTokens(settings, systemDark).mode;
-  const background = settings.background;
-  const backgroundImage = typeof background === "string" ? background : background?.image;
-  const backgroundOpacity =
-    typeof background === "object" && background?.opacity !== undefined
-      ? 1 - Number(background.opacity) / 100
-      : Number(settings.backgroundOpacity ?? 0);
-  const blur = {
-    none: "0",
-    sm: "4px",
-    "": "8px",
-    md: "12px",
-    lg: "16px",
-    xl: "24px",
-    "2xl": "40px",
-    "3xl": "64px",
-  };
-  const searchItems = useMemo(
-    () =>
-      [
-        ...(data?.bookmarks || []).flatMap((group) => group.bookmarks),
-        ...flattenServices(data?.services).map((entry) => entry.service),
-      ].filter((item) => item?.href),
-    [data],
-  );
   useEffect(() => {
     setSettings(settings);
     setTheme(displayMode);
-    setColor(settings.color || "slate");
+    setColor(nativePalette(settings));
     document.documentElement.classList.toggle("font-plex", settings.font === "plex");
     document.documentElement.classList.toggle("font-plex-data", settings.font === "plex-data");
-    const language = settings.language?.toLowerCase() === "zh-cn" ? "zh-Hans" : settings.language || "en";
+    const language = viewerLocale || dashboardLanguage(settings);
     if (i18n.changeLanguage && i18n.language !== language) i18n.changeLanguage(language);
-  }, [settings, displayMode, setSettings, setTheme, setColor, i18n]);
+  }, [settings, displayMode, setSettings, setTheme, setColor, i18n, viewerLocale]);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (preferences.motion === "reduced" || preferences.motion === "full") root.dataset.motion = preferences.motion;
+    else delete root.dataset.motion;
+  }, [preferences.motion]);
   const reportInteractionBlocked = useCallback((blocked) => {
     setInteractionBlocked(blocked);
     if (blocked) setSearching(false);
   }, []);
-  const changeSearching = useCallback(
-    (next) => {
-      setSearching((current) => (interactionBlocked ? false : typeof next === "function" ? next(current) : next));
-    },
-    [interactionBlocked],
-  );
   useEffect(() => {
     const key = (event) => {
-      if (interactionBlocked) return;
+      // The dashboard claims page keys (1-9, [ ], ?) before this runs. Search
+      // is for viewing; while editing, letters are the widget shortcuts.
+      if (interactionBlocked || event.defaultPrevented || studioMode !== "live") return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setSearching((value) => !value);
@@ -132,13 +125,13 @@ function StudioDashboard({
         !event.altKey
       ) {
         event.preventDefault();
-        setSearchString(event.key === " " ? "" : event.key);
+        setSearchString(event.key === " " || event.key === "/" ? "" : event.key);
         setSearching(true);
       }
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [interactionBlocked]);
+  }, [interactionBlocked, studioMode]);
   const refresh = async () => {
     await studioRequest("/api/revalidate");
     const updated = await mutate();
@@ -152,25 +145,6 @@ function StudioDashboard({
   };
   return (
     <StudioRevisionContext.Provider value={data?.configurationRevision || null}>
-      {backgroundImage && (
-        <div
-          className="studio-native-background"
-          aria-hidden="true"
-          style={{
-            backgroundImage: `linear-gradient(rgba(18, 16, 21, ${Math.max(0, Math.min(1, backgroundOpacity))}), rgba(18, 16, 21, ${Math.max(0, Math.min(1, backgroundOpacity))})), url(${JSON.stringify(backgroundImage)})`,
-            filter:
-              typeof background === "object"
-                ? [
-                    background.blur !== undefined && `blur(${blur[background.blur] || "8px"})`,
-                    background.saturate !== undefined && `saturate(${Number(background.saturate)}%)`,
-                    background.brightness !== undefined && `brightness(${Number(background.brightness)}%)`,
-                  ]
-                    .filter(Boolean)
-                    .join(" ") || undefined
-                : undefined,
-          }}
-        />
-      )}
       <Head>
         <meta name="studio-dashboard-id" content={studioDashboard.id} />
         <meta name="studio-dashboard-base" content={studioDashboard.basePath} />
@@ -182,7 +156,20 @@ function StudioDashboard({
         />
         <title>{settings.title || "Dashboard"}</title>
         <meta name="description" content={settings.description || "Your personal Homepage dashboard"} />
-        <link rel="icon" href={settings.favicon || dashboardPath("/studio/logo", studioDashboard.basePath)} />
+        <link
+          rel="icon"
+          href={
+            iconHref(settings.favicon, (path) => dashboardPath(path, studioDashboard.basePath)) ||
+            dashboardPath("/studio/logo", studioDashboard.basePath)
+          }
+        />
+        {settings.pwa !== false && (
+          <link
+            rel="manifest"
+            href={dashboardPath("/site.webmanifest?v=4", studioDashboard.basePath)}
+            crossOrigin="use-credentials"
+          />
+        )}
         <link rel="apple-touch-icon" href="/studio/brand/apple-touch-icon.png" />
         {/* The platform CSS from Administration loads first; this dashboard's
             own custom.css adds to it. A dashboard can switch it off. */}
@@ -203,27 +190,32 @@ function StudioDashboard({
           Native widget data is temporarily unavailable. Retry the widget refresh when the renderer is available.
         </div>
       )}
-      <StudioBoard
-        dashboard={studioDashboard}
-        mode={studioMode}
-        nativeData={data}
-        settings={settings}
-        onNativeChange={refresh}
-        onInteractionBlocked={reportInteractionBlocked}
-        overlayOpen={searching && !interactionBlocked}
-        onSearch={() => {
-          if (!interactionBlocked) setSearching(true);
-        }}
-      />
-      <div className="studio-quicklaunch" inert={interactionBlocked} aria-hidden={interactionBlocked || undefined}>
-        <QuickLaunch
-          servicesAndBookmarks={searchItems}
-          searchString={searchString}
-          setSearchString={setSearchString}
-          isOpen={searching && !interactionBlocked}
-          setSearching={changeSearching}
+      <PreferencesContext.Provider value={preferences}>
+        <StudioBoard
+          dashboard={studioDashboard}
+          mode={studioMode}
+          nativeData={data}
+          settings={settings}
+          onNativeChange={refresh}
+          onInteractionBlocked={reportInteractionBlocked}
+          overlayOpen={searching && !interactionBlocked}
+          onSearch={() => {
+            if (!interactionBlocked) {
+              setSearchString("");
+              setSearching(true);
+            }
+          }}
+          search={{
+            open: searching && !interactionBlocked,
+            query: searchString,
+            onQuery: setSearchString,
+            onClose: () => {
+              setSearching(false);
+              setSearchString("");
+            },
+          }}
         />
-      </div>
+      </PreferencesContext.Provider>
     </StudioRevisionContext.Provider>
   );
 }

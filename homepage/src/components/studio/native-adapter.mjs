@@ -18,27 +18,18 @@ export function resolveNativePanel(panel, data = {}) {
   if (locator.discovered && panel.available === false) return null;
   if (panel.kind === "informationWidget") {
     const widget = one(
-      (data.widgets || []).filter(
-        (item) =>
-          item.type === locator.type && item.options?.index === locator.index,
-      ),
+      (data.widgets || []).filter((item) => item.type === locator.type && item.options?.index === locator.index),
     );
     return widget ? { kind: panel.kind, widget } : null;
   }
   if (panel.kind === "bookmark") {
     // Native settings may reorder groups. Names are authoritative, numeric positions are not.
-    const group = one(
-      (data.bookmarks || []).filter((item) => item.name === locator.group),
-    );
-    const bookmark = one(
-      (group?.bookmarks || []).filter((item) => item.name === locator.name),
-    );
+    const group = one((data.bookmarks || []).filter((item) => item.name === locator.group));
+    const bookmark = one((group?.bookmarks || []).filter((item) => item.name === locator.name));
     return bookmark ? { kind: panel.kind, bookmark } : null;
   }
   const nativeRoutes = flattenServices(data.services).filter(
-    ({ service, groupPath }) =>
-      service.name === locator.name &&
-      groupPath.at(-1) === locator.groupPath?.at(-1),
+    ({ service, groupPath }) => service.name === locator.name && groupPath.at(-1) === locator.groupPath?.at(-1),
   );
   // The native private proxy routes by the final group name and service name,
   // not Studio identity. Never choose an exact id if that route is ambiguous.
@@ -54,11 +45,7 @@ export function resolveNativePanel(panel, data = {}) {
   if (!selected) return null;
   const { service, groupPath } = selected;
   // A service panel represents its link/status only. Its native widgets are independent panels.
-  const {
-    widget: ignoredWidget,
-    widgets: ignoredWidgets,
-    ...serviceOnly
-  } = service;
+  const { widget: ignoredWidget, widgets: ignoredWidgets, ...serviceOnly } = service;
   if (panel.kind === "service") {
     return {
       kind: panel.kind,
@@ -71,14 +58,13 @@ export function resolveNativePanel(panel, data = {}) {
     if (!widget || widget.type !== locator.type) return null;
     // Native cleanServiceGroups appends singular `widget` after `widgets`; private lookup
     // instead selects the singular config when index=-1. Preserve both coordinate systems.
-    const proxyIndex =
-      locator.sourceKey === "widget" ? -1 : locator.sourceIndex;
-    if (!Number.isInteger(proxyIndex) || proxyIndex !== locator.proxyIndex)
-      return null;
+    const proxyIndex = locator.sourceKey === "widget" ? -1 : locator.sourceIndex;
+    if (!Number.isInteger(proxyIndex) || proxyIndex !== locator.proxyIndex) return null;
     return {
       kind: panel.kind,
       service: serviceOnly,
       widget: { ...widget, index: proxyIndex },
+      groupName: groupPath.at(-1),
     };
   }
   return null;
@@ -90,9 +76,7 @@ export function patchFromDraft(original = {}, draft = {}) {
   // just because a different field was edited in the same form.
   const patch = Object.fromEntries(
     Object.entries(draft).filter(
-      ([key, value]) =>
-        !Object.hasOwn(original, key) ||
-        JSON.stringify(value) !== JSON.stringify(original[key]),
+      ([key, value]) => !Object.hasOwn(original, key) || JSON.stringify(value) !== JSON.stringify(original[key]),
     ),
   );
   Object.keys(original).forEach((key) => {

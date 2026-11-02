@@ -116,7 +116,7 @@ test('raw YAML type edits retain both information and service-widget stack ident
   let current = await store.save({ revision: (await store.load()).revision, servicesYaml: sample, widgetsYaml: '- datetime: {}\n- search: {}\n' });
   const serviceId = current.serviceWidgets[0].id, infoId = current.infoWidgets[0].id;
   const board = clone(current.board);
-  board.stacks = [{ id: 'mixed-types', panelIds: [serviceId, infoId], rect: { x: 0, y: 20, w: 6, h: 4 }, playback: DEFAULT_PLAYBACK }];
+  board.stacks = [{ id: 'mixed-types', panelIds: [serviceId, infoId], rect: { x: 0, y: 40, w: 12, h: 8 }, pageId: 'home', playback: DEFAULT_PLAYBACK }];
   await store.saveBoard({ revision: current.revision, board });
   current = await store.load();
   const unchangedId = current.serviceWidgets[1].id;

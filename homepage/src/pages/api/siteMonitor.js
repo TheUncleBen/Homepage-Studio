@@ -7,7 +7,8 @@ import { httpProxy } from "utils/proxy/http";
 
 const logger = createLogger("siteMonitor");
 
-async function handler(req, res) {
+// Studio's status history (pages/api/studio/collect.js) runs the same check.
+export async function siteMonitor(req, res) {
   const { groupName, serviceName } = req.query;
   const serviceItem = await getServiceItem(groupName, serviceName);
   if (!serviceItem) {
@@ -17,7 +18,13 @@ async function handler(req, res) {
     });
   }
 
-  const { siteMonitor: monitorURL } = serviceItem;
+  // Studio checks a service's own address when it has no siteMonitor of its
+  // own and the dashboard asks for a web check (fallback=1). Only the address
+  // already in services.yaml is ever probed.
+  let monitorURL = serviceItem.siteMonitor;
+  if (!monitorURL && req.query.fallback === "1" && /^https?:\/\//i.test(serviceItem.href || "")) {
+    monitorURL = serviceItem.href;
+  }
 
   if (!monitorURL) {
     logger.debug("No http monitor URL specified");
@@ -28,7 +35,7 @@ async function handler(req, res) {
 
   try {
     let startTime = performance.now();
-    let [status] = await httpProxy(monitorURL, {
+    let [status, , , headers] = await httpProxy(monitorURL, {
       method: "HEAD",
     });
     let endTime = performance.now();
@@ -36,13 +43,16 @@ async function handler(req, res) {
     if (status > 403) {
       // try one more time as a GET in case HEAD is rejected for whatever reason
       startTime = performance.now();
-      [status] = await httpProxy(monitorURL);
+      [status, , , headers] = await httpProxy(monitorURL);
       endTime = performance.now();
     }
 
     return res.status(200).json({
       status,
       latency: endTime - startTime,
+      // httpProxy answers 500 itself when nothing answered (no response
+      // headers), so Studio can say "No answer" instead of a status code.
+      ...(headers === null ? { reachable: false } : {}),
     });
   } catch (e) {
     logger.debug("Error attempting http monitor: %s", e);
@@ -52,4 +62,4 @@ async function handler(req, res) {
   }
 }
 
-export default withAuth(handler);
+export default withAuth(siteMonitor);

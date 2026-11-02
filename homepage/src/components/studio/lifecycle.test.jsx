@@ -35,10 +35,12 @@ describe("Stable React-owned native hosts", () => {
     const { rerender, unmount } = render(<PanelLayer {...props} />);
     try {
       const input = screen.getByLabelText("Held native input");
+      // Live cards have no Studio header; a touch hold on the card body is the hold.
       fireEvent(
-        screen.getByText("Clock"),
+        screen.getByRole("region", { name: "Clock" }),
         Object.assign(new Event("pointerdown", { bubbles: true }), {
           pointerId: 1,
+          pointerType: "touch",
           button: 0,
           isPrimary: true,
           clientX: 100,

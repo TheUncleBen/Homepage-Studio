@@ -1,4 +1,4 @@
-# Crowdsec
+# CrowdSec
 
 Integration · type `crowdsec` · [Homepage documentation](https://gethomepage.dev/widgets/services/crowdsec/)
 

@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 
 import checkAndCopyConfig, { CONF_DIR, substituteEnvironmentVars } from "utils/config/config";
+import { resolveWidgetConnection } from "utils/config/studio-connections.mjs";
 import { loadYaml } from "utils/config/yaml";
 
 export async function widgetsFromConfig() {
@@ -19,7 +20,7 @@ export async function widgetsFromConfig() {
     type: Object.keys(group)[0],
     options: {
       index,
-      ...group[Object.keys(group)[0]],
+      ...resolveWidgetConnection(group[Object.keys(group)[0]]),
     },
   }));
   return widgetsArray;

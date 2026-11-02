@@ -79,10 +79,15 @@ the global application unavailable and must fail clearly.
 
 ## Persistent model
 
-State version 2 has a 12-column board, independently identified panels, and one-level stacks. Rectangles use integer x/y/w/h coordinates. Each native service, individual service widget, information widget, and bookmark has a stable identity. Stacks refer to panel IDs and have their own rectangle and playback preferences. Two visible units may not overlap. Removing a member from a two-member stack collapses the surviving member into an independent panel.
+Board version 3 has 24 columns of 36 px rows, one to 20 pages, independently identified panels, and one-level stacks. Every panel and stack belongs to one page (`pageId`). Rectangles use integer x/y/w/h coordinates. Each native service, individual service widget, information widget, and bookmark has a stable identity. Stacks refer to panel IDs on their own page and have their own rectangle and playback preferences. Two visible units on the same page may not overlap. Removing a member from a two-member stack collapses the surviving member into an independent panel.
+
+Board version 3 is not read from older state: the server refuses any other
+version (`Unsupported board schema.`). Until version 1.0.0, a deployment that
+held an earlier board is set up again from new (persistent data deleted);
+there is no migration path.
 
 Newly reconciled panels use the same first-free row-major placement as the
-original allocator. A sparse 12-column occupancy index and cursors per rectangle
+original allocator. A sparse 24-column occupancy index and cursors per rectangle
 size avoid repeatedly scanning every prior rectangle. Persisted positions,
 stack collapse, identity and geometry limits are
 unchanged. The index is built only when a new placement is needed; it does not
@@ -103,19 +108,117 @@ Structured editor patches contain changed keys only, preserving untouched null v
 
 The renderer keeps native panel hosts in a stable keyed list. Position and visibility change without making a slide a newly mounted widget. Hidden stack members are inert. Playback state, active slide, elapsed time, and finger-following offsets are temporary client state and do not change the persisted revision.
 
-The board is projected onto 12 columns at a board width of 940 px or more, 8
-columns from 560 px and 4 columns below that, rounding both edges of a tile
-with one rule so tiles sharing a canonical edge stay adjacent.
+The board is projected onto 24 columns at a board width of 940 px or more,
+16 columns from 560 px (each tile becomes half or full width) and 8 columns
+below that (every tile full width), rounding both edges of a tile with one
+rule so tiles sharing a canonical edge stay adjacent.
 Responsive editing must map projected rows back to the one canonical board,
 including keyboard movement, while preserving the intended visible order across
 adjacent or multi-row movement and mixed panel sizes. It does not introduce a
 separate mobile layout. Unchanged snapped positions retain board/panel object
 identities and do not resubmit the same arrangement. Releasing a pending hold
 ends it even outside its header. Cancellation, blur, visibility loss, another
-pointer or a modal opening cancels the applicable pending hold/drag. Quick Launch
-freezes playback and cancels pending holds or active arrangement; closing it
-resumes only the remaining playback time. Loop-wrap direction and rapid reversal
+pointer or a modal opening cancels the applicable pending hold/drag. Search
+(which replaces Homepage's Quick Launch) freezes playback and cancels pending
+holds or active arrangement; closing it resumes only the remaining playback
+time. Loop-wrap direction and rapid reversal
 use transient navigation direction while native hosts stay mounted.
+
+## Studio data beside the board
+
+Each dashboard keeps these in its own state directory (the main dashboard in
+the state root, others in `dashboards/<id>/`):
+
+| What | Where | Notes |
+| --- | --- | --- |
+| Image library | `images/` and `images/images.json` | Logos (PNG, JPEG, WebP or SVG, up to 256 KiB each) and backgrounds (up to 3 MiB each); at most 200 images and 60 MiB per library. SVG goes through the same checks as dashboard logos (`server/dashboard-logo.mjs`). An image in use asks before it is deleted. |
+| Saved connections | `studio-connections.json` (mode 0600) | Up to 100 named service addresses with an optional key, username and password. See *Saved connections* below. |
+| Chart history | `history/<hash>.json` | One file per widget shown as a chart; see *Chart history*. Removed when the widget leaves the board. |
+
+Each signed-in person has `people/<user id>/` under the state root: images and
+connections saved *Just me*, and their preferences. It is removed with the
+account. Using a personal image or connection on a dashboard copies it into
+that dashboard, so a dashboard never depends on an account.
+
+### Saved connections
+
+A widget refers to a saved connection with placeholders such as
+`{{STUDIO_CONNECTION_<ID>_URL}}` and `{{STUDIO_CONNECTION_<ID>_KEY}}`. The
+dashboard's renderer fills them in when it reads its configuration, so
+changing a connection changes every widget that uses it. Keys, usernames and
+passwords are write-only: the API reports only whether one is set, and an
+empty field keeps the saved one. Only administrators can list, add or change
+them.
+
+Keys are stored in plain text in `studio-connections.json`, readable only by
+the user Studio runs as. Whole-deployment backups (**Administration →
+Backups**, `node server/backups.mjs`) copy the state volume, so they contain
+the keys in plain text too, as does any copy of the volume: keep backups as
+safe as the keys themselves. A dashboard's export lists each connection's name
+and address but never its keys; importing it asks for the keys again.
+
+### Test connection
+
+In the widget dialog, **Test connection** sends the draft widget's first
+request through the dashboard's renderer, exactly as the widget would, and
+answers in plain words (for example, the address could not be reached, the
+key was refused, or the certificate is not trusted). It needs the
+administrator level, takes at most 20 seconds, and never returns the
+service's response or the key.
+
+### Chart history
+
+Widgets shown as a chart (line, area, bar, donut, pie or gauge), or with a
+trend under their hero value or colour rules on a value, need past numbers.
+Widgets shown as **Status history** need past status checks instead: for
+those the renderer runs the card's own check (site monitor or ping, with the
+service's address as fallback) and keeps whether it was up (1 or 0) and the
+response time.
+The controller asks each dashboard's renderer for them once a minute
+(`/api/studio/collect`, which only the controller can call: it checks the
+internal token from `STUDIO_INTERNAL_TOKEN`, and the controller removes every
+`x-studio-*` header a browser sends). The renderer renders the widget's own
+component on the server, runs its requests through the normal service proxy
+and reads each number and its format from the formatter the widget uses. Only
+numbers, their names and formats are kept; text and secrets are not.
+
+The last 48 hours keep every sample. Older samples become 15-minute averages
+(whole numbers stay whole) and are kept until the dashboard's retention ends:
+7, 30 or 90 days, 30 by default (**Dashboard settings → Widget defaults →
+Chart history**, shown only while a chart exists). People who can view the
+dashboard read history with `GET /studio/api/history?panel=<id>&range=<range>`;
+the widget dialog asks which chart formats fit with
+`POST /studio/api/history/probe`, which needs the arrange level.
+
+The collector keeps each dashboard with such widgets awake: its renderer
+worker answers once a minute and never goes idle. Past the worker limit
+(`STUDIO_RENDERER_MAX_WORKERS`, 8 by default) workers would be swapped in and out
+every minute, so keep charts and status history to fewer dashboards than
+that. The probe has no rate limit of its own; it needs the arrange level, and
+each call renders one widget once.
+
+### Status checks
+
+A service's status dot uses its own `siteMonitor` or `ping` when it has one.
+When it has none, Studio asks for a check of the service's own address
+instead (`fallback=1` on `/api/siteMonitor` and `/api/ping`). A widget's
+**Status** can be set to web address, ping or off.
+
+### Built-in logos
+
+Studio ships small offline copies (128 px WebP) of the
+[Dashboard Icons](https://github.com/homarr-labs/dashboard-icons) logos
+(Apache-2.0, see `NOTICE`) under `/studio-icons/webp/`, about 14 MB, so
+built-in logos show without internet access. A logo newer than the bundled
+set falls back to the project's CDN.
+
+### Starter templates
+
+**New dashboard** can start from a template (Homelab, Media or Family): link
+tiles for common apps at placeholder `https://<app>.home.arpa` addresses
+(`home.arpa` is reserved for home networks, so nothing outside is contacted),
+plus a clock and a weather widget. The tiles' status checks start off, so
+nothing shows an error until you change an address.
 
 ## Input handling
 
@@ -137,6 +240,12 @@ drag, long press, context menu or multi-touch, and not in edit mode.
 
 Leaving the editor with a changed arrangement asks for confirmation before the
 draft is discarded; a clean board leaves immediately.
+
+While editing, a widget's select, move, edit and resize controls do not cover
+every widget. With a mouse they show on the widget under the pointer, the one
+with keyboard focus and selected ones. On a touch screen (`hover: none`) they
+show only on the widget last tapped, a selected one or a focused one; a tap
+on empty space hides them and a hold still opens the widget menu.
 
 ## Native discovery
 
@@ -184,7 +293,7 @@ when invoked. Upstream merges must preserve this behavior and its tests.
 
 ## Configuration and recovery
 
-Managed native files are services.yaml, widgets.yaml, bookmarks.yaml, settings.yaml, docker.yaml, kubernetes.yaml, proxmox.yaml, custom.css, and custom.js. YAML edits use an AST, bounded aliases, and the patched parser pinned in package-lock.json. Custom CSS and JavaScript are preserved as opaque text. The per-file limit is 2 MiB; ordinary requests also have a 2 MiB JSON limit, including JSON escaping overhead. Only a complete dashboard import has a larger 40 MiB serialized request limit; every imported native file and state.json still has a 2 MiB limit.
+Managed native files are services.yaml, widgets.yaml, bookmarks.yaml, settings.yaml, docker.yaml, kubernetes.yaml, proxmox.yaml, custom.css, and custom.js. YAML edits use an AST, bounded aliases, and the patched parser pinned in package-lock.json. Custom CSS and JavaScript are preserved as opaque text. The per-file limit is 2 MiB; ordinary requests also have a 2 MiB JSON limit, including JSON escaping overhead. Only a complete dashboard import has a larger 100 MiB serialized request limit; every imported native file and state.json still has a 2 MiB limit.
 
 YAML values must remain representable in the editor's JSON transport. Cyclic aliases and non-finite numbers such as `.inf`, `.nan`, or an overflowing numeric literal are rejected before snapshots or writes. Ordinary aliases and merges, finite numbers, nulls, booleans, comments, unknown options, quoted text, and native environment/file references remain supported. Quote an infinity-like value when it is intentionally text. Invalid drafts remain available for correction; existing invalid files are not rewritten automatically.
 

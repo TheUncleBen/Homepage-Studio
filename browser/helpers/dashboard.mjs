@@ -123,12 +123,22 @@ export async function setPanelSize(page, title, width, height) {
   for (const checkbox of await page.getByRole('checkbox', { name: /^Select / }).all()) await checkbox.uncheck();
   const selected = page.getByRole('checkbox', { name: `Select ${title}`, exact: true });
   await selected.check();
-  await page.getByRole('button', { name: 'Position & size', exact: true }).click();
+  await page.getByRole('button', { name: 'Size', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('spinbutton', { name: 'Width', exact: true }).fill(String(width));
   await dialog.getByRole('spinbutton', { name: 'Height', exact: true }).fill(String(height));
   await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();
   await selected.uncheck();
+}
+
+// A stack adds room for its own controls, so stacking widgets resizes them
+// and the stack's settings open first to show the new size.
+export async function stackSelected(page) {
+  await page.getByRole('button', { name: 'Stack', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit widget stack', exact: true });
+  await expect(dialog.getByRole('status')).toContainText(/will (all )?be \d+ × \d+/);
+  await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
 }
 
 export async function seedServicePanels(request, items) {

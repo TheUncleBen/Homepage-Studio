@@ -71,7 +71,7 @@ async function setup(t, options = {}) {
     });
   }
   const post = (target, value, { cookie, headers = {} } = {}) => request(target, { method: 'POST', cookie, body: JSON.stringify(value ?? {}), headers: { 'content-type': 'application/json', origin: ORIGIN, 'x-studio-request': '1', ...headers } });
-  return { request, post, stateDir, upstreamCalls };
+  return { request, post, stateDir, upstreamCalls, app };
 }
 
 const sessionCookie = response => {
@@ -186,8 +186,19 @@ test('members only reach dashboards shared with them, at the shared level', asyn
   const home = await request('/', { cookie: member.cookie, headers: html });
   assert.equal(home.status, 307);
   assert.equal(home.headers.location, '/studio/dashboards');
+  for (const target of ['/studio', '/studio/']) {
+    // Signed out, both ask for sign-in the same way.
+    const signedOut = await request(target, { headers: html });
+    assert.equal(signedOut.status, 302, target);
+    assert.match(signedOut.headers.location, /^\/studio\/auth\/sign-in\?next=/, target);
+    const studio = await request(target, { cookie: member.cookie, headers: html });
+    assert.equal(studio.status, 307, target);
+    assert.equal(studio.headers.location, '/studio/dashboards', target);
+  }
   assert.deepEqual((await request('/studio/api/overview', { cookie: member.cookie })).json.dashboards, []);
   assert.equal((await request('/studio/api/board', { cookie: member.cookie })).status, 404, 'an unshared dashboard looks like a missing one');
+  assert.equal((await request('/studio/api/history?panel=missing&range=24h', { cookie: member.cookie })).status, 404);
+  assert.equal((await request('/studio/api/history?panel=missing&range=24h')).status, 401, 'chart history needs sign-in');
   const list = await request('/studio/api/dashboards', { cookie: member.cookie });
   assert.deepEqual(list.json.dashboards, []);
 
@@ -205,6 +216,10 @@ test('members only reach dashboards shared with them, at the shared level', asyn
     assert.equal((await request(target, { cookie: member.cookie })).status, 403, target);
   }
   assert.equal((await post('/studio/api/save', { revision: board.json.revision }, { cookie: member.cookie })).status, 403);
+  // Chart history is read by anyone who can view; working out a widget's
+  // chart formats is for people who can arrange it.
+  assert.equal((await request('/studio/api/history?panel=missing&range=24h', { cookie: member.cookie })).status, 404, 'viewers reach chart history');
+  assert.equal((await post('/studio/api/history/probe', { panel: 'missing' }, { cookie: member.cookie })).status, 403);
   assert.equal((await request('/studio/auth/admin/overview', { cookie: member.cookie })).status, 403);
   assert.equal((await request('/api/mcp', { cookie: member.cookie })).status, 403, 'the native MCP endpoint stays off with sign-in on');
 
@@ -213,9 +228,26 @@ test('members only reach dashboards shared with them, at the shared level', asyn
   const arranged = await post('/studio/api/board', { revision: board.json.revision, board: board.json.board }, { cookie: member.cookie });
   assert.equal(arranged.status, 200, arranged.text);
   assert.equal(arranged.json.servicesYaml, undefined);
+  assert.equal((await post('/studio/api/history/probe', { panel: 'missing' }, { cookie: member.cookie })).status, 404);
+  const firstPanel = board.json.board.panels[0];
+  if (firstPanel) assert.equal((await post('/studio/api/history/probe', { panel: firstPanel.id, extra: 1 }, { cookie: member.cookie })).status, 404, 'only the panel is sent');
   const appearance = await request('/studio/api/appearance', { cookie: member.cookie });
   assert.equal(appearance.status, 200, appearance.text);
   assert.equal((await request('/studio/api/state', { cookie: member.cookie })).status, 403);
+  // Appearance takes only Studio's own choices: no free text that the
+  // renderer could fill in as a saved connection key or a HOMEPAGE_VAR secret.
+  for (const studioTheme of [
+    { note: '{{STUDIO_CONNECTION_0123456789ABCDEF_KEY}}' },
+    { env: '{{HOMEPAGE_VAR_REVIEW_SECRET}}' },
+    { accent: '{{HOMEPAGE_VAR_REVIEW_SECRET}}' },
+    { card: { edge: 'line', label: '{{HOMEPAGE_VAR_REVIEW_SECRET}}' } },
+    { pageBackground: { source: 'library', id: '{{HOMEPAGE_VAR_REVIEW_SECRET}}' } },
+  ]) {
+    const refused = await post('/studio/api/appearance', { revision: appearance.json.revision, config: { studioTheme } }, { cookie: member.cookie });
+    assert.equal(refused.status, 400, JSON.stringify(studioTheme));
+  }
+  const fine = await post('/studio/api/appearance', { revision: appearance.json.revision, config: { studioTheme: { mode: 'light', accent: '#81A8C8', spacing: 'roomy', card: { edge: 'line' } } } }, { cookie: member.cookie });
+  assert.equal(fine.status, 200, fine.text);
 
   // Disabling the account ends its sessions at once.
   const disabled = await post('/studio/auth/admin/update', { id: member.invited.id, disabled: true }, { cookie: admin.cookie });
@@ -281,7 +313,7 @@ test('the bare address, the Dashboards page and the editor pages follow each per
   const callsBefore = upstreamCalls.length;
   const drawn = await request('/studio/api/preview/default', { cookie: member.cookie });
   assert.equal(drawn.status, 200, drawn.text);
-  assert.ok(Array.isArray(drawn.json.units) && drawn.json.columns === 12);
+  assert.ok(Array.isArray(drawn.json.units) && drawn.json.columns === 24);
   assert.equal((await request('/studio/api/preview/' + other.id, { cookie: member.cookie })).status, 404, 'an unshared dashboard has no preview');
   assert.equal((await request('/studio/api/preview/nope', { cookie: member.cookie })).status, 404);
   assert.equal(upstreamCalls.length, callsBefore, 'no preview starts a dashboard');
@@ -367,14 +399,20 @@ test('an unsafe next address after sign-in falls back to the home page', async t
 test('sign-in data that cannot be read fails closed', async t => {
   const context = await setup(t);
   await createAdmin(context);
-  // Corrupt the stored sign-in data and start a second server on it.
+  // Stop the first server so no write of its own can land after the
+  // corruption, then corrupt the stored sign-in data and start a second
+  // server on it.
+  await context.app.shutdown({ graceMs: 0 });
   const authFile = path.join(context.stateDir, 'auth', 'auth.json');
   await fs.writeFile(authFile, '{not json');
   const directory = path.dirname(context.stateDir);
   const configDir = path.join(directory, 'config');
   const app = createStudioServer({ configDir, stateDir: context.stateDir, upstream: 'http://127.0.0.1:9', allowedHosts: HOST, auth: 'on', publicOrigin: ORIGIN });
   const port = await listen(app.server);
-  t.after(() => close(app.server));
+  t.after(async () => {
+    await close(app.server);
+    await app.shutdown({ graceMs: 0 }).catch(() => {});
+  });
   const response = await new Promise((resolve, reject) => {
     http.get({ host: '127.0.0.1', port, path: '/', headers: { host: HOST } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode)); }).on('error', reject);
   });
@@ -542,18 +580,94 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.match(String(own.headers['content-security-policy']), /sandbox/);
   assert.deepEqual((await request('/home/studio/api/access', { cookie: member.cookie })).json.dashboard.logo, saved.json.logo);
   assert.equal((await post('/home/studio/api/logo', { image: 'data:text/html;base64,' + Buffer.from('<script>1</script>').toString('base64') }, { cookie: member.cookie })).status, 400);
-  // A duplicate keeps the logo, independently of its source.
+  // Uploaded images: arrangers add and remove them, viewers load them, and
+  // one still in use asks first, naming where it is used.
+  const upload = await post('/home/studio/api/images', { kind: 'background', name: 'sky.png', image: png }, { cookie: member.cookie });
+  assert.equal(upload.status, 200, upload.text);
+  const imageId = upload.json.image.id;
+  const served = await request('/home/studio/api/images/' + imageId, { cookie: member.cookie });
+  assert.equal(served.headers['content-type'], 'image/png');
+  assert.match(String(served.headers['content-security-policy']), /sandbox/);
+  assert.equal(served.headers['x-content-type-options'], 'nosniff');
+  assert.deepEqual((await request('/home/studio/api/images', { cookie: member.cookie })).json.images.map(image => image.id), [imageId]);
+  const board = await request('/home/studio/api/board', { cookie: member.cookie });
+  const pages = [{ ...board.json.board.pages[0], background: { source: 'library', id: imageId } }];
+  assert.equal((await post('/home/studio/api/board', { revision: board.json.revision, board: { ...board.json.board, pages } }, { cookie: member.cookie })).status, 200);
+  const inUse = await post('/home/studio/api/images/delete', { id: imageId }, { cookie: member.cookie });
+  assert.equal(inUse.status, 409);
+  assert.deepEqual(inUse.json.details.usedIn, [{ kind: 'page', name: pages[0].name }]);
+  // A duplicate keeps the logo and the uploads, independently of its source.
   const registry = await request('/studio/api/dashboards', { cookie: admin.cookie });
   const copy = await post('/studio/api/dashboards', { revision: registry.json.revision, action: 'create', name: 'Copy', slug: 'copy', sourceId: 'default' }, { cookie: admin.cookie });
   assert.equal(copy.status, 200, copy.text);
   assert.deepEqual((await request('/copy/studio/api/access', { cookie: admin.cookie })).json.dashboard.logo, saved.json.logo);
+  assert.equal((await request('/copy/studio/api/images/' + imageId, { cookie: admin.cookie })).headers['content-type'], 'image/png');
+  // Saved connections are administrators' only, and their keys never come back.
+  assert.equal((await request('/home/studio/api/connections', { cookie: member.cookie })).status, 403);
+  assert.equal((await post('/home/studio/api/connections', { action: 'add', name: 'Router', url: 'https://router.example.org', key: 'k' }, { cookie: member.cookie })).status, 403);
+  const added = await post('/home/studio/api/connections', { action: 'add', name: 'Router', url: 'https://router.example.org/', key: 'secret-key-1' }, { cookie: admin.cookie });
+  assert.equal(added.status, 200, added.text);
+  const connectionId = added.json.connection.id;
+  assert.doesNotMatch(added.text, /secret-key-1/);
+  const listed = await request('/home/studio/api/connections', { cookie: admin.cookie });
+  assert.doesNotMatch(listed.text, /secret-key-1/);
+  assert.deepEqual(listed.json.connections.map(entry => [entry.name, entry.url, entry.has.key, entry.usedBy]), [['Router', 'https://router.example.org', true, []]]);
+  assert.equal((await post('/home/studio/api/connections', { action: 'add', name: 'x', url: 'https://a.example.org', secret: 1 }, { cookie: admin.cookie })).status, 400);
+  const renamed = await post('/home/studio/api/connections', { action: 'update', id: connectionId, name: 'Main router', key: '' }, { cookie: admin.cookie });
+  assert.equal(renamed.status, 200, renamed.text);
+  assert.equal(renamed.json.connection.has.key, true, 'an empty key keeps the saved one');
+  // A copy of the dashboard keeps the connection under the same id.
+  const copy2 = await post('/studio/api/dashboards', { revision: (await request('/studio/api/dashboards', { cookie: admin.cookie })).json.revision, action: 'create', name: 'Copy two', slug: 'copy-two', sourceId: 'default' }, { cookie: admin.cookie });
+  assert.equal(copy2.status, 200, copy2.text);
+  assert.deepEqual((await request('/copy-two/studio/api/connections', { cookie: admin.cookie })).json.connections.map(entry => [entry.id, entry.name, entry.has.key]), [[connectionId, 'Main router', true]]);
+  const removedConnection = await post('/home/studio/api/connections', { action: 'delete', id: connectionId }, { cookie: admin.cookie });
+  assert.equal(removedConnection.status, 200, removedConnection.text);
+  assert.deepEqual((await request('/home/studio/api/connections', { cookie: admin.cookie })).json.connections, []);
+  assert.equal((await request('/copy-two/studio/api/connections', { cookie: admin.cookie })).json.connections.length, 1, 'the copy keeps its own');
+  // "Just me" connections follow the administrator; using one copies it here.
+  assert.equal((await request('/home/studio/api/my-connections', { cookie: member.cookie })).status, 403);
+  // Test connection runs a widget's request, so it is for administrators.
+  assert.equal((await post('/home/studio/api/connection-test', { widget: { type: 'sonarr', url: 'https://tv.example.org' } }, { cookie: member.cookie })).status, 403);
+  assert.equal((await post('/home/studio/api/connection-test', { widget: { type: 'sonarr' }, extra: 1 }, { cookie: admin.cookie })).status, 400);
+  assert.equal((await post('/home/studio/api/connection-test', { widget: [] }, { cookie: admin.cookie })).status, 400);
+  // A saved key goes only to its own connection's address (checked before
+  // any request is made, so no renderer is needed here).
+  const elsewhere = await post('/home/studio/api/connection-test', { widget: { type: 'sonarr', url: 'https://elsewhere.example.org', key: '{{STUDIO_CONNECTION_0123456789ABCDEF_KEY}}' } }, { cookie: admin.cookie });
+  assert.equal(elsewhere.status, 200, elsewhere.text);
+  assert.equal(elsewhere.json.ok, false);
+  assert.match(elsewhere.json.message, /only sent to its own connection/);
+  const mineAdded = await post('/home/studio/api/my-connections', { action: 'add', name: 'Media server', url: 'https://media.example.org', key: 'personal-key' }, { cookie: admin.cookie });
+  assert.equal(mineAdded.status, 200, mineAdded.text);
+  assert.doesNotMatch(mineAdded.text, /personal-key/);
+  assert.deepEqual((await request('/copy/studio/api/my-connections', { cookie: admin.cookie })).json.connections.map(entry => entry.name), ['Media server']);
+  assert.deepEqual((await request('/home/studio/api/connections', { cookie: admin.cookie })).json.connections, [], 'personal ones are not on the dashboard');
+  const used = await post('/home/studio/api/my-connections/use', { id: mineAdded.json.connection.id }, { cookie: admin.cookie });
+  assert.equal(used.status, 200, used.text);
+  assert.equal(used.json.connection.id, mineAdded.json.connection.id);
+  assert.equal((await post('/home/studio/api/my-connections/use', { id: mineAdded.json.connection.id }, { cookie: admin.cookie })).status, 200, 'using it again refreshes the copy');
+  // A different personal one with a name the dashboard already uses says how out.
+  const clash = await post('/home/studio/api/my-connections', { action: 'add', name: 'Media server', url: 'https://other.example.org' }, { cookie: admin.cookie });
+  assert.equal(clash.status, 400, 'names are unique within one person too');
+  const twin = await post('/copy/studio/api/connections', { action: 'add', name: 'Twin', url: 'https://twin.example.org' }, { cookie: admin.cookie });
+  assert.equal(twin.status, 200, twin.text);
+  const mineTwin = await post('/home/studio/api/my-connections', { action: 'add', name: 'Twin', url: 'https://twin.example.org' }, { cookie: admin.cookie });
+  const taken = await post('/copy/studio/api/my-connections/use', { id: mineTwin.json.connection.id }, { cookie: admin.cookie });
+  assert.equal(taken.status, 409);
+  assert.equal(taken.json.code, 'CONNECTION_NAME_TAKEN');
+  assert.match(taken.json.error, /Choose that one under This dashboard/);
+  assert.equal((await post('/home/studio/api/my-connections', { action: 'delete', id: mineTwin.json.connection.id }, { cookie: admin.cookie })).status, 200);
+  assert.equal((await post('/home/studio/api/my-connections', { action: 'delete', id: mineAdded.json.connection.id }, { cookie: admin.cookie })).status, 200);
+  assert.deepEqual((await request('/home/studio/api/connections', { cookie: admin.cookie })).json.connections.map(entry => [entry.name, entry.has.key]), [['Media server', true]], 'the dashboard keeps its copy');
+  assert.equal((await post('/home/studio/api/images/delete', { id: imageId, confirm: true }, { cookie: member.cookie })).status, 200);
+  assert.equal((await request('/home/studio/api/images/' + imageId, { cookie: member.cookie })).status, 404);
+  assert.equal((await request('/copy/studio/api/images/' + imageId, { cookie: admin.cookie })).status, 200, 'the copy keeps its own');
   assert.equal((await post('/home/studio/api/logo', { reset: true }, { cookie: member.cookie })).status, 200);
   assert.equal((await request('/home/studio/logo', { cookie: member.cookie })).headers['content-type'], 'image/svg+xml');
   assert.equal((await request('/copy/studio/logo', { cookie: admin.cookie })).headers['content-type'], 'image/png');
   // The platform look is for administrators; its CSS reaches every viewer.
   assert.equal((await request('/studio/api/platform', { cookie: member.cookie })).status, 403);
   const platform = await request('/studio/api/platform', { cookie: admin.cookie });
-  const changed = await post('/studio/api/platform', { revision: platform.json.revision, mode: 'light', accent: '#91b09e', background: null, css: 'body { --platform: 1; }' }, { cookie: admin.cookie });
+  const changed = await post('/studio/api/platform', { revision: platform.json.revision, mode: 'light', accent: '#91b09e', base: 'graphite', background: null, css: 'body { --platform: 1; }' }, { cookie: admin.cookie });
   assert.equal(changed.status, 200, changed.text);
   const css = await request('/studio/platform.css', { cookie: member.cookie });
   assert.equal(css.text, 'body { --platform: 1; }');
@@ -574,7 +688,7 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.match(pagePolicy, /img-src 'self' data: https:\/\/cdn\.jsdelivr\.net;/);
   assert.doesNotMatch(pagePolicy, /frame-src/);
   assert.match(pagePolicy, /frame-ancestors 'none'/);
-  assert.deepEqual((await request('/home/studio/api/appearance', { cookie: member.cookie })).json.platform, { mode: 'light', accent: '#91b09e', background: null });
+  assert.deepEqual((await request('/home/studio/api/appearance', { cookie: member.cookie })).json.platform, { mode: 'light', accent: '#91b09e', base: 'graphite', background: null });
   // Switching the platform CSS off for one dashboard is an administrator's call.
   const appearance = (await request('/home/studio/api/appearance', { cookie: member.cookie })).json;
   const refused = await post('/home/studio/api/appearance', { revision: appearance.revision, config: { studioTheme: { platformCss: false } } }, { cookie: member.cookie });
@@ -591,7 +705,7 @@ test('saving the platform look needs a recent sign-in, as a dashboard custom.css
   t.mock.timers.tick(30 * 60000);
   const platform = await request('/studio/api/platform', { cookie: admin.cookie });
   assert.equal(platform.status, 200, 'reading it needs no confirmation');
-  const stale = await post('/studio/api/platform', { revision: platform.json.revision, mode: 'light', accent: '#91b09e', background: null, css: '' }, { cookie: admin.cookie });
+  const stale = await post('/studio/api/platform', { revision: platform.json.revision, mode: 'light', accent: '#91b09e', base: 'graphite', background: null, css: '' }, { cookie: admin.cookie });
   assert.equal(stale.status, 401);
   assert.equal(stale.json.code, 'REAUTH_REQUIRED');
   assert.equal((await request('/studio/api/platform', { cookie: admin.cookie })).json.revision, platform.json.revision, 'nothing was saved');
@@ -635,4 +749,63 @@ test('backups are for administrators, need a recent sign-in, download as files a
     assert.equal(stale.status, 401);
     assert.equal(stale.json.code, 'REAUTH_REQUIRED');
   }
+});
+
+test('each person keeps their own images and preferences; using an image copies it into the dashboard', async t => {
+  const context = await setup(t);
+  const { request, post } = context;
+  const admin = await createAdmin(context);
+  const member = await inviteMember(context, admin.cookie);
+  const share = level => post('/studio/auth/admin/grants', { dashboardId: 'default', grants: [{ subject: 'user:' + member.invited.id, level }] }, { cookie: admin.cookie });
+  assert.equal((await share('view')).status, 200);
+  // Viewers keep preferences; defaults are never stored.
+  assert.deepEqual((await request('/home/studio/api/preferences', { cookie: member.cookie })).json, { available: true, preferences: {} });
+  const saved = await post('/home/studio/api/preferences', { preferences: { searchEngine: 'duckduckgo', searchOpens: 'new', mode: 'dark' } }, { cookie: member.cookie });
+  assert.equal(saved.status, 200, saved.text);
+  assert.deepEqual(saved.json.preferences, { searchEngine: 'duckduckgo', mode: 'dark' });
+  assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'custom' } }, { cookie: member.cookie })).status, 400, 'custom needs an address');
+  assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'custom', searchUrl: 'javascript:alert(1)//%s' } }, { cookie: member.cookie })).status, 400);
+  assert.deepEqual((await request('/home/studio/api/preferences', { cookie: admin.cookie })).json.preferences, {}, 'preferences belong to one person');
+  // A viewer's own language reaches the dashboard page as the controller's
+  // header; one sent by the browser never does.
+  const pageCalls = () => context.upstreamCalls.filter(call => call.url === '/home' || call.url === '/home/' || call.url === '/');
+  await request('/home/', { cookie: member.cookie, headers: { ...html, 'x-studio-language': 'fr' } });
+  assert.equal(pageCalls().at(-1)?.headers['x-studio-language'], undefined);
+  assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'duckduckgo', mode: 'dark', language: 'xx' } }, { cookie: member.cookie })).status, 400);
+  assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'duckduckgo', mode: 'dark', language: 'de' } }, { cookie: member.cookie })).status, 200);
+  await request('/home/', { cookie: member.cookie, headers: { ...html, 'x-studio-language': 'fr' } });
+  assert.equal(pageCalls().at(-1)?.headers['x-studio-language'], 'de');
+  assert.ok((await request('/studio/auth/account/preferences', { cookie: member.cookie })).json.languages.includes('de'));
+  assert.equal((await post('/home/studio/api/preferences', { preferences: { searchEngine: 'duckduckgo', mode: 'dark' } }, { cookie: member.cookie })).status, 200);
+  // The account page reads and saves the same preferences.
+  assert.deepEqual((await request('/studio/auth/account/preferences', { cookie: member.cookie })).json.preferences, { searchEngine: 'duckduckgo', mode: 'dark' });
+  const fromAccount = await post('/studio/auth/account/preferences', { preferences: { searchEngine: 'kagi' } }, { cookie: member.cookie });
+  assert.equal(fromAccount.status, 200, fromAccount.text);
+  assert.deepEqual((await request('/home/studio/api/preferences', { cookie: member.cookie })).json.preferences, { searchEngine: 'kagi' });
+  assert.equal((await post('/studio/auth/account/preferences', { preferences: { motion: 'wild' } }, { cookie: member.cookie })).status, 400);
+  assert.equal((await request('/studio/auth/account/preferences')).status, 401);
+  // Personal images are for editing: viewers cannot reach them.
+  const png = 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4, 5, 6]).toString('base64');
+  assert.equal((await post('/home/studio/api/my-images', { kind: 'logo', name: 'mine.png', image: png }, { cookie: member.cookie })).status, 403);
+  assert.equal((await share('arrange')).status, 200);
+  const mine = await post('/home/studio/api/my-images', { kind: 'logo', name: 'mine.png', image: png }, { cookie: member.cookie });
+  assert.equal(mine.status, 200, mine.text);
+  const id = mine.json.image.id;
+  assert.equal((await request('/home/studio/api/my-images/' + id, { cookie: member.cookie })).headers['content-type'], 'image/png');
+  assert.equal((await request('/home/studio/api/my-images/' + id, { cookie: admin.cookie })).status, 404, 'nobody else sees it, administrators included');
+  assert.deepEqual((await request('/home/studio/api/my-images', { cookie: admin.cookie })).json.images, []);
+  assert.equal((await request('/home/studio/api/images/' + id, { cookie: member.cookie })).status, 404, 'not on the dashboard until used');
+  const used = await post('/home/studio/api/my-images/use', { id }, { cookie: member.cookie });
+  assert.equal(used.status, 200, used.text);
+  assert.equal(used.json.image.id, id);
+  assert.equal((await request('/home/studio/api/images/' + id, { cookie: member.cookie })).status, 200);
+  // Removing your own copy leaves the dashboard's.
+  assert.equal((await post('/home/studio/api/my-images/delete', { id }, { cookie: member.cookie })).status, 200);
+  assert.equal((await request('/home/studio/api/my-images/' + id, { cookie: member.cookie })).status, 404);
+  assert.equal((await request('/home/studio/api/images/' + id, { cookie: member.cookie })).status, 200);
+  // Deleting the account removes what it kept.
+  const folder = path.join(context.stateDir, 'people', member.invited.id);
+  assert.ok((await fs.stat(folder)).isDirectory());
+  assert.equal((await post('/studio/auth/admin/delete', { id: member.invited.id }, { cookie: admin.cookie })).status, 200);
+  await assert.rejects(fs.stat(folder), { code: 'ENOENT' });
 });

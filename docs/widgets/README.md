@@ -6,7 +6,7 @@ Every widget Studio can add, generated from Homepage 2.6.0's own documentation. 
 
 | Widget | Needs | Settings in the dialog |
 | --- | --- | --- |
-| [Adguard Home](adguard.md) | Service URL, Username, Password | 4 |
+| [AdGuard Home](adguard.md) | Service URL, Username, Password | 4 |
 | [APC UPS Monitoring](apcups.md) | Service URL | 1 |
 | [Arcane](arcane.md) | Service URL, API key | 4 |
 | [ArgoCD](argocd.md) | Service URL, API key | 3 |
@@ -22,13 +22,13 @@ Every widget Studio can add, generated from Homepage 2.6.0's own documentation. 
 | [BookOrbit](bookorbit.md) | Service URL, Username, Password | 4 |
 | [Caddy](caddy.md) | Service URL | 2 |
 | [Calendar](calendar.md) | — | 7 |
-| [Calibre-web](calibreweb.md) | Service URL, Username, Password | 4 |
+| [Calibre-Web](calibreweb.md) | Service URL, Username, Password | 4 |
 | [Changedetection.io](changedetectionio.md) | Service URL, API key | 3 |
 | [Channels DVR Server](channelsdvrserver.md) | Service URL | 1 |
 | [Checkmk](checkmk.md) | Service URL, Username, Password | 4 |
 | [Cloudflare Tunnels](cloudflared.md) | API key | 4 |
-| [Coin Market Cap](coinmarketcap.md) | API key | 5 |
-| [Crowdsec](crowdsec.md) | Service URL, Username, Password | 4 |
+| [CoinMarketCap](coinmarketcap.md) | API key | 5 |
+| [CrowdSec](crowdsec.md) | Service URL, Username, Password | 4 |
 | [Custom API](customapi.md) | Service URL, Username, Password | 9 |
 | [Deluge](deluge.md) | Service URL, Password | 4 |
 | [DeveLanCacheUI](develancacheui.md) | Service URL | 1 |
@@ -51,14 +51,14 @@ Every widget Studio can add, generated from Homepage 2.6.0's own documentation. 
 | [Gatus](gatus.md) | Service URL | 2 |
 | [Ghostfolio](ghostfolio.md) | Service URL, API key | 3 |
 | [Gitea](gitea.md) | Service URL, API key | 3 |
-| [Gitlab](gitlab.md) | Service URL, API key | 4 |
+| [GitLab](gitlab.md) | Service URL, API key | 4 |
 | [Glances](glances.md) | Service URL, Username, Password | 9 |
 | [Gluetun](gluetun.md) | Service URL, API key | 4 |
 | [Gotify](gotify.md) | Service URL, API key | 3 |
 | [Grafana](grafana.md) | Service URL, Username, Password | 6 |
 | [HDHomerun](hdhomerun.md) | Service URL | 3 |
 | [Headscale](headscale.md) | Service URL, API key | 4 |
-| [Health checks](healthchecks.md) | Service URL, API key | 4 |
+| [Healthchecks](healthchecks.md) | Service URL, API key | 4 |
 | [Hoarder](hoarder.md) | — | YAML only |
 | [Home Assistant](homeassistant.md) | Service URL, API key | 4 |
 | [Homebox](homebox.md) | Service URL, Username, Password | 4 |
@@ -84,7 +84,7 @@ Every widget Studio can add, generated from Homepage 2.6.0's own documentation. 
 | [Mastodon](mastodon.md) | Service URL | 2 |
 | [Mealie](mealie.md) | Service URL, API key | 4 |
 | [Medusa](medusa.md) | Service URL, API key | 3 |
-| [Mikrotik](mikrotik.md) | Service URL, Username, Password | 4 |
+| [MikroTik](mikrotik.md) | Service URL, Username, Password | 4 |
 | [Minecraft](minecraft.md) | Service URL | 2 |
 | [Miniflux](miniflux.md) | Service URL, API key | 3 |
 | [MJPEG](mjpeg.md) | — | 1 |
@@ -98,22 +98,22 @@ Every widget Studio can add, generated from Homepage 2.6.0's own documentation. 
 | [NextDNS](nextdns.md) | API key | 2 |
 | [Nginx Proxy Manager](npm.md) | Service URL, Username, Password | 4 |
 | [ntfy](ntfy.md) | Service URL, Access token, Username, Password | 6 |
-| [NZBget](nzbget.md) | Service URL, Username, Password | 4 |
+| [NZBGet](nzbget.md) | Service URL, Username, Password | 4 |
 | [OctoPrint](octoprint.md) | Service URL, API key | 3 |
 | [Omada](omada.md) | Service URL, Username, Password | 5 |
 | [Ombi](ombi.md) | Service URL, API key | 3 |
 | [OpenDTU](opendtu.md) | Service URL | 2 |
 | [OpenMediaVault](openmediavault.md) | Service URL, Username, Password | 5 |
-| [OpenWRT](openwrt.md) | Service URL, Username, Password | 4 |
-| [OPNSense](opnsense.md) | Service URL, Username, Password | 5 |
+| [OpenWrt](openwrt.md) | Service URL, Username, Password | 4 |
+| [OPNsense](opnsense.md) | Service URL, Username, Password | 5 |
 | [Overseerr](overseerr.md) | — | YAML only |
 | [Pangolin](pangolin.md) | Service URL, API key | 4 |
 | [Paperless-ngx](paperlessngx.md) | Service URL, Username, Password, API key | 5 |
 | [PeaNUT](peanut.md) | Service URL, UPS name, Username, Password | 5 |
 | [pfSense](pfsense.md) | Service URL, Username, Password | 7 |
 | [PhotoPrism](photoprism.md) | Service URL, Username, Password, App password | 5 |
+| [Pi-hole](pihole.md) | Service URL, API key | 4 |
 | [Pialert](pialert.md) | — | YAML only |
-| [PiHole](pihole.md) | Service URL, API key | 4 |
 | [Plant-it](plantit.md) | Service URL, API key | 3 |
 | [Plex](plex.md) | Service URL, API key | 3 |
 | [Portainer](portainer.md) | Service URL, API key | 5 |
@@ -124,7 +124,7 @@ Every widget Studio can add, generated from Homepage 2.6.0's own documentation. 
 | [Proxmox Backup Server](proxmoxbackupserver.md) | Service URL, Username, Password | 5 |
 | [Pterodactyl](pterodactyl.md) | Service URL, API key | 3 |
 | [Pulse](pulse.md) | Service URL, API key | 4 |
-| [Pyload](pyload.md) | Service URL, Username, Password, API key | 5 |
+| [pyLoad](pyload.md) | Service URL, Username, Password, API key | 5 |
 | [qBittorrent](qbittorrent.md) | Service URL, Username, Password, API key | 7 |
 | [QNAP](qnap.md) | Service URL, Username, Password | 5 |
 | [qui](qui.md) | Service URL, API key | 4 |
@@ -134,7 +134,7 @@ Every widget Studio can add, generated from Homepage 2.6.0's own documentation. 
 | [ruTorrent](rutorrent.md) | Service URL, Username, Password | 4 |
 | [SABnzbd](sabnzbd.md) | Service URL, API key | 3 |
 | [Scrutiny](scrutiny.md) | Service URL | 2 |
-| [Seerr Widget](seerr.md) | Service URL, API key | 3 |
+| [Seerr](seerr.md) | Service URL, API key | 3 |
 | [Slskd](slskd.md) | Service URL, API key | 3 |
 | [Sonarr](sonarr.md) | Service URL, API key | 4 |
 | [SparkyFitness](sparkyfitness.md) | Service URL, API key | 3 |
@@ -158,9 +158,9 @@ Every widget Studio can add, generated from Homepage 2.6.0's own documentation. 
 | [Traefik](traefik.md) | Service URL, Username, Password | 4 |
 | [Transmission](transmission.md) | Service URL, Username, Password | 5 |
 | [Trilium](trilium.md) | Service URL, API key | 3 |
-| [TrueNas](truenas.md) | Service URL, Username, Password, API key | 8 |
+| [TrueNAS](truenas.md) | Service URL, Username, Password, API key | 8 |
 | [Tube Archivist](tubearchivist.md) | Service URL, API key | 3 |
-| [Unifi Controller](unifi.md) | Service URL, Username, Password, API key | 6 |
+| [UniFi Controller](unifi.md) | Service URL, Username, Password, API key | 6 |
 | [UniFi Drive](unifi_drive.md) | Service URL, Username, Password | 4 |
 | [Unmanic](unmanic.md) | Service URL | 2 |
 | [Unraid](unraid.md) | Service URL, API key | 7 |
@@ -192,7 +192,7 @@ Every widget Studio can add, generated from Homepage 2.6.0's own documentation. 
 | [Resources](info-resources.md) | — | 13 |
 | [Search](info-search.md) | Service URL | 6 |
 | [Stocks](info-stocks.md) | — | 4 |
-| [Unifi Controller](info-unifi_console.md) | Service URL, Username, Password, API key | 5 |
-| [WeatherAPI (source only)](info-weatherapi.md) | — | YAML only |
+| [UniFi Controller](info-unifi_console.md) | Service URL, Username, Password, API key | 5 |
+| [WeatherAPI](info-weatherapi.md) | — | YAML only |
 
 <!-- Generated by scripts/build-widget-docs.mjs from public/catalog.json. Do not edit by hand. -->

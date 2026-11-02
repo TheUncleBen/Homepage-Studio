@@ -4,12 +4,14 @@ import fs, { readFile } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createConfigStore, ConfigError, MAX_IMPORT_BYTES } from './config.mjs';
-import { BoardError } from './board.mjs';
+import { BoardError, infoWidgetLabel } from './board.mjs';
 import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute, sharedPublic } from './dashboards.mjs';
 import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
-import { createHash } from 'node:crypto';
+import { starterFiles, starterChoices, starterLayout } from './starters.mjs';
+import { createHistoryStore, retentionDays } from './history.mjs';
+import { createHash, randomBytes } from 'node:crypto';
 import { promisify } from 'node:util';
 import zlib from 'node:zlib';
 import { serveSharedAsset, acceptedEncodings, etagMatches } from './static-assets.mjs';
@@ -18,7 +20,13 @@ import { renderRobotsPolicy } from './indexing-policy.mjs';
 import { readAuthConfig } from './auth/config.mjs';
 import { readDeploymentName, brandFile, sendBrandFile } from './branding.mjs';
 import { createLogoStore } from './dashboard-logo.mjs';
-import { createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
+import { createImageLibrary, ImageError, imageUsage, MAX_IMAGES, validImageId } from './image-library.mjs';
+import { ConnectionError, createConnectionStore, MAX_CONNECTIONS, placeholder, publicConnection, SECRET_FIELDS } from './connections.mjs';
+const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'];
+import { createPersonalStore } from './personal.mjs';
+import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
+import { LookError, STATUS_SHOW, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
+import { BACKGROUND_CHOICES, BASE_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
 import { createAuthService } from './auth/service.mjs';
@@ -97,8 +105,9 @@ const UNAVAILABLE_PAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; 
 function wantsHtmlPage(req) {
   if (!['GET', 'HEAD'].includes(req.method)) return false;
   const path = String(req.url || '').split('?')[0];
-  // Editor and native API routes, at the root or under a dashboard address.
-  if (/^\/(?:[^/]+\/)?(?:api|studio)(?:\/|$)/.test(path)) return false;
+  // Native and Studio API routes, at the root or under a dashboard address.
+  // Studio's own pages (a mistyped /studio/… address) get the page.
+  if (/^\/(?:[^/]+\/)?(?:api|studio\/api)(?:\/|$)/.test(path)) return false;
   return String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html');
 }
 function renderUnavailablePage(status) {
@@ -286,7 +295,7 @@ async function serveCatalog(req, res) {
 }
 
 const APPEARANCE_KEYS = ['theme', 'studioTheme'];
-const boardView = result => ({ revision: result.revision, configurationRevision: result.configurationRevision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, warnings: result.warnings });
+const boardView = result => ({ revision: result.revision, configurationRevision: result.configurationRevision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, ...(result.newDiscoveredIds?.length ? { newDiscoveredIds: result.newDiscoveredIds } : {}), warnings: result.warnings });
 
 function createDashboardHandlers(options = {}) {
   const configDir = resolve(options.configDir || process.env.HOMEPAGE_CONFIG_DIR || join(base, 'config'));
@@ -304,6 +313,9 @@ function createDashboardHandlers(options = {}) {
   }
   const backupRetention = options.backupRetention ?? (process.env.STUDIO_BACKUP_RETENTION === undefined ? undefined : Number(process.env.STUDIO_BACKUP_RETENTION));
   const logo = createLogoStore({ stateDir });
+  const images = createImageLibrary({ stateDir });
+  const connections = createConnectionStore({ dir: stateDir });
+  const history = createHistoryStore({ stateDir });
   const store = createConfigStore({ configDir, stateDir, backupRetention, discoveryReader: async (host, dashboard) => {
     const lease = await acquireNative(host, dashboard);
     try { return await createDiscoveryClient({ upstream: lease.origin.href }).read(host); }
@@ -317,6 +329,21 @@ function createDashboardHandlers(options = {}) {
     () => { initialized = true; return { ok: true }; },
     (error) => ({ ok: false, code: error.code || 'CONFIG_NOT_READY' }),
   );
+
+  // The widgets whose settings use a saved connection, by name.
+  async function connectionUsageOf() {
+    const current = await store.load();
+    const sources = [
+      // A service's own settings, not its widgets: those are counted below.
+      ...(current.services || []).map((entry) => [entry.name, entry.config && typeof entry.config === 'object' ? { ...entry.config, widget: undefined, widgets: undefined } : entry.config]),
+      ...(current.serviceWidgets || []).map((entry) => [`${current.services.find((service) => service.id === entry.serviceId)?.name || 'Service'} · ${infoWidgetLabel(entry.type)}`, entry.config]),
+      ...(current.infoWidgets || []).map((entry) => [entry.type, entry.config]),
+    ];
+    return (id) => {
+      const marker = `{{STUDIO_CONNECTION_${id}_`;
+      return sources.filter(([, config]) => JSON.stringify(config ?? null).includes(marker)).map(([name]) => name);
+    };
+  }
 
   async function prepareNative() {
     await initialization;
@@ -437,6 +464,7 @@ function createDashboardHandlers(options = {}) {
       if (kept.length) headers.cookie = kept.join('; '); else delete headers.cookie;
     }
     if (body) headers['content-length'] = String(body.length);
+    if (viewerLanguage(req.studioLanguage)) headers['x-studio-language'] = req.studioLanguage;
     try {
       upstreamRequest = transport.request(upstream, { method: req.method, path: req.url, headers, timeout: 60000 }, response => {
         upstreamResponse = response;
@@ -468,6 +496,91 @@ function createDashboardHandlers(options = {}) {
     upstreamRequest.end(body);
   }
 
+  async function rendererTest(req, dashboard, widget) {
+    const lease = await acquireNative(String(req.headers.host).toLowerCase(), dashboard);
+    try {
+      const body = JSON.stringify({ widget });
+      const transport = lease.origin.protocol === 'https:' ? https : http;
+      return await new Promise((resolveTest, rejectTest) => {
+        const request = transport.request(lease.origin, { method: 'POST', path: '/api/studio/connection-test', timeout: 30000, headers: { host: req.headers.host, 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), 'x-studio-internal': options.internalToken } }, response => {
+          const chunks = [];
+          let size = 0;
+          response.on('data', chunk => { size += chunk.length; if (size > 16 * 1024) request.destroy(new Error('Too large')); else chunks.push(chunk); });
+          response.on('end', () => {
+            try {
+              const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+              if (response.statusCode !== 200) return rejectTest(Object.assign(new Error(typeof value?.error === 'string' ? value.error : 'The test could not run.'), { status: response.statusCode === 400 ? 400 : 502 }));
+              resolveTest({ ok: value.ok === true, kind: String(value.kind || 'unknown'), message: String(value.message || '') });
+            } catch { rejectTest(Object.assign(new Error('The test could not run.'), { status: 502 })); }
+          });
+        });
+        request.on('timeout', () => request.destroy(new Error('timeout')));
+        // The renderer itself failed or ran out of time (it gives the address
+        // less time than this, so a slow address is answered above).
+        request.on('error', () => rejectTest(Object.assign(new Error('The test could not finish. Try again.'), { status: 502 })));
+        request.end(body);
+      });
+    } finally { lease.release(); }
+  }
+
+  // Chart history: the dashboard's renderer works out the current values of
+  // the widgets that need history (utils/studio/collect.js), and they are kept
+  // here. Runs from the collector loop in createStudioServer, never from a
+  // request, so it uses the first approved host for the renderer.
+  async function rendererCollect(dashboard, panels) {
+    const lease = await acquireNative(allowedHosts[0], dashboard);
+    try {
+      const body = JSON.stringify({ panels });
+      const transport = lease.origin.protocol === 'https:' ? https : http;
+      return await new Promise((resolveCollect, rejectCollect) => {
+        const request = transport.request(lease.origin, { method: 'POST', path: '/api/studio/collect', timeout: 120000, headers: { host: allowedHosts[0], 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), 'x-studio-internal': options.internalToken } }, response => {
+          const chunks = [];
+          let size = 0;
+          response.on('data', chunk => { size += chunk.length; if (size > 2 * 1024 * 1024) request.destroy(new Error('Too large')); else chunks.push(chunk); });
+          response.on('end', () => {
+            try {
+              const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+              if (response.statusCode !== 200 || !value || typeof value.results !== 'object') return rejectCollect(Object.assign(new Error('Collection failed'), { code: 'HISTORY_COLLECT_FAILED' }));
+              resolveCollect(value.results);
+            } catch { rejectCollect(Object.assign(new Error('Collection failed'), { code: 'HISTORY_COLLECT_FAILED' })); }
+          });
+        });
+        request.on('timeout', () => request.destroy(new Error('timeout')));
+        request.on('error', () => rejectCollect(Object.assign(new Error('Collection failed'), { code: 'HISTORY_COLLECT_FAILED' })));
+        request.end(body);
+      });
+    } finally { lease.release(); }
+  }
+  // The widgets the collector polls: charts, trends and colour rules read
+  // the widget's values; status history runs its status check instead.
+  const historyPanels = state => {
+    const card = readLook(state.settingsConfig?.studioTheme?.card);
+    const acts = readBehaviour(state.settingsConfig?.studioDefaults);
+    const out = [];
+    for (const panel of state.board?.panels || []) {
+      const look = inheritedLook(card, panel.look);
+      if (look.show === STATUS_SHOW && ['service', 'serviceWidget'].includes(panel.kind)) {
+        const check = inheritedBehaviour(acts, panel.behaviour).status;
+        if (check === 'web' || check === 'ping') out.push({ ...panel, check });
+      } else if (panel.kind === 'serviceWidget' && needsHistory(look)) out.push(panel);
+    }
+    return out;
+  };
+  async function collectHistory(dashboard) {
+    if (!(await initialization).ok) return;
+    const state = await store.load();
+    const panels = historyPanels(state);
+    // History is kept only for widgets that still need it.
+    await history.keepOnly(panels.map(panel => panel.id));
+    if (!panels.length) return;
+    const results = await rendererCollect(dashboard, panels.map(({ id, kind, nativeLocator, available, check }) => ({ id, kind, nativeLocator, ...(available === false ? { available } : {}), ...(check ? { check } : {}) })));
+    const at = Date.now();
+    for (const panel of panels) {
+      const values = results[panel.id]?.values;
+      if (Array.isArray(values)) await history.record(panel.id, values, { at, days: retentionDays(state.settingsConfig) });
+    }
+  }
+
   async function handle(req, res, dashboard) {
     try {
       checkRequest(req);
@@ -488,17 +601,22 @@ function createDashboardHandlers(options = {}) {
       if (path === '/studio/api/state' && req.method === 'GET') return json(res, 200, await store.load());
       if (path === '/studio/api/board' && req.method === 'GET') return json(res, 200, await store.loadBoard());
       if (path === '/studio/api/board' && req.method === 'POST') return json(res, 200, await store.saveBoard(await readBody(req)));
-      if (path === '/studio/api/export' && req.method === 'GET') return json(res, 200, await store.exportCurrent());
+      if (path === '/studio/api/export' && req.method === 'GET') return json(res, 200, await portableExport());
       if (path === '/studio/api/backups' && req.method === 'GET') return json(res, 200, await store.listBackups());
       if (path.startsWith('/studio/api/backups/') && req.method === 'GET') return json(res, 200, await store.exportBackup(path.slice('/studio/api/backups/'.length)));
       if (path === '/studio/api/restore' && req.method === 'POST') return json(res, 200, await store.restoreBackup(await readBody(req)));
-      if (path === '/studio/api/import' && req.method === 'POST') return json(res, 200, await store.importArchive(await readBody(req, MAX_IMPORT_BYTES)));
+      if (path === '/studio/api/import' && req.method === 'POST') return json(res, 200, await portableImport(await readBody(req, MAX_IMPORT_BYTES)));
       if (path === '/studio/api/save' && req.method === 'POST') return json(res, 200, await store.save(saveChange));
       if (path === '/studio/api/service' && req.method === 'POST') return json(res, 200, await store.mutateService(await readBody(req)));
       if (path === '/studio/api/info-widget' && req.method === 'POST') return json(res, 200, await store.mutateInfoWidget(await readBody(req)));
       if (path === '/studio/api/service-widget' && req.method === 'POST') return json(res, 200, await store.mutateServiceWidget(await readBody(req)));
       if (path === '/studio/api/bookmark' && req.method === 'POST') return json(res, 200, await store.mutateBookmark(await readBody(req)));
       if (path === '/studio/api/settings' && req.method === 'POST') return json(res, 200, await store.mutateSettings(await readBody(req)));
+      // Administrators only (not in the access lists): removes native content.
+      if (path === '/studio/api/page-delete' && req.method === 'POST') return json(res, 200, await store.deletePage(await readBody(req)));
+      if (path === '/studio/api/page-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePage(await readBody(req)));
+      if (path === '/studio/api/widgets-delete' && req.method === 'POST') return json(res, 200, await store.deletePanels(await readBody(req)));
+      if (path === '/studio/api/widgets-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePanels(await readBody(req)));
       // These two are open to people who may arrange a dashboard, so they answer
       // with the board only, never the configuration files.
       if (path === '/studio/api/discovery-visibility' && req.method === 'POST') return json(res, 200, boardView(await store.mutateDiscoveryVisibility(await readBody(req))));
@@ -509,15 +627,20 @@ function createDashboardHandlers(options = {}) {
         const settings = current.settingsConfig || {};
         // The platform defaults show what each "use platform default" means.
         const defaults = await options.platform?.read().catch(() => null);
-        return json(res, 200, { revision: current.revision, settings: Object.fromEntries(APPEARANCE_KEYS.filter(key => Object.hasOwn(settings, key)).map(key => [key, settings[key]])), platform: defaults ? { mode: defaults.mode, accent: defaults.accent, background: defaults.background } : null });
+        return json(res, 200, { revision: current.revision, settings: Object.fromEntries(APPEARANCE_KEYS.filter(key => Object.hasOwn(settings, key)).map(key => [key, settings[key]])), platform: defaults ? { mode: defaults.mode, accent: defaults.accent, base: defaults.base, background: defaults.background } : null });
       }
       if (path === '/studio/api/appearance' && req.method === 'POST') {
         const change = await readBody(req);
         const config = change.config;
         const validTheme = value => value === null || value === 'dark' || value === 'light';
-        const validStudio = value => value === null || (value && typeof value === 'object' && !Array.isArray(value) && JSON.stringify(value).length <= 4096);
-        if (!config || typeof config !== 'object' || Array.isArray(config) || Object.keys(config).some(key => !APPEARANCE_KEYS.includes(key)) || (Object.hasOwn(config, 'theme') && !validTheme(config.theme)) || (Object.hasOwn(config, 'studioTheme') && !validStudio(config.studioTheme))) {
+        if (!config || typeof config !== 'object' || Array.isArray(config) || Object.keys(config).some(key => !APPEARANCE_KEYS.includes(key)) || (Object.hasOwn(config, 'theme') && !validTheme(config.theme))) {
           throw Object.assign(new Error('Only the display mode and Studio appearance can be changed here.'), { status: 400, code: 'APPEARANCE_ONLY' });
+        }
+        // Each studioTheme key has its own choices (no free text), so nothing
+        // written here can name a {{...}} value for the renderer to fill in.
+        if (Object.hasOwn(config, 'studioTheme')) {
+          try { config.studioTheme = validateStudioTheme(config.studioTheme); }
+          catch (error) { if (error instanceof LookError) throw Object.assign(new Error(error.message), { status: 400, code: 'APPEARANCE_ONLY' }); throw error; }
         }
         // Switching off the platform CSS is a CSS change, for administrators only.
         if (Object.hasOwn(config, 'studioTheme')) {
@@ -538,12 +661,95 @@ function createDashboardHandlers(options = {}) {
         if (Object.keys(change).some(key => !['image', 'reset'].includes(key)) || (change.reset === true) === (change.image !== undefined)) throw Object.assign(new Error('Send an image or reset the logo.'), { status: 400, code: 'INVALID_LOGO' });
         return json(res, 200, { logo: change.reset ? await logo.remove() : await logo.save(change.image) });
       }
+      // Uploaded logos and backgrounds (server/image-library.mjs).
+      const imageId = /^\/studio\/api\/images\/([^/]+)$/.exec(path)?.[1];
+      if (imageId !== undefined && ['GET', 'HEAD'].includes(req.method)) {
+        const image = validImageId(imageId) ? await images.read(imageId) : null;
+        if (!image) return json(res, 404, { error: 'That image does not exist.', code: 'IMAGE_NOT_FOUND' });
+        // Ids are content hashes, so a cached copy never goes stale.
+        res.writeHead(200, { 'content-type': image.type, 'content-length': image.bytes.length, 'cache-control': 'private, max-age=31536000, immutable', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" });
+        return res.end(req.method === 'HEAD' ? undefined : image.bytes);
+      }
+      if (path === '/studio/api/images' && req.method === 'GET') return json(res, 200, { images: await images.list() });
+      if (path === '/studio/api/images' && req.method === 'POST') {
+        const change = await readBody(req, 5 * 1024 * 1024);
+        if (!change || typeof change !== 'object' || Object.keys(change).some(key => !['kind', 'name', 'image'].includes(key))) throw new ImageError('Send a kind, a name and an image.');
+        return json(res, 200, { image: await images.add(change) });
+      }
+      if (path === '/studio/api/images/delete' && req.method === 'POST') {
+        const change = await readBody(req);
+        if (!change || typeof change !== 'object' || Object.keys(change).some(key => !['id', 'confirm'].includes(key))) throw new ImageError('Send the image to remove.');
+        // Removing an image still in use asks first and says where it is used.
+        if (change.confirm !== true) {
+          const current = await store.load();
+          const files = { 'services.yaml': current.servicesYaml, 'bookmarks.yaml': current.bookmarksYaml, 'widgets.yaml': current.widgetsYaml, 'settings.yaml': current.settingsYaml };
+          const usedIn = validImageId(change.id) ? imageUsage(change.id, { board: current.board, settings: current.settingsConfig, files }) : [];
+          if (usedIn.length) throw new ImageError('This image is still in use.', 'IMAGE_IN_USE', 409, { usedIn });
+        }
+        return json(res, 200, { removed: await images.remove(change.id) });
+      }
+      // Chart history for one widget on this dashboard, for anyone who can
+      // view it (the same numbers its card shows).
+      if (path === '/studio/api/history' && req.method === 'GET') {
+        const query = new URL(req.url, 'http://studio.invalid').searchParams;
+        const panelId = query.get('panel');
+        const board = (await store.loadBoard()).board;
+        if (!panelId || !board.panels.some(panel => panel.id === panelId)) return json(res, 404, { error: 'That widget is not on this dashboard.' });
+        res.setHeader('cache-control', 'private, no-store');
+        return json(res, 200, await history.read(panelId, query.get('range') || '24h'));
+      }
+      // Which numbers a widget has and how each is written, so the widget
+      // dialog offers only the chart formats its data supports (Rule 1).
+      // For people who can arrange the dashboard, like the look itself.
+      if (path === '/studio/api/history/probe' && req.method === 'POST') {
+        const change = await readBody(req, 4 * 1024);
+        const board = (await store.loadBoard()).board;
+        const panel = typeof change?.panel === 'string' && Object.keys(change).length === 1 ? board.panels.find(item => item.id === change.panel) : null;
+        if (!panel) return json(res, 404, { error: 'That widget is not on this dashboard.' });
+        if (panel.kind !== 'serviceWidget') return json(res, 200, { values: [] });
+        const { id, kind, nativeLocator, available } = panel;
+        const results = await rendererCollect(dashboard, [{ id, kind, nativeLocator, ...(available === false ? { available } : {}) }]);
+        const values = Array.isArray(results[panel.id]?.values) ? results[panel.id].values : [];
+        return json(res, 200, { values: values.filter(value => typeof value?.field === 'string').map(value => ({ field: value.field, format: typeof value.format === 'string' ? value.format : 'plain' })) });
+      }
+      // Test connection: the widget dialog's draft runs its own first request
+      // in this dashboard's renderer, which answers with a plain reason only.
+      // Administrators only (default deny), like widget settings.
+      if (path === '/studio/api/connection-test' && req.method === 'POST') {
+        const change = await readBody(req, 32 * 1024);
+        if (!change || typeof change.widget !== 'object' || change.widget === null || Array.isArray(change.widget) || Object.keys(change).some(key => key !== 'widget')) throw Object.assign(new Error('Send the widget to test.'), { status: 400 });
+        // A saved key, username or password is only ever sent to its own
+        // connection's address, so a test can't carry it anywhere else.
+        for (const field of ['key', 'username', 'password']) {
+          const match = typeof change.widget[field] === 'string' && /^\{\{STUDIO_CONNECTION_([A-F0-9]{16})_[A-Z]+\}\}$/.exec(change.widget[field]);
+          if (match && change.widget.url !== placeholder(match[1], 'url')) return json(res, 200, { ok: false, kind: 'address', message: 'A saved key is only sent to its own connection’s address. Choose that connection for the address too.' });
+        }
+        return json(res, 200, await rendererTest(req, dashboard, change.widget));
+      }
+      // Saved connections (server/connections.mjs). Administrators only, like
+      // widget settings; keys are never sent back.
+      if (path === '/studio/api/connections' && req.method === 'GET') {
+        const usage = await connectionUsageOf();
+        return json(res, 200, { connections: (await connections.list()).map((entry) => publicConnection(entry, usage(entry.id))) });
+      }
+      if (path === '/studio/api/connections' && req.method === 'POST') {
+        const change = await readBody(req, 64 * 1024);
+        if (!change || typeof change !== 'object' || Object.keys(change).some((key) => !CONNECTION_KEYS.includes(key))) throw new ConnectionError('Send a connection change.');
+        if (change.action === 'add') return json(res, 200, { connection: publicConnection(await connections.add(change)) });
+        if (change.action === 'update') return json(res, 200, { connection: publicConnection(await connections.update(change.id, change)) });
+        if (change.action === 'delete') {
+          await connections.remove(change.id, { usedBy: (await connectionUsageOf())(change.id) });
+          return json(res, 200, { removed: true });
+        }
+        throw new ConnectionError('Choose add, update or delete.');
+      }
       if (path.startsWith('/studio/')) return json(res, 404, { error: 'This editor endpoint does not exist.' });
       await proxy(req, res, dashboard);
     } catch (error) {
       const status = Number(error.status || error.statusCode) || 500;
       if (error.closeConnection && !res.headersSent) res.setHeader('connection', 'close');
       if (error.retryAfter && !res.headersSent) res.setHeader('retry-after', String(error.retryAfter));
+      if ((error instanceof ImageError || error instanceof ConnectionError) && error.details && !res.headersSent) return json(res, status, { error: error.message, code: error.code, details: error.details });
       json(res, status, { error: status < 500 || error instanceof ConfigError || error instanceof BoardError || error instanceof DiscoveryError || error instanceof RendererError ? error.message : 'The editor could not read or save its configuration. Check the configuration and state volume permissions.', code: error.code || 'EDITOR_ERROR',
         // ConfigError details are structured and source-free (file names, YAML error codes and positions, limits),
         // so editors can point at the failing line without the response ever echoing configuration text.
@@ -553,7 +759,42 @@ function createDashboardHandlers(options = {}) {
     }
   }
 
-  return { handle, checkRequest, store, logo, initialization };
+  // A dashboard export carries its uploaded images, so its cards and pages
+  // keep their pictures, and its saved connections by name and address only:
+  // keys never leave the server, so the importer types them in again.
+  async function portableExport() {
+    const archive = await store.exportCurrent();
+    const pictures = [];
+    for (const entry of await images.list()) {
+      const image = await images.read(entry.id);
+      if (image) pictures.push({ kind: image.kind, name: image.name, image: `data:${image.type};base64,${image.bytes.toString('base64')}` });
+    }
+    const saved = (await connections.list()).map(({ id, name, url }) => ({ id, name, url }));
+    return { ...archive, ...(pictures.length ? { images: pictures } : {}), ...(saved.length ? { connections: saved } : {}) };
+  }
+  async function portableImport(change) {
+    const archive = change?.archive && typeof change.archive === 'object' && !Array.isArray(change.archive) ? change.archive : null;
+    const { images: pictures, connections: saved, ...files } = archive ?? {};
+    const refuse = () => { throw Object.assign(new Error('The imported images or connections are not valid.'), { status: 400, code: 'INVALID_IMPORT' }); };
+    if (pictures !== undefined && (!Array.isArray(pictures) || pictures.length > MAX_IMAGES || pictures.some((item) => !item || typeof item !== 'object'))) refuse();
+    if (saved !== undefined && (!Array.isArray(saved) || saved.length > MAX_CONNECTIONS || saved.some((item) => !item || typeof item !== 'object' || typeof item.id !== 'string'))) refuse();
+    const result = await store.importArchive({ ...change, archive: archive ? files : change?.archive });
+    const notes = [];
+    for (const picture of pictures ?? []) {
+      try { await images.add({ kind: picture.kind, name: picture.name, image: picture.image }); }
+      catch (error) { if (error instanceof ImageError) notes.push(`Image “${String(picture.name ?? '').slice(0, 80)}” was not added: ${error.message}`); else throw error; }
+    }
+    const existing = new Set((await connections.list()).map((entry) => entry.id));
+    const needKeys = [];
+    for (const entry of saved ?? []) {
+      if (existing.has(entry.id)) continue;
+      try { await connections.add({ name: entry.name, url: entry.url }, { id: entry.id }); needKeys.push(String(entry.name)); }
+      catch (error) { if (error instanceof ConnectionError) notes.push(`Connection “${String(entry.name ?? '').slice(0, 60)}” was not added: ${error.message}`); else throw error; }
+    }
+    return { ...result, ...(needKeys.length ? { connectionsNeedingKeys: needKeys } : {}), ...(notes.length ? { importNotes: notes } : {}) };
+  }
+
+  return { handle, checkRequest, store, logo, images, connections, history, collectHistory, initialization };
 }
 
 export function createStudioServer(options = {}) {
@@ -571,18 +812,23 @@ export function createStudioServer(options = {}) {
   // Prepare the compressed catalog before the first editor opens; errors surface on request.
   loadCatalogVariants().catch(() => {});
   const nativeBodyBudget = createByteBudget(NATIVE_BODY_BUDGET);
-  rendererPool ||= createRendererPool({ configRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision });
+  // Renderer endpoints only the controller may call (Test connection) check
+  // this token; browsers can't send it because every x-studio-* header they
+  // send is dropped before proxying.
+  const internalToken = options.internalToken ?? randomBytes(32).toString('hex');
+  rendererPool ||= createRendererPool({ configRoot, stateRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision, workerEnv: { STUDIO_INTERNAL_TOKEN: internalToken } });
   // Studio sign-in (owner direction, 23 Oct 2026). On by default; STUDIO_AUTH=off
   // returns to external access control only.
   const deploymentName = readDeploymentName(options.deploymentName ?? process.env.STUDIO_DEPLOYMENT_NAME);
   const authConfig = readAuthConfig(options);
   let registryForAuth;
-  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent }) : null;
+  const personal = createPersonalStore({ stateRoot });
+  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent, onUserRemoved: userId => personal.removeUser(userId) }) : null;
   // Administration's name for the deployment, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
   const platform = createPlatformStore({ configRoot });
   const backups = createBackupStore({ configRoot, stateRoot, buildRevision: options.buildRevision ?? process.env.STUDIO_BUILD_REVISION });
-  const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards }) : null;
+  const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards, preferences: { read: userId => personal.forUser(userId).preferences.read(), write: (userId, value) => personal.forUser(userId).preferences.write(value) } }) : null;
   const privateCookies = auth ? [authConfig.cookieName, authConfig.flowCookieName, authConfig.setupCookieName] : [];
   const handlers = new Map();
   const unpublished = new Map();
@@ -591,7 +837,7 @@ export function createStudioServer(options = {}) {
   function forDashboard(entry) {
     let handler = handlers.get(entry.id);
     if (!handler) {
-      handler = createDashboardHandlers({ ...options, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
+      handler = createDashboardHandlers({ ...options, internalToken, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
       handlers.set(entry.id, handler);
     }
     // Only immutable-id storage is retained. Each request carries its own
@@ -621,13 +867,22 @@ export function createStudioServer(options = {}) {
     }
     return owned;
   }
-  const registry = createDashboardRegistry({ configRoot, prepareDashboard: async (entry, source, { isNew = false } = {}) => {
-    let archive, logo;
+  const registry = createDashboardRegistry({ configRoot, prepareDashboard: async (entry, source, { isNew = false, starter } = {}) => {
+    let archive, logo, uploads = [], saved = [], starterContent;
+    if (starter !== undefined) {
+      starterContent = starterFiles(starter);
+      if (!starterContent) throw new DashboardError('Choose one of the starter templates.', 'INVALID_DASHBOARD_ACTION');
+    }
     if (source) {
       const sourceHandler = forDashboard(source);
       await sourceHandler.initialization;
       archive = await sourceHandler.store.exportCurrent();
+      saved = await sourceHandler.connections.list();
       logo = await sourceHandler.logo.read();
+      for (const entry of await sourceHandler.images.list()) {
+        const image = await sourceHandler.images.read(entry.id);
+        if (image) uploads.push(image);
+      }
     }
     const owned = isNew ? await allocateDashboard(entry) : null;
     const target = forDashboard(entry);
@@ -637,8 +892,19 @@ export function createStudioServer(options = {}) {
       const current = await target.store.load();
       await target.store.importArchive({ revision: current.revision, archive });
     }
+    if (starterContent) {
+      const current = await target.store.load();
+      await target.store.save({ revision: current.revision, ...starterContent });
+      // The clock and weather go across the top, the links below them.
+      const placed = await target.store.loadBoard();
+      await target.store.saveBoard({ revision: placed.revision, board: starterLayout(placed.board) });
+    }
     // A duplicate keeps the source's logo too.
     if (logo) await target.logo.save(`data:${logo.type};base64,${logo.bytes.toString('base64')}`);
+    // And its uploaded images, so its cards and pages keep their pictures.
+    for (const image of uploads) await target.images.add({ kind: image.kind, name: image.name, image: `data:${image.type};base64,${image.bytes.toString('base64')}` });
+    // And its saved connections, under the same names its widgets use.
+    for (const entry of saved) await target.connections.add({ name: entry.name, url: entry.url, ...entry.secrets }, { id: entry.id });
   }, cleanupDashboard: async entry => {
     if (entry.id === 'default') throw new DashboardError('The original dashboard cannot be removed.', 'DEFAULT_DASHBOARD_REQUIRED');
     const owned = unpublished.get(entry.id);
@@ -670,7 +936,7 @@ export function createStudioServer(options = {}) {
   // ---- Sign-in gate ---------------------------------------------------------
   function wantsNavigation(req) {
     return ['GET', 'HEAD'].includes(req.method) && String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html')
-      && (!/^\/(?:[^/]+\/)?(?:api|studio)\//.test(String(req.url).split('?')[0]) || /^\/(?:[^/]+\/)?studio\/(?:edit|settings)$/.test(String(req.url).split('?')[0]));
+      && (!/^\/(?:[^/]+\/)?(?:api|studio)\//.test(String(req.url).split('?')[0]) || /^\/(?:(?:[^/]+\/)?studio\/(?:edit|settings)|studio\/)$/.test(String(req.url).split('?')[0]));
   }
   // The sign-in pages refuse to be framed, so a signed-out dashboard inside
   // another site (for example a Home Assistant panel) gets this page instead
@@ -709,6 +975,79 @@ export function createStudioServer(options = {}) {
   const NATIVE_STUDIO_PAGE = /^\/(?:studio-(?:edit|settings)(?:\/|$)|_next\/data\/[^/]+\/studio-(?:edit|settings)\.json$)/;
   function forbidden(res, message = 'Your account does not have access to this.') {
     return json(res, 403, { error: message, code: 'FORBIDDEN' });
+  }
+  // A signed-in person's own images and preferences (server/personal.mjs).
+  // Without Studio sign-in there are no people, so these are unavailable and
+  // the dashboard uses the defaults.
+  async function handlePersonal(req, res, path, current, dashboard) {
+    const read = ['GET', 'HEAD'].includes(req.method);
+    if (path === '/studio/api/preferences' && read && !auth) return json(res, 200, { available: false, preferences: {} });
+    if (!auth) return json(res, 404, { error: 'Your own images and preferences need Studio sign-in.', code: 'PERSONAL_UNAVAILABLE' });
+    const person = personal.forUser(current.user.id);
+    if (path === '/studio/api/preferences') {
+      if (read) return json(res, 200, { available: true, preferences: await person.preferences.read() });
+      if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST.' });
+      const change = await readBody(req, 16 * 1024);
+      return json(res, 200, { available: true, preferences: await person.preferences.write(change?.preferences) });
+    }
+    const imageId = /^\/studio\/api\/my-images\/([a-f0-9]{24})$/.exec(path)?.[1];
+    if (imageId && read) {
+      const image = await person.images.read(imageId);
+      if (!image) return json(res, 404, { error: 'That image does not exist.', code: 'IMAGE_NOT_FOUND' });
+      res.writeHead(200, { 'content-type': image.type, 'content-length': image.bytes.length, 'cache-control': 'private, max-age=31536000, immutable', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" });
+      return res.end(req.method === 'HEAD' ? undefined : image.bytes);
+    }
+    if (path === '/studio/api/my-images' && read) return json(res, 200, { images: await person.images.list() });
+    if (req.method !== 'POST') return json(res, 404, { error: 'This editor endpoint does not exist.' });
+    if (path === '/studio/api/my-images') {
+      const change = await readBody(req, 5 * 1024 * 1024);
+      if (!change || typeof change !== 'object' || Object.keys(change).some(key => !['kind', 'name', 'image'].includes(key))) throw new ImageError('Send a kind, a name and an image.');
+      return json(res, 200, { image: await person.images.add(change) });
+    }
+    const change = await readBody(req);
+    if (!change || typeof change !== 'object' || Object.keys(change).some(key => key !== 'id')) throw new ImageError('Send the image.');
+    // Your own copy only: dashboards that use it keep theirs.
+    if (path === '/studio/api/my-images/delete') return json(res, 200, { removed: await person.images.remove(change.id) });
+    if (path === '/studio/api/my-images/use') {
+      const image = validImageId(change.id) ? await person.images.read(change.id) : null;
+      if (!image) throw new ImageError('That image does not exist.', 'IMAGE_NOT_FOUND', 404);
+      const copy = await forDashboard(dashboard).images.add({ kind: image.kind, name: image.name, image: `data:${image.type};base64,${image.bytes.toString('base64')}` });
+      return json(res, 200, { image: copy });
+    }
+    return json(res, 404, { error: 'This editor endpoint does not exist.' });
+  }
+  // A signed-in administrator's own saved connections ("Just me"). Using one
+  // on a dashboard copies it there under the same id, so widgets that use it
+  // keep working if the personal one is changed or removed later.
+  async function handlePersonalConnections(req, res, path, current, dashboard) {
+    if (!auth) return json(res, 404, { error: 'Your own connections need Studio sign-in.', code: 'PERSONAL_UNAVAILABLE' });
+    const mine = personal.forUser(current.user.id).connections;
+    const read = ['GET', 'HEAD'].includes(req.method);
+    if (path === '/studio/api/my-connections' && read) return json(res, 200, { connections: (await mine.list()).map(entry => publicConnection(entry)) });
+    if (req.method !== 'POST') return json(res, 404, { error: 'This editor endpoint does not exist.' });
+    const change = await readBody(req, 64 * 1024);
+    if (path === '/studio/api/my-connections/use') {
+      if (!change || typeof change !== 'object' || Object.keys(change).some(key => key !== 'id')) throw new ConnectionError('Send the connection.');
+      const entry = await mine.read(change.id);
+      const here = forDashboard(dashboard).connections;
+      const input = { name: entry.name, url: entry.url, ...entry.secrets, clear: SECRET_FIELDS.filter(field => !entry.secrets[field]) };
+      const existing = (await here.list()).some(item => item.id === entry.id);
+      let copy;
+      try { copy = existing ? await here.update(entry.id, input) : await here.add(input, { id: entry.id }); }
+      catch (error) {
+        // Another connection on this dashboard has the same name: say how out.
+        if (error instanceof ConnectionError && /already a connection called/.test(error.message)) throw new ConnectionError(`This dashboard already has a different connection called “${entry.name}”. Choose that one under This dashboard, or rename yours in Dashboard settings › Saved connections.`, 'CONNECTION_NAME_TAKEN', 409);
+        throw error;
+      }
+      return json(res, 200, { connection: publicConnection(copy) });
+    }
+    if (path !== '/studio/api/my-connections') return json(res, 404, { error: 'This editor endpoint does not exist.' });
+    if (!change || typeof change !== 'object' || Object.keys(change).some(key => !CONNECTION_KEYS.includes(key))) throw new ConnectionError('Send a connection change.');
+    if (change.action === 'add') return json(res, 200, { connection: publicConnection(await mine.add(change)) });
+    if (change.action === 'update') return json(res, 200, { connection: publicConnection(await mine.update(change.id, change)) });
+    // Dashboards that use it keep their own copy.
+    if (change.action === 'delete') { await mine.remove(change.id); return json(res, 200, { removed: true }); }
+    throw new ConnectionError('Choose add, update or delete.');
   }
   async function handleRequest(req, res) {
     for (const [name, value] of Object.entries(responseHeaders)) res.setHeader(name, value);
@@ -813,6 +1152,7 @@ export function createStudioServer(options = {}) {
           deploymentName: siteName(),
           mainNeedsAddress: isAdmin && !primary.slug,
           suggestedSlug: isAdmin ? suggestedDashboardSlug(manifest.dashboards) : undefined,
+          starters: isAdmin ? starterChoices() : undefined,
           authEnabled: Boolean(auth),
           user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role, defaultDashboardId: current.user.defaultDashboardId ?? null } : null,
           landingId: auth ? current.landing(manifest.dashboards) : null,
@@ -843,12 +1183,12 @@ export function createStudioServer(options = {}) {
       }
       if (path === '/studio/api/platform') {
         if (!isAdmin) return forbidden(res, 'Only administrators can change the platform appearance.');
-        if (req.method === 'GET') return json(res, 200, await platform.read());
+        if (req.method === 'GET') return json(res, 200, { ...(await platform.read()), backgroundChoices: BACKGROUND_CHOICES, baseChoices: BASE_CHOICES });
         if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST for the platform appearance.' });
         // Platform CSS reaches every dashboard, so saving it needs a recent
         // sign-in, as a dashboard's own custom.css does.
         if (auth && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
-        return json(res, 200, await platform.update(await readBody(req)));
+        return json(res, 200, { ...(await platform.update(await readBody(req))), backgroundChoices: BACKGROUND_CHOICES, baseChoices: BASE_CHOICES });
       }
       // Full backups (server/backups.mjs), for administrators. Everything but
       // the list needs a recent sign-in: a backup holds every secret Studio has.
@@ -888,6 +1228,11 @@ export function createStudioServer(options = {}) {
         return json(res, 400, { error: 'Unknown backup action.', code: 'INVALID_BACKUP_ACTION' });
       }
       if (!auth && ['/studio/dashboards', '/studio/admin'].includes(path) && ['GET', 'HEAD'].includes(req.method)) return sendStudioPage(res, path.slice('/studio/'.length), siteName());
+      // /studio on its own is a natural address to type: it is the Dashboards page.
+      if (['/studio', '/studio/'].includes(path) && ['GET', 'HEAD'].includes(req.method)) {
+        res.writeHead(307, { location: '/studio/dashboards', 'cache-control': 'no-store', 'content-length': 0 });
+        return res.end();
+      }
       if (!auth && req.method === 'GET' && path.startsWith('/studio/auth/assets/')) return await sendStudioAsset(res, path);
       // The bare address: the person's landing dashboard, or the Dashboards page.
       if (path === '/' && ['GET', 'HEAD'].includes(req.method)) {
@@ -929,6 +1274,15 @@ export function createStudioServer(options = {}) {
         if (!atLeast(level, required.level)) return forbidden(res, required.level === 'admin' ? 'Only administrators can do this.' : 'You can view this dashboard but not change it.');
         if (required.stepUp && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
       }
+      if (local === '/studio/api/preferences' || local.startsWith('/studio/api/my-images')) return await handlePersonal(req, res, local, current, route.dashboard);
+      if (local === '/studio/api/my-connections' || local === '/studio/api/my-connections/use') return await handlePersonalConnections(req, res, local, current, route.dashboard);
+      // A signed-in viewer's own language (Preferences › Display) reaches the
+      // dashboard page as a header the controller sets; any such header from
+      // the browser was already dropped.
+      if (auth && current?.user && wantsHtmlPage(req) && !/^\/(?:api|_next|studio)(?:\/|$)/.test(local)) {
+        const language = viewerLanguage((await personal.forUser(current.user.id).preferences.read()).language);
+        if (language) req.studioLanguage = language;
+      }
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
       if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);
@@ -962,8 +1316,40 @@ export function createStudioServer(options = {}) {
   server.on('close', () => {
     if (!applicationClosing) void closeRenderer().catch(error => console.error('Renderer shutdown failed:', error.code || error.name));
   });
+  // Chart history collector: every minute, each dashboard with widgets that
+  // need history asks its renderer for their values. One run at a time; a
+  // dashboard that fails is skipped until the next run.
+  const collectMs = options.collectMs ?? 60000;
+  let collecting = false;
+  // A failure is logged once, not every minute, until a run gets through.
+  // Before the first setup the dashboards aren't ready; that's expected.
+  const reported = new Set();
+  const collectFailed = error => {
+    const code = error.code || error.name;
+    if (code === 'DASHBOARDS_NOT_READY' || reported.has(code)) return;
+    reported.add(code);
+    console.error('Chart history collection failed:', code);
+  };
+  const collector = collectMs > 0 ? setInterval(async () => {
+    if (collecting || applicationClosing) return;
+    collecting = true;
+    let failed = false;
+    try {
+      const manifest = await prepareRegistry();
+      for (const entry of manifest.dashboards) {
+        if (applicationClosing) break;
+        if (entry.archived || (!entry.slug && entry.id !== 'default')) continue;
+        try { await forDashboard(entry).collectHistory(entry); }
+        catch (error) { failed = true; collectFailed(error); }
+      }
+      if (!failed) reported.clear();
+    } catch (error) { collectFailed(error); }
+    finally { collecting = false; }
+  }, collectMs) : null;
+  collector?.unref();
   let shutdownResult;
   function shutdown({ graceMs = 10000 } = {}) {
+    if (collector) clearInterval(collector);
     if (shutdownResult) return shutdownResult;
     if (!Number.isInteger(graceMs) || graceMs < 0 || graceMs > 30000) throw new Error('Shutdown grace must be an integer from 0 to 30000 milliseconds.');
     applicationClosing = true;

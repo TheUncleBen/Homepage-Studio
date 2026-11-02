@@ -1,11 +1,22 @@
 import { createHash } from 'node:crypto';
+import { LookError, validateBehaviour, validateLook } from '../homepage/src/components/studio/look.mjs';
+import { panelMinimum } from '../homepage/src/components/studio/geometry.mjs';
 
 const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const digest = (v) => createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0, 24);
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const kinds = new Set(['service', 'serviceWidget', 'informationWidget', 'bookmark']);
-export const BOARD_COLUMNS = 12;
+// Board version 3 (fresh deployments only): 24 columns of 36 px rows, so a
+// card can fit its content exactly, plus pages and per-widget look and
+// behaviour overrides.
+export const BOARD_VERSION = 3;
+export const BOARD_COLUMNS = 24;
 export const MAX_PANELS = 4096;
+export const MAX_PAGES = 20;
+export const DEFAULT_PAGE = Object.freeze({ id: 'home', name: 'Home' });
+const PAGE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+// An icon name or address, or an image uploaded to the dashboard.
+const ICON = /^(?:[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}|\/studio\/api\/images\/[a-f0-9]{24})$/;
 export const DEFAULT_PLAYBACK = Object.freeze({ mode: 'manual', intervalMs: 10000, manualHoldMs: 30000, transition: 'horizontal', transitionDurationMs: 250, loop: true });
 
 export class BoardError extends Error {
@@ -65,7 +76,7 @@ export function validateIdentityRecords(value, label) {
 export function rect(value, label = 'Panel') {
   if (!object(value)) fail(`${label} requires grid position and dimensions.`);
   const { x, y, w, h } = value;
-  if (![x, y, w, h].every(Number.isSafeInteger) || x < 0 || y < 0 || w < 1 || h < 1 || w > BOARD_COLUMNS || x + w > BOARD_COLUMNS || y > 100000 || h > 1000) fail(`${label} has an invalid grid rectangle.`);
+  if (![x, y, w, h].every(Number.isSafeInteger) || x < 0 || y < 0 || w < 1 || h < 1 || w > BOARD_COLUMNS || x + w > BOARD_COLUMNS || y > 200000 || h > 2000) fail(`${label} has an invalid grid rectangle.`);
   return { x, y, w, h };
 }
 
@@ -78,15 +89,82 @@ export function playback(value = {}) {
   return Object.fromEntries(Object.keys(DEFAULT_PLAYBACK).map((k) => [k, p[k]]));
 }
 
+function lookOf(value, label) {
+  try {
+    return { look: validateLook(value.look), behaviour: validateBehaviour(value.behaviour) };
+  } catch (error) {
+    if (error instanceof LookError) fail(`${label}: ${error.message}`);
+    throw error;
+  }
+}
+
+// Saved looks: a named look (layout, fill, colours, edges…) to reuse on
+// other widgets. Never a widget's own value arrangement.
+export const MAX_SAVED_LOOKS = 30;
+export function validateSavedLooks(value) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > MAX_SAVED_LOOKS) fail(`Keep at most ${MAX_SAVED_LOOKS} saved looks.`);
+  const ids = new Set(), names = new Set();
+  return value.map((entry) => {
+    if (!object(entry) || !idOK(entry.id) || ids.has(entry.id)) fail('Each saved look needs a unique identity.');
+    const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+    if (!name || name.length > 40 || /[\u0000-\u001f]/.test(name)) fail('Name a saved look with 1 to 40 characters.');
+    if (names.has(name.toLocaleLowerCase())) fail(`There is already a saved look called “${name}”.`);
+    ids.add(entry.id); names.add(name.toLocaleLowerCase());
+    const { look } = lookOf({ look: entry.look }, `Saved look “${name}”`);
+    if (!look || look.values) fail(`Saved look “${name}” needs look settings and no widget values.`);
+    return { id: entry.id, name, look };
+  });
+}
+
+export function validatePages(value) {
+  if (value == null) return [{ ...DEFAULT_PAGE }];
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_PAGES) fail(`A dashboard has 1 to ${MAX_PAGES} pages.`);
+  const ids = new Set(), names = new Set();
+  return value.map((page) => {
+    if (!object(page) || typeof page.id !== 'string' || !PAGE_ID.test(page.id) || ids.has(page.id)) fail('Each page needs a unique identity.');
+    ids.add(page.id);
+    if (typeof page.name !== 'string') fail('Each page needs a name.');
+    const name = page.name.trim();
+    if (!name || name.length > 40 || /[\u0000-\u001f\u007f]/.test(name)) fail('A page name is 1 to 40 characters.');
+    if (names.has(name.toLocaleLowerCase())) fail(`Two pages are called “${name}”. Page names must differ.`);
+    names.add(name.toLocaleLowerCase());
+    const out = { id: page.id, name };
+    if (page.icon !== undefined) {
+      if (typeof page.icon !== 'string' || !ICON.test(page.icon)) fail('A page icon is not valid.');
+      out.icon = page.icon;
+    }
+    if (page.background !== undefined) {
+      try { out.background = validateLook({ background: page.background }).background; }
+      catch (error) { if (error instanceof LookError) fail(`Page “${name}”: ${error.message}`); throw error; }
+    }
+    return out;
+  });
+}
+
+export function emptyBoard() { return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages: [{ ...DEFAULT_PAGE }], panels: [], stacks: [] }; }
+
 export function validateStoredBoard(value) {
-  if (value == null) return { version: 2, columns: BOARD_COLUMNS, panels: [], stacks: [] };
-  if (!object(value) || value.version !== 2 || value.columns !== BOARD_COLUMNS || !Array.isArray(value.panels) || !Array.isArray(value.stacks)) fail('Unsupported board schema.', 'INVALID_STATE');
+  if (value == null) return emptyBoard();
+  if (!object(value) || value.version !== BOARD_VERSION || value.columns !== BOARD_COLUMNS || !Array.isArray(value.panels) || !Array.isArray(value.stacks)) fail('Unsupported board schema.', 'INVALID_STATE');
   if (value.panels.length > MAX_PANELS || value.stacks.length > MAX_PANELS) fail('The dashboard contains too many panels.', 'CONFIG_SIZE_LIMIT');
+  const pages = validatePages(value.pages);
+  const pageIds = new Set(pages.map((page) => page.id));
+  const pageOf = (unit) => {
+    if (unit.pageId === undefined) return pages[0].id;
+    if (!pageIds.has(unit.pageId)) fail('A widget is on a page that does not exist.');
+    return unit.pageId;
+  };
   const ids = new Set();
   const panels = value.panels.map((p) => {
     if (!object(p) || !idOK(p.id) || ids.has(p.id) || !kinds.has(p.kind)) fail('Panel identity is invalid or duplicated.');
     ids.add(p.id);
-    return { ...p, rect: rect(p.rect) };
+    const { look, behaviour } = lookOf(p, p.title ? `“${String(p.title).slice(0, 80)}”` : 'A widget');
+    const panel = { ...p, rect: rect(p.rect), pageId: pageOf(p) };
+    delete panel.look; delete panel.behaviour;
+    if (look) panel.look = look;
+    if (behaviour) panel.behaviour = behaviour;
+    return panel;
   });
   const children = new Set();
   const stackIds = new Set();
@@ -97,9 +175,12 @@ export function validateStoredBoard(value) {
       if (!ids.has(id) || children.has(id)) fail('A stack contains a missing, repeated or already stacked panel.');
       children.add(id);
     }
-    return { id: s.id, panelIds: [...s.panelIds], rect: rect(s.rect, 'Stack'), playback: playback(s.playback) };
+    return { id: s.id, panelIds: [...s.panelIds], rect: rect(s.rect, 'Stack'), pageId: pageOf(s), playback: playback(s.playback) };
   });
-  return { version: 2, columns: BOARD_COLUMNS, panels, stacks };
+  // A stacked panel lives on its stack's page.
+  for (const stack of stacks) for (const id of stack.panelIds) panels.find((p) => p.id === id).pageId = stack.pageId;
+  const looks = validateSavedLooks(value.looks);
+  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages, panels, stacks, ...(looks.length ? { looks } : {}) };
 }
 
 export function intersects(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
@@ -173,7 +254,7 @@ const INFO_WIDGET_NAMES = {
   resources: 'Resources',
   search: 'Search',
   stocks: 'Stocks',
-  unifi_console: 'Unifi Controller',
+  unifi_console: 'UniFi Controller',
   weatherapi: 'WeatherAPI',
 };
 
@@ -207,7 +288,10 @@ export function boardSources({ services, serviceWidgets, infoWidgets, bookmarks 
   }
   for (const w of serviceWidgets) {
     const s = services.find((v) => v.id === w.serviceId);
-    sources.push({ id: w.id, kind: 'serviceWidget', title: `${s.name} · ${w.type}`, group: s.group, nativeLocator: { serviceId: s.id, groupPath: s.groupPath, name: s.name, widgetIndex: w.index, sourceKey: w.sourceKey, sourceIndex: w.sourceIndex, proxyIndex: w.sourceKey === 'widget' ? -1 : w.sourceIndex, type: w.type } });
+    // A service's widget is called by the service's name; only a service
+    // with several widgets adds which one, by its readable name.
+    const several = serviceWidgets.filter((v) => v.serviceId === w.serviceId).length > 1;
+    sources.push({ id: w.id, kind: 'serviceWidget', title: several ? `${s.name} · ${infoWidgetLabel(w.type)}` : s.name, group: s.group, nativeLocator: { serviceId: s.id, groupPath: s.groupPath, name: s.name, widgetIndex: w.index, sourceKey: w.sourceKey, sourceIndex: w.sourceIndex, proxyIndex: w.sourceKey === 'widget' ? -1 : w.sourceIndex, type: w.type } });
   }
   const infoTitles = infoWidgetTitles(infoWidgets);
   for (const w of infoWidgets) sources.push({ id: w.id, kind: 'informationWidget', title: infoTitles.get(w), group: 'Information', nativeLocator: { index: w.index, type: w.type } });
@@ -216,8 +300,22 @@ export function boardSources({ services, serviceWidgets, infoWidgets, bookmarks 
   return sources;
 }
 
-export function reconcileBoard(sources, previous) {
+// Default size of a newly added card: a third of the desktop width.
+// A link, bookmark or small information widget is one compact row; an
+// integration widget has room for a large value and a row below. Four fit
+// across the desktop grid. Content that needs more starts at its minimum.
+export const NEW_PANEL_SIZE = Object.freeze({ w: 6, h: 2 });
+export const NEW_WIDGET_SIZE = Object.freeze({ w: 6, h: 4 });
+export function newPanelSize(source) {
+  const base = source.kind === 'serviceWidget' ? NEW_WIDGET_SIZE : NEW_PANEL_SIZE;
+  const minimum = panelMinimum(source);
+  return { w: Math.max(base.w, minimum.w), h: Math.max(base.h, minimum.h) };
+}
+
+export function reconcileBoard(sources, previous, { pageId } = {}) {
   previous = validateStoredBoard(previous);
+  const pages = previous.pages;
+  const target = pages.some((page) => page.id === pageId) ? pageId : pages[0].id;
   const sourceIds = new Set(sources.map((s) => s.id));
   const byId = new Map(previous.panels.map((p) => [p.id, p]));
   const stacked = new Set();
@@ -227,37 +325,50 @@ export function reconcileBoard(sources, previous) {
     panelIds.forEach((id) => stacked.add(id));
     return [{ ...s, panelIds }];
   });
-  const occupied = stacks.map((s) => s.rect);
-  // Reserve valid persisted standalone positions before placing new arrivals.
-  for (const s of sources) if (!stacked.has(s.id) && byId.has(s.id)) occupied.push(byId.get(s.id).rect);
+  // Only the page that receives new arrivals matters for their placement.
+  const occupied = stacks.filter((s) => s.pageId === target).map((s) => s.rect);
+  for (const s of sources) if (!stacked.has(s.id) && byId.get(s.id)?.pageId === target) occupied.push(byId.get(s.id).rect);
   let placement;
   const panels = sources.map((source) => {
-    let position = byId.get(source.id)?.rect;
+    const old = byId.get(source.id);
+    let position = old?.rect;
+    const panel = { ...source, pageId: old?.pageId ?? target };
+    if (old?.look) panel.look = old.look;
+    if (old?.behaviour) panel.behaviour = old.behaviour;
     if (!position) {
       placement ??= placementIndex(occupied);
-      position = placement.next({ w: 4, h: source.kind === 'serviceWidget' ? 5 : 3 });
+      position = placement.next(newPanelSize(source));
       if (!stacked.has(source.id)) placement.add(position);
     }
-    return { ...source, rect: { ...position } };
+    panel.rect = { ...position };
+    return panel;
   });
-  // A stack that shrinks to one member returns that member to a free rectangle.
+  // A stack that shrinks to one member returns that member to a free rectangle on its page.
   for (const old of previous.stacks) {
     const survivors = old.panelIds.filter((id) => sourceIds.has(id));
     if (survivors.length !== 1) continue;
     const panel = panels.find((p) => p.id === survivors[0]);
-    const others = [...stacks.map((s) => s.rect), ...panels.filter((p) => p.id !== panel.id && !stacked.has(p.id)).map((p) => p.rect)];
+    panel.pageId = old.pageId;
+    const others = [...stacks.filter((s) => s.pageId === old.pageId).map((s) => s.rect), ...panels.filter((p) => p.id !== panel.id && !stacked.has(p.id) && p.pageId === old.pageId).map((p) => p.rect)];
     panel.rect = others.some((r) => intersects(old.rect, r)) ? nextPosition(old.rect, others) : { ...old.rect };
   }
-  return { version: 2, columns: BOARD_COLUMNS, panels, stacks };
+  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages, panels, stacks, ...(previous.looks ? { looks: previous.looks } : {}) };
 }
 
 export function validateBoardChange(input, sources) {
   const value = validateStoredBoard(input);
   const map = new Map(sources.map((s) => [s.id, s]));
   if (value.panels.length !== sources.length || value.panels.some((p) => !map.has(p.id) || p.kind !== map.get(p.id).kind)) fail('The board does not match the current native content. Reload before saving.');
-  const panels = value.panels.map((p) => ({ ...clone(map.get(p.id)), rect: p.rect }));
+  // Native identity comes from the sources; placement, page, look and
+  // behaviour are what an arrangement changes.
+  const panels = value.panels.map((p) => {
+    const panel = { ...clone(map.get(p.id)), rect: p.rect, pageId: p.pageId };
+    if (p.look) panel.look = p.look;
+    if (p.behaviour) panel.behaviour = p.behaviour;
+    return panel;
+  });
   const stacked = new Set(value.stacks.flatMap((s) => s.panelIds));
-  const units = [...value.stacks.map((s) => ({ id: s.id, rect: s.rect })), ...panels.filter((p) => !stacked.has(p.id)).map((p) => ({ id: p.id, rect: p.rect }))];
-  for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) if (intersects(units[i].rect, units[j].rect)) fail('Dashboard panels overlap. Move the selected panel to a free grid position.');
-  return { version: 2, columns: BOARD_COLUMNS, panels, stacks: value.stacks };
+  const units = [...value.stacks.map((s) => ({ id: s.id, rect: s.rect, pageId: s.pageId })), ...panels.filter((p) => !stacked.has(p.id)).map((p) => ({ id: p.id, rect: p.rect, pageId: p.pageId }))];
+  for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) if (units[i].pageId === units[j].pageId && intersects(units[i].rect, units[j].rect)) fail('Dashboard panels overlap. Move the selected panel to a free grid position.');
+  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages: value.pages, panels, stacks: value.stacks, ...(value.looks ? { looks: value.looks } : {}) };
 }

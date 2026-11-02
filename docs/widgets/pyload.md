@@ -1,4 +1,4 @@
-# Pyload
+# pyLoad
 
 Integration · type `pyload` · [Homepage documentation](https://gethomepage.dev/widgets/services/pyload/)
 

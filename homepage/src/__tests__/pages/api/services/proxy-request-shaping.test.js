@@ -70,7 +70,11 @@ describe("pages/api/services/proxy", () => {
 
   describe("client request shaping", () => {
     it("forces GET and drops the body on the no-endpoint quick return", async () => {
-      getServiceWidget.mockResolvedValue({ type: "noendpoint", url: "http://example" });
+      getServiceWidget.mockResolvedValue({
+        url: "http://service.example.org",
+        type: "noendpoint",
+        url: "http://example",
+      });
 
       const req = createReq({
         method: "POST",
@@ -87,7 +91,11 @@ describe("pages/api/services/proxy", () => {
     });
 
     it.each(["PUT", "DELETE", "PATCH"])("forces GET for a %s on the no-endpoint quick return", async (method) => {
-      getServiceWidget.mockResolvedValue({ type: "noendpoint", url: "http://example" });
+      getServiceWidget.mockResolvedValue({
+        url: "http://service.example.org",
+        type: "noendpoint",
+        url: "http://example",
+      });
 
       const req = createReq({ method, body: "payload", query: { group: "g", service: "svc", index: "0" } });
 
@@ -99,7 +107,7 @@ describe("pages/api/services/proxy", () => {
     });
 
     it("forces GET and drops the body on the allowedEndpoints path", async () => {
-      getServiceWidget.mockResolvedValue({ type: "allowed", url: "http://example" });
+      getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "allowed", url: "http://example" });
 
       const req = createReq({
         method: "DELETE",
@@ -116,7 +124,11 @@ describe("pages/api/services/proxy", () => {
     });
 
     it("forces GET and drops the body on the calendar exception path", async () => {
-      getServiceWidget.mockResolvedValue({ type: "calendar", url: "http://example" });
+      getServiceWidget.mockResolvedValue({
+        url: "http://service.example.org",
+        type: "calendar",
+        url: "http://example",
+      });
 
       const req = createReq({
         method: "POST",
@@ -133,7 +145,7 @@ describe("pages/api/services/proxy", () => {
     });
 
     it("forces GET for a mapping that does not declare a method", async () => {
-      getServiceWidget.mockResolvedValue({ type: "mapped", url: "http://example" });
+      getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "mapped", url: "http://example" });
 
       const req = createReq({
         method: "POST",
@@ -149,7 +161,7 @@ describe("pages/api/services/proxy", () => {
     });
 
     it("drops a client body when a non-GET mapping does not declare one", async () => {
-      getServiceWidget.mockResolvedValue({ type: "mapped", url: "http://example" });
+      getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "mapped", url: "http://example" });
 
       const req = createReq({
         method: "POST",
@@ -167,7 +179,7 @@ describe("pages/api/services/proxy", () => {
 
   describe("mapping opt-in", () => {
     it("still allows a mapping to declare a non-GET method and body", async () => {
-      getServiceWidget.mockResolvedValue({ type: "mapped", url: "http://example" });
+      getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "mapped", url: "http://example" });
 
       const req = createReq({
         method: "POST",
@@ -184,7 +196,7 @@ describe("pages/api/services/proxy", () => {
     });
 
     it("rejects a method that does not match the mapping", async () => {
-      getServiceWidget.mockResolvedValue({ type: "mapped", url: "http://example" });
+      getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "mapped", url: "http://example" });
 
       const req = createReq({
         method: "GET",
@@ -202,7 +214,7 @@ describe("pages/api/services/proxy", () => {
 
   describe("dispatch guards", () => {
     it("rejects an endpoint that fails the allowedEndpoints test", async () => {
-      getServiceWidget.mockResolvedValue({ type: "allowed", url: "http://example" });
+      getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "allowed", url: "http://example" });
 
       const req = createReq({ query: { group: "g", service: "svc", endpoint: "shutdown", index: "0" } });
       const res = createMockRes();
@@ -215,7 +227,7 @@ describe("pages/api/services/proxy", () => {
     });
 
     it("rejects an unknown widget type", async () => {
-      getServiceWidget.mockResolvedValue({ type: "nope", url: "http://example" });
+      getServiceWidget.mockResolvedValue({ url: "http://service.example.org", type: "nope", url: "http://example" });
 
       const req = createReq({ query: { group: "g", service: "svc", index: "0" } });
       const res = createMockRes();

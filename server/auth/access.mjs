@@ -74,10 +74,14 @@ export function landingDashboard(data, user, dashboards) {
 
 // Required level for a dashboard-relative request. Anything under
 // /studio/ that is not listed needs an administrator (default deny).
-const VIEW_GET = new Set(['/studio/api/board', '/studio/api/access', '/studio/catalog.json', '/studio/logo']);
-const ARRANGE_POST = new Set(['/studio/api/board', '/studio/api/discovery-visibility', '/studio/api/appearance', '/studio/api/logo']);
+// /studio/api/history: a chart's collected numbers, the same values its card shows.
+const VIEW_GET = new Set(['/studio/api/board', '/studio/api/access', '/studio/catalog.json', '/studio/logo', '/studio/api/preferences', '/studio/api/history']);
+// Anyone who can open a dashboard keeps their own preferences.
+const VIEW_POST = new Set(['/studio/api/preferences']);
+// /studio/api/history/probe: the formats of a widget's numbers, for the look's Show as choice.
+const ARRANGE_POST = new Set(['/studio/api/history/probe', '/studio/api/board', '/studio/api/discovery-visibility', '/studio/api/appearance', '/studio/api/logo', '/studio/api/images', '/studio/api/images/delete', '/studio/api/my-images', '/studio/api/my-images/delete', '/studio/api/my-images/use']);
 // The editor and settings pages are opened from the Dashboards page.
-const ARRANGE_GET = new Set(['/studio/api/appearance', '/studio/edit', '/studio/settings']);
+const ARRANGE_GET = new Set(['/studio/api/appearance', '/studio/api/images', '/studio/api/my-images', '/studio/edit', '/studio/settings']);
 // Admin operations that also need a recent sign-in.
 const STEP_UP = new Set(['POST /studio/api/save', 'POST /studio/api/import', 'POST /studio/api/restore', 'GET /studio/api/export']);
 
@@ -90,7 +94,12 @@ export function requiredLevel(method, path) {
   }
   const read = method === 'GET' || method === 'HEAD';
   if (read && VIEW_GET.has(path)) return { level: 'view' };
+  // An uploaded image is shown on the dashboard's cards, so viewers load it.
+  if (read && /^\/studio\/api\/images\/[a-f0-9]{24}$/.test(path)) return { level: 'view' };
+  if (method === 'POST' && VIEW_POST.has(path)) return { level: 'view' };
   if (read && ARRANGE_GET.has(path)) return { level: 'arrange' };
+  // Your own uploads show only in the library while you edit.
+  if (read && /^\/studio\/api\/my-images\/[a-f0-9]{24}$/.test(path)) return { level: 'arrange' };
   if (method === 'POST' && ARRANGE_POST.has(path)) return { level: 'arrange' };
   const stepUp = STEP_UP.has(`${read ? 'GET' : method} ${path}`) || (read && path.startsWith('/studio/api/backups/'));
   return { level: 'admin', stepUp };

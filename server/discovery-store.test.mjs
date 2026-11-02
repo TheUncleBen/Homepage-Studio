@@ -248,3 +248,17 @@ test('safe producer warnings survive reads without arbitrary exception text or s
   assert.ok(current.warnings.every(warning => typeof warning.message === 'string' && warning.message.length > 0));
   assert.deepEqual(await tree(root), before);
 });
+
+test('newly discovered widgets are named until the arrangement is saved', async t => {
+  const { store, provider } = await fixture(t);
+  assert.deepEqual((await store.loadBoard()).newDiscoveredIds, [], 'nothing before the first save');
+  let current = await refresh(store);
+  await store.saveBoard({ revision: current.revision, board: current.board });
+  assert.deepEqual((await store.loadBoard()).newDiscoveredIds, []);
+  provider.response = manifest([source(), source(1, true), source(2)]);
+  current = await refresh(store);
+  const envelope = await store.loadBoard();
+  assert.deepEqual(envelope.newDiscoveredIds, [sid(2)]);
+  await store.saveBoard({ revision: envelope.revision, board: envelope.board });
+  assert.deepEqual((await store.loadBoard()).newDiscoveredIds, []);
+});

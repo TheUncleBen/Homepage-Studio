@@ -11,11 +11,6 @@ export default function Document() {
         <meta name="studio-dashboard-base" content={dashboard.basePath} />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="msapplication-config" content={dashboardPath("/browserconfig.xml", dashboard.basePath)} />
-        <link
-          rel="manifest"
-          href={dashboardPath("/site.webmanifest?v=4", dashboard.basePath)}
-          crossOrigin="use-credentials"
-        />
         <link rel="preload" href={dashboardPath("/api/config/custom.css", dashboard.basePath)} as="style" />
         <link rel="stylesheet" href={dashboardPath("/api/config/custom.css", dashboard.basePath)} /> {}
       </Head>

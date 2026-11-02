@@ -1,4 +1,4 @@
-# Gitlab
+# GitLab
 
 Integration · type `gitlab` · [Homepage documentation](https://gethomepage.dev/widgets/services/gitlab/)
 

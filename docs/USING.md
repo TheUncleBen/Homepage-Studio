@@ -71,8 +71,11 @@ Every page, dashboards and administration alike, has the same bar:
   the deployment's name. On a dashboard, that dashboard's logo and name.
 - The name opens Studio's menu: **All dashboards**, **Administration** for
   administrators, then every dashboard you can open, to jump straight to one.
-- **Quick Launch** on a dashboard (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> +
-  <kbd>K</kbd>, Homepage's own search across your services and bookmarks).
+- **Search** on a dashboard (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> +
+  <kbd>K</kbd>, or just start typing). It finds every widget, service and
+  bookmark on every page, says which page each is on, and offers a web search
+  with your own search engine (Google unless you choose another in **My
+  account → Search**). It replaces Homepage's Quick Launch.
 - Your account menu: **My account** and **Sign out**.
 
 The deployment's name is `STUDIO_DEPLOYMENT_NAME` (default *Homepage
@@ -101,19 +104,27 @@ Dashboards page asks for one, suggesting `dashboard`, and nothing else opens
 until it's saved. You can change it later with **⋯ → Rename or change address** in its row.
 
 A new dashboard is empty. In the editor it shows a short note, *A clean
-slate*, and an **Add your first widget** button. Group buttons (**All
-content** and one per native group) filter the live dashboard when it has at
-least two groups.
+slate*, and an **Add your first widget** button. To split a dashboard into
+sections, add pages (below).
 
-The board is a 12-column grid. In a narrower window it shows the same layout
-on 8 columns, and on a phone on 4, keeping the order you see from left to
-right and top to bottom. On 8 columns (a tablet, or a zoomed-in browser)
-every panel is half or full width: up to half the desktop width becomes half,
-wider becomes full width. Two halves share a line, so a row of three becomes
-two and then one, and each line is filled. On a phone every tile takes
-the full width, one under the other. There is one layout, not one per screen
-size: a move you make on a phone or in a narrow window is a move on the
-desktop too.
+The board is a 24-column grid of 36 px rows. In a narrower window (or a
+tablet) it shows the same layout on 16 columns, and on a phone on 8, keeping
+the order you see from left to right and top to bottom. On 16 columns every
+panel is half or full width: up to half the desktop width becomes half, wider
+becomes full width. Two halves share a line, so a row of three becomes two and
+then one, and each line is filled. On a phone every tile takes the full width,
+one under the other. There is one layout, not one per screen size: a move you
+make on a phone or in a narrow window is a move on the desktop too.
+
+### Pages
+
+A dashboard can have up to 20 pages, shown as tabs under the top bar. Each
+widget and stack belongs to one page. In the editor, **Add page** adds one,
+and a page's **⋯** menu renames, reorders, duplicates (with copies of every
+widget on it) or deletes it. Keys <kbd>1</kbd> to <kbd>9</kbd> go to a page,
+and <kbd>[</kbd> and <kbd>]</kbd> to the previous or next one. **Dashboard
+settings → Widget defaults** says whether the dashboard opens on its first
+page or the one you last looked at.
 
 ## Adding content
 
@@ -133,6 +144,9 @@ documentation. The [widget reference](widgets/README.md) has the same for
 every widget, in one place. The panel appears in the
 first free spot on the board, and the save makes a snapshot you can go back to.
 
+Studio's own copies of the [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons)
+logos ship with it, so built-in logos show without internet access.
+
 Information widgets are titled by their native name, numbered when you have
 more than one of a kind in configuration order: *Date & Time*, *Date & Time 2*.
 Adding a widget further down the list never renames the ones above it.
@@ -145,10 +159,13 @@ hold, right-click or drag there only does what the widget itself does.
 
 ### Touch
 
-- Move a panel by its **move handle** (the grip in its title bar) and resize
-  it from its **corner handle**.
-- Each panel has a checkbox to select it; **Create stack** and **Position &
-  size** work on the selection.
+- So that controls don't cover what your widgets show, a widget shows its
+  checkbox, **move handle**, **edit** button and **resize corner** only after
+  you tap it. Tapping another widget moves them there; tapping empty space
+  hides them.
+- **Hold** a widget to open its menu (Edit, Duplicate, look, Move to page,
+  Delete and more).
+- Move a widget by its move handle and resize it from its corner handle.
 
 A touch that **starts on something the widget handles itself** is left to the
 widget. That covers links, buttons and form fields, embedded frames, video and
@@ -158,26 +175,36 @@ puts the panel back.
 
 ### Mouse and keyboard
 
-- Each panel has a checkbox to select it, a **move handle**, an **edit**
-  button and a **resize corner**. Drag the move handle or the corner. Each
-  stack has the same checkbox (**Select stack**), so a selected stack can be
-  deselected on its own.
+- A widget shows its checkbox, **move handle**, **edit** button and **resize
+  corner** while the pointer is on it, while it has keyboard focus, or while
+  it's selected. Drag the move handle or the corner. **Right-click** a widget
+  for its menu. Each stack has the same checkbox (**Select stack**).
+- <kbd>Shift</kbd>-click or <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-click widgets, drag a
+  box on empty space, or press <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>A</kbd> to
+  select several. The selection bar then offers **Look**, **Size**, **Page**,
+  **Stack**, **Duplicate** and **Delete**, each only when it applies.
+  <kbd>Escape</kbd> clears the selection.
 - With the move handle focused, the **arrow keys** move the panel one cell and
   **Shift + arrows** resize it. With the resize corner focused, the arrows
   resize. **Escape** cancels a drag in progress.
-- **Position & size** (with one panel selected) sets **Column**, **Row**,
-  **Width** and **Height** as numbers. A value that's out of range is flagged
-  and **Apply** stays off until it's fixed.
+- **Size** (with one panel selected) sets **Column**, **Row**, **Width** and
+  **Height** as numbers. A value that's out of range is flagged and **Apply**
+  stays off until it's fixed.
+- The keyboard button in the editing bar lists every shortcut (on devices with
+  a keyboard).
 
 Panels snap to the grid and can't overlap. Content has a minimum size, so a
 panel won't shrink below what its widget needs.
 
 ### Saving or cancelling
 
-While you edit, the toolbar offers **Save arrangement**, which saves and keeps
-you in the editor. On wider screens the toolbar also says **Unsaved
-arrangement**. In the header:
+The editing bar along the top holds **Widgets** (add one), **Tidy up**,
+**Undo** and **Redo** on the left, and **Save**, **Cancel** and **Done** on the
+right, with **Unsaved changes** beside them while there are any. On a phone the
+left-hand buttons show icons only.
 
+- **Save** (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd>) saves and keeps you
+  in the editor.
 - **Done** saves and goes back to the Dashboards page.
 - **Cancel** goes back to the Dashboards page. If you have moves, sizes or stacks that aren't
   saved, it first asks **Discard unsaved changes?** with **Keep editing**
@@ -226,7 +253,7 @@ arrows.
   *manual navigation delay* (30 seconds by default), then the slideshow moves
   on and continues at its normal pace.
 - **While paused**, changing the slide keeps it paused.
-- Playing pauses by itself while you edit, while a dialog or Quick Launch is
+- Playing pauses by itself while you edit, while a dialog or search is
   open, while you're using something inside the widget (an embedded page, for
   example), while the stack is scrolled off screen and while the tab is in the
   background, and picks up where it left off.
@@ -255,7 +282,7 @@ available in the editor.
 In the editor, the stack's edit button opens **Edit widget stack**. Under
 **Widgets** you move members earlier or later (the arrows), configure one (the
 pencil), take one out (**×**) or **Add existing panel**. **Size and position**
-sets the stack's place on the 12-column layout, and **Unstack all** at the
+sets the stack's place on the 24-column layout, and **Unstack all** at the
 bottom turns every member back into an ordinary panel. **Slideshow** has the
 timing for that stack:
 
@@ -298,6 +325,52 @@ draft with a mistake stays open for you to fix; the saved file isn't touched.
 
 **Delete** in the same dialog asks *Delete ...?* with **Keep it** (selected)
 and **Delete permanently**. On a phone the question scrolls into view.
+
+### Saved connections and Test connection
+
+An integration's address and key can be typed into the widget, or saved once
+as a **saved connection** and picked on any widget (**Saved connection**
+instead of **Enter here**). Changing a saved connection changes every widget
+that uses it. Keys are never shown again once saved; leave the key empty to
+keep it. Saved connections are listed in **Dashboard settings → Saved
+connections**, and a connection saved *Just me* follows you to any dashboard
+you edit. Only administrators can see or change them.
+
+**Test connection**, under the connection, sends the widget's first request
+now and says in plain words whether it worked, for example *Connected in
+42 ms.*, *The service refused the key or login. Check them.* or *The
+address's certificate isn't trusted by Studio.*
+
+### How a widget looks
+
+The widget dialog shows a live preview beside its settings. **Look** sets its
+background, colour, edge, corners, header and size of the hero number;
+**Status** chooses the check (web address, ping or off) and how it shows;
+**Behaviour** sets refresh, what a click does and whether it shows on phones.
+A choice that matches the dashboard's default is not stored, so changing the
+default in **Dashboard settings → Widget defaults** changes every widget that
+didn't choose otherwise.
+
+**Status history**, under **Status** on a service tile or in **Show as** on
+an integration, shows a bar for each status check (about one a minute, the
+last hour) and the share of checks that were up over a range you choose.
+
+**Show** lists the values the widget showed last. Pick the hero, hide what you
+don't need, rename a value or change how its number reads. **Show as** draws
+the numbers as **Numbers**, a **Table**, a **Line**, **Area** or **Bar**
+chart, a **Donut**, a **Pie** or a **Gauge**, offering only the ones the
+widget's numbers suit. Charts have a **Time range** and a colour per line.
+A hero number can show a **Trend** (against an hour ago, yesterday or last
+week). **Rules** on a value set a **Warning from** and **Problem from**
+level (**Lower is worse** turns them round); past a level the value takes
+that colour and the card shows its alert edge.
+
+Studio keeps the numbers these need once a minute, only for widgets that use
+them, for 7, 30 or 90 days (**Dashboard settings → Widget defaults → Chart
+history**, 30 by default). A new chart says *Collecting numbers* until it has
+some. Select a line, area or bar chart to open it full size, with other time ranges
+and the exact values under your pointer. While editing, the widget's menu has
+**Open full view** (<kbd>Space</kbd>).
 
 ## Configuration files
 
@@ -350,7 +423,7 @@ Playing slideshows, opening dialogs and exporting never make snapshots.
   their layout as they were.
 - **Download snapshot** downloads the selected snapshot as a file.
 - **Choose a backup file** stages an exported dashboard or a downloaded
-  snapshot (up to 40 MiB). Nothing changes until you press **Import
+  snapshot (up to 100 MiB). Nothing changes until you press **Import
   dashboard**, which checks the whole file, keeps a snapshot of the current
   dashboard first, and then replaces it. Closing the dialog while a backup is
   staged asks first and names the file, for example **Discard the staged
@@ -420,7 +493,7 @@ as unavailable instead of being dropped or swapped for something else.
 | A save is refused because the dashboard changed | Someone (or another tab) saved first. Your draft stays; reload to see their change, then repeat yours |
 | *The dashboard could not refresh* after a save | The save went through; only refreshing the widgets failed. Use the reload offered; the save isn't sent again |
 | *All dashboard renderers are busy* | Too many dashboards are open at once for the container's limit. Try again shortly, or ask the operator ([OPERATIONS.md](OPERATIONS.md#workers-and-limits)) |
-| *This request exceeds the 2 MiB configuration limit* | A single file or request is too big. Imports have a 40 MiB limit, but each file in them is still limited to 2 MiB |
+| *This request exceeds the 2 MiB configuration limit* | A single file or request is too big. Imports have a 100 MiB limit, but each file in them is still limited to 2 MiB |
 | **This dashboard isn't available** | The address changed or the dashboard was archived; see [More than one dashboard](#more-than-one-dashboard) |
 
 More fixes are in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).

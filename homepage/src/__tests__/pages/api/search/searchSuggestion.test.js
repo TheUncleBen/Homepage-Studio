@@ -2,13 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import createMockRes from "test-utils/create-mock-res";
 
-const { providers, getSettings, widgetsFromConfig, cachedRequest } = vi.hoisted(() => ({
+const { providers, widgetsFromConfig, cachedRequest } = vi.hoisted(() => ({
   providers: {
     custom: { name: "Custom", url: false, suggestionUrl: null },
     google: { name: "Google", url: "https://google?q=", suggestionUrl: "https://google/suggest?q=" },
     empty: { name: "NoSuggest", url: "x", suggestionUrl: null },
   },
-  getSettings: vi.fn(),
   widgetsFromConfig: vi.fn(),
   cachedRequest: vi.fn(),
 }));
@@ -19,10 +18,6 @@ vi.mock("components/widgets/search/search", () => ({
     google: providers.google,
     empty: providers.empty,
   },
-}));
-
-vi.mock("utils/config/config", () => ({
-  getSettings,
 }));
 
 vi.mock("utils/config/widget-helpers", () => ({
@@ -89,18 +84,15 @@ describe("pages/api/search/searchSuggestion", () => {
     expect(res.body).toEqual(["q", ["x"]]);
   });
 
-  it("falls back to quicklaunch custom settings when no search widget is configured", async () => {
+  it("returns no suggestions for Custom without a search widget, and never keeps an earlier address", async () => {
     widgetsFromConfig.mockResolvedValueOnce([]);
-    getSettings.mockReturnValueOnce({
-      quicklaunch: { provider: "custom", url: "https://ql?q=", suggestionUrl: "https://ql/suggest?q=" },
-    });
-    cachedRequest.mockResolvedValueOnce(["q", ["y"]]);
 
     const req = { query: { query: "hello", providerName: "Custom" } };
     const res = createMockRes();
 
     await handler(req, res);
 
-    expect(cachedRequest).toHaveBeenCalledWith("https://ql/suggest?q=hello", 5, "Mozilla/5.0");
+    expect(cachedRequest).not.toHaveBeenCalled();
+    expect(res.body).toEqual(["hello", []]);
   });
 });

@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SettingsContext } from "utils/contexts/settings";
 import { ThemeContext } from "utils/contexts/theme";
 
 vi.mock("next/image", () => ({
-  default: ({ src, alt }) => <div data-testid="next-image" data-src={src} data-alt={alt} />,
+  default: ({ src, alt, onError }) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img data-testid="next-image" data-src={src} data-alt={alt} alt={alt} onError={onError} />
+  ),
 }));
 
 import ResolvedIcon from "./resolvedicon";
@@ -67,16 +70,25 @@ describe("components/resolvedicon", () => {
     expect(div.style.background).toContain("linear-gradient");
   });
 
-  it("falls back to dashboard-icons for .svg", () => {
+  // Built-in logos are served from the offline copies bundled with Studio.
+  it("shows the offline copy of a built-in logo", () => {
     renderWithContexts(<ResolvedIcon icon="foo.svg" />);
+    expect(screen.getByTestId("next-image").getAttribute("data-src")).toContain("/studio-icons/webp/foo.webp");
+  });
+
+  it("falls back to the dashboard-icons CDN in the asked format when there is no offline copy", () => {
+    renderWithContexts(<ResolvedIcon icon="foo.svg" />);
+    fireEvent.error(screen.getByTestId("next-image"));
     expect(screen.getByTestId("next-image").getAttribute("data-src")).toContain("/dashboard-icons/svg/foo.svg");
   });
 
   it("falls back to dashboard-icons for .webp and .png", () => {
     renderWithContexts(<ResolvedIcon icon="foo.webp" />);
+    fireEvent.error(screen.getAllByTestId("next-image")[0]);
     expect(screen.getAllByTestId("next-image")[0].getAttribute("data-src")).toContain("/dashboard-icons/webp/foo.webp");
 
     renderWithContexts(<ResolvedIcon icon="foo.png" />);
+    fireEvent.error(screen.getAllByTestId("next-image")[1]);
     expect(screen.getAllByTestId("next-image")[1].getAttribute("data-src")).toContain("/dashboard-icons/png/foo.png");
   });
 });

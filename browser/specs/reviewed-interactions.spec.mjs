@@ -1,7 +1,7 @@
 import { DASHBOARDS, expect, mouseDrag, openEditor, openSettings, panelPixels, seedServicePanels, studioApi, test } from '../helpers/dashboard.mjs';
 import { activePanel, carousel, playback } from '../helpers/engineering.mjs';
 
-const serviceSlots = () => ['Alpha', 'Beta', 'Gamma'].map((name, index) => ({ name, rect: { x: index * 4, y: 0, w: 4, h: 3 } }));
+const serviceSlots = () => ['Alpha', 'Beta', 'Gamma'].map((name, index) => ({ name, rect: { x: index * 6, y: 0, w: 6, h: 3 } }));
 
 async function seedStack(request, members = 3, transition = 'horizontal', overrides = {}) {
   const saved = await seedServicePanels(request, serviceSlots().slice(0, members));
@@ -42,7 +42,7 @@ test('a short header press released outside the stack neither edits nor leaves p
   await expect(stack.locator('.studio-playback-status')).toHaveText('Playing');
 });
 
-test('Quick Launch freezes the remaining playback interval and resumes without a catch-up tick', async ({ page, request }) => {
+test('Search freezes the remaining playback interval and resumes without a catch-up tick', async ({ page, request }) => {
   await seedStack(request);
   await page.clock.install({ time: new Date('2026-10-22T12:00:00Z') });
   await page.goto('/dashboard');
@@ -53,7 +53,7 @@ test('Quick Launch freezes the remaining playback interval and resumes without a
   const snapshots = await studioApi(request, '/dashboard/studio/api/backups');
   await stack.getByRole('button', { name: 'Play slideshow', exact: true }).click();
   await page.clock.fastForward(500);
-  await page.getByRole('button', { name: 'Quick Launch', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Studio', exact: true }).getByRole('button', { name: 'Search', exact: true }).click();
   await expect(stack.locator('.studio-playback-status')).toHaveText('Waiting');
   await page.clock.fastForward(60000);
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', first);
@@ -66,14 +66,14 @@ test('Quick Launch freezes the remaining playback interval and resumes without a
   expect(await studioApi(request, '/dashboard/studio/api/backups')).toEqual(snapshots);
 });
 
-test('opening Quick Launch during a held stack title neither edits nor opens the picker', async ({ page, request }) => {
+test('opening Search during a held stack title neither edits nor opens the picker', async ({ page, request }) => {
   await seedStack(request);
   await page.goto('/dashboard');
   const bounds = await carousel(page).getByRole('button', { name: /^Choose widget in stack:/ }).boundingBox();
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();
   await page.keyboard.press('Control+k');
-  await expect(page.locator('.studio-quicklaunch input')).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Search this dashboard and the web', exact: true })).toBeVisible();
   await page.waitForTimeout(600);
   await page.mouse.up();
   await expect(page.locator('.studio-app')).not.toHaveClass(/studio-edit-mode/);
@@ -131,18 +131,19 @@ for (const input of ['pointer', 'keyboard']) {
     await openEditor(page);
     const beta = page.locator('[data-panel-id][aria-label="Beta"]');
     await expect(beta).toBeVisible();
-    expect((await panelPixels(beta)).top).toBe(264);
+    // Phones show one widget per row: Beta is one 3-row tile (3 × 48 px) down.
+    expect((await panelPixels(beta)).top).toBe(144);
     await page.evaluate(() => { window.__reviewedHost = document.querySelector('[data-panel-id][aria-label="Beta"]'); });
     const handle = page.getByRole('button', { name: 'Move Beta. Use arrow keys; Shift and arrow keys resize.' });
-    if (input === 'pointer') await mouseDrag(page, handle, 0, -264);
+    if (input === 'pointer') await mouseDrag(page, handle, 0, -144);
     else await handle.press('ArrowUp');
     expect((await panelPixels(beta)).top).toBe(0);
     expect(await page.evaluate(() => window.__reviewedHost === document.querySelector('[data-panel-id][aria-label="Beta"]'))).toBe(true);
-    await page.getByRole('button', { name: 'Save arrangement', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Save arrangement', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
     const saved = await studioApi(request, '/dashboard/studio/api/board');
-    expect(saved.board.panels.find(panel => panel.title === 'Beta').rect).toEqual({ x: 0, y: 0, w: 4, h: 3 });
-    expect(saved.board.panels.find(panel => panel.title === 'Alpha').rect).toEqual({ x: 4, y: 0, w: 4, h: 3 });
+    expect(saved.board.panels.find(panel => panel.title === 'Beta').rect).toEqual({ x: 0, y: 0, w: 6, h: 3 });
+    expect(saved.board.panels.find(panel => panel.title === 'Alpha').rect).toEqual({ x: 6, y: 0, w: 6, h: 3 });
     await page.setViewportSize({ width: 1440, height: 1080 });
     await page.goto('/dashboard');
     await expect(beta).toBeVisible();
@@ -151,13 +152,13 @@ for (const input of ['pointer', 'keyboard']) {
   });
 }
 
-test('at 8 columns Left and Right move a wrapped panel one reading position and persist the desktop order', async ({ page, request }) => {
+test('on a tablet Left and Right move a wrapped panel one reading position and persist the desktop order', async ({ page, request }) => {
   await seedServicePanels(request, serviceSlots());
   await page.setViewportSize({ width: 820, height: 1180 });
   await openEditor(page);
   const panel = name => page.locator(`[data-panel-id][aria-label="${name}"]`);
   await expect(panel('Gamma')).toBeVisible();
-  // Three 4-wide tiles do not fit 8 columns: Gamma wraps below Alpha.
+  // A tablet shows halves, so a row of three wraps: Gamma goes below Alpha.
   expect((await panelPixels(panel('Gamma'))).top).toBeGreaterThan((await panelPixels(panel('Alpha'))).top);
   const handle = page.getByRole('button', { name: 'Move Gamma. Use arrow keys; Shift and arrow keys resize.' });
   await handle.press('ArrowLeft');
@@ -166,13 +167,13 @@ test('at 8 columns Left and Right move a wrapped panel one reading position and 
   expect(gamma.left).toBeGreaterThan(alpha.left);
   expect(beta.top).toBeGreaterThan(alpha.top);
   expect(beta.left).toBe(alpha.left);
-  await page.getByRole('button', { name: 'Save arrangement', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Save arrangement', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   const saved = await studioApi(request, '/dashboard/studio/api/board');
   const rect = name => saved.board.panels.find(item => item.title === name).rect;
-  expect(rect('Alpha')).toEqual({ x: 0, y: 0, w: 4, h: 3 });
-  expect(rect('Gamma')).toEqual({ x: 4, y: 0, w: 4, h: 3 });
-  expect(rect('Beta')).toEqual({ x: 8, y: 0, w: 4, h: 3 });
+  expect(rect('Alpha')).toEqual({ x: 0, y: 0, w: 6, h: 3 });
+  expect(rect('Gamma')).toEqual({ x: 6, y: 0, w: 6, h: 3 });
+  expect(rect('Beta')).toEqual({ x: 12, y: 0, w: 6, h: 3 });
   await handle.press('ArrowRight');
   expect((await panelPixels(panel('Beta'))).top).toBe((await panelPixels(panel('Alpha'))).top);
   expect((await panelPixels(panel('Gamma'))).top).toBeGreaterThan((await panelPixels(panel('Alpha'))).top);
@@ -184,6 +185,8 @@ test.describe('interrupted touch arrangement', () => {
     await seedServicePanels(request, serviceSlots());
     await openEditor(page);
     const handle = page.getByRole('button', { name: 'Move Beta. Use arrow keys; Shift and arrow keys resize.' });
+    // On a touch screen a widget shows its controls once tapped.
+    await page.locator('[data-panel-id][aria-label="Beta"]').tap();
     await handle.scrollIntoViewIfNeeded();
     const bounds = await handle.boundingBox();
     const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
@@ -195,12 +198,12 @@ test.describe('interrupted touch arrangement', () => {
       await expect(page.locator('.studio-moving')).toHaveCount(1);
       // The narrow toolbar hides its secondary status text; the dirty state
       // still exists and its Save action must be available before cancellation.
-      await expect(page.getByText('Unsaved arrangement', { exact: true })).toHaveCount(1);
-      await expect(page.getByRole('button', { name: 'Save arrangement', exact: true })).toBeEnabled();
+      await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(1);
+      await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point(1, x, y + 88), point(2, x - 100, y + 88)] });
       await expect(page.locator('.studio-moving')).toHaveCount(0);
-      await expect(page.getByText('Unsaved arrangement', { exact: true })).toHaveCount(0);
-      expect((await panelPixels(page.locator('[data-panel-id][aria-label="Beta"]'))).top).toBe(264);
+      await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
+      expect((await panelPixels(page.locator('[data-panel-id][aria-label="Beta"]'))).top).toBe(144);
     } finally {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       await cdp.detach();

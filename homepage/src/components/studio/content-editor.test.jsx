@@ -48,7 +48,9 @@ describe("Custom API empty mappings hint", () => {
 
   it("shows a non-blocking hint while mappings are empty and hides it once one is added", () => {
     renderEditor(customApi);
-    expect(screen.getByRole("status")).toHaveTextContent(
+    // A new widget with an address also offers Test connection, whose result is a status too.
+    expect(screen.getByRole("button", { name: "Test connection" })).toBeInTheDocument();
+    expect(screen.getByText(/has no/)).toHaveTextContent(
       "This Custom API widget has no mappings yet, so its panel will be empty.",
     );
     fireEvent.change(screen.getByLabelText("Name"), {
@@ -100,12 +102,117 @@ describe("Content picker names", () => {
     // The name stays as it is; the subtitle tells the two apart.
     const customApi = screen.getAllByRole("button", { name: /^Custom API/ });
     expect(customApi.map((item) => item.textContent)).toEqual([
-      "Custom APIInformation widget",
-      "Custom APIIntegration widget",
+      "Custom APIStands on its own, no app needed.",
+      "Custom APILive numbers from one of your apps.",
     ]);
     expect(screen.queryByText(/\(information widget\)/)).not.toBeInTheDocument();
     expect(screen.getByText("Date & Time")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Information", exact: true }));
     expect(screen.getByText("Custom API")).toBeInTheDocument();
+  });
+});
+
+describe("widget look in the widget dialog", () => {
+  const bookmark = { id: "bm-1", name: "Docs", group: "Links", config: { href: "https://docs.example.com" } };
+  const board = {
+    version: 3,
+    columns: 24,
+    pages: [{ id: "home", name: "Home" }],
+    panels: [
+      {
+        id: "bm-1",
+        kind: "bookmark",
+        title: "Docs",
+        pageId: "home",
+        rect: { x: 0, y: 0, w: 6, h: 2 },
+        look: { edge: "shadow" },
+      },
+    ],
+    stacks: [],
+  };
+  function renderBookmark(fetchMock, source = bookmark) {
+    vi.stubGlobal("fetch", fetchMock);
+    const onSaved = vi.fn();
+    render(
+      <ContentEditor
+        state={{ revision: "r1", services: [], groups: [], bookmarks: [source] }}
+        catalog={{ service: [], info: [] }}
+        panel={board.panels[0]}
+        wholeBoard={board}
+        renderPreview={(panel, override) => (
+          <>
+            <output data-testid="preview">{JSON.stringify(panel.look ?? null)}</output>
+            <output data-testid="preview-link">{JSON.stringify(override)}</output>
+          </>
+        )}
+        onSaved={onSaved}
+        onCancel={vi.fn()}
+        onParent={vi.fn()}
+        onReload={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    );
+    return onSaved;
+  }
+  const ok = () =>
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ revision: "r2", board }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+  it("previews the change and saves a look-only edit as the arrangement", async () => {
+    const fetchMock = ok();
+    const onSaved = renderBookmark(fetchMock);
+    fireEvent.click(screen.getByRole("radio", { name: "Line" }));
+    // Back to the dashboard's edge: the key is removed, not stored.
+    expect(screen.getByTestId("preview")).toHaveTextContent("null");
+    fireEvent.click(screen.getByRole("radio", { name: "Round" }));
+    expect(screen.getByTestId("preview")).toHaveTextContent('{"corners":"round"}');
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/studio/api/board");
+    const body = JSON.parse(init.body);
+    expect(body.board.panels[0].look).toEqual({ corners: "round" });
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the link as it is typed in the preview", () => {
+    renderBookmark(ok());
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Docs site" } });
+    expect(JSON.parse(screen.getByTestId("preview-link").textContent)).toEqual({
+      name: "Docs site",
+      href: "https://docs.example.com",
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the arrangement along with a content edit", async () => {
+    const fetchMock = ok();
+    renderBookmark(fetchMock);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Docs site" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Round" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/studio/api/bookmark");
+    const body = JSON.parse(init.body);
+    expect(body.name).toBe("Docs site");
+    expect(body.board.panels[0].look).toEqual({ edge: "shadow", corners: "round" });
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps On click as the only link-target control and hides the panel id", () => {
+    renderBookmark(ok(), {
+      ...bookmark,
+      config: { href: "https://docs.example.com", target: "_self", id: "studio-abc" },
+    });
+    expect(screen.queryByText("Open target")).toBeNull();
+    expect(screen.queryByText("More options")).toBeNull();
+    expect(screen.getByRole("radiogroup", { name: "On click" })).toBeInTheDocument();
+    vi.unstubAllGlobals();
   });
 });

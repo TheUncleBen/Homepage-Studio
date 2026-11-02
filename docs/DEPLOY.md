@@ -439,7 +439,7 @@ Add one proxy host for Studio. Whatever the proxy, it must:
 | Forward to | `http://homepage_studio:3000`: the full Swarm service name (stack name, underscore, `studio`), which resolves on the network from step 2. Not an IP address, which changes when the task restarts |
 | HTTPS | A certificate for the hostname, with plain HTTP redirected to HTTPS. HSTS is recommended |
 | Headers | Pass the original `Host` header and the full path, and set `X-Forwarded-For` |
-| Request size | Allow request bodies of at least 40 MiB, for **Import dashboard** |
+| Request size | Allow request bodies of at least 100 MiB, for **Import dashboard** |
 | WebSockets | Not needed. Studio has no websocket endpoints and refuses upgrade requests |
 | Access rules | None needed: Studio's sign-in decides who gets in. An allow list (for example your LAN only) still works as an extra layer |
 
@@ -471,7 +471,7 @@ every subdomain of the domain serves HTTPS.
 **Advanced tab**, custom Nginx configuration:
 
 ```nginx
-client_max_body_size 40m;
+client_max_body_size 100m;
 ```
 
 An import over the proxy's limit fails with `413`; nginx's default is 1 MiB.

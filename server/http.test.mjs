@@ -313,6 +313,36 @@ test('complete dashboard import accepts JSON escaping overhead and retains the o
   assert.equal((await post('/studio/api/import', value)).status, 409);
 });
 
+test('a dashboard export carries its images and saved connections, never their keys', async (t) => {
+  const { request, post } = await setup(t);
+  const png = 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7, 8, 9]).toString('base64');
+  const image = await post('/studio/api/images', { kind: 'background', name: 'sky.png', image: png });
+  assert.equal(image.status, 200, image.text);
+  const added = await post('/studio/api/connections', { action: 'add', name: 'Media', url: 'https://media.example.org', key: 'secret-key-123' });
+  assert.equal(added.status, 200, added.text);
+  const exported = await request('/studio/api/export');
+  assert.equal(exported.status, 200, exported.text);
+  assert.doesNotMatch(exported.text, /secret-key-123/);
+  assert.deepEqual(exported.json.connections, [{ id: added.json.connection.id, name: 'Media', url: 'https://media.example.org' }]);
+  assert.equal(exported.json.images.length, 1);
+
+  // Into an empty library: the image comes back under the same id, and the
+  // connection comes back without its key, named for the importer.
+  assert.equal((await post('/studio/api/images/delete', { id: image.json.image.id, confirm: true })).status, 200);
+  assert.equal((await post('/studio/api/connections', { action: 'delete', id: added.json.connection.id })).status, 200);
+  const before = (await request('/studio/api/state')).json;
+  const imported = await post('/studio/api/import', { revision: before.revision, archive: exported.json });
+  assert.equal(imported.status, 200, imported.text);
+  assert.deepEqual(imported.json.connectionsNeedingKeys, ['Media']);
+  assert.deepEqual((await request('/studio/api/images')).json.images.map((entry) => entry.id), [image.json.image.id]);
+  const [connection] = (await request('/studio/api/connections')).json.connections;
+  assert.equal(connection.id, added.json.connection.id);
+  assert.equal(connection.has.key, false);
+
+  const refused = await post('/studio/api/import', { revision: imported.json.revision, archive: { ...exported.json, images: 'nope' } });
+  assert.equal(refused.status, 400);
+});
+
 test('dashboard import rejects its aggregate request limit before creating a snapshot', async (t) => {
   const { request, store } = await setup(t);
   const before = (await request('/studio/api/state')).json;
@@ -322,7 +352,7 @@ test('dashboard import rejects its aggregate request limit before creating a sna
     headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), origin: ORIGIN, 'x-studio-request': '1' },
   });
   assert.equal(result.status, 413);
-  assert.match(result.json.error, /40 MiB dashboard import limit/);
+  assert.match(result.json.error, /100 MiB dashboard import limit/);
   assert.equal((await store.load()).revision, before.revision);
   assert.equal((await store.listBackups()).length, 0);
 });

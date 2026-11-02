@@ -12,20 +12,23 @@ test('the platform default look starts at the defaults, saves with a revision an
   const store = createPlatformStore({ configRoot: root });
   const initial = await store.read();
   assert.deepEqual(initial, { revision: null, ...DEFAULT_PLATFORM, css: '' });
-  const saved = await store.update({ revision: null, mode: 'light', accent: '#81a8c8', background: 'https://images.example.test/sky.jpg', css: '.x { color: red; }' });
+  const saved = await store.update({ revision: null, mode: 'light', accent: '#81a8c8', base: 'slate', background: { source: 'builtin', id: 'dunes' }, css: '.x { color: red; }' });
   assert.equal(saved.mode, 'light');
   assert.equal(await store.readCss(), '.x { color: red; }');
-  assert.deepEqual(JSON.parse(await fs.readFile(path.join(root, 'studio-platform.json'), 'utf8')), { revision: saved.revision, mode: 'light', accent: '#81a8c8', background: 'https://images.example.test/sky.jpg' });
-  await assert.rejects(store.update({ revision: null, mode: 'dark', accent: '#000000', background: null, css: '' }), { code: 'PLATFORM_REVISION_CONFLICT' });
-  for (const bad of [{ mode: 'neon' }, { accent: 'red' }, { background: 'javascript:alert(1)' }, { background: 'https://x.test/a.jpg") ; }' }, { extra: true }, { css: 'x'.repeat(256 * 1024 + 1) }]) {
-    await assert.rejects(store.update({ revision: saved.revision, mode: 'dark', accent: '#000000', background: null, css: '', ...bad }), { name: 'PlatformError' }, JSON.stringify(bad).slice(0, 60));
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(root, 'studio-platform.json'), 'utf8')), { revision: saved.revision, mode: 'light', accent: '#81a8c8', base: 'slate', background: { source: 'builtin', id: 'dunes' } });
+  await assert.rejects(store.update({ revision: null, mode: 'dark', accent: '#000000', base: 'graphite', background: null, css: '' }), { code: 'PLATFORM_REVISION_CONFLICT' });
+  for (const bad of [{ mode: 'neon' }, { accent: 'red' }, { background: 'https://images.example.test/sky.jpg' }, { background: { source: 'builtin', id: 'nope' } }, { background: { source: 'library', id: 'a'.repeat(24) } }, { background: { source: 'builtin', id: 'dunes', fit: 'tile' } }, { extra: true }, { base: 'neon' }, { base: undefined }, { css: 'x'.repeat(256 * 1024 + 1) }]) {
+    await assert.rejects(store.update({ revision: saved.revision, mode: 'dark', accent: '#000000', base: 'graphite', background: null, css: '', ...bad }), { name: 'PlatformError' }, JSON.stringify(bad).slice(0, 60));
   }
   assert.equal((await store.read()).revision, saved.revision, 'refused changes write nothing');
 });
 
 test('the Studio page theme follows the platform mode and accent, and Auto follows the device', () => {
-  const dark = studioThemeCss(DEFAULT_PLATFORM);
-  assert.match(dark, /^:root\{color-scheme:dark;--bg:#111115;/);
+  // New installs follow the device (owner choice, 2 Nov 2026).
+  assert.equal(DEFAULT_PLATFORM.mode, 'system');
+  assert.match(studioThemeCss(DEFAULT_PLATFORM), /@media \(prefers-color-scheme: light\)/);
+  const dark = studioThemeCss({ ...DEFAULT_PLATFORM, mode: 'dark' });
+  assert.match(dark, /^:root\{color-scheme:dark;--bg:#121314;/);
   assert.match(dark, new RegExp(`--accent:${DEFAULT_PLATFORM.accent};`));
   assert.match(dark, /--ok-text:#b8e0c6;/);
   assert.doesNotMatch(dark, /@media/);

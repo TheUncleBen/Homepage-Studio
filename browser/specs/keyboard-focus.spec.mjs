@@ -16,12 +16,12 @@ async function seedFocusBoard(request) {
   }, board => {
     const byTitle = title => board.panels.find(panel => panel.title === title);
     const search = board.panels.find(panel => panel.nativeLocator?.type === 'search');
-    byTitle('Lower panel').rect = { x: 0, y: 6, w: 4, h: 3 };
-    byTitle('Right panel').rect = { x: 4, y: 0, w: 4, h: 3 };
-    search.rect = { x: 8, y: 0, w: 4, h: 3 };
+    byTitle('Lower panel').rect = { x: 0, y: 8, w: 6, h: 3 };
+    byTitle('Right panel').rect = { x: 6, y: 0, w: 6, h: 3 };
+    search.rect = { x: 12, y: 0, w: 8, h: 3 };
     const members = [byTitle('Stacked first'), byTitle('Stacked second')];
-    for (const member of members) member.rect = { x: 0, y: 0, w: 4, h: 4 };
-    board.stacks = [{ id: 'focus-stack', panelIds: members.map(member => member.id), rect: { x: 0, y: 0, w: 4, h: 4 }, playback: playback() }];
+    for (const member of members) member.rect = { x: 0, y: 0, w: 6, h: 6 };
+    board.stacks = [{ id: 'focus-stack', panelIds: members.map(member => member.id), rect: { x: 0, y: 0, w: 6, h: 6 }, playback: playback() }];
   });
 }
 
@@ -50,8 +50,9 @@ test('Tab follows the visual reading order of panels and stacks without moving n
     hosts.indexOf(seeded.board.stacks[0].panelIds[0]),
   );
 
-  // Start on the last toolbar control, immediately before the board.
-  await page.evaluate(() => [...document.querySelectorAll('.studio-board-toolbar button:not(:disabled)')].at(-1).focus());
+  // Start on the last top bar control, immediately before the board (the
+  // live dashboard has no editing toolbar).
+  await page.evaluate(() => [...document.querySelectorAll('.studio-topbar :is(button, a[href]):not(:disabled)')].at(-1).focus());
   const visited = [];
   for (let step = 0; step < 30; step += 1) {
     await page.keyboard.press('Tab');
@@ -72,7 +73,7 @@ test('Tab follows the visual reading order of panels and stacks without moving n
   await page.locator('[data-stack-shell-id="focus-stack"]').focus();
   await page.keyboard.press('Shift+Tab');
   expect(await focusedUnit(page)).toBeNull();
-  expect(await page.evaluate(() => Boolean(document.activeElement.closest('.studio-board-toolbar')))).toBe(true);
+  expect(await page.evaluate(() => Boolean(document.activeElement.closest('.studio-topbar')))).toBe(true);
 
   // The same host elements, in the same DOM order, keep their native state.
   expect(await page.evaluate(() => [...document.querySelectorAll('[data-panel-id]')].map(host => host.studioFocusMarker))).toEqual(hosts);

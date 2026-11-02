@@ -117,7 +117,7 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
     read: async () => copy(await read()),
     mutate: change => serial(async () => {
       if (!change || typeof change !== 'object' || Array.isArray(change)) throw new DashboardError('Choose a dashboard operation.', 'INVALID_DASHBOARD_ACTION');
-      const fields = { create: ['name', 'slug', 'sourceId'], update: ['id', 'name', 'slug'], archive: ['id', 'confirmed'], restore: ['id'] };
+      const fields = { create: ['name', 'slug', 'sourceId', 'starter'], update: ['id', 'name', 'slug'], archive: ['id', 'confirmed'], restore: ['id'] };
       if (!Object.hasOwn(fields, change.action)) throw new DashboardError('Choose a supported dashboard operation.', 'INVALID_DASHBOARD_ACTION');
       const allowed = new Set(['revision', 'action', ...fields[change.action]]);
       if (Object.keys(change).some(key => !allowed.has(key))) throw new DashboardError('Unexpected dashboard fields.', 'INVALID_DASHBOARD_ACTION');
@@ -132,8 +132,10 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
           if (current.dashboards.some(item => item.slug === entry.slug)) throw new DashboardError('That address is already used by an active or archived dashboard.', 'DASHBOARD_SLUG_CONFLICT', 409);
           const source = change.sourceId === undefined ? null : current.dashboards.find(item => item.id === change.sourceId && !item.archived);
           if (change.sourceId !== undefined && !source) missing();
+          // A starter template (server/starters.mjs) is for a new, empty dashboard only.
+          if (change.starter !== undefined && (typeof change.starter !== 'string' || source)) throw new DashboardError('Choose a starter template or a dashboard to copy, not both.', 'INVALID_DASHBOARD_ACTION');
           newEntry = entry;
-          await prepareDashboard(entry, source, { isNew: true });
+          await prepareDashboard(entry, source, { isNew: true, starter: change.starter });
           next.dashboards.push(entry);
         } else {
           entry = next.dashboards.find(item => item.id === change.id);
@@ -170,7 +172,7 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
     }),
   };
 }
-export const sharedPublic = path => /^\/(?:_next\/static\/|images\/|icons\/|locales\/|fonts\/|assets\/)/.test(path) || /^\/(?:favicon\.ico|homepage\.ico|favicon-(?:16x16|32x32)\.png|apple-touch-icon\.png|android-chrome-(?:192x192|512x512)\.png|mstile-(?:70x70|144x144|150x150|310x150|310x310)\.png|safari-pinned-tab\.svg)$/.test(path);
+export const sharedPublic = path => /^\/(?:_next\/static\/|images\/|icons\/|locales\/|fonts\/|assets\/|studio-icons\/webp\/)/.test(path) || /^\/(?:favicon\.ico|homepage\.ico|favicon-(?:16x16|32x32)\.png|apple-touch-icon\.png|android-chrome-(?:192x192|512x512)\.png|mstile-(?:70x70|144x144|150x150|310x150|310x310)\.png|safari-pinned-tab\.svg)$/.test(path);
 export function resolveDashboardRoute(manifest, target) {
   if (typeof target !== 'string' || !target.startsWith('/') || target.startsWith('//') || /[\\\u0000-\u0020\u007f]/.test(target)) throw new DashboardError('Unsupported request target.', 'INVALID_DASHBOARD_PATH');
   const [pathname] = target.split('?');

@@ -1,53 +1,115 @@
 import Head from "next/head";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import useSWR from "swr";
 
 import { studioRequest } from "./api.mjs";
 import AppearanceOnlyEditor from "./appearance-only-editor";
-import ContentEditor, { ContentPicker } from "./content-editor";
+import { PageBackgroundEditor } from "./background-picker";
+import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm, widgetCount } from "./bulk-bar";
+import CardBackground from "./card-background";
+import { ChartFullView, chartRanges } from "./card-chart";
+import { canRefresh, refreshCards, resolvedBehaviour, resolvedLook, useCardTheme } from "./card-look";
+import { ConnectionsEditor } from "./connections";
+import ContentEditor, { ContentPicker, duplicateEntry } from "./content-editor";
 import { dashboardPath } from "./dashboard-path.mjs";
 import StudioDialog, { ErrorMessage } from "./dialog";
 import DiscoveryEditor from "./discovery-editor";
 import { EditorDraftContext } from "./draft-guard";
 import { useBoardFocusOrder } from "./focus-order";
 import {
-  COLUMNS,
-  GAP,
-  ROW_HEIGHT,
+  addPage,
   clampRect,
+  COLUMNS,
+  firstPageId,
+  freePageName,
+  gapOf,
+  MAX_PAGES,
+  mergePage,
+  movePage,
   moveProjectedUnit,
+  moveToPage,
   moveUnit,
+  pageBoard,
+  pageFromHash,
+  pageHash,
   panelMinimum,
+  PHONE_WIDTH,
   pixelRect,
   projectBoard,
+  removePage,
+  ROW_HEIGHT,
+  snapGuides,
   stackBoard,
+  tidyBoard,
   unitMinimum,
   unitsForBoard,
+  updatePage,
 } from "./geometry.mjs";
 import StudioIcon from "./icons";
-import PanelHost from "./panel-host";
+import { CHART_SHOWS, needsHistory, readLook, statusColours } from "./look.mjs";
+import Menu from "./menu";
+import { resolveNativePanel } from "./native-adapter.mjs";
+import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
+import PanelHost, { CardPreview, useCardPresentation } from "./panel-host";
+import { useReducedMotion } from "./preferences";
+import StudioSearch from "./search";
 import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
 import StackEditor, { PositionEditor } from "./stack-editor";
 import StackShell from "./stack-shell";
 import StudioTopBar, { DASHBOARDS_PAGE } from "./top-bar";
+import { ImagesEditor } from "./uploaded-images";
 
-const EMPTY = { version: 2, columns: 12, panels: [], stacks: [] };
+const HOME_PAGES = [{ id: "home", name: "Home" }];
+const EMPTY = { version: 3, columns: 24, pages: HOME_PAGES, panels: [], stacks: [] };
+const HISTORY_LIMIT = 100;
+// The page on show lives in the address (#media). pushState doesn't fire an
+// event, so changes made here notify the subscribers themselves.
+const hashListeners = new Set();
+const subscribeHash = (listener) => {
+  hashListeners.add(listener);
+  window.addEventListener("hashchange", listener);
+  window.addEventListener("popstate", listener);
+  return () => {
+    hashListeners.delete(listener);
+    window.removeEventListener("hashchange", listener);
+    window.removeEventListener("popstate", listener);
+  };
+};
+const readHash = () => window.location.hash;
+const noHash = () => "";
+function writeHash(hash, replace) {
+  const url = `${window.location.pathname}${window.location.search}${hash}`;
+  if (replace) window.history.replaceState(window.history.state, "", url);
+  else window.history.pushState(window.history.state, "", url);
+  hashListeners.forEach((listener) => listener());
+}
+const lastPageKey = (id) => `studio-last-page:${id}`;
+function readLastPage(id) {
+  try {
+    return localStorage.getItem(lastPageKey(id));
+  } catch {
+    return null;
+  }
+}
+// Typing in a field never changes page or undoes an arrangement.
+// A copied look is plain colours and choices, never secrets, so it is kept in
+// this browser and can be pasted on any dashboard.
+const LOOK_CLIPBOARD = "studio-look-clipboard";
+function readLookClipboard() {
+  try {
+    const stored = localStorage.getItem(LOOK_CLIPBOARD);
+    return stored === null ? null : readLook(JSON.parse(stored));
+  } catch {
+    return null;
+  }
+}
+
+const typing = (target) =>
+  target instanceof Element && Boolean(target.closest("input, textarea, select, [contenteditable='true'], dialog"));
 const EMPTY_NATIVE = {};
 const isConfigurationRevision = (revision) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision);
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const uuid = () => globalThis.crypto?.randomUUID?.() || `stack-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-function useReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const query = matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return reduced;
-}
-
 // One stable React parent owns every native host for its entire board lifetime.
 // Stack shells are siblings; a membership change never reparents native content.
 export function PanelLayer({
@@ -69,12 +131,14 @@ export function PanelLayer({
   onStackDrag,
   onManualNavigation,
   onEdit,
+  onFullView,
   canEdit,
   onSelect,
   onManipulate,
   onUnitKey,
   onLongPress,
   renderNative,
+  toolsShown = null,
 }) {
   const stackByPanel = new Map(board.stacks.flatMap((stack) => stack.panelIds.map((id) => [id, stack])));
   // Keep DOM sibling order independent of geometry. Moving an existing iframe
@@ -111,17 +175,89 @@ export function PanelLayer({
             onStackDrag={stack ? (offset) => onStackDrag?.(stack.id, offset) : undefined}
             onManual={onManualNavigation}
             onEdit={onEdit}
+            onFullView={onFullView}
             canEdit={canEdit ? canEdit(panel) : true}
             onSelect={onSelect}
             onManipulate={onManipulate}
             onUnitKey={onUnitKey}
             onLongPress={onLongPress}
             renderNative={renderNative}
+            toolsShown={!stack && toolsShown === panel.id}
           />
         );
       })}
     </div>
   );
+}
+
+// A chart widget full size, with its own look (names, colours, format).
+function FullViewHost({ panel, data, settings, onClose }) {
+  const { card } = useCardPresentation(panel, data);
+  return (
+    <ChartFullView
+      panel={panel}
+      card={card}
+      title={panel.title || "Chart"}
+      ranges={chartRanges(settings, card.chartRange)}
+      onClose={onClose}
+    />
+  );
+}
+
+// Only shortcuts that work where the sheet is opened.
+function ShortcutsSheet({ editing, pages }) {
+  const rows = [
+    pages && ["1 – 9", "Go to that page"],
+    pages && ["[  ]", "Previous or next page"],
+    !editing && ["Ctrl / ⌘ K, or type", "Search"],
+    editing && ["Ctrl / ⌘ Z", "Undo"],
+    editing && ["Ctrl / ⌘ Shift Z", "Redo"],
+    editing && ["Ctrl / ⌘ S", "Save and keep editing"],
+    editing && ["Arrow keys", "Move the selected widget"],
+    editing && ["Shift + arrow keys", "Resize the selected widget"],
+    editing && ["Esc", "Cancel a drag, or clear the selection"],
+    editing && ["F2", "Rename the current page"],
+    editing && ["Right-click or hold", "Widget menu (or the menu key)"],
+    editing && ["Shift-click, or drag a box", "Select several widgets"],
+    editing && ["Ctrl / ⌘ A", "Select everything on this page"],
+    editing && ["E", "Edit the selected widget"],
+    editing && ["Ctrl / ⌘ D", "Duplicate the selected widget"],
+    editing && ["Ctrl / ⌘ Alt C, then V", "Copy a widget's look, then paste it"],
+    editing && ["Delete", "Delete the selected widget"],
+    editing && ["R", "Refresh the selected widget now"],
+    ["Shift R", "Refresh every widget on this page now"],
+    ["?", "Show these shortcuts"],
+  ].filter(Boolean);
+  return (
+    <div className="studio-dialog-body">
+      <dl className="studio-shortcuts">
+        {rows.map(([keys, action]) => (
+          <div key={action}>
+            <dt>
+              <kbd>{keys}</kbd>
+            </dt>
+            <dd>{action}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+// Widgets a phone leaves out (behaviour "On phones: Hide"), dropped from the
+// board before it is projected. A stack keeps its other members.
+export function withoutPhoneHidden(board, settings) {
+  const hidden = new Set(
+    board.panels.filter((panel) => resolvedBehaviour(settings, panel).phones === "hide").map((panel) => panel.id),
+  );
+  if (!hidden.size) return board;
+  return {
+    ...board,
+    panels: board.panels.filter((panel) => !hidden.has(panel.id)),
+    stacks: board.stacks
+      .map((stack) => ({ ...stack, panelIds: stack.panelIds.filter((id) => !hidden.has(id)) }))
+      .filter((stack) => stack.panelIds.length),
+  };
 }
 
 export default function StudioBoard({
@@ -130,6 +266,8 @@ export default function StudioBoard({
   settings,
   onNativeChange,
   onSearch,
+  // Search over every page (search.jsx), owned by the dashboard page.
+  search = null,
   onInteractionBlocked,
   overlayOpen = false,
   // "live" shows the dashboard only. "edit" is the editor page opened from the
@@ -168,11 +306,25 @@ export default function StudioBoard({
   // The editor page is always in editing; it is left by navigating away.
   const editing = editorPage && canArrange;
   const [selection, setSelection] = useState([]);
+  // Phones (owner choice, 1 Nov): while editing, a widget's Move, Edit and
+  // resize controls show only on the widget last tapped, so they never cover
+  // what the other widgets show. A mouse shows them on hover instead.
+  const [toolsShown, setToolsShown] = useState(null);
+  const lastPointer = useRef("mouse");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
   const [reloadRequired, setReloadRequired] = useState(false);
-  const [filter, setFilter] = useState("all");
+  const [historyCounts, setHistoryCounts] = useState({ past: 0, future: 0 });
+  const [toast, setToast] = useState(null);
+  const [dropPage, setDropPage] = useState(null);
+  const [pageMenu, setPageMenu] = useState(null);
+  const [unitMenu, setUnitMenu] = useState(null);
+  // Full view of a chart widget (board 15).
+  const [fullView, setFullView] = useState(null);
+  const [marquee, setMarquee] = useState(null);
+
+  const [lookClipboard, setLookClipboard] = useState(readLookClipboard);
   const [modal, setModal] = useState(null);
   const [editorData, setEditorData] = useState(null);
   // The native catalog is large and fixed for a deployed build. Fetch it only
@@ -196,6 +348,13 @@ export default function StudioBoard({
   const [stackDrags, setStackDrags] = useState({});
   const canvas = useRef(null);
   const boardRef = useRef(null);
+  const wholeRef = useRef(null);
+  // Undo and redo cover every arrangement change made on the editor page.
+  const history = useRef({ past: [], future: [] });
+  const setHistory = useCallback((next) => {
+    history.current = next;
+    setHistoryCounts({ past: next.past.length, future: next.future.length });
+  }, []);
   // Set once the person has finished on the editor or settings page, so the
   // unsaved-changes guard doesn't stop the way back to the Dashboards page.
   const leaving = useRef(false);
@@ -251,7 +410,26 @@ export default function StudioBoard({
         ? { board: draft, data: draftSource?.data || EMPTY_NATIVE }
         : lastMatchedNative
       : null);
-  const board = renderSnapshot?.board || sourceBoard;
+  const wholeBoard = renderSnapshot?.board || sourceBoard;
+  const pages = wholeBoard.pages?.length ? wholeBoard.pages : HOME_PAGES;
+  const hash = useSyncExternalStore(subscribeHash, readHash, noHash);
+  // "Opens on: last page viewed" is remembered per device.
+  const opensOnLast = settings?.studioDefaults?.opensOn === "last";
+  const remembered = useSyncExternalStore(
+    subscribeHash,
+    () => (opensOnLast ? readLastPage(dashboard.id) : null),
+    () => null,
+  );
+  const currentPage =
+    pageFromHash(wholeBoard, hash) ||
+    (remembered && pages.some((page) => page.id === remembered) ? remembered : firstPageId(wholeBoard));
+  // Everything below works on the current page; only its widgets mount, so
+  // widgets on other pages don't poll their services.
+  const board = useMemo(() => pageBoard(wholeBoard, currentPage), [wholeBoard, currentPage]);
+  // The page's own background, or the dashboard's (Appearance).
+  const cardTheme = useCardTheme();
+  const dashboardPageBackground = readLook({ background: settings?.studioTheme?.pageBackground }).background;
+  const pageBackground = pages.find((page) => page.id === currentPage)?.background ?? dashboardPageBackground;
   const renderedNativeData = renderSnapshot ? renderSnapshot.data : nativePairMatches ? nativeData : EMPTY_NATIVE;
   const nativeUnavailable = !envelope || nativeContentStale;
   const controlsDisabled = saving || nativeUnavailable || accessLoading;
@@ -266,7 +444,8 @@ export default function StudioBoard({
   const dirty = Boolean(draft && !equal(draft, envelope?.board));
   useLayoutEffect(() => {
     boardRef.current = board;
-  }, [board]);
+    wholeRef.current = wholeBoard;
+  }, [board, wholeBoard]);
   useLayoutEffect(() => {
     nativeRefreshLock.current = nativeUnavailable;
   }, [nativeUnavailable]);
@@ -285,10 +464,16 @@ export default function StudioBoard({
     });
     return () => element.removeEventListener("touchmove", preserveManipulation);
   }, []);
-  const projection = useMemo(() => projectBoard(board, width), [board, width]);
+  // On a phone, the live dashboard leaves out widgets set to hide on phones.
+  // The editor keeps them so they can still be arranged.
+  const projection = useMemo(
+    () => projectBoard(!editing && width < PHONE_WIDTH ? withoutPhoneHidden(board, settings) : board, width),
+    [board, width, editing, settings],
+  );
+  const gap = gapOf(settings);
   const geometry = useMemo(
-    () => new Map(projection.units.map((unit) => [unit.id, pixelRect(unit.rect, width, projection.columns)])),
-    [projection, width],
+    () => new Map(projection.units.map((unit) => [unit.id, pixelRect(unit.rect, width, projection.columns, gap)])),
+    [projection, width, gap],
   );
   // Tab follows the projected layout (row, then column) without reordering
   // native hosts in the DOM.
@@ -297,24 +482,7 @@ export default function StudioBoard({
     [projection],
   );
   useBoardFocusOrder(canvas, readingOrder);
-  const groups = [...new Set(board.panels.map((panel) => panel.group).filter(Boolean))];
-  const visibleIds = useMemo(
-    () =>
-      new Set(
-        projection.units
-          .filter(
-            (unit) =>
-              filter === "all" ||
-              (unit.kind === "panel"
-                ? board.panels.find((panel) => panel.id === unit.id)?.group === filter
-                : board.stacks
-                    .find((stack) => stack.id === unit.id)
-                    ?.panelIds.some((id) => board.panels.find((panel) => panel.id === id)?.group === filter)),
-          )
-          .map((unit) => unit.id),
-      ),
-    [board, projection, filter],
-  );
+  const visibleIds = null;
 
   useEffect(() => {
     const measure = () => {
@@ -373,13 +541,26 @@ export default function StudioBoard({
   const onStackDrag = useCallback((id, offset) => {
     setStackDrags((current) => (current[id] === offset ? current : { ...current, [id]: offset }));
   }, []);
-  const changeBoard = useCallback(
-    (next, source) => {
+  // Commits a whole board (all pages) as the arrangement draft. `record`
+  // false is for the many steps of one drag; the drag records once.
+  const commitWhole = useCallback(
+    (next, source, { record = true, pageId } = {}) => {
       if (saveInFlight.current || nativeRefreshLock.current) return false;
-      if (next === boardRef.current) return true;
+      const previous = wholeRef.current;
+      if (next === previous) return true;
+      if (record && previous) {
+        setHistory({ past: [...history.current.past, previous].slice(-HISTORY_LIMIT), future: [] });
+      }
       // Pointer cancellation may arrive before React commits the queued draft.
       // Keep the next gesture event aligned with the last submitted board.
-      boardRef.current = next;
+      wholeRef.current = next;
+      let shown = pageId ?? boardRef.current?.pageId;
+      if (!next.pages?.some((page) => page.id === shown)) shown = firstPageId(next);
+      boardRef.current = pageBoard(next, shown);
+      // Keep the address on the page in view: a rename changes its name, and
+      // undo can bring back or take away pages.
+      if (pageFromHash(next, window.location.hash) !== shown && (window.location.hash || shown !== firstPageId(next)))
+        writeHash(pageHash(next, shown), true);
       setDraftSource(
         (current) =>
           current ||
@@ -394,9 +575,18 @@ export default function StudioBoard({
       setNotice("");
       return true;
     },
-    [envelope?.revision, envelope?.configurationRevision, nativeData],
+    [envelope?.revision, envelope?.configurationRevision, nativeData, setHistory],
+  );
+  // Changes made on the current page's view merge back into the whole board.
+  const changeBoard = useCallback(
+    (nextView, source, options) => {
+      if (nextView === boardRef.current) return !(saveInFlight.current || nativeRefreshLock.current);
+      return commitWhole(mergePage(wholeRef.current, nextView), source, options);
+    },
+    [commitWhole],
   );
   const cancelEditing = () => {
+    setHistory({ past: [], future: [] });
     setDraft(null);
     setDraftSource(null);
     setSelection([]);
@@ -456,14 +646,18 @@ export default function StudioBoard({
     }
   };
 
-  const loadEditorData = async (type) => {
-    if ((type === "picker" || type === "content") && !catalogRequest.current) {
+  const loadCatalog = () => {
+    if (!catalogRequest.current) {
       const request = studioRequest("/studio/catalog.json");
       catalogRequest.current = request;
       request.catch(() => {
         if (catalogRequest.current === request) catalogRequest.current = null;
       });
     }
+    return catalogRequest.current;
+  };
+  const loadEditorData = async (type) => {
+    if (type === "picker" || type === "content") loadCatalog();
     if (type === "appearance") return { appearance: await studioRequest("/studio/api/appearance") };
     const [state, catalog, backups, appearance] = await Promise.all([
       studioRequest("/studio/api/state"),
@@ -486,7 +680,14 @@ export default function StudioBoard({
     setEditorData(null);
     try {
       const loaded = await loadEditorData(type);
-      if (token === generation.current) setEditorData(loaded);
+      if (token !== generation.current) return;
+      // The widget menu's Duplicate opens the add editor, filled from the saved item.
+      if (detail.duplicate) {
+        const entry = duplicateEntry(detail.panel, loaded.state, loaded.catalog);
+        if (!entry) throw new Error("That widget is no longer in the configuration.");
+        setModal({ type, entry });
+      }
+      setEditorData(loaded);
     } catch (err) {
       if (token === generation.current) setEditorError(err);
     }
@@ -513,7 +714,7 @@ export default function StudioBoard({
   const savedContent = async (state, details = {}) => {
     nativeRefreshLock.current = true;
     setNativeSnapshot({
-      board: boardRef.current,
+      board: wholeRef.current,
       data: renderedNativeData,
       configurationRevision: sourceRevision,
     });
@@ -539,7 +740,18 @@ export default function StudioBoard({
     // Successful commits explicitly bypass the unsaved-draft dismissal guard.
     dismissEditor();
     setSelection([]);
-    setNotice(details.customJsChanged ? "Changes saved. Reload once to apply custom JavaScript." : "Changes saved");
+    setNotice(
+      [
+        details.importNote,
+        details.customJsChanged
+          ? "Changes saved. Reload once to apply custom JavaScript."
+          : details.importNote
+            ? ""
+            : "Changes saved",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
     if (details.customJsChanged) setReloadRequired(true);
     await refreshNativeContent();
   };
@@ -616,13 +828,20 @@ export default function StudioBoard({
     if ((event.button !== undefined && event.button !== 0) || event.isPrimary === false) return;
     event.preventDefault?.();
     event.stopPropagation?.();
-    const initial = boardRef.current;
-    const unit = unitsForBoard(initial).find((item) => item.id === id);
+    let initial = boardRef.current;
+    const initialWhole = wholeRef.current;
+    const originalPage = initial.pageId;
+    let unit = unitsForBoard(initial).find((item) => item.id === id);
     if (!unit) return;
     const element = event.currentTarget;
     element?.setPointerCapture?.(event.pointerId);
-    const initialProjection = projectBoard(initial, width);
-    const column = (width + GAP) / initialProjection.columns;
+    let initialProjection = projectBoard(initial, width);
+    let column = (width + gap) / initialProjection.columns;
+    // Dragging onto another page's tab: drop to send the widget to the end of
+    // that page, or hold for a moment to open the page and place it exactly.
+    let pageTarget = null;
+    let pageDwell;
+    let pageMoved = false;
     const start = {
       x: event.clientX,
       y: event.clientY,
@@ -640,10 +859,49 @@ export default function StudioBoard({
       clearTimeout(dwell);
       dwell = null;
     };
+    const setPageTarget = (next, point) => {
+      if (next === pageTarget) return;
+      clearTimeout(pageDwell);
+      pageTarget = next;
+      setDropPage(next);
+      if (!next) return;
+      pageDwell = setTimeout(() => {
+        // Open the page under the pointer and carry the widget onto it.
+        const moved = moveToPage(wholeRef.current, id, next);
+        initial = pageBoard(moved, next);
+        initialProjection = projectBoard(initial, width);
+        column = (width + gap) / initialProjection.columns;
+        unit = unitsForBoard(initial).find((item) => item.id === id);
+        const bounds = canvas.current.getBoundingClientRect();
+        const cellX = Math.floor(((point.x - bounds.left) / column) * (COLUMNS / initialProjection.columns));
+        const cellY = Math.max(0, Math.floor((point.y - bounds.top) / (ROW_HEIGHT + gap)));
+        initial = moveUnit(initial, id, { ...unit.rect, x: Math.max(0, cellX), y: cellY });
+        unit = unitsForBoard(initial).find((item) => item.id === id);
+        initialProjection = projectBoard(initial, width);
+        commitWhole(mergePage(moved, initial), undefined, { record: false, pageId: next });
+        latest = initial;
+        lastCell = { dx: 0, dy: 0 };
+        start.x = point.x;
+        start.y = point.y;
+        pageMoved = true;
+        pageTarget = null;
+        setDropPage(null);
+        showPage(next, { keepGesture: true });
+      }, 700);
+    };
     const onMove = (moveEvent) => {
       if (moveEvent.pointerId !== start.pointerId) return;
+      if (mode === "move") {
+        const tab = document.elementFromPoint?.(moveEvent.clientX, moveEvent.clientY)?.closest?.("[data-page-drop]");
+        const over = tab?.dataset.pageDrop;
+        setPageTarget(over && over !== boardRef.current.pageId ? over : null, {
+          x: moveEvent.clientX,
+          y: moveEvent.clientY,
+        });
+        if (pageTarget) return;
+      }
       const dx = Math.round((((moveEvent.clientX - start.x) / column) * COLUMNS) / initialProjection.columns);
-      const dy = Math.round((moveEvent.clientY - start.y) / (ROW_HEIGHT + GAP));
+      const dy = Math.round((moveEvent.clientY - start.y) / (ROW_HEIGHT + gap));
       const rect = clampRect(
         mode === "resize"
           ? { ...unit.rect, w: unit.rect.w + dx, h: unit.rect.h + dy }
@@ -655,7 +913,7 @@ export default function StudioBoard({
             ? moveProjectedUnit(initial, id, { x: dx, y: dy }, initialProjection)
             : moveUnit(initial, id, rect);
         lastCell = { dx, dy };
-        changeBoard(latest);
+        changeBoard(latest, undefined, { record: false });
       }
       if (mode !== "move" || unit.kind !== "panel") return;
       const bounds = canvas.current.getBoundingClientRect();
@@ -676,7 +934,7 @@ export default function StudioBoard({
         const targetMinimum = unitMinimum(initial, other.id);
         const requiredHeight = Math.max(movingMinimum.h + 1, targetMinimum.h + (other.kind === "stack" ? 0 : 1), 3);
         if (unit.rect.h < requiredHeight || unit.rect.w < Math.max(movingMinimum.w, targetMinimum.w)) return false;
-        const pixels = pixelRect(other.rect, width, initialProjection.columns);
+        const pixels = pixelRect(other.rect, width, initialProjection.columns, gap);
         return (
           point.x > pixels.left + pixels.width * 0.2 &&
           point.x < pixels.left + pixels.width * 0.8 &&
@@ -709,18 +967,38 @@ export default function StudioBoard({
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("keydown", onEscape);
       if (element?.hasPointerCapture?.(start.pointerId)) element.releasePointerCapture(start.pointerId);
-      if (cancel) changeBoard(initial);
-      else if (target && stackReady && performance.now() - targetTime >= 500) {
-        if (target.kind === "stack") {
-          changeBoard({
-            ...initial,
-            stacks: initial.stacks.map((stack) =>
-              stack.id === target.id ? { ...stack, panelIds: [...stack.panelIds, id] } : stack,
-            ),
-          });
-        } else changeBoard(stackBoard(initial, [target.id, id], uuid()));
+      clearTimeout(pageDwell);
+      const droppedOnPage = !cancel && pageTarget;
+      setDropPage(null);
+      const quiet = { record: false };
+      if (cancel) {
+        commitWhole(initialWhole, undefined, { ...quiet, pageId: originalPage });
+        if (pageMoved) showPage(originalPage, { keepGesture: true, replace: true });
+      } else if (droppedOnPage) {
+        commitWhole(moveToPage(initialWhole, id, droppedOnPage), undefined, { ...quiet, pageId: originalPage });
+        if (pageMoved) showPage(originalPage, { keepGesture: true, replace: true });
+        const name = wholeRef.current.pages?.find((page) => page.id === droppedOnPage)?.name;
+        showToast(`Moved to ${name}`, true);
         setSelection([]);
-      } else changeBoard(latest);
+      } else if (target && stackReady && performance.now() - targetTime >= 500) {
+        if (target.kind === "stack") {
+          changeBoard(
+            {
+              ...initial,
+              stacks: initial.stacks.map((stack) =>
+                stack.id === target.id ? { ...stack, panelIds: [...stack.panelIds, id] } : stack,
+              ),
+            },
+            undefined,
+            quiet,
+          );
+        } else changeBoard(stackBoard(initial, [target.id, id], uuid()), undefined, quiet);
+        setSelection([]);
+      } else changeBoard(latest, undefined, quiet);
+      // One drag is one step to undo.
+      if (initialWhole && wholeRef.current !== initialWhole && !equal(wholeRef.current, initialWhole)) {
+        setHistory({ past: [...history.current.past, initialWhole].slice(-HISTORY_LIMIT), future: [] });
+      }
       operation.current = null;
       setMoving(null);
       setStackTarget(null);
@@ -861,25 +1139,659 @@ export default function StudioBoard({
   const finishEditing = async () => {
     if (await saveArrangement(true)) leave();
   };
+  // ---- Pages ----------------------------------------------------------
+  // The current page follows the address (#media), so links open a page and
+  // back and forward move between pages.
+  const showPage = useCallback(
+    (id, { replace = false, keepGesture = false } = {}) => {
+      if (!keepGesture) operation.current?.();
+      setSelection([]);
+      const next = pageHash(wholeRef.current || wholeBoard, id);
+      if (next && window.location.hash !== next) writeHash(next, replace);
+      try {
+        localStorage.setItem(lastPageKey(dashboard.id), id);
+      } catch {
+        // Remembering the page is a convenience only.
+      }
+    },
+    [dashboard.id, wholeBoard],
+  );
+  // Back and forward change page like a tab click: drop any drag and selection.
+  useEffect(() => {
+    const follow = () => {
+      operation.current?.();
+      setSelection([]);
+    };
+    window.addEventListener("popstate", follow);
+    window.addEventListener("hashchange", follow);
+    return () => {
+      window.removeEventListener("popstate", follow);
+      window.removeEventListener("hashchange", follow);
+    };
+  }, []);
+  const showToast = useCallback((message, undoable = false) => {
+    setToast({ message, undoable, key: Date.now() });
+  }, []);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  // Plain functions: the key handler below re-subscribes each render.
+  const undo = () => {
+    const { past, future } = history.current;
+    if (!past.length || !wholeRef.current) return;
+    const previous = past.at(-1);
+    setHistory({ past: past.slice(0, -1), future: [wholeRef.current, ...future] });
+    if (commitWhole(previous, undefined, { record: false })) {
+      setSelection([]);
+      showToast("Undone");
+    }
+  };
+  const redo = () => {
+    const { past, future } = history.current;
+    if (!future.length || !wholeRef.current) return;
+    const [next, ...rest] = future;
+    setHistory({ past: [...past, wholeRef.current], future: rest });
+    if (commitWhole(next, undefined, { record: false })) {
+      setSelection([]);
+      showToast("Redone");
+    }
+  };
+  const pageActions = {
+    canAdd: pages.length < MAX_PAGES,
+    add: () => {
+      const { board: next, pageId } = addPage(wholeRef.current, freePageName(wholeRef.current), currentPage);
+      if (!pageId || !commitWhole(next, undefined, { pageId })) return null;
+      showPage(pageId);
+      return pageId;
+    },
+    rename: (id, name) => commitWhole(updatePage(wholeRef.current, id, { name })),
+    move: (id, index) => {
+      if (commitWhole(movePage(wholeRef.current, id, index))) showToast("Page moved", true);
+    },
+    icon: (page) => setModal({ type: "pageIcon", page }),
+    background: (page) => setModal({ type: "pageBackground", page }),
+    // Copies every widget on the page as real widgets (administrators only),
+    // saved at once like any content change.
+    duplicate: isAdmin
+      ? async (page) => {
+          if (dirty) {
+            setError(new Error("Save or cancel the current arrangement before duplicating a page."));
+            return;
+          }
+          try {
+            const state = await studioRequest("/studio/api/page-duplicate", {
+              revision: envelope.revision,
+              pageId: page.id,
+            });
+            setHistory({ past: [], future: [] });
+            await savedContent(state);
+            showPage(state.pageId);
+            showToast(
+              state.skipped
+                ? `Duplicated “${page.name}”. ${state.skipped} discovered widget${state.skipped === 1 ? " stays" : "s stay"} on the original page only.`
+                : `Duplicated “${page.name}”`,
+            );
+          } catch (err) {
+            setError(err);
+          }
+        }
+      : undefined,
+    copyLink: async (page) => {
+      const url = `${window.location.origin}${window.location.pathname.replace(/\/edit$/, "")}${pageHash(wholeRef.current, page.id)}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast("Link copied");
+      } catch {
+        setModal({ type: "pageLink", url });
+      }
+    },
+    // Esc while naming a page just added takes it back (board 14), quietly.
+    cancelAdd: (id, previous) => {
+      if (pageBoard(wholeRef.current, id).panels.length) return;
+      const target = pages.some((item) => item.id === previous) ? previous : pages.find((item) => item.id !== id)?.id;
+      if (target && commitWhole(removePage(wholeRef.current, id, target))) showPage(target, { replace: true });
+    },
+    remove: (page) => {
+      const units = pageBoard(wholeRef.current, page.id);
+      if (!units.panels.length) {
+        const target = pages.find((item) => item.id !== page.id).id;
+        if (commitWhole(removePage(wholeRef.current, page.id, target))) {
+          showPage(target, { replace: true });
+          showToast(`Deleted “${page.name}”`, true);
+        }
+      } else setModal({ type: "deletePage", page });
+    },
+  };
+  const deletePage = (page, target) => {
+    if (target) {
+      if (!commitWhole(removePage(wholeRef.current, page.id, target))) return;
+      dismissEditor();
+      showPage(target, { replace: true });
+      showToast(`Deleted “${page.name}”. Its widgets moved to ${pages.find((item) => item.id === target).name}.`, true);
+    }
+  };
+  // Discovered widgets that arrived since the arrangement was last saved
+  // land on the first page; the editor asks once which page they belong on,
+  // with the page being edited preselected.
+  const [discoveredTarget, setDiscoveredTarget] = useState(null);
+  const [discoveredHandled, setDiscoveredHandled] = useState(null);
+  const newDiscovered =
+    editing && discoveredHandled !== envelope?.revision
+      ? (envelope?.newDiscoveredIds || []).filter((id) => wholeBoard.panels.some((panel) => panel.id === id))
+      : [];
+  const placeNewDiscovered = async () => {
+    const target = pages.some((page) => page.id === discoveredTarget) ? discoveredTarget : currentPage;
+    let next = wholeRef.current || wholeBoard;
+    for (const id of newDiscovered) {
+      const stack = next.stacks.find((item) => item.panelIds.includes(id));
+      const unitId = stack ? stack.id : id;
+      const pageId = stack ? stack.pageId : next.panels.find((panel) => panel.id === id)?.pageId;
+      if (pageId !== target) next = moveToPage(next, unitId, target);
+    }
+    // With other unsaved changes this joins them; Save keeps everything.
+    if (dirty) {
+      if (commitWhole(next)) setDiscoveredHandled(envelope.revision);
+      return;
+    }
+    setError(null);
+    try {
+      await mutate(await studioRequest("/studio/api/board", { revision: envelope.revision, board: next }), {
+        revalidate: false,
+      });
+      setDiscoveredHandled(envelope.revision);
+    } catch (err) {
+      setError(err);
+    }
+  };
+  const moveUnitsToPage = (ids, target) => {
+    let next = wholeRef.current;
+    for (const id of ids) next = moveToPage(next, id, target);
+    if (commitWhole(next)) {
+      setSelection([]);
+      showToast(`Moved to ${pages.find((page) => page.id === target)?.name}`, true);
+    }
+  };
+  const showToolsByTap = (event) => {
+    if (lastPointer.current !== "touch") return;
+    const target = event.target instanceof Element ? event.target : null;
+    const panel = target?.closest("[data-panel-id]");
+    setToolsShown(panel && !panel.dataset.stackId ? panel.dataset.panelId : null);
+  };
+  // Shift-click or Ctrl-click a widget to add it to the selection or take it out.
+  const selectByClick = (event) => {
+    if (!(event.shiftKey || event.ctrlKey || event.metaKey) || controlsDisabled) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || target.closest(".studio-select-target,.studio-resize-handle,.studio-move-handle")) return;
+    const shell = target.closest("[data-stack-shell-id]");
+    const panel = target.closest("[data-panel-id]");
+    const id = shell?.dataset.stackShellId || panel?.dataset.stackId || panel?.dataset.panelId;
+    if (!id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    select(id);
+  };
+  // Drag a box on empty space to select every widget it touches.
+  const startMarquee = (event) => {
+    if (event.pointerType !== "mouse" || event.button !== 0 || controlsDisabled || modal) return;
+    if (!(event.target instanceof Element) || event.target.closest(".studio-panel,.studio-stack-shell,button,a,input"))
+      return;
+    // Dragging a box must not select page text on the way.
+    event.preventDefault();
+    window.getSelection?.()?.removeAllRanges();
+    const box = canvas.current.getBoundingClientRect();
+    const start = { x0: event.clientX - box.left, y0: event.clientY - box.top };
+    const keep = event.shiftKey || event.ctrlKey || event.metaKey ? selection : [];
+    let current = null;
+    const move = (next) => {
+      current = { ...start, x1: next.clientX - box.left, y1: next.clientY - box.top };
+      if (Math.abs(current.x1 - current.x0) + Math.abs(current.y1 - current.y0) > 6) setMarquee(current);
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      setMarquee(null);
+      if (!current || Math.abs(current.x1 - current.x0) + Math.abs(current.y1 - current.y0) <= 6) return;
+      const area = {
+        left: Math.min(current.x0, current.x1),
+        top: Math.min(current.y0, current.y1),
+        right: Math.max(current.x0, current.x1),
+        bottom: Math.max(current.y0, current.y1),
+      };
+      const touched = [...geometry.entries()]
+        .filter(
+          ([, rect]) =>
+            rect.left < area.right &&
+            rect.left + rect.width > area.left &&
+            rect.top < area.bottom &&
+            rect.top + rect.height > area.top,
+        )
+        .map(([id]) => id);
+      setSelection([...new Set([...keep, ...touched])]);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  };
+  // Several widgets selected: the bulk bar. Stacks count as their members
+  // for look and behaviour, duplicate and delete.
+  const selectedPanels = () => {
+    const ids = selection.flatMap((id) => wholeBoard.stacks.find((stack) => stack.id === id)?.panelIds || [id]);
+    return wholeBoard.panels.filter((panel) => ids.includes(panel.id));
+  };
+  const bulkLook = (changes, inherited) => {
+    const changed = new Map(applyChanges(selectedPanels(), changes, inherited).map((panel) => [panel.id, panel]));
+    const next = {
+      ...wholeRef.current,
+      panels: wholeRef.current.panels.map((panel) => changed.get(panel.id) || panel),
+    };
+    if (commitWhole(next)) {
+      dismissEditor();
+      showToast(`Changed ${widgetCount(changed.size)}`, true);
+    }
+  };
+  const bulkSize = ({ w, h }) => {
+    let view = boardRef.current;
+    for (const id of selection) {
+      const unit = unitsForBoard(view).find((item) => item.id === id);
+      if (unit) view = moveUnit(view, id, { ...unit.rect, w: w ?? unit.rect.w, h: h ?? unit.rect.h });
+    }
+    if (changeBoard(view)) {
+      dismissEditor();
+      showToast(`Resized ${widgetCount(selection.length)}`, true);
+    }
+  };
+  // Duplicate and delete change the configuration files, so they save at once.
+  const bulkContent = {
+    save: async (path) => {
+      if (dirty) {
+        setError(new Error("Save or cancel the current arrangement first."));
+        return null;
+      }
+      const state = await studioRequest(path, {
+        revision: envelope.revision,
+        ids: selectedPanels().map((panel) => panel.id),
+      });
+      setHistory({ past: [], future: [] });
+      await savedContent(state);
+      return state;
+    },
+    duplicate: async () => {
+      try {
+        const state = await bulkContent.save("/studio/api/widgets-duplicate");
+        if (!state) return;
+        setSelection(state.ids || []);
+        showToast(`Duplicated ${widgetCount(state.ids?.length || 0)}`);
+      } catch (err) {
+        setError(err);
+      }
+    },
+    remove: async () => {
+      const count = selectedPanels().length;
+      setModal({ type: "bulkDelete", pending: true });
+      try {
+        if (await bulkContent.save("/studio/api/widgets-delete")) showToast(`Deleted ${widgetCount(count)}`);
+      } catch (err) {
+        setModal({ type: "bulkDelete" });
+        setError(err);
+      }
+    },
+  };
+  const runBulk = (id, event) => {
+    if (id === "look") setModal({ type: "bulkLook" });
+    else if (id === "size")
+      movableSelection.length === 1 ? position(movableSelection[0]) : setModal({ type: "bulkSize" });
+    else if (id === "page") {
+      const box = event.currentTarget.getBoundingClientRect();
+      setPageMenu({ x: box.left, y: box.bottom + 4, above: box.top - 4, from: event.currentTarget });
+    } else if (id === "stack") createStack();
+    else if (id === "duplicate") bulkContent.duplicate();
+    else if (id === "delete") setModal({ type: "bulkDelete" });
+  };
+  const bulkActions = () => {
+    const panels = selectedPanels();
+    const discovered = panels.some((panel) => panel.nativeLocator?.discovered);
+    return [
+      panels.length > 0 && { id: "look", icon: "paint", label: "Look" },
+      movableSelection.length > 0 && { id: "size", icon: "resize", label: "Size" },
+      pages.length > 1 && movableSelection.length > 0 && { id: "page", icon: "move", label: "Page", menu: true },
+      stackableSelection.length > 1 && { id: "stack", icon: "stack", label: "Stack" },
+      isAdmin &&
+        panels.length > 0 && {
+          id: "duplicate",
+          icon: "copy",
+          label: "Duplicate",
+          disabled: discovered,
+          hint: discovered ? "Discovered widgets belong to their provider and can't be copied" : undefined,
+        },
+      isAdmin && panels.length > 0 && { id: "delete", icon: "trash", label: "Delete", danger: true },
+    ];
+  };
+
+  // The widget menu (right-click or hold while editing).
+  const panelHref = (panel) => {
+    const resolved = resolveNativePanel(panel, renderedNativeData);
+    const href = resolved?.service?.href || resolved?.bookmark?.href;
+    return typeof href === "string" && /^https?:\/\//i.test(href) ? href : null;
+  };
+  const panelType = (panel) =>
+    panel.kind === "serviceWidget" || panel.kind === "informationWidget"
+      ? `${panel.kind}:${panel.nativeLocator?.type}`
+      : panel.kind;
+  const typeName = (panel, catalog) => {
+    if (panel.kind === "service") return "link";
+    if (panel.kind === "bookmark") return "bookmark";
+    const list = catalog?.[panel.kind === "serviceWidget" ? "service" : "info"];
+    return list?.find((entry) => entry.type === panel.nativeLocator?.type)?.name || panel.nativeLocator?.type || "such";
+  };
+  const copyLook = (panel) => {
+    const look = panel.look || {};
+    setLookClipboard(look);
+    try {
+      localStorage.setItem(LOOK_CLIPBOARD, JSON.stringify(look));
+    } catch {
+      // Without storage the copy still lasts while this page is open.
+    }
+    showToast(Object.keys(look).length ? "Look copied" : "Look copied (the default look)");
+  };
+  const applyLook = (ids, look, message) => {
+    const targets = new Set(ids);
+    const next = {
+      ...wholeRef.current,
+      panels: wholeRef.current.panels.map((item) => {
+        if (!targets.has(item.id)) return item;
+        const { look: _old, ...rest } = item;
+        return look && Object.keys(look).length ? { ...rest, look: structuredClone(look) } : rest;
+      }),
+    };
+    if (commitWhole(next)) showToast(message, true);
+  };
+  const deletePanel = (panel) => openEditor("content", { panel, deleting: true });
+  // Asks the integrations behind these widgets for fresh numbers now.
+  const refreshNow = (ids, page = false) => {
+    const count = refreshCards(ids);
+    showToast(
+      count
+        ? page
+          ? `Refreshing ${count} widget${count === 1 ? "" : "s"} on this page`
+          : "Refreshing"
+        : "Nothing here updates on its own",
+    );
+  };
+  const openUnitMenu = async (id, pointer, from) => {
+    if (controlsDisabled || modal || saveInFlight.current || nativeRefreshLock.current) return;
+    const element = canvas.current?.querySelector(
+      `[data-panel-id="${CSS.escape(id)}"]:not([aria-hidden]), [data-stack-shell-id="${CSS.escape(id)}"]`,
+    );
+    const box = element?.getBoundingClientRect();
+    const x = pointer?.clientX ?? (box ? box.left + 16 : 16);
+    const y = pointer?.clientY ?? (box ? box.top + 16 : 16);
+    const menu = { id, x, y, from: from || document.activeElement };
+    // Only for naming the widget type in "Use this look on every … widget".
+    const catalog = await loadCatalog().catch(() => null);
+    setUnitMenu({ ...menu, items: unitMenuItems(id, menu, catalog) });
+  };
+  const unitMenuItems = (id, menu, catalog) => {
+    const panel = wholeBoard.panels.find((item) => item.id === id);
+    const stack = wholeBoard.stacks.find((item) => item.id === id);
+    const otherPages = pages.filter((page) => page.id !== currentPage);
+    const moveItem = otherPages.length > 0 && {
+      id: "move",
+      icon: "move",
+      label: "Move to page…",
+      keepFocus: true,
+      onSelect: () => setUnitMenu({ ...menu, pages: true }),
+    };
+    if (stack) return [{ id: "edit", icon: "edit", label: "Edit stack", onSelect: () => editStack(stack) }, moveItem];
+    if (!panel) return [];
+    const discovered = Boolean(panel.nativeLocator?.discovered);
+    const canChange = isAdmin && !discovered;
+    const sameType = wholeBoard.panels.filter((item) => panelType(item) === panelType(panel));
+    const href = panelHref(panel);
+    const hasClipboard = lookClipboard !== null;
+    return [
+      (isAdmin || discovered) && {
+        id: "edit",
+        icon: "edit",
+        label: discovered ? "Show or hide" : "Edit",
+        shortcut: "E",
+        onSelect: () => editPanel(panel),
+      },
+      canChange && {
+        id: "duplicate",
+        icon: "copy",
+        label: "Duplicate",
+        shortcut: "Ctrl D",
+        onSelect: () => openEditor("content", { panel, duplicate: true }),
+      },
+      "-",
+      { id: "copy-look", icon: "paint", label: "Copy look", shortcut: "Ctrl Alt C", onSelect: () => copyLook(panel) },
+      {
+        id: "paste-look",
+        label: "Paste look",
+        shortcut: "Ctrl Alt V",
+        disabled: !hasClipboard,
+        hint: hasClipboard ? undefined : "Copy a widget's look first",
+        onSelect: () => applyLook([panel.id], lookClipboard, "Look pasted"),
+      },
+      sameType.length > 1 && {
+        id: "look-everywhere",
+        icon: "grid",
+        label: `Use this look on every ${typeName(panel, catalog)} widget`,
+        onSelect: () =>
+          applyLook(
+            sameType.map((item) => item.id),
+            panel.look || {},
+            `Look used on ${sameType.length} ${typeName(panel, catalog)} widget${sameType.length === 1 ? "" : "s"}`,
+          ),
+      },
+      "-",
+      CHART_SHOWS.includes(resolvedLook(settings, panel).show) && {
+        id: "full-view",
+        icon: "expand",
+        label: "Open full view",
+        shortcut: "Space",
+        onSelect: () => setFullView(panel),
+      },
+      canRefresh(panel.id) && {
+        id: "refresh",
+        icon: "refresh",
+        label: "Refresh now",
+        shortcut: "R",
+        onSelect: () => refreshNow([panel.id]),
+      },
+      moveItem,
+      href && {
+        id: "open",
+        icon: "external",
+        label: "Open link",
+        onSelect: () => window.open(href, "_blank", "noopener,noreferrer"),
+      },
+      canChange && "-",
+      canChange && {
+        id: "delete",
+        icon: "trash",
+        label: "Delete…",
+        shortcut: "Del",
+        danger: true,
+        onSelect: () => deletePanel(panel),
+      },
+    ]
+      .filter(Boolean)
+      .filter((item, index, list) => item !== "-" || (index > 0 && index < list.length - 1 && list[index - 1] !== "-"));
+  };
+  // Widget keys while editing act on the one selected widget, or the
+  // focused one: E edits, Delete deletes, Ctrl D duplicates, Ctrl Alt C and
+  // V copy and paste its look, and the menu key opens its menu.
+  useEffect(() => {
+    if (!editing) return undefined;
+    const key = (event) => {
+      if (event.defaultPrevented || typing(event.target) || modal || overlayOpen || unitMenu) return;
+      // Ctrl A selects everything on the page; Esc lets go of the selection.
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        setSelection(unitsForBoard(board).map((unit) => unit.id));
+        return;
+      }
+      if (event.key === "Escape" && selection.length && !moving) {
+        event.preventDefault();
+        setSelection([]);
+        return;
+      }
+      const focusedId = document.activeElement?.closest?.("[data-panel-id]")?.dataset.panelId;
+      const id = selection.length === 1 ? selection[0] : selection.length === 0 ? focusedId : null;
+      if (!id) return;
+      const panel = wholeBoard.panels.find((item) => item.id === id);
+      const command = event.ctrlKey || event.metaKey;
+      const lower = event.key.toLowerCase();
+      const run = (action) => {
+        event.preventDefault();
+        action();
+      };
+      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))
+        return run(() => openUnitMenu(id, null, document.activeElement));
+      if (!panel) return;
+      const canChange = isAdmin && !panel.nativeLocator?.discovered;
+      if (command && event.altKey && event.code === "KeyC") return run(() => copyLook(panel));
+      if (command && event.altKey && event.code === "KeyV" && lookClipboard !== null)
+        return run(() => applyLook([panel.id], lookClipboard, "Look pasted"));
+      if (event.altKey) return;
+      if (command && lower === "d" && canChange) return run(() => openEditor("content", { panel, duplicate: true }));
+      if (command || event.shiftKey) return;
+      if (lower === "e" && (isAdmin || panel.nativeLocator?.discovered)) return run(() => editPanel(panel));
+      if (lower === "r" && canRefresh(panel.id)) return run(() => refreshNow([panel.id]));
+      if (event.key === " " && CHART_SHOWS.includes(resolvedLook(settings, panel).show))
+        return run(() => setFullView(panel));
+      if ((event.key === "Delete" || event.key === "Backspace") && canChange) return run(() => deletePanel(panel));
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  });
+  // Page keys: 1-9 jump to a page, [ and ] step. Editing adds undo and redo.
+  useEffect(() => {
+    const key = (event) => {
+      if (event.defaultPrevented || typing(event.target) || modal || overlayOpen) return;
+      const command = event.ctrlKey || event.metaKey;
+      if (editing && command && !event.altKey && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+        return;
+      }
+      // Save and keep editing.
+      if (editing && command && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        if (dirty && !controlsDisabled) saveArrangement(false);
+        return;
+      }
+      if (editing && command && !event.altKey && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redo();
+        return;
+      }
+      if (event.shiftKey && !command && !event.altKey && event.key.toLowerCase() === "r") {
+        event.preventDefault();
+        refreshNow(
+          board.panels.map((panel) => panel.id),
+          true,
+        );
+        return;
+      }
+      if (event.key === "?" && !command && !event.altKey) {
+        event.preventDefault();
+        setModal({ type: "shortcuts" });
+        return;
+      }
+      if (command || event.altKey || pages.length < 2) return;
+      const index = pages.findIndex((page) => page.id === currentPage);
+      let target = null;
+      if (/^[1-9]$/.test(event.key)) target = pages[Number(event.key) - 1];
+      else if (event.key === "[") target = pages[index - 1];
+      else if (event.key === "]") target = pages[index + 1];
+      else return;
+      // Claimed even without a target, so typing "9" on a three-page
+      // dashboard doesn't open search instead.
+      event.preventDefault();
+      if (target) showPage(target.id);
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  });
+  // On phones, a sideways swipe on the dashboard's empty space changes page.
+  useEffect(() => {
+    const element = canvas.current;
+    if (!element || pages.length < 2 || editing) return undefined;
+    let start = null;
+    const down = (event) => {
+      if (event.pointerType !== "touch" || event.target.closest?.(".studio-panel, .studio-stack-shell")) return;
+      start = { x: event.clientX, y: event.clientY, time: performance.now() };
+    };
+    const up = (event) => {
+      if (!start) return;
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      const quick = performance.now() - start.time < 600;
+      start = null;
+      if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      const index = pages.findIndex((page) => page.id === currentPage);
+      const target = pages[index + (dx < 0 ? 1 : -1)];
+      if (target) showPage(target.id);
+    };
+    const cancel = () => {
+      start = null;
+    };
+    element.addEventListener("pointerdown", down);
+    element.addEventListener("pointerup", up);
+    element.addEventListener("pointercancel", cancel);
+    return () => {
+      element.removeEventListener("pointerdown", down);
+      element.removeEventListener("pointerup", up);
+      element.removeEventListener("pointercancel", cancel);
+    };
+  }, [pages, currentPage, editing, showPage]);
+
   const stackedIds = new Set(board.stacks.flatMap((stack) => stack.panelIds));
+  const movableSelection = selection.filter((id) => unitsForBoard(board).some((unit) => unit.id === id));
   const stackableSelection = selection.filter(
     (id) => board.panels.some((panel) => panel.id === id) && !stackedIds.has(id),
   );
+  const selectedCount = selection.length ? selectedPanels().length : 0;
   const modalTitles = {
     picker: "Add to your dashboard",
     content: modal?.panel ? `Edit ${modal.panel.title}` : modal?.entry?.name || "Configure content",
     settings: "Dashboard settings",
     appearance: "Appearance",
     files: "Configuration files",
+    connections: "Saved connections",
+    images: "Images",
     backups: "Snapshots & restore",
     stack: "Edit widget stack",
     position: "Position & size",
     discovery: modal?.panel?.title || "Discovered content",
     discardArrangement: "Discard arrangement?",
+    deletePage: modal?.page ? `Delete “${modal.page.name}”?` : "Delete page?",
+    pageIcon: modal?.page ? `${modal.page.name}: icon` : "Page icon",
+    pageBackground: modal?.page ? `${modal.page.name}: background` : "Page background",
+    pageLink: "Link to page",
+    shortcuts: "Keyboard shortcuts",
+    moveHere: "Move widgets here",
+    bulkLook: `Look for ${selection.length} selected`,
+    bulkSize: "Size",
+    bulkDelete: `Delete ${widgetCount(selectedCount)}?`,
   };
 
   return (
-    <main className={`studio-app${editing ? " studio-edit-mode" : ""}`} aria-busy={saving || refreshing || undefined}>
+    <main
+      className={`studio-app${editing ? " studio-edit-mode" : ""}${editing && selection.length ? " studio-has-bulk" : ""}`}
+      data-glass={(pageBackground && settings?.studioTheme?.glass) || undefined}
+      style={Object.fromEntries(
+        Object.entries(statusColours(settings)).map(([key, colour]) => [`--studio-status-${key}`, colour]),
+      )}
+      aria-busy={saving || refreshing || undefined}
+    >
+      {pageBackground && <CardBackground className="studio-page-bg" background={pageBackground} tokens={cardTheme} />}
       {/* Without a title of its own in settings.yaml, the browser tab shows the
           dashboard's name, as the top bar does. */}
       {!settings?.title && access?.dashboard?.name && (
@@ -894,14 +1806,110 @@ export default function StudioBoard({
         access={access}
         onSearch={editing ? undefined : onSearch}
         searchDisabled={controlsDisabled}
+      >
+        <PageTabs
+          editing={editing}
+          board={wholeBoard}
+          pages={pages}
+          currentId={currentPage}
+          onSelect={(id) => showPage(id)}
+          disabled={controlsDisabled}
+          dropTarget={dropPage}
+          actions={pageActions}
+        />
+      </StudioTopBar>
+      <ErrorMessage
+        arrangement
+        error={error || sourceConflict || loadError}
+        heading={!error && !sourceConflict && loadError ? "The dashboard could not refresh" : undefined}
+        onReload={
+          saving
+            ? undefined
+            : () => {
+                setDraft(null);
+                setDraftSource(null);
+                setError(null);
+                refreshNativeContent();
+              }
+        }
       />
-      {editorPage && (canArrange || accessLoading) && (
-        <header className="studio-page-header studio-editor-header">
-          <div>
-            <p className="studio-eyebrow">Editing</p>
-            <h1>{access?.dashboard?.name || settings?.title || "Dashboard"}</h1>
-          </div>
-          <div className="studio-header-actions">
+      {/* Editing (board 14): one light row. The dashboard's name is already in
+          the top bar; every tool stays, the ones a phone can't use step aside. */}
+      {editing && (
+        <div className="studio-board-toolbar studio-edit-bar" role="toolbar" aria-label="Editing">
+          <span className="studio-editing-pill">Editing</span>
+          {isAdmin && (
+            <button
+              className="studio-button studio-quiet"
+              disabled={controlsDisabled}
+              aria-label="Widgets"
+              onClick={() => openEditor("picker")}
+            >
+              <StudioIcon name="plus" size={16} />
+              <span className="studio-edit-bar-label">Widgets</span>
+            </button>
+          )}
+          <button
+            className="studio-button studio-quiet"
+            disabled={controlsDisabled || tidyBoard(board) === board}
+            title="Close the gaps on this page. Each widget slides straight up."
+            onClick={() => {
+              if (changeBoard(tidyBoard(boardRef.current))) showToast("Tidied up", true);
+            }}
+          >
+            <StudioIcon name="grid" size={16} />
+            <span className="studio-edit-bar-label">Tidy up</span>
+          </button>
+          <button
+            type="button"
+            className="studio-icon-button"
+            aria-label="Undo"
+            aria-keyshortcuts="Control+Z Meta+Z"
+            title="Undo (Ctrl / ⌘ Z)"
+            disabled={controlsDisabled || !historyCounts.past}
+            onClick={undo}
+          >
+            <StudioIcon name="undo" size={17} />
+          </button>
+          <button
+            type="button"
+            className="studio-icon-button"
+            aria-label="Redo"
+            aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"
+            title="Redo (Ctrl / ⌘ Shift Z)"
+            disabled={controlsDisabled || !historyCounts.future}
+            onClick={redo}
+          >
+            <StudioIcon name="redo" size={17} />
+          </button>
+          <span className="studio-toolbar-spacer" />
+          <span className="studio-muted studio-edit-bar-note" role="status">
+            {dirty ? "Unsaved changes" : ""}
+          </span>
+          <button
+            type="button"
+            className="studio-icon-button studio-shortcuts-button"
+            aria-label="Keyboard shortcuts"
+            aria-keyshortcuts="Shift+?"
+            title="Keyboard shortcuts (?)"
+            onClick={() => setModal({ type: "shortcuts" })}
+          >
+            <StudioIcon name="keyboard" size={17} />
+          </button>
+          {/* Save keeps editing; Done saves and leaves. One primary button.
+              The three stay together: on a narrow phone they move to a
+              second line as one group rather than off the screen. */}
+          <span className="studio-edit-bar-actions">
+            {dirty && (
+              <button
+                className="studio-button studio-quiet"
+                disabled={controlsDisabled}
+                title="Save and keep editing (Ctrl / ⌘ S)"
+                onClick={() => saveArrangement(false)}
+              >
+                Save
+              </button>
+            )}
             <button
               className="studio-button studio-quiet"
               disabled={saving}
@@ -918,91 +1926,101 @@ export default function StudioBoard({
               <StudioIcon name="check" size={16} />
               {saving ? "Saving…" : "Done"}
             </button>
-          </div>
-        </header>
-      )}
-      <ErrorMessage
-        arrangement
-        error={error || sourceConflict || loadError}
-        heading={!error && !sourceConflict && loadError ? "The dashboard could not refresh" : undefined}
-        onReload={
-          saving
-            ? undefined
-            : () => {
-                setDraft(null);
-                setDraftSource(null);
-                setError(null);
-                refreshNativeContent();
+          </span>
+          {unitMenu && (
+            <Menu
+              key={unitMenu.pages ? "pages" : "actions"}
+              anchor={unitMenu}
+              label={unitMenu.pages ? "Move to page" : "Widget actions"}
+              returnFocus={unitMenu.from}
+              onClose={() => setUnitMenu((menu) => (menu?.pages === unitMenu.pages ? null : menu))}
+              items={
+                unitMenu.pages
+                  ? pages
+                      .filter((page) => page.id !== currentPage)
+                      .map((page) => ({
+                        id: page.id,
+                        label: page.name,
+                        onSelect: () => moveUnitsToPage([unitMenu.id], page.id),
+                      }))
+                  : unitMenu.items
               }
-        }
-      />
-      <div className="studio-board-toolbar" hidden={!editing && groups.length < 2}>
-        {editing ? (
-          <>
-            {isAdmin && (
+            />
+          )}
+          {pageMenu && (
+            <Menu
+              anchor={pageMenu}
+              label="Move to page"
+              returnFocus={pageMenu.from}
+              onClose={() => setPageMenu(null)}
+              items={pages
+                .filter((page) => page.id !== currentPage)
+                .map((page) => ({
+                  id: page.id,
+                  label: page.name,
+                  onSelect: () => moveUnitsToPage(movableSelection, page.id),
+                }))}
+            />
+          )}
+        </div>
+      )}
+      {editing && selection.length > 0 && (
+        <div className="studio-bulk-bar" role="toolbar" aria-label={`${selection.length} selected`}>
+          <span className="studio-bulk-count">{selection.length} selected</span>
+          {bulkActions()
+            .filter(Boolean)
+            .map((action) => (
               <button
-                className="studio-button studio-quiet"
-                disabled={controlsDisabled}
-                onClick={() => openEditor("picker")}
+                key={action.id}
+                type="button"
+                className={`studio-button studio-quiet${action.danger ? " studio-bulk-danger" : ""}`}
+                disabled={controlsDisabled || action.disabled}
+                title={action.hint}
+                aria-haspopup={action.menu ? "menu" : undefined}
+                onClick={(event) => runBulk(action.id, event)}
               >
-                <StudioIcon name="plus" size={16} />
-                Widgets
+                <StudioIcon name={action.icon} size={16} />
+                {action.label}
               </button>
-            )}
-            <button
-              className="studio-button studio-quiet"
-              disabled={controlsDisabled || stackableSelection.length < 2}
-              onClick={createStack}
-            >
-              <StudioIcon name="stack" size={16} />
-              Create stack
-              {stackableSelection.length > 0 ? ` (${stackableSelection.length})` : ""}
-            </button>
-            <button
-              className="studio-button studio-quiet"
-              disabled={controlsDisabled || selection.length !== 1}
-              onClick={() => position(selection[0])}
-            >
-              Position & size
-            </button>
-            <span className="studio-toolbar-spacer" />
-            <span className="studio-muted">
-              {dirty ? "Unsaved arrangement" : "Drag a panel by its handle to move it · resize from the corner"}
-            </span>
-            {dirty && (
-              <button
-                className="studio-button studio-primary"
-                disabled={controlsDisabled}
-                onClick={() => saveArrangement(false)}
+            ))}
+          <button
+            type="button"
+            className="studio-icon-button"
+            aria-label="Clear selection"
+            title="Clear selection (Esc)"
+            onClick={() => setSelection([])}
+          >
+            <StudioIcon name="close" size={16} />
+          </button>
+        </div>
+      )}
+      {newDiscovered.length > 0 && (
+        <div className="studio-discovered-note" role="group" aria-label="Newly discovered widgets">
+          <span>
+            {newDiscovered.length === 1
+              ? "A new widget was discovered."
+              : `${newDiscovered.length} new widgets were discovered.`}
+          </span>
+          {pages.length > 1 && (
+            <label className="studio-discovered-page">
+              Put {newDiscovered.length === 1 ? "it" : "them"} on
+              <select
+                value={pages.some((page) => page.id === discoveredTarget) ? discoveredTarget : currentPage}
+                onChange={(event) => setDiscoveredTarget(event.target.value)}
               >
-                Save arrangement
-              </button>
-            )}
-          </>
-        ) : (
-          <>
-            <nav className="studio-group-filter" aria-label="Filter native groups">
-              <button
-                className={filter === "all" ? "studio-filter-active" : ""}
-                aria-pressed={filter === "all"}
-                onClick={() => setFilter("all")}
-              >
-                All content
-              </button>
-              {groups.map((group) => (
-                <button
-                  className={filter === group ? "studio-filter-active" : ""}
-                  aria-pressed={filter === group}
-                  key={group}
-                  onClick={() => setFilter(group)}
-                >
-                  {group}
-                </button>
-              ))}
-            </nav>
-          </>
-        )}
-      </div>
+                {pages.map((page) => (
+                  <option key={page.id} value={page.id}>
+                    {page.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button type="button" className="studio-button" disabled={controlsDisabled} onClick={placeNewDiscovered}>
+            {pages.length < 2 ? "OK" : newDiscovered.length === 1 ? "Put it there" : "Put them there"}
+          </button>
+        </div>
+      )}
       <div className="studio-status-message" role="status">
         {notice}
         {(refreshWarning || (envelope && nativeContentStale && !draftSourceChanged)) && (
@@ -1029,19 +2047,94 @@ export default function StudioBoard({
       <div
         ref={canvas}
         className="studio-canvas"
+        onClickCapture={
+          editing
+            ? (event) => {
+                showToolsByTap(event);
+                selectByClick(event);
+              }
+            : undefined
+        }
+        onPointerDownCapture={(event) => {
+          lastPointer.current = event.pointerType;
+        }}
+        onPointerDown={editing ? startMarquee : undefined}
         style={{
-          height: board.panels.length ? projection.rows * (ROW_HEIGHT + GAP) + 32 : 480,
-          "--studio-grid-column": `${(width + GAP) / projection.columns}px`,
-          "--studio-grid-row": `${ROW_HEIGHT + GAP}px`,
+          height: board.panels.length ? projection.rows * (ROW_HEIGHT + gap) + 32 : 480,
+          "--studio-grid-column": `${(width + gap) / projection.columns}px`,
+          "--studio-grid-row": `${ROW_HEIGHT + gap}px`,
         }}
       >
-        {!board.panels.length && (
+        {moving &&
+          snapGuides(geometry, moving).map((line) => (
+            <div
+              key={`${line.vertical ? "v" : "h"}${line.at}`}
+              className="studio-snap-guide"
+              aria-hidden="true"
+              style={
+                line.vertical
+                  ? { left: line.at - 0.5, top: line.from, width: 1, height: line.to - line.from }
+                  : { top: line.at - 0.5, left: line.from, height: 1, width: line.to - line.from }
+              }
+            />
+          ))}
+        {marquee && (
+          <div
+            className="studio-marquee"
+            aria-hidden="true"
+            style={{
+              left: Math.min(marquee.x0, marquee.x1),
+              top: Math.min(marquee.y0, marquee.y1),
+              width: Math.abs(marquee.x1 - marquee.x0),
+              height: Math.abs(marquee.y1 - marquee.y0),
+            }}
+          />
+        )}
+        {!board.panels.length && wholeBoard.panels.length > 0 && (
+          <div className="studio-empty studio-empty-page">
+            <span className="studio-empty-icon">
+              <StudioIcon name="layout" size={32} />
+            </span>
+            <h2>Nothing here yet</h2>
+            {editing ? (
+              <div className="studio-inline-actions">
+                {isAdmin && (
+                  <button
+                    className="studio-button studio-primary"
+                    disabled={controlsDisabled}
+                    onClick={() => openEditor("picker")}
+                  >
+                    <StudioIcon name="plus" size={17} />
+                    Add widget
+                  </button>
+                )}
+                <button
+                  className="studio-button"
+                  disabled={controlsDisabled}
+                  onClick={() => setModal({ type: "moveHere" })}
+                >
+                  <StudioIcon name="move" size={17} />
+                  Move widgets here
+                </button>
+              </div>
+            ) : (
+              <p>This page has no widgets.</p>
+            )}
+          </div>
+        )}
+        {/* Until the board arrives there is nothing to say about it being empty. */}
+        {!envelope && !loadError && (
+          <div className="studio-empty studio-loading" role="status">
+            <h2>Opening your dashboard…</h2>
+          </div>
+        )}
+        {envelope && !wholeBoard.panels.length && (
           <div className="studio-empty">
             <span className="studio-empty-icon">
               <StudioIcon name="layout" size={32} />
             </span>
             <p className="studio-eyebrow">A clean slate</p>
-            <h2>{envelope ? "Make room for what matters." : "Opening your dashboard…"}</h2>
+            <h2>Make room for what matters.</h2>
             {editorPage && isAdmin ? (
               <>
                 <p>
@@ -1079,7 +2172,6 @@ export default function StudioBoard({
               className="studio-stack-backdrop"
               style={{
                 ...geometry.get(stack.id),
-                display: visibleIds.has(stack.id) ? undefined : "none",
               }}
             />
           ))}
@@ -1106,11 +2198,14 @@ export default function StudioBoard({
           }
           onStackDrag={onStackDrag}
           onEdit={editPanel}
+          onFullView={editing ? undefined : setFullView}
           canEdit={(panel) => isAdmin || Boolean(panel.nativeLocator?.discovered)}
           onSelect={select}
           onManipulate={manipulate}
           onUnitKey={unitKey}
+          onLongPress={editing ? openUnitMenu : undefined}
           overlayOpen={overlayOpen}
+          toolsShown={editing ? toolsShown : null}
         />
         <div className="studio-stack-layer">
           {board.stacks.map((stack) => (
@@ -1118,10 +2213,7 @@ export default function StudioBoard({
               key={stack.id}
               stack={stack}
               panels={board.panels}
-              rect={{
-                ...geometry.get(stack.id),
-                display: visibleIds.has(stack.id) ? undefined : "none",
-              }}
+              rect={geometry.get(stack.id)}
               editing={editing || Boolean(modal)}
               selected={selection.includes(stack.id)}
               onSelect={select}
@@ -1131,6 +2223,7 @@ export default function StudioBoard({
               onActive={onActive}
               registerController={registerController}
               onEdit={editStack}
+              onLongPress={editing ? openUnitMenu : undefined}
               onManipulate={manipulate}
               onUnitKey={unitKey}
               onStackDrag={(offset) => onStackDrag(stack.id, offset)}
@@ -1145,17 +2238,61 @@ export default function StudioBoard({
           </div>
         )}
       </div>
-      <footer className="studio-page-footer">
-        <span>
-          Homepage Studio <span className="studio-footer-dot">·</span> Powered by Homepage
-        </span>
-        {editing && <span>Esc cancels a drag · arrow keys move · Shift + arrows resize</span>}
-      </footer>
+      {fullView && (
+        <FullViewHost
+          panel={fullView}
+          data={renderedNativeData}
+          settings={settings}
+          onClose={() => setFullView(null)}
+        />
+      )}
+      {search?.open && !editing && (
+        <StudioSearch
+          board={wholeBoard}
+          data={renderedNativeData}
+          query={search.query}
+          onQuery={search.onQuery}
+          onClose={search.onClose}
+          onShowPanel={(item) => {
+            showPage(item.pageId);
+            // Once the page shows, bring the widget into view and point it out.
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => {
+                const element = document.querySelector(`[data-panel-id="${CSS.escape(item.id)}"]`);
+                if (!element) return;
+                element.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" });
+                // A data attribute, so a re-render of the card's classes keeps it.
+                delete element.dataset.found;
+                void element.offsetWidth;
+                element.dataset.found = "true";
+                setTimeout(() => delete element.dataset.found, 1700);
+              }),
+            );
+          }}
+        />
+      )}
+      {toast && (
+        <div className="studio-toast" role="status" key={toast.key}>
+          <span>{toast.message}</span>
+          {toast.undoable && editing && historyCounts.past > 0 && (
+            <button
+              type="button"
+              className="studio-text-button"
+              onClick={() => {
+                setToast(null);
+                undo();
+              }}
+            >
+              Undo
+            </button>
+          )}
+        </div>
+      )}
       {modal && (
         <StudioDialog
           title={modalTitles[modal.type]}
           onClose={closeModal}
-          wide={modal.type === "files" || modal.type === "picker"}
+          wide={modal.type === "files" || modal.type === "picker" || modal.type === "settings"}
           busy={editorGuard.pending}
         >
           <EditorDraftContext.Provider value={reportEditorDraft}>
@@ -1221,6 +2358,90 @@ export default function StudioBoard({
                     </button>
                   </div>
                 </div>
+              ) : modal.type === "deletePage" ? (
+                <DeletePageDialog
+                  page={modal.page}
+                  pages={pages}
+                  count={{
+                    widgets: pageBoard(wholeBoard, modal.page.id).panels.length,
+                    stacks: pageBoard(wholeBoard, modal.page.id).stacks.length,
+                  }}
+                  canDeleteWidgets={isAdmin}
+                  deleteBlocked={dirty}
+                  onMove={(target) => deletePage(modal.page, target)}
+                  onDeleteAll={async () => {
+                    const state = await studioRequest("/studio/api/page-delete", {
+                      revision: envelope.revision,
+                      pageId: modal.page.id,
+                    });
+                    setHistory({ past: [], future: [] });
+                    showPage(state.board.pages[0].id, { replace: true });
+                    await savedContent(state);
+                    showToast(`Deleted “${modal.page.name}” and its widgets`);
+                  }}
+                  onClose={closeModal}
+                />
+              ) : modal.type === "pageIcon" ? (
+                <PageIconEditor
+                  page={modal.page}
+                  onApply={(icon) => {
+                    if (commitWhole(updatePage(wholeRef.current, modal.page.id, { icon }))) dismissEditor();
+                  }}
+                  onClose={closeModal}
+                />
+              ) : modal.type === "pageBackground" ? (
+                <PageBackgroundEditor
+                  page={modal.page}
+                  dashboardBackground={dashboardPageBackground}
+                  tokens={cardTheme}
+                  onApply={(background) => {
+                    if (commitWhole(updatePage(wholeRef.current, modal.page.id, { background }))) dismissEditor();
+                  }}
+                  onClose={closeModal}
+                />
+              ) : modal.type === "pageLink" ? (
+                <div className="studio-dialog-body">
+                  <p className="studio-note">Copying isn’t available here. Select the address and copy it yourself.</p>
+                  <input
+                    className="studio-link-field"
+                    readOnly
+                    value={modal.url}
+                    onFocus={(event) => event.target.select()}
+                  />
+                </div>
+              ) : modal.type === "moveHere" ? (
+                <MoveHereDialog
+                  board={wholeBoard}
+                  pageId={currentPage}
+                  onMove={(ids) => {
+                    moveUnitsToPage(ids, currentPage);
+                    dismissEditor();
+                  }}
+                  onClose={closeModal}
+                />
+              ) : modal.type === "bulkLook" ? (
+                <BulkLookEditor
+                  panels={selectedPanels()}
+                  savedLooks={wholeBoard.looks}
+                  onApply={bulkLook}
+                  onCancel={closeModal}
+                />
+              ) : modal.type === "bulkSize" ? (
+                <BulkSizeEditor
+                  units={unitsForBoard(board).filter((unit) => selection.includes(unit.id))}
+                  onApply={bulkSize}
+                  onCancel={closeModal}
+                />
+              ) : modal.type === "bulkDelete" ? (
+                <DeleteWidgetsConfirm
+                  count={selectedCount}
+                  discovered={selectedPanels().filter((panel) => panel.nativeLocator?.discovered).length}
+                  pending={Boolean(modal.pending)}
+                  onDelete={bulkContent.remove}
+                  onCancel={closeModal}
+                />
+              ) : modal.type === "shortcuts" ? (
+                <ShortcutsSheet editing={editing} pages={pages.length > 1} />
               ) : modal.type === "discovery" ? (
                 <DiscoveryEditor
                   panel={modal.panel}
@@ -1280,6 +2501,7 @@ export default function StudioBoard({
                           revision: editorData.state.revision,
                           id,
                           hidden: false,
+                          pageId: currentPage,
                         }),
                       );
                     } catch (err) {
@@ -1294,6 +2516,12 @@ export default function StudioBoard({
                   {...editorData}
                   panel={modal.panel}
                   entry={modal.entry}
+                  startDeleting={Boolean(modal.deleting)}
+                  pageId={currentPage}
+                  wholeBoard={wholeBoard}
+                  renderPreview={(panel, override) => (
+                    <CardPreview panel={panel} data={renderedNativeData} override={override} />
+                  )}
                   onSaved={savedContent}
                   onCancel={closeModal}
                   onReload={reloadEditor}
@@ -1315,6 +2543,7 @@ export default function StudioBoard({
                 <AppearanceOnlyEditor
                   {...editorData}
                   logo={access?.dashboard?.logo ?? null}
+                  name={access?.dashboard?.name}
                   onLogoChange={() => mutateAccess()}
                   onSaved={savedContent}
                   onClose={closeModal}
@@ -1323,14 +2552,23 @@ export default function StudioBoard({
               ) : modal.type === "settings" ? (
                 <SettingsEditor
                   {...editorData}
+                  pageCount={pages.length}
+                  hasCharts={wholeBoard.panels.some((panel) => needsHistory(resolvedLook(settings, panel)))}
                   logo={access?.dashboard?.logo ?? null}
+                  name={access?.dashboard?.name}
                   onLogoChange={() => mutateAccess()}
                   onSaved={savedContent}
                   onClose={closeModal}
                   onOpenFiles={() => requestEditorAction(() => setModal({ type: "files" }))}
                   onOpenBackups={() => requestEditorAction(() => openEditor("backups"))}
+                  onOpenConnections={() => requestEditorAction(() => setModal({ type: "connections" }))}
+                  onOpenImages={() => requestEditorAction(() => setModal({ type: "images" }))}
                   onReload={reloadEditor}
                 />
+              ) : modal.type === "images" ? (
+                <ImagesEditor onClose={closeModal} />
+              ) : modal.type === "connections" ? (
+                <ConnectionsEditor onClose={closeModal} />
               ) : modal.type === "files" ? (
                 <FilesEditor {...editorData} onSaved={savedContent} onClose={closeModal} onReload={reloadEditor} />
               ) : (

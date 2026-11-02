@@ -1,6 +1,9 @@
 import Image from "next/image";
-import { useContext } from "react";
+import { useContext, useState } from "react";
 
+import { useCardTheme } from "components/studio/card-look";
+import { dashboardPath } from "components/studio/dashboard-path.mjs";
+import { builtInIcon, builtInIconCdnUrl, builtInIconUrl } from "components/studio/icon-source.mjs";
 import { SettingsContext } from "utils/contexts/settings";
 import { ThemeContext } from "utils/contexts/theme";
 
@@ -12,12 +15,14 @@ const iconSetURLs = {
 export default function ResolvedIcon({ icon, width = 32, height = 32, alt = "logo" }) {
   const { settings } = useContext(SettingsContext);
   const { theme } = useContext(ThemeContext);
+  // Studio's own light or dark mode decides which version of a logo shows.
+  const { mode } = useCardTheme();
 
-  // direct or relative URLs
+  // direct or relative URLs; Studio uploads live under the dashboard's address
   if (icon.startsWith("http") || icon.startsWith("/")) {
     return (
       <Image
-        src={`${icon}`}
+        src={icon.startsWith("/studio/api/images/") ? dashboardPath(icon) : icon}
         width={width}
         height={height}
         style={{
@@ -96,49 +101,19 @@ export default function ResolvedIcon({ icon, width = 32, height = 32, alt = "log
     );
   }
 
-  // fallback to dashboard-icons
-  if (icon.endsWith(".svg")) {
-    const iconName = icon.replace(".svg", "");
-    return (
-      <Image
-        src={`https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/${iconName}.svg`}
-        width={width}
-        height={height}
-        style={{
-          width,
-          height,
-          objectFit: "contain",
-          maxHeight: "100%",
-          maxWidth: "100%",
-        }}
-        alt={alt}
-      />
-    );
-  }
+  // fallback to dashboard-icons (Studio's built-in logos)
+  const builtIn = builtInIcon(icon);
+  if (!builtIn) return null;
+  return <BuiltInLogo key={icon} builtIn={builtIn} dark={mode === "dark"} width={width} height={height} alt={alt} />;
+}
 
-  if (icon.endsWith(".webp")) {
-    const iconName = icon.replace(".webp", "");
-    return (
-      <Image
-        src={`https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/${iconName}.webp`}
-        width={width}
-        height={height}
-        style={{
-          width,
-          height,
-          objectFit: "contain",
-          maxHeight: "100%",
-          maxWidth: "100%",
-        }}
-        alt={alt}
-      />
-    );
-  }
-
-  const iconName = icon.replace(".png", "");
+// The offline copy, or the project's CDN for a name newer than the pinned set.
+function BuiltInLogo({ builtIn, dark, width, height, alt }) {
+  const [offline, setOffline] = useState(true);
   return (
     <Image
-      src={`https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/${iconName}.png`}
+      src={offline ? builtInIconUrl(builtIn.name, { dark }) : builtInIconCdnUrl(builtIn.name, builtIn)}
+      onError={offline ? () => setOffline(false) : undefined}
       width={width}
       height={height}
       style={{

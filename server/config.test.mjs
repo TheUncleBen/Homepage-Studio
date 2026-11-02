@@ -51,7 +51,7 @@ test('invalid syntax or shape rejects the entire save without changing any file 
     { bookmarksYaml: '- Docs:\n  - Wrong: scalar\n' },
     { widgetsYaml: '- resources: nope\n' },
     { servicesYaml: null },
-    { board: { version: 2, columns: 12, panels: [], stacks: [] } },
+    { board: { version: 3, columns: 24, panels: [], stacks: [] } },
   ]) {
     await assert.rejects(store.save({ revision: before.revision, settingsYaml: 'title: Must not be written\n', ...changes }), (error) => error.status === 422);
     assert.equal((await store.load()).revision, before.revision);
@@ -496,4 +496,116 @@ test('snapshot retention follows commit order through tied clocks, clock rollbac
     crypto.randomUUID = realRandomUUID;
     syncBuiltinESMExports();
   }
+});
+
+test('deleting a page with its widgets removes their native entries in one save', async (t) => {
+  const { store, configDir } = await fixture(t);
+  let result = await store.load();
+  const firewall = result.services.find((entry) => entry.name === 'pfSense');
+  const firewallWidget = result.serviceWidgets.find((entry) => entry.serviceId === firewall.id);
+  const portainer = result.services.find((entry) => entry.name === 'Portainer');
+  const portainerWidget = result.serviceWidgets.find((entry) => entry.serviceId === portainer.id);
+  const clock = result.infoWidgets.find((entry) => entry.type === 'datetime');
+  const bookmark = result.bookmarks[0];
+  const away = new Set([firewall.id, firewallWidget.id, portainerWidget.id, clock.id, bookmark.id]);
+  const board = { ...result.board, pages: [...result.board.pages, { id: 'lab', name: 'Lab' }] };
+  let y = 0;
+  board.panels = board.panels.map((panel) => (away.has(panel.id) ? { ...panel, pageId: 'lab', rect: { x: 0, y: (y += 10) - 10, w: 8, h: 10 } } : panel));
+  result = await store.saveBoard({ revision: result.revision, board });
+  result = await store.deletePage({ revision: result.revision, pageId: 'lab' });
+  assert.deepEqual(result.board.pages.map((page) => page.id), ['home']);
+  assert.ok(result.board.panels.every((panel) => !away.has(panel.id)));
+  const services = await fs.readFile(path.join(configDir, 'services.yaml'), 'utf8');
+  assert.ok(!services.includes('pfSense'));
+  assert.ok(services.includes('Portainer') && !services.includes('type: portainer'));
+  assert.ok(services.includes('# Ben\'s dashboard'));
+  assert.ok(!(await fs.readFile(path.join(configDir, 'widgets.yaml'), 'utf8')).includes('datetime'));
+  assert.ok(!(await fs.readFile(path.join(configDir, 'bookmarks.yaml'), 'utf8')).includes('gethomepage'));
+  assert.ok(result.board.panels.some((panel) => panel.id === portainer.id));
+  const backups = await store.listBackups();
+  assert.equal(backups[0].action, 'page-deleted');
+  await assert.rejects(store.deletePage({ revision: result.revision, pageId: 'home' }), /at least one page|no longer exists/);
+});
+
+test('a content edit can carry the arrangement, so look, page and the edit commit together', async (t) => {
+  const { store } = await fixture(t);
+  let result = await store.load();
+  const board = { ...result.board, pages: [...result.board.pages, { id: 'lab', name: 'Lab' }] };
+  const firewall = result.services.find((entry) => entry.name === 'pfSense');
+  board.panels = board.panels.map((panel) => (panel.id === firewall.id ? { ...panel, look: { fill: 'solid', colour: '#336699' }, behaviour: { target: 'same' } } : panel));
+  result = await store.mutateService({ revision: result.revision, action: 'update', id: firewall.id, name: 'Firewall', config: {}, board, pageId: 'lab' });
+  const panel = result.board.panels.find((item) => item.id === firewall.id);
+  assert.deepEqual(panel.look, { fill: 'solid', colour: '#336699' });
+  assert.deepEqual(panel.behaviour, { target: 'same' });
+  assert.deepEqual(result.board.pages.map((page) => page.id), ['home', 'lab']);
+  result = await store.mutateService({ revision: result.revision, action: 'add', group: 'Media', name: 'Jellyfin', config: { href: 'https://media.example.test' }, board: result.board, pageId: 'lab' });
+  assert.equal(result.board.panels.find((item) => item.title === 'Jellyfin').pageId, 'lab');
+  await assert.rejects(store.mutateService({ revision: result.revision, action: 'update', id: firewall.id, config: {}, board: { ...result.board, panels: [{ ...result.board.panels[0], look: { fill: 'neon' } }] } }), /offered choices/);
+});
+
+test('duplicating a page copies every widget on it, placed and styled like the original', async (t) => {
+  const { store, configDir } = await fixture(t);
+  let result = await store.load();
+  const firewall = result.services.find((entry) => entry.name === 'pfSense');
+  const firewallWidget = result.serviceWidgets.find((entry) => entry.serviceId === firewall.id);
+  const portainerWidget = result.serviceWidgets.find((entry) => entry.serviceId !== firewall.id);
+  const clock = result.infoWidgets.find((entry) => entry.type === 'datetime');
+  const bookmark = result.bookmarks[0];
+  const away = [firewall.id, firewallWidget.id, portainerWidget.id, clock.id, bookmark.id];
+  const board = { ...result.board, pages: [...result.board.pages, { id: 'lab', name: 'Lab' }] };
+  board.panels = board.panels.map((panel) => {
+    const index = away.indexOf(panel.id);
+    return index < 0 ? panel : { ...panel, pageId: 'lab', rect: { x: 0, y: index * 10, w: 8, h: 10 }, ...(panel.id === clock.id ? { look: { fill: 'tint' } } : {}) };
+  });
+  result = await store.saveBoard({ revision: result.revision, board });
+  const before = result.board.panels.length;
+  result = await store.duplicatePage({ revision: result.revision, pageId: 'lab' });
+  assert.equal(result.pageId, 'lab-copy');
+  assert.deepEqual(result.board.pages.map((page) => page.name), ['Home', 'Lab', 'Lab copy']);
+  const copies = result.board.panels.filter((panel) => panel.pageId === 'lab-copy');
+  assert.equal(copies.length, 5);
+  assert.equal(result.board.panels.length, before + 5);
+  assert.deepEqual(copies.find((panel) => panel.kind === 'informationWidget').look, { fill: 'tint' });
+  assert.deepEqual(copies.map((panel) => panel.rect.y).sort((a, b) => a - b), [0, 10, 20, 30, 40]);
+  const services = await fs.readFile(path.join(configDir, 'services.yaml'), 'utf8');
+  assert.ok(services.includes('pfSense copy'));
+  assert.ok(services.includes('{{HOMEPAGE_VAR_FIREWALL_KEY}}'));
+  assert.equal((services.match(/type: portainer/g) || []).length, 2);
+  assert.ok((await fs.readFile(path.join(configDir, 'bookmarks.yaml'), 'utf8')).includes('Homepage copy'));
+  assert.equal((await store.listBackups())[0].action, 'page-duplicated');
+});
+
+test('several widgets are duplicated or deleted together in one save', async (t) => {
+  const { store, configDir } = await fixture(t);
+  let result = await store.load();
+  const clock = result.infoWidgets.find((entry) => entry.type === 'datetime');
+  const bookmark = result.bookmarks[0];
+  const board = structuredClone(result.board);
+  board.panels = board.panels.map((panel) => (panel.id === clock.id ? { ...panel, look: { fill: 'tint' }, rect: { ...panel.rect, w: 5, h: 2 } } : panel));
+  result = await store.saveBoard({ revision: result.revision, board });
+  const before = result.board.panels.length;
+  result = await store.duplicatePanels({ revision: result.revision, ids: [clock.id, bookmark.id] });
+  assert.equal(result.ids.length, 2);
+  assert.equal(result.board.panels.length, before + 2);
+  const copies = result.board.panels.filter((panel) => result.ids.includes(panel.id));
+  const clockCopy = copies.find((panel) => panel.kind === 'informationWidget');
+  assert.deepEqual(clockCopy.look, { fill: 'tint' });
+  assert.deepEqual([clockCopy.rect.w, clockCopy.rect.h], [5, 2]);
+  // Each copy sits in free space, never on top of another widget.
+  const others = result.board.panels.filter((panel) => panel.id !== clockCopy.id && panel.pageId === clockCopy.pageId);
+  const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  assert.ok(others.every((panel) => !overlaps(panel.rect, clockCopy.rect)));
+  assert.equal((await fs.readFile(path.join(configDir, 'widgets.yaml'), 'utf8')).match(/datetime/g).length, 2);
+  assert.ok((await fs.readFile(path.join(configDir, 'bookmarks.yaml'), 'utf8')).includes('Homepage copy'));
+  assert.equal((await store.listBackups())[0].action, 'widgets-duplicated');
+
+  result = await store.deletePanels({ revision: result.revision, ids: result.ids });
+  assert.equal(result.board.panels.length, before);
+  assert.equal((await fs.readFile(path.join(configDir, 'widgets.yaml'), 'utf8')).match(/datetime/g).length, 1);
+  assert.ok(!(await fs.readFile(path.join(configDir, 'bookmarks.yaml'), 'utf8')).includes('Homepage copy'));
+  assert.equal((await store.listBackups())[0].action, 'widgets-deleted');
+
+  await assert.rejects(store.deletePanels({ revision: result.revision, ids: ['nope'] }), /no longer exists/);
+  await assert.rejects(store.duplicatePanels({ revision: result.revision, ids: [] }), /Choose the widgets/);
+  await assert.rejects(store.deletePanels({ revision: 'stale', ids: [clock.id] }), /changed|revision|reload/i);
 });

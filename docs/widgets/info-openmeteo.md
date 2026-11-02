@@ -6,7 +6,7 @@ Information widget · type `openmeteo` · [Homepage documentation](https://getho
 
 ## What it needs
 
-> **Studio note:** Provide coordinates or deliberately use browser location. Browser geolocation requires a secure context; VPN or private-network access alone does not make HTTP a secure context.
+> **Studio note:** Without a latitude and longitude, the card says “Click to allow” and, once clicked, uses the location of the browser viewing it. That works only over HTTPS or on localhost; a VPN or private network alone is not enough. Enter both to show one place for everyone.
 
 Homepage's recommended weather widget. No registration is required at all! See [https://open-meteo.com/en/docs](https://open-meteo.com/en/docs)
 

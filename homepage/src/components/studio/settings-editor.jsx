@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+import useSWR from "swr";
 
 import { FILES, studioRequest } from "./api.mjs";
 import AppearanceEditor from "./appearance-editor";
 import ConfigForm, { SETTINGS_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
+import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
+import { dashboardLanguage, LANGUAGES } from "./languages.mjs";
 import { patchFromDraft } from "./native-adapter.mjs";
 import { ActionRow, Group, Row, Switch } from "./ui";
+import WidgetDefaults from "./widget-defaults";
 
 const buildRevision = process.env.NEXT_PUBLIC_REVISION;
 const sourceUrl = `https://github.com/TheUncleBen/Homepage-Studio${/^[a-f0-9]{40}$/i.test(buildRevision || "") ? `/tree/${buildRevision}` : ""}`;
@@ -23,6 +27,10 @@ export const SNAPSHOT_ACTION_LABELS = {
   "dashboard-imported": "Dashboard imported",
   "discovered-panel-hidden": "Discovered panel hidden",
   "discovered-panel-shown": "Discovered panel shown",
+  "page-deleted": "Page deleted with its widgets",
+  "page-duplicated": "Page duplicated with copies of its widgets",
+  "widgets-deleted": "Several widgets deleted",
+  "widgets-duplicated": "Several widgets duplicated",
   "service-added": "Service tile added",
   "service-edited": "Service tile edited",
   "service-deleted": "Service tile deleted",
@@ -80,17 +88,138 @@ export function downloadFile(name, text, type = "application/json") {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// Each language named in itself, so anyone can find their own.
+function languageOptions() {
+  const named = LANGUAGES.map((code) => {
+    try {
+      return [code, new Intl.DisplayNames([code], { type: "language" }).of(code) || code];
+    } catch {
+      return [code, code];
+    }
+  });
+  return named.sort((a, b) => a[1].localeCompare(b[1]));
+}
+
+// How the dashboard appears in a browser tab, on a home screen and to search
+// engines. Uses Homepage's own settings (title, favicon, pwa, disableIndexing).
+export function BrowserSettings({ settings, onChange }) {
+  const set = (patch) => {
+    const next = { ...settings };
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined) delete next[key];
+      else next[key] = value;
+    }
+    onChange(next);
+  };
+  const installable = settings.pwa !== false;
+  const pwa = settings.pwa && typeof settings.pwa === "object" && !Array.isArray(settings.pwa) ? settings.pwa : {};
+  const setApp = (patch) => {
+    const next = { ...pwa, ...patch };
+    for (const [key, value] of Object.entries(patch)) if (value === undefined) delete next[key];
+    set({ pwa: Object.keys(next).length ? next : undefined });
+  };
+  return (
+    <Group title="Language, browser and phone">
+      <Row
+        label="Language"
+        htmlFor="studio-language"
+        info="Words, numbers and dates on this dashboard. Signed-in people can pick their own in Preferences."
+      >
+        <select
+          id="studio-language"
+          value={dashboardLanguage(settings)}
+          onChange={(event) => set({ language: event.target.value === "en" ? undefined : event.target.value })}
+        >
+          {languageOptions().map(([code, label]) => (
+            <option key={code} value={code}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </Row>
+      <Row label="Tab title" htmlFor="studio-tab-title">
+        <input
+          id="studio-tab-title"
+          value={typeof settings.title === "string" ? settings.title : ""}
+          placeholder="Dashboard"
+          maxLength={120}
+          onChange={(event) => set({ title: event.target.value || undefined })}
+        />
+      </Row>
+      <Row label="Tab icon" info="Shown in the browser tab and bookmarks. Without one, the dashboard's logo is used.">
+        <IconField
+          id="studio-tab-icon"
+          label="tab icon"
+          emptyText="Same as the logo"
+          value={typeof settings.favicon === "string" ? settings.favicon : ""}
+          onChange={(icon) => set({ favicon: icon || undefined })}
+        />
+      </Row>
+      <Row
+        label="Install as app"
+        info="Lets people add this dashboard to a phone's home screen or install it on a computer."
+      >
+        <Switch
+          label="Can be added to a home screen"
+          checked={installable}
+          onChange={(on) => set({ pwa: on ? (Object.keys(pwa).length ? pwa : undefined) : false })}
+        />
+      </Row>
+      {installable && (
+        <div className="studio-row-dependent">
+          <Row label="App name" htmlFor="studio-app-name">
+            <input
+              id="studio-app-name"
+              value={typeof pwa.name === "string" ? pwa.name : ""}
+              placeholder={
+                typeof settings.title === "string" && settings.title ? settings.title : "Same as the tab title"
+              }
+              maxLength={60}
+              onChange={(event) => setApp({ name: event.target.value || undefined })}
+            />
+          </Row>
+        </div>
+      )}
+      <Row label="Hide from search" info="Asks Google and other search engines not to list this dashboard.">
+        <Switch
+          label="Ask search engines not to index this dashboard"
+          checked={settings.disableIndexing === true}
+          onChange={(on) => set({ disableIndexing: on || undefined })}
+        />
+      </Row>
+    </Group>
+  );
+}
+
 export default function SettingsEditor({
   state,
   platform = null,
   logo = null,
+  name,
   onLogoChange,
   onSaved,
   onClose,
   onOpenFiles,
   onOpenBackups,
+  onOpenConnections,
+  onOpenImages,
   onReload,
+  pageCount = 1,
+  hasCharts = false,
 }) {
+  const { data: saved } = useSWR(onOpenConnections ? "/studio/api/connections" : null, studioRequest);
+  const savedCount = saved?.connections?.length;
+  const { data: uploads } = useSWR(onOpenImages ? "/studio/api/images" : null, studioRequest);
+  const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+  const imagesDetail = uploads?.images
+    ? uploads.images.length
+      ? `${plural(uploads.images.filter((image) => image.kind === "logo").length, "logo", "logos")}, ${plural(
+          uploads.images.filter((image) => image.kind === "background").length,
+          "background",
+          "backgrounds",
+        )}`
+      : "None uploaded"
+    : undefined;
   const original = state.settingsConfig || {};
   const [draft, setDraft] = useState(() => structuredClone(original));
   const [valid, setValid] = useState(true);
@@ -126,17 +255,18 @@ export default function SettingsEditor({
               settings={draft}
               platform={platform}
               logo={logo}
+              name={name}
               onLogoChange={onLogoChange}
               onChange={setDraft}
               onValidity={setAppearanceValid}
             />
             <Group>
               <Row
-                label="Platform CSS"
-                info="The CSS an administrator sets for every dashboard in Administration → Appearance. It loads before this dashboard's own custom.css."
+                label="Administrator's CSS"
+                info="Custom CSS an administrator sets for every dashboard in Administration → Appearance (Platform CSS). It loads before this dashboard's own custom.css."
               >
                 <Switch
-                  label="Load the platform CSS"
+                  label="Also load the administrator's CSS"
                   checked={draft.studioTheme?.platformCss !== false}
                   onChange={(on) => {
                     const studioTheme = {
@@ -152,11 +282,28 @@ export default function SettingsEditor({
               </Row>
             </Group>
           </fieldset>
+          <BrowserSettings settings={draft} onChange={setDraft} />
+          <WidgetDefaults settings={draft} onChange={setDraft} pageCount={pageCount} hasCharts={hasCharts} />
           <ConfigForm
             value={draft}
             onChange={setDraft}
-            fields={SETTINGS_FIELDS.filter((field) => field.key !== "theme")}
-            knownKeys={["theme", "studioTheme"]}
+            fields={SETTINGS_FIELDS.filter((field) => !["theme", "target", "title", "language"].includes(field.key))}
+            knownKeys={[
+              "theme",
+              "studioTheme",
+              "studioDefaults",
+              "target",
+              "title",
+              "language",
+              // Studio decides these (Page background, and the base for
+              // Homepage's widget palette), so they are not read or shown.
+              "color",
+              "background",
+              "backgroundOpacity",
+              "favicon",
+              "pwa",
+              "disableIndexing",
+            ]}
             onValidity={setValid}
             docs="https://gethomepage.dev/configs/settings/"
             name="Homepage settings"
@@ -164,6 +311,24 @@ export default function SettingsEditor({
             title="Homepage settings"
             info="Homepage's own settings for this dashboard. Studio places and sizes the panels, so Homepage's layout options (tabs, columns, equal heights) are kept but don't change this board."
           />
+          {(onOpenConnections || onOpenImages) && (
+            <Group>
+              {onOpenImages && (
+                <ActionRow icon="image" detail={imagesDetail} onClick={onOpenImages}>
+                  Images
+                </ActionRow>
+              )}
+              {onOpenConnections && (
+                <ActionRow
+                  icon="link"
+                  detail={savedCount === undefined ? undefined : `${savedCount || "None"} saved`}
+                  onClick={onOpenConnections}
+                >
+                  Saved connections
+                </ActionRow>
+              )}
+            </Group>
+          )}
           <Group title="Files and history">
             <ActionRow icon="code" onClick={onOpenFiles}>
               Configuration files
@@ -329,6 +494,19 @@ export function FilesEditor({ state, onSaved, onClose, onReload }) {
   );
 }
 
+// An export carries saved connections without their keys, so the import
+// says which ones need a key typed in again.
+export function importNote(result) {
+  const parts = [];
+  const names = Array.isArray(result?.connectionsNeedingKeys) ? result.connectionsNeedingKeys : [];
+  if (names.length)
+    parts.push(
+      `Dashboard imported. Add the keys again in Dashboard settings › Saved connections: ${names.join(", ")}.`,
+    );
+  if (Array.isArray(result?.importNotes)) parts.push(...result.importNotes);
+  return parts.join(" ");
+}
+
 export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
   const [chosen, setChosen] = useState(null);
   const [archive, setArchive] = useState(null);
@@ -362,7 +540,7 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
     setArchive(null);
     setChosen(null);
     try {
-      if (file.size > 40 * 1024 * 1024) throw new Error("Choose a dashboard backup no larger than 40 MiB.");
+      if (file.size > 100 * 1024 * 1024) throw new Error("Choose a dashboard backup no larger than 100 MiB.");
       let content;
       try {
         content = JSON.parse(await file.text());
@@ -404,6 +582,7 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
       });
       await onSaved(restored, {
         customJsChanged: (restored.customJs || "") !== (state.customJs || ""),
+        ...(importNote(restored) ? { importNote: importNote(restored) } : {}),
       });
     } catch (err) {
       setError(err);
@@ -513,8 +692,9 @@ export function SnapshotEditor({ state, backups, onSaved, onClose, onReload }) {
           Download snapshot
         </button>
         <span className="studio-footer-spacer" />
+        {/* Dismiss words: Cancel beside a main action, Done where there is none. */}
         <button className="studio-button studio-quiet" disabled={busy} onClick={onClose}>
-          Close
+          Cancel
         </button>
         <button className="studio-button studio-primary" disabled={(!chosen && !archive) || busy} onClick={restore}>
           {pending

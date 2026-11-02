@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -56,41 +56,71 @@ describe("dashboard appearance controls", () => {
       studioTheme: { mode: "light", accent: "#91b09e", future: null },
       providers: initial.providers,
     });
-    fireEvent.click(screen.getByRole("radio", { name: "Auto" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Follow device" }));
     expect(onChange.mock.lastCall[0]).not.toHaveProperty("theme");
-    expect(onChange.mock.lastCall[0].studioTheme.mode).toBe("system");
+    // Follow device is the built-in default, so choosing it stores nothing.
+    expect(onChange.mock.lastCall[0].studioTheme).not.toHaveProperty("mode");
   });
 
-  it("follows each platform default separately until the dashboard sets its own", () => {
+  it("shows the platform's values for rows the dashboard leaves alone, with no separate Default choice", () => {
     const onChange = vi.fn();
-    const platform = { mode: "light", accent: "#91b09e", background: null };
+    const platform = { mode: "light", accent: "#91b09e", base: "slate", background: null };
     render(<AppearanceEditor settings={{ title: "Kitchen" }} platform={platform} onChange={onChange} />);
-    expect(screen.getByRole("radio", { name: "Default" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("button", { name: "Default (#91b09e)" })).toHaveAttribute("aria-pressed", "true");
-    // Following the platform accent needs no hex field.
-    expect(screen.queryByLabelText("Accent color")).toBeNull();
+    expect(
+      within(screen.getByRole("radiogroup", { name: "Display mode" })).queryByRole("radio", { name: "Default" }),
+    ).toBeNull();
+    expect(screen.getByRole("radio", { name: "Light" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Slate" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: "Sage", exact: true })).toHaveAttribute("aria-pressed", "true");
     // Choosing an own display mode leaves the accent following the platform.
     fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
     expect(onChange).toHaveBeenLastCalledWith({ title: "Kitchen", theme: "dark", studioTheme: { mode: "dark" } });
   });
 
-  it("returns a setting to the platform default by removing only that key", () => {
+  it("choosing the platform's own value removes only that key (Rule 2)", () => {
     const onChange = vi.fn();
-    const settings = { theme: "dark", studioTheme: { mode: "dark", accent: "#81a8c8", future: 1 } };
+    const settings = { theme: "dark", studioTheme: { mode: "dark", accent: "#81a8c8", base: "forest", future: 1 } };
     render(
-      <AppearanceEditor settings={settings} platform={{ mode: "light", accent: "#91b09e" }} onChange={onChange} />,
+      <AppearanceEditor
+        settings={settings}
+        platform={{ mode: "light", accent: "#91b09e", base: "graphite" }}
+        onChange={onChange}
+      />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Default (#91b09e)" }));
-    expect(onChange).toHaveBeenLastCalledWith({ theme: "dark", studioTheme: { mode: "dark", future: 1 } });
-    fireEvent.click(screen.getByRole("radio", { name: "Default" }));
-    expect(onChange).toHaveBeenLastCalledWith({ studioTheme: { accent: "#81a8c8", future: 1 } });
+    fireEvent.click(screen.getByRole("button", { name: "Sage", exact: true }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      theme: "dark",
+      studioTheme: { mode: "dark", base: "forest", future: 1 },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "Light" }));
+    expect(onChange).toHaveBeenLastCalledWith({ studioTheme: { accent: "#81a8c8", base: "forest", future: 1 } });
+    fireEvent.click(screen.getByRole("radio", { name: "Graphite" }));
+    expect(onChange.mock.lastCall[0].studioTheme).not.toHaveProperty("base");
+  });
+
+  it("starts on Graphite and eggplant without a platform file", () => {
+    render(<AppearanceEditor settings={{}} onChange={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: "Graphite" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: "Eggplant", exact: true })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("stores card defaults only while they differ from the built-in look", () => {
+    const onChange = vi.fn();
+    render(<Draft onChange={onChange} />);
+    expect(screen.queryByRole("radiogroup", { name: "Fill strength" })).toBeNull();
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: "Card fill" })).getByRole("radio", { name: "Tint" }));
+    expect(onChange.mock.lastCall[0].studioTheme).toEqual({ card: { fill: "tint" } });
+    expect(screen.getByRole("radiogroup", { name: "Fill strength" })).toBeTruthy();
+    fireEvent.click(
+      within(screen.getByRole("radiogroup", { name: "Card fill" })).getByRole("radio", { name: "Plain" }),
+    );
+    expect(onChange.mock.lastCall[0]).not.toHaveProperty("studioTheme");
   });
 
   it("retains partially typed colors, reports invalid drafts and synchronizes an external YAML correction", () => {
     const onChange = vi.fn(),
       onValidity = vi.fn();
     render(<Draft onChange={onChange} onValidity={onValidity} />);
-    expect(screen.queryByLabelText("Accent color")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Ocean", exact: true }));
     const input = screen.getByLabelText("Accent color");
     expect(input).toHaveValue("#81a8c8");
@@ -121,14 +151,14 @@ describe("dashboard appearance controls", () => {
     vi.stubGlobal("matchMedia", () => media);
     const { container, unmount } = render(<Draft initial={{ studioTheme: { mode: "system" } }} />);
     const preview = container.querySelector(".studio-appearance-preview");
-    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#f4f3f6");
+    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#f3f1ec");
     act(() => {
       media.matches = true;
       listener();
     });
-    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#111115");
+    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#121314");
     fireEvent.click(screen.getByRole("radio", { name: "Light" }));
-    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#f4f3f6");
+    expect(preview.style.getPropertyValue("--studio-bg")).toBe("#f3f1ec");
     unmount();
     expect(media.removeEventListener).toHaveBeenCalledWith("change", listener);
   });

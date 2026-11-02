@@ -5,6 +5,40 @@ import { describe, expect, it, vi } from "vitest";
 import StackEditor, { PositionEditor } from "./stack-editor";
 
 describe("Stack playback editor", () => {
+  it("explains a resize when stacking widgets that already share a size", () => {
+    const panel = (id, h) => ({
+      id,
+      kind: "informationWidget",
+      title: id,
+      group: "",
+      nativeLocator: { type: "greeting" },
+      rect: { x: 0, y: 0, w: 5, h },
+    });
+    const stack = {
+      id: "stack",
+      panelIds: ["a", "b"],
+      rect: { x: 0, y: 0, w: 5, h: 5 },
+      playback: {
+        mode: "manual",
+        intervalMs: 10000,
+        manualHoldMs: 30000,
+        transition: "horizontal",
+        transitionDurationMs: 250,
+        loop: true,
+      },
+    };
+    const callbacks = { onApply: vi.fn(), onClose: vi.fn(), onPanelEdit: vi.fn() };
+    const same = { version: 3, panels: [panel("a", 3), panel("b", 3)], stacks: [] };
+    const { unmount } = render(<StackEditor stack={stack} board={same} fitting {...callbacks} />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "A stack needs room for its controls, so these widgets will be 5 × 5.",
+    );
+    unmount();
+    const mixed = { version: 3, panels: [panel("a", 3), panel("b", 4)], stacks: [] };
+    render(<StackEditor stack={stack} board={mixed} fitting {...callbacks} />);
+    expect(screen.getByRole("status")).toHaveTextContent("These widgets have different sizes. They will all be 5 × 5.");
+  });
+
   it("applies and reopens the selected manual delay without shortening a longer normal interval", () => {
     const stack = {
       id: "stack",
@@ -71,7 +105,7 @@ describe("Stack playback editor", () => {
     const onApply = vi.fn();
     render(
       <PositionEditor
-        unit={{ id: "clock", rect: { x: 8, y: 2, w: 4, h: 3 }, minimum: { w: 3, h: 2 } }}
+        unit={{ id: "clock", rect: { x: 16, y: 2, w: 8, h: 6 }, minimum: { w: 5, h: 2 } }}
         onApply={onApply}
         onClose={vi.fn()}
       />,
@@ -87,10 +121,10 @@ describe("Stack playback editor", () => {
     expect(apply).toBeDisabled();
 
     fireEvent.change(width, { target: { value: "1" } });
-    fireEvent.change(width, { target: { value: "12" } });
-    expect(width).toHaveValue(12);
-    expect(column).toHaveValue(8);
-    expect(screen.getByRole("alert")).toHaveTextContent("Column plus width cannot exceed 12");
+    fireEvent.change(width, { target: { value: "24" } });
+    expect(width).toHaveValue(24);
+    expect(column).toHaveValue(16);
+    expect(screen.getByRole("alert")).toHaveTextContent("Column plus width cannot exceed 24");
     expect(apply).toBeDisabled();
 
     fireEvent.change(column, { target: { value: "0" } });
@@ -100,7 +134,7 @@ describe("Stack playback editor", () => {
     fireEvent.blur(screen.getByRole("spinbutton", { name: "Height" }));
     expect(screen.getByRole("spinbutton", { name: "Height" })).toHaveValue(2);
     fireEvent.click(apply);
-    expect(onApply).toHaveBeenCalledWith({ x: 0, y: 2, w: 12, h: 2 });
+    expect(onApply).toHaveBeenCalledWith({ x: 0, y: 2, w: 24, h: 2 });
   });
 
   it("clamps an out-of-range value only on blur and still applies an unchanged position", () => {
@@ -110,10 +144,10 @@ describe("Stack playback editor", () => {
     const width = screen.getByRole("spinbutton", { name: "Width" });
     fireEvent.change(width, { target: { value: "38" } });
     expect(width).toHaveValue(38);
-    expect(screen.getByRole("alert")).toHaveTextContent("Width must be between 1 and 12.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Width must be between 1 and 24.");
     expect(screen.getByRole("spinbutton", { name: "Column" })).toHaveValue(0);
     fireEvent.blur(width);
-    expect(width).toHaveValue(12);
+    expect(width).toHaveValue(24);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     fireEvent.change(width, { target: { value: "4" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply to arrangement" }));

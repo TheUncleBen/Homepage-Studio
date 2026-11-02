@@ -1,4 +1,4 @@
-# TrueNas
+# TrueNAS
 
 Integration · type `truenas` · [Homepage documentation](https://gethomepage.dev/widgets/services/truenas/)
 

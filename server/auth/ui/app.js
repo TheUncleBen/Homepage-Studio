@@ -872,6 +872,9 @@
   async function accountPage() {
     let view = await api('account');
     const { dashboards: shared } = await api('dashboards');
+    const preferenceData = await api('account/preferences');
+    let preferences = preferenceData.preferences;
+    const languages = Array.isArray(preferenceData.languages) ? preferenceData.languages : [];
     const message = notice();
     if (params.has('linked')) say(message, `Your ${view.oidc?.name ?? 'single sign-on'} account is linked.`, 'ok');
     if (params.has('confirmed')) say(message, 'Confirmed. You can close this tab and go back to your change.', 'ok');
@@ -891,7 +894,7 @@
       if (view.pendingLink) parts.push(linkConfirmSection(view.pendingLink));
       if (view.recovery) parts.push(h('div', { class: 'notice warn', text: 'You signed in with a command-line recovery link. This session ends when you close the browser. Add a passkey or authenticator app now if you lost yours.' }));
       if (local) parts.push(freshBanner(view.fresh));
-      parts.push(profileSection(user), defaultDashboardSection(user));
+      parts.push(profileSection(user), defaultDashboardSection(user), preferencesSection());
       if (local) parts.push(securitySection(user, factors), passkeySection(factors));
       if (view.oidc) parts.push(linkSection(user));
       parts.push(sessionsSection(), policySection());
@@ -929,6 +932,68 @@
       select.addEventListener('change', () => update(() => api('account/default-dashboard', { dashboardId: select.value || null }), box, 'Default dashboard saved.'));
       return [group({ title: 'Default dashboard', info: admin ? 'This site’s address opens the Dashboards page unless you choose a dashboard.' : 'The dashboard this site’s address opens for you. Without a choice, your group’s default opens, or the Dashboards page.' },
         row('Opens at ' + location.host, select)), box];
+    }
+    // Account › Preferences: how this person sees every dashboard they open.
+    // Each change saves at once. A default is never stored: choosing it again
+    // removes the setting. Rows that can't apply stay hidden (Custom search's
+    // address only while Custom is chosen; Suggestions only for engines that
+    // give them).
+    function preferencesSection() {
+      const box = notice();
+      const ENGINES = [['google', 'Google'], ['duckduckgo', 'DuckDuckGo'], ['bing', 'Bing'], ['brave', 'Brave'], ['startpage', 'Startpage'], ['kagi', 'Kagi'], ['custom', 'Custom']];
+      const SUGGESTS = new Set(['google', 'duckduckgo', 'bing', 'brave']);
+      const DEFAULTS = { searchEngine: 'google', searchSuggestions: true, searchDescriptions: true, searchAddresses: true, searchOpens: 'new', mode: 'dashboard', motion: 'system', language: 'dashboard', clock: 'dashboard', temperature: 'dashboard' };
+      const read = key => preferences[key] ?? DEFAULTS[key];
+      async function save(change) {
+        const next = { ...preferences, ...change };
+        for (const [key, entry] of Object.entries(next)) if (entry === DEFAULTS[key] || entry === '' || entry === undefined) delete next[key];
+        try { preferences = (await api('account/preferences', { preferences: next })).preferences; say(box, 'Saved.', 'ok'); return true; }
+        catch (error) { failure(box, error); return false; }
+      }
+      // The search group redraws itself when a choice shows or hides rows.
+      const searchSlot = h('div', {});
+      function drawSearch() { put(searchSlot, searchGroup()); }
+      function searchGroup() {
+        const engine = read('searchEngine');
+        const select = h('select', {}, ENGINES.map(([key, label]) => h('option', { value: key, text: key === 'google' ? 'Google (default)' : label, selected: key === engine })));
+        select.addEventListener('change', async () => {
+          // Custom needs its address first; it saves once one is typed.
+          if (select.value === 'custom' && !preferences.searchUrl) { preferences = { ...preferences, searchEngine: 'custom' }; return drawSearch(); }
+          if (await save({ searchEngine: select.value })) drawSearch();
+        });
+        const rows = [row('Search with', select)];
+        if (engine === 'custom') {
+          const url = h('input', { type: 'url', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'https://search.example.org/?q=%s', value: preferences.searchUrl ?? '' });
+          url.addEventListener('change', async () => { if (await save({ searchEngine: 'custom', searchUrl: url.value.trim() })) drawSearch(); });
+          rows.push(row('Search address', url, { stacked: true, className: 'dependent', info: 'Put %s where the search words go. Suggestions are not offered for a custom engine.' }));
+        }
+        const switchRow = (label, key, info) => row(label, toggle({ checked: read(key), label, onChange: on => save({ [key]: on }) }), { info });
+        if (SUGGESTS.has(engine)) rows.push(switchRow('Suggestions', 'searchSuggestions', 'Show suggestions from your search engine as you type.'));
+        rows.push(switchRow('Descriptions', 'searchDescriptions', 'Also find widgets by their description.'));
+        rows.push(switchRow('Addresses', 'searchAddresses', 'Offer to open a web address you type.'));
+        rows.push(row('Open results', segmented({ label: 'Open results', value: read('searchOpens'), options: [['new', 'New tab'], ['same', 'This tab']], onChange: choice => save({ searchOpens: choice }) })));
+        return group({ title: 'Search', info: 'Search opens with / or Ctrl K on any dashboard, or when you start typing. It finds widgets on every page and searches the web with your engine.' }, rows);
+      }
+      // Each language named in itself, so anyone can find their own.
+      function languageRow() {
+        const name = code => { try { return new Intl.DisplayNames([code], { type: 'language' }).of(code) || code; } catch { return code; } };
+        const current = read('language');
+        const select = h('select', { 'aria-label': 'Language' }, [h('option', { value: 'dashboard', text: 'Dashboard’s language', selected: current === 'dashboard' }),
+          ...languages.map(code => [code, name(code)]).sort((a, b) => a[1].localeCompare(b[1])).map(([code, label]) => h('option', { value: code, text: label, selected: code === current }))]);
+        select.addEventListener('change', () => save({ language: select.value }));
+        return row('Language', select, { info: 'Words, numbers and dates on dashboards you view. Reload a dashboard to see the change.' });
+      }
+      function drawDisplay() {
+        const choice = (label, key, options, info) => row(label, segmented({ label, value: read(key), options, onChange: next => save({ [key]: next }) }), { info, stacked: true });
+        return group({ title: 'Display', info: 'These apply while you view a dashboard. Editing always shows the dashboard as it is set up.' },
+          choice('Light or dark', 'mode', [['dashboard', 'Dashboard’s choice'], ['system', 'Follow device'], ['dark', 'Dark'], ['light', 'Light']]),
+          choice('Motion', 'motion', [['system', 'Follow device'], ['reduced', 'Reduced'], ['full', 'Full']]),
+          languageRow(),
+          choice('Clock', 'clock', [['dashboard', 'Dashboard’s choice'], ['24', '24-hour'], ['12', '12-hour']], 'For date and time widgets.'),
+          choice('Temperature', 'temperature', [['dashboard', 'Dashboard’s choice'], ['c', '°C'], ['f', '°F']], 'For weather, Glances and system resource widgets.'));
+      }
+      drawSearch();
+      return [searchSlot, drawDisplay(), box];
     }
     function securitySection(user, factors) {
       const box = notice();
@@ -1111,7 +1176,43 @@
   // The platform default look every dashboard follows, setting by setting,
   // until it sets its own (dashboard settings → Appearance). The swatches
   // match the dashboard's own picker (homepage/src/components/studio/appearance.mjs).
-  const ACCENT_PRESETS = [['Eggplant', '#b299be'], ['Graphite', '#a5a5aa'], ['Ocean', '#81a8c8'], ['Sage', '#91b09e']];
+  const ACCENT_PRESETS = [['Eggplant', '#b299be'], ['Teal', '#5fb3a1'], ['Ocean', '#81a8c8'], ['Sage', '#91b09e'], ['Amber', '#d9a35b'], ['Rose', '#d48a96']];
+  // Base swatches, as on the dashboard's own picker: each base's page and
+  // card colours in the mode the default look shows.
+  function baseSwatches(initial, choices, initialMode) {
+    let current = initial;
+    const holder = h('div', { class: 'base-swatches', role: 'radiogroup', 'aria-label': 'Base' });
+    const buttons = choices.map(choice => h('button', { type: 'button', role: 'radio', class: 'base-swatch', onclick: () => pick(choice.id) }, h('span', { 'aria-hidden': 'true' }), choice.name));
+    function sync() {
+      const index = Math.max(0, choices.findIndex(choice => choice.id === current));
+      buttons.forEach((button, position) => { button.setAttribute('aria-checked', String(choices[position].id === current)); button.tabIndex = position === index ? 0 : -1; });
+    }
+    function pick(id, focus) {
+      current = id; sync();
+      if (focus) buttons[choices.findIndex(choice => choice.id === id)].focus();
+    }
+    holder.showMode = mode => {
+      const dark = mode === 'dark' || (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      buttons.forEach((button, position) => {
+        const colours = choices[position][dark ? 'dark' : 'light'];
+        button.style.setProperty('--swatch-page', colours.page);
+        button.style.setProperty('--swatch-card', colours.card);
+        button.style.setProperty('--swatch-line', colours.line);
+      });
+    };
+    holder.addEventListener('keydown', event => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+      if (!step || !choices.length) return;
+      event.preventDefault();
+      const index = Math.max(0, choices.findIndex(choice => choice.id === current));
+      pick(choices[(index + step + choices.length) % choices.length].id, true);
+    });
+    holder.append(...buttons);
+    sync();
+    holder.showMode(initialMode);
+    Object.defineProperty(holder, 'value', { get: () => current });
+    return holder;
+  }
   async function platformAppearance() {
     let platform = await call('/studio/api/platform');
     const holder = h('div', { class: 'stack' });
@@ -1119,7 +1220,8 @@
       const box = notice();
       if (success) say(box, success, 'ok');
       let accent = platform.accent;
-      const mode = segmented({ value: platform.mode, label: 'Display mode', options: [['dark', 'Dark'], ['light', 'Light'], ['system', 'Auto']] });
+      const base = baseSwatches(platform.base, platform.baseChoices || [], platform.mode);
+      const mode = segmented({ value: platform.mode, label: 'Display mode', options: [['system', 'Follow device'], ['dark', 'Dark'], ['light', 'Light']], onChange: base.showMode });
       const picker = h('input', { type: 'color', class: 'color-well', tabindex: '-1', 'aria-hidden': 'true', value: platform.accent });
       const hex = h('input', { type: 'text', maxlength: 7, value: platform.accent, spellcheck: 'false', autocomplete: 'off', 'aria-label': 'Accent color' });
       const hexRow = row('Hex', hex);
@@ -1144,28 +1246,30 @@
         hexRow.hidden = isPreset(color) && !typed;
       }
       pick(platform.accent);
-      const backgroundImage = typeof platform.background === 'string' ? platform.background : platform.background?.image ?? '';
-      const background = h('input', { type: 'url', maxlength: 2048, value: backgroundImage, placeholder: 'https://… or /images/…', spellcheck: 'false' });
+      const chosen = platform.background?.source === 'builtin' ? platform.background.id : '';
+      const families = [...new Set((platform.backgroundChoices || []).map(item => item.family))];
+      const background = h('select', { 'aria-label': 'Page background' }, h('option', { value: '', text: 'None', selected: !chosen }),
+        families.map(family => h('optgroup', { label: family }, platform.backgroundChoices.filter(item => item.family === family).map(item => h('option', { value: item.id, text: item.name, selected: item.id === chosen })))));
       const css = h('textarea', { rows: 10, class: 'mono code', spellcheck: 'false', 'aria-label': 'Platform CSS', placeholder: '/* Loaded on every dashboard */', text: platform.css });
       const save = h('button', { type: 'submit', class: 'primary', text: 'Save default look' });
       const form = h('form', { class: 'stack' },
         group({ title: 'Default look', info: 'Each dashboard follows each of these settings until it sets its own in its settings. A saved change reaches every dashboard that hasn’t, and these pages, at once.' },
           row('Mode', mode),
+          row('Base', base, { stacked: true, info: 'The page, cards and lines on every dashboard and on these pages. Each base has a dark and a light version.' }),
           row('Accent', h('div', { class: 'swatches', role: 'group', 'aria-label': 'Accent' }, presets, custom, picker), { stacked: true }),
           hexRow,
-          row('Background', background, { info: 'Optional. An image address; dashboards without a background of their own use it.' })),
+          row('Page background', background, { info: 'One of Studio’s built-in backgrounds. Every dashboard and page without its own Page background uses it.' })),
         group({ title: 'Platform CSS', info: 'Loaded on every dashboard before its own custom.css, which can override it. An administrator can switch it off for one dashboard in its settings.' },
           h('div', { class: 'code-row' }, css)),
-        box, h('div', { class: 'actions' }, save));
+        // The result shows beside the button that caused it.
+        h('div', { class: 'actions' }, save), box);
       form.addEventListener('submit', event => {
         event.preventDefault();
         busy(save, 'Saving…', async () => {
           const color = String(accent).trim().toLowerCase();
           if (!/^#[\da-f]{6}$/.test(color)) return say(box, 'Use a hex color such as #b299be.');
-          const image = background.value.trim();
-          const keepFilters = platform.background && typeof platform.background === 'object' ? platform.background : {};
           try {
-            platform = await call('/studio/api/platform', { revision: platform.revision, mode: mode.value, accent: color, background: image ? (Object.keys(keepFilters).length ? { ...keepFilters, image } : image) : null, css: css.value });
+            platform = await call('/studio/api/platform', { revision: platform.revision, mode: mode.value, accent: color, base: base.value, background: background.value ? { source: 'builtin', id: background.value } : null, css: css.value });
             // This page, other Studio pages and open dashboards in this browser
             // update at once.
             refreshTheme(platform.revision);
@@ -1262,9 +1366,11 @@
       });
     });
     function draw() {
-      put(holder, toolbar(upload, create, input), message,
+      // The list first, under its heading; its actions right below it.
+      put(holder, message,
         group({ title: 'Backups', aside: items.length ? String(items.length) : null, info: 'A backup holds every dashboard, the dashboard list, the default look, people and sign-in settings. Backups are kept in the state volume, so the command line can restore one if these pages can’t be reached (docs/OPERATIONS.md). Store a downloaded backup like a password: it includes any API key written into a dashboard’s files.' },
-          items.length ? items.map(item => navRow({ leading: icon('archive', 18), title: when(Date.parse(item.createdAt)), detail: [fileSize(item.bytes), BACKUP_KINDS[item.kind]].filter(Boolean).join(' · '), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'No backups yet.' })));
+          items.length ? items.map(item => navRow({ leading: icon('archive', 18), title: when(Date.parse(item.createdAt)), detail: [fileSize(item.bytes), BACKUP_KINDS[item.kind]].filter(Boolean).join(' · '), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'No backups yet.' })),
+        toolbar(upload, create, input));
     }
     put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
     load();
@@ -1798,10 +1904,14 @@
       // dashboard, dashboard-2, …; the name doesn't change the address.
       const slug = h('input', { type: 'text', maxlength: 64, required: true, spellcheck: 'false', autocapitalize: 'off', value: entry ? entry.slug : view.suggestedSlug });
       const copyAccess = toggle({ checked: true, label: 'Share it with the same people' });
+      // A new dashboard can start from a template: links to common apps at
+      // placeholder addresses, a clock and the weather.
+      const starters = !entry && !source ? view.starters || [] : [];
+      const starter = starters.length ? h('select', {}, [h('option', { value: '', text: 'Blank' }), ...starters.map(choice => h('option', { value: choice.id, text: choice.name }))]) : null;
       const save = h('button', { type: 'submit', class: 'primary', text: entry ? 'Save' : source ? 'Duplicate' : 'Create dashboard' });
       const addressRow = row('Address', slug, { detail: ' ', info: 'Lowercase letters, numbers and hyphens.' + (entry ? ' Changing it breaks bookmarks to the old address.' : '') });
       const form = h('form', { class: 'stack' },
-        group({}, row('Name', name), addressRow),
+        group({}, row('Name', name), addressRow, starter ? row('Start with', starter, { info: 'Blank, or links to common apps at placeholder addresses you change, plus a clock and the weather.' }) : null),
         source && view.authEnabled ? group({}, row('Share it with the same people', copyAccess, { info: `The copy gets the same sharing as ${source.name}.` })) : null,
         box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
       // The full address, as people will type it, under the label.
@@ -1813,7 +1923,7 @@
         busy(save, 'Saving…', async () => {
           try {
             if (entry) await registry({ action: 'update', id: entry.id, name: name.value, slug: slug.value });
-            else await registry({ action: 'create', name: name.value, slug: slug.value, ...(source ? { sourceId: source.id, copyAccess: view.authEnabled && copyAccess.checked } : {}) });
+            else await registry({ action: 'create', name: name.value, slug: slug.value, ...(source ? { sourceId: source.id, copyAccess: view.authEnabled && copyAccess.checked } : {}), ...(starter?.value ? { starter: starter.value } : {}) });
             close();
             await reload(entry ? 'Saved.' : `${name.value.trim()} is ready.`);
           } catch (error) {
@@ -1943,9 +2053,15 @@
         previewObserver.unobserve(item.target);
         drawPreview(item.target, item.target.previewEntry);
       }
-    }, { rootMargin: '200px 0px' }) : null;
+    }, { rootMargin: '800px 0px' }) : null;
+    // The scale is set in the next frame, and only when it changes: setting
+    // it inside the observer can resize the row it observes, which browsers
+    // report as a ResizeObserver loop error (WebKit does).
     const previewSizer = 'ResizeObserver' in window ? new ResizeObserver(entries => {
-      for (const item of entries) item.target.style.setProperty('--preview-scale', String(item.contentRect.width / PREVIEW_WIDTH));
+      const scales = entries.map(item => [item.target, String(item.contentRect.width / PREVIEW_WIDTH)]);
+      requestAnimationFrame(() => {
+        for (const [target, scale] of scales) if (target.style.getPropertyValue('--preview-scale') !== scale) target.style.setProperty('--preview-scale', scale);
+      });
     }) : null;
     function preview(entry) {
       const holder = h('div', { class: 'preview', 'aria-hidden': 'true' }, h('span', { class: 'preview-placeholder' }, avatar(entry.name)));

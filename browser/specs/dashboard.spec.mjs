@@ -50,14 +50,17 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   let dialog = await choose(page, 'Service tile');
   await dialog.getByLabel('Name', { exact: true }).fill('Browser fixture tile');
   await dialog.getByLabel(/^Destination URL/).fill('https://example.test/');
-  await dialog.getByLabel(/^Description/).fill('Initial fixture description');
+  await dialog.getByRole('textbox', { name: 'Description', exact: true }).fill('Initial fixture description');
   await dialog.getByRole('button', { name: 'Add to dashboard', exact: true }).click();
   const tile = page.locator('[data-panel-kind="service"][aria-label="Browser fixture tile"]');
   await expect(tile).toBeVisible();
   await expect(tile.getByRole('link').first()).toHaveAttribute('href', 'https://example.test/');
   await page.getByRole('button', { name: 'Edit Browser fixture tile', exact: true }).click();
   dialog = page.getByRole('dialog');
-  await dialog.getByLabel(/^Description/).fill('Edited through the real dashboard');
+  await dialog.getByRole('textbox', { name: 'Description', exact: true }).fill('Edited through the real dashboard');
+  // example.test never answers, and a down tile shows why in place of its
+  // description, so the check is turned off to show the edited text.
+  await dialog.getByRole('radiogroup', { name: 'Check by', exact: true }).getByRole('radio', { name: 'Off', exact: true }).click();
   await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(tile).toContainText('Edited through the real dashboard');
 
@@ -79,7 +82,7 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   for (const title of ['Browser fixture tile', 'Greeting']) {
     const selected = page.getByRole('checkbox', { name: `Select ${title}`, exact: true });
     await selected.check();
-    await page.getByRole('button', { name: 'Position & size', exact: true }).click();
+    await page.getByRole('button', { name: 'Size', exact: true }).click();
     dialog = page.getByRole('dialog');
     await dialog.getByRole('spinbutton', { name: 'Width', exact: true }).fill('5');
     await dialog.getByRole('spinbutton', { name: 'Height', exact: true }).fill('3');
@@ -90,9 +93,10 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await expect.poll(async () => Math.abs((await tile.boundingBox()).height - (await greeting.boundingBox()).height)).toBeLessThan(1);
   await page.getByRole('checkbox', { name: 'Select Browser fixture tile', exact: true }).check();
   await page.getByRole('checkbox', { name: 'Select Greeting', exact: true }).check();
-  await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
-  await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
-  dialog = page.getByRole('dialog');
+  // The stack adds room for its controls, so its settings open straight away.
+  await page.getByRole('button', { name: 'Stack', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: 'Edit widget stack', exact: true });
+  await expect(dialog).toContainText('A stack needs room for its controls');
   await dialog.getByLabel('Seconds per widget', { exact: true }).fill('2');
   await dialog.getByRole('radiogroup', { name: 'Transition' }).getByRole('radio', { name: 'Fade', exact: true }).click();
   await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();

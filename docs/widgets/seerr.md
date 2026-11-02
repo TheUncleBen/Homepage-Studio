@@ -1,4 +1,4 @@
-# Seerr Widget
+# Seerr
 
 Integration · type `seerr` · [Homepage documentation](https://gethomepage.dev/widgets/services/seerr/)
 

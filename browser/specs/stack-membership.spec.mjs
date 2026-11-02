@@ -5,7 +5,8 @@ test.describe('empty board touch entry', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   test('holding unused space on the live dashboard never starts editing; the editor has the widget controls', async ({ page }) => {
     await page.goto('/dashboard');
-    const blank = page.locator('.studio-empty');
+    // Past the "Opening your dashboard…" placeholder, which is also a .studio-empty.
+    const blank = page.locator('.studio-empty:not(.studio-loading)');
     await expect(blank).toBeVisible();
     const bounds = await blank.boundingBox();
     const touch = await touchSession(page);
@@ -26,23 +27,23 @@ test.describe('empty board touch entry', () => {
 
 test('different-size fit preview cancels safely, then add/reorder/unstack preserves source IDs and standalone dimensions', async ({ page, request }) => {
   const seeded = await seedServicePanels(request, [
-    { name: 'First member', rect: { x: 0, y: 0, w: 4, h: 3 } },
-    { name: 'Second member', rect: { x: 4, y: 0, w: 5, h: 4 } },
+    { name: 'First member', rect: { x: 0, y: 0, w: 5, h: 3 } },
+    { name: 'Second member', rect: { x: 6, y: 0, w: 5, h: 4 } },
     { name: 'Third member', rect: { x: 0, y: 5, w: 6, h: 5 } },
   ]);
   const sourceBefore = await studioApi(request, '/dashboard/studio/api/state');
   await openEditor(page);
   await page.getByRole('checkbox', { name: 'Select First member', exact: true }).check();
   await page.getByRole('checkbox', { name: 'Select Second member', exact: true }).check();
-  await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
+  await page.getByRole('button', { name: 'Stack', exact: true }).click();
   let dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText('These widgets have different sizes. They will all be 5 × 4.');
+  await expect(dialog).toContainText('These widgets have different sizes. They will all be 5 × 5.');
   await expect(dialog.getByRole('spinbutton', { name: 'Width', exact: true })).toHaveValue('5');
-  await expect(dialog.getByRole('spinbutton', { name: 'Height', exact: true })).toHaveValue('4');
+  await expect(dialog.getByRole('spinbutton', { name: 'Height', exact: true })).toHaveValue('5');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(carousel(page)).toHaveCount(0);
   expect((await studioApi(request, '/dashboard/studio/api/board')).board).toEqual(seeded.board);
-  await page.getByRole('button', { name: 'Create stack (2)', exact: true }).click();
+  await page.getByRole('button', { name: 'Stack', exact: true }).click();
   dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();

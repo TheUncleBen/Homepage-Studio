@@ -125,9 +125,7 @@ describe("Native render adapters", () => {
     ambiguous.services[0].groups[0].services.push({
       ...ambiguous.services[0].groups[0].services[0],
     });
-    expect(
-      resolveNativePanel({ ...base, kind: "service" }, ambiguous),
-    ).toBeNull();
+    expect(resolveNativePanel({ ...base, kind: "service" }, ambiguous)).toBeNull();
     expect(
       resolveNativePanel(
         {
@@ -161,9 +159,7 @@ describe("Native render adapters", () => {
       nested: { keep: null, enabled: false },
       secret: "{{HOMEPAGE_FILE_TOKEN}}",
     };
-    expect(
-      patchFromDraft(original, { ...structuredClone(original), title: "Changed" }),
-    ).toEqual({ title: "Changed" });
+    expect(patchFromDraft(original, { ...structuredClone(original), title: "Changed" })).toEqual({ title: "Changed" });
     expect(patchFromDraft(original, structuredClone(original))).toEqual({});
     expect(original.unknownNativeOption).toBeNull();
   });
@@ -195,9 +191,7 @@ describe("Native render adapters", () => {
         },
       ],
     });
-    expect(
-      resolveNativePanel({ ...base, kind: "service" }, ambiguous),
-    ).toBeNull();
+    expect(resolveNativePanel({ ...base, kind: "service" }, ambiguous)).toBeNull();
     expect(
       resolveNativePanel(
         {

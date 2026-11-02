@@ -14,6 +14,54 @@ the volumes and follow [docs/DEPLOY.md](docs/DEPLOY.md) from the start. Studio
 carries no conversions for data from earlier candidates, and the upgrade notes
 in older entries below are history only.
 
+### Pages, widget looks, charts, saved connections and search
+
+- **Pages.** A dashboard has up to 20 pages, shown as tabs; each widget and
+  stack belongs to one. Pages can be renamed, reordered, duplicated with
+  copies of their widgets, and deleted. The board is now 24 columns of 36 px
+  rows (16 on tablets, 8 on phones). Board version 3 needs a new deployment.
+- **Widget dialog with a live preview** and per-widget **Look**, **Status**
+  and **Behaviour**, with dashboard-wide **Widget defaults**. A widget stores
+  only what differs from the defaults, and offers only choices that apply.
+- **Charts.** **Show as** draws a widget's numbers as numbers, a table, a
+  line, area or bar chart, a donut, a pie or a gauge. Hero numbers can show a
+  trend, values can have warning and problem colours, and line, area and bar
+  charts open full size. Studio collects the numbers once a minute, only for
+  widgets that need them, and keeps them for 7, 30 or 90 days (30 by default).
+  **Status history** shows a bar for each status check and the uptime.
+- **Saved connections** keep a service's address and key once for any widget,
+  per dashboard or *Just me*. Keys are write-only. They are stored in plain
+  text in the state volume, so whole-deployment backups contain them.
+- **Test connection** in the widget dialog sends the widget's first request
+  and says in plain words whether it worked.
+- **Search** across every page and the web with each person's own engine
+  (Google by default) replaces Homepage's Quick Launch. **My account → Search**
+  and **Display** hold each person's preferences.
+- **Built-in backgrounds and patterns** and an **image library** per
+  dashboard (and *Just me*) for logos and backgrounds. Homepage's own
+  background and colour palette settings are no longer offered; Studio's
+  appearance decides.
+- **Offline logos.** 128 px copies of the Dashboard Icons logos (about
+  14 MB) ship with Studio, so built-in logos show without internet access.
+- **Starter templates** for a new dashboard: Homelab, Media or Family link
+  tiles at placeholder `home.arpa` addresses, plus a clock and weather.
+- **Editing.** A widget menu (right-click or hold), multi-select with a
+  selection bar, saved looks, Tidy up, snap guides and a freshness note with
+  **Refresh now**. On a phone a widget's controls show only after you tap it.
+  One editing bar holds Widgets, Tidy up, Undo, Redo, **Save**
+  (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd>, keeps editing), Cancel and Done.
+- **Full view** of a chart has time and value axes with gridlines; percentages
+  get their own axis on the right. A chart's time range starts where its
+  collected data starts.
+- **Follow device** is the default mode for new deployments.
+- **Date & Time** in a card shows the time large with the date under it, and
+  its options are choices (Time, Date, Text size) rather than raw settings.
+- **Email** is one centred card: the logo and name at the top, the heading,
+  the button and the written-out link centred, the footer inside the card.
+- **Big logos are shrunk, not refused.** A PNG, JPEG or WebP logo over
+  256 KiB is resized in the browser (512 px, WebP) and the message says how
+  much it was shrunk. An SVG over 256 KiB is still refused.
+
 ### Polished Studio pages, backups in the app, email in Studio's look
 
 - **Studio's pages are iOS-style grouped lists.** My account, every

@@ -1,4 +1,4 @@
-# Coin Market Cap
+# CoinMarketCap
 
 Integration · type `coinmarketcap` · [Homepage documentation](https://gethomepage.dev/widgets/services/coin-market-cap/)
 

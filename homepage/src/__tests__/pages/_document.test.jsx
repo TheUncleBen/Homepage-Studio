@@ -17,7 +17,8 @@ describe("pages/_document", () => {
 
     expect(html).toContain('meta name="mobile-web-app-capable" content="yes"');
     expect(html).toContain('meta name="msapplication-config" content="/browserconfig.xml"');
-    expect(html).toContain('link rel="manifest" href="/site.webmanifest?v=4"');
+    // The manifest link is the dashboard page's own (Install as app can be off).
+    expect(html).not.toContain('rel="manifest"');
     expect(html).toContain('link rel="preload" href="/api/config/custom.css" as="style"');
     expect(html).toContain('link rel="stylesheet" href="/api/config/custom.css"');
     expect(html).toContain('data-testid="main"');
@@ -27,14 +28,13 @@ describe("pages/_document", () => {
   it.each([
     ["10d16ad0-34be-4cb8-a459-7365f2aaab71", "/family"],
     ["default", "/admin"],
-  ])("publishes immutable %s metadata and scopes config and manifest URLs at %s", (id, basePath) => {
+  ])("publishes immutable %s metadata and scopes config URLs at %s", (id, basePath) => {
     vi.stubEnv("STUDIO_DASHBOARD_ID", id);
     vi.stubEnv("STUDIO_DASHBOARD_BASE_PATH", basePath);
     const html = renderToStaticMarkup(<Document />);
     expect(html).toContain(`meta name="studio-dashboard-id" content="${id}"`);
     expect(html).toContain(`meta name="studio-dashboard-base" content="${basePath}"`);
     expect(html).toContain(`meta name="msapplication-config" content="${basePath}/browserconfig.xml"`);
-    expect(html).toContain(`href="${basePath}/site.webmanifest?v=4"`);
     expect(html).toContain(`href="${basePath}/api/config/custom.css"`);
     expect(html.indexOf('name="studio-dashboard-id"')).toBeLessThan(html.indexOf('data-testid="nextscript"'));
   });

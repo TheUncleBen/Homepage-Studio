@@ -1,4 +1,4 @@
-# Unifi Controller
+# UniFi Controller
 
 Integration · type `unifi` · [Homepage documentation](https://gethomepage.dev/widgets/services/unifi-controller/)
 

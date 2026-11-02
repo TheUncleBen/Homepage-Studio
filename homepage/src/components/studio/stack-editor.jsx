@@ -7,9 +7,9 @@ import { ActionRow, Group, Row, Segmented, Switch } from "./ui";
 
 const POSITION_FIELDS = [
   ["x", "Column", 0, COLUMNS - 1],
-  ["y", "Row", 0, 100000],
+  ["y", "Row", 0, 200000],
   ["w", "Width", 1, COLUMNS],
-  ["h", "Height", 1, 1000],
+  ["h", "Height", 1, 2000],
 ];
 
 const positionText = (rect) => Object.fromEntries(POSITION_FIELDS.map(([key]) => [key, String(rect[key])]));
@@ -222,6 +222,10 @@ export default function StackEditor({ stack, board, onApply, onClose, onPanelEdi
   );
   const timingInvalid = Object.values(timingErrors).some(Boolean);
   useEditorDraft(Boolean(invalid) || timingInvalid || JSON.stringify(draft) !== JSON.stringify(stack));
+  // Stacking can resize widgets that already match: the stack adds room for
+  // its own controls.
+  const memberRects = stack.panelIds.map((id) => board.panels.find((panel) => panel.id === id)?.rect).filter(Boolean);
+  const sameSize = memberRects.every((rect) => rect.w === memberRects[0].w && rect.h === memberRects[0].h);
   const occupied = new Set(board.stacks.filter((item) => item.id !== stack.id).flatMap((item) => item.panelIds));
   const candidates = board.panels.filter((panel) => !draft.panelIds.includes(panel.id) && !occupied.has(panel.id));
   const updatePlayback = (key, value) =>
@@ -296,7 +300,9 @@ export default function StackEditor({ stack, board, onApply, onClose, onPanelEdi
         {blocked && <BlockedNote />}
         {fitting && (
           <p className="studio-callout studio-callout-warn" role="status">
-            These widgets have different sizes. They will all be {draft.rect.w} × {draft.rect.h}.
+            {sameSize
+              ? `A stack needs room for its controls, so these widgets will be ${draft.rect.w} × ${draft.rect.h}.`
+              : `These widgets have different sizes. They will all be ${draft.rect.w} × ${draft.rect.h}.`}
           </p>
         )}
         <Group

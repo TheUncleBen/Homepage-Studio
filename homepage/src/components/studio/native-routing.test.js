@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import getServiceWidget, {
-  cleanServiceGroups,
-  servicesFromConfig,
-} from "utils/config/service-helpers";
+import getServiceWidget, { cleanServiceGroups, servicesFromConfig } from "utils/config/service-helpers";
 
 import { resolveNativePanel } from "./native-adapter.mjs";
 
@@ -92,11 +89,7 @@ describe("Pinned native private-config routing", () => {
     expect(array).not.toBeNull();
     expect(singular).not.toBeNull();
     expect(JSON.stringify(data)).not.toContain("fictional-");
-    expect(
-      (await getServiceWidget("Group", "Mixed", array.widget.index)).key,
-    ).toBe("fictional-array-token");
-    expect(
-      (await getServiceWidget("Group", "Mixed", singular.widget.index)).key,
-    ).toBe("fictional-singular-token");
+    expect((await getServiceWidget("Group", "Mixed", array.widget.index)).key).toBe("fictional-array-token");
+    expect((await getServiceWidget("Group", "Mixed", singular.widget.index)).key).toBe("fictional-singular-token");
   });
 });

@@ -2,6 +2,7 @@
 // plus the /studio/account and /studio/admin pages. The controller has
 // already checked Host, Origin, Fetch Metadata and the editor write header.
 import { readFile } from 'node:fs/promises';
+import { LANGUAGES } from '../../homepage/src/components/studio/languages.mjs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -128,7 +129,7 @@ export function isPublicAuthPath(path) {
   return PUBLIC_PAGES.has(path) || path.startsWith('/studio/auth/assets/') || path === '/studio/auth/state' || /^\/studio\/auth\/(password|second-factor(\/passkey|\/email)?|passkey\/(options|verify)|setup\/(start|resume)|invite\/(details|start)|enroll\/(totp\/start|totp\/confirm|passkey\/options|passkey\/verify|finish)|recover\/(request|details|finish)|recovery\/redeem|oidc\/(start|callback|backchannel-logout)|sign-out)$/.test(path);
 }
 
-export function createAuthRoutes(auth, { listDashboards }) {
+export function createAuthRoutes(auth, { listDashboards, preferences }) {
   async function handle(req, res, current) {
     const url = new URL(req.url, auth.config.origin);
     const path = url.pathname;
@@ -160,6 +161,11 @@ export function createAuthRoutes(auth, { listDashboards }) {
       if (method === 'GET' && path === '/studio/auth/account') {
         if (!current) return json(res, 401, { error: 'Sign in first.', code: 'AUTH_REQUIRED' });
         return json(res, 200, auth.account.view(current));
+      }
+      // Your own preferences (server/personal.mjs), edited on the account page.
+      if (method === 'GET' && path === '/studio/auth/account/preferences') {
+        if (!current) return json(res, 401, { error: 'Sign in first.', code: 'AUTH_REQUIRED' });
+        return json(res, 200, { preferences: await preferences.read(current.user.id), languages: LANGUAGES });
       }
       if (method === 'GET' && path === '/studio/auth/dashboards') {
         if (!current) return json(res, 401, { error: 'Sign in first.', code: 'AUTH_REQUIRED' });
@@ -216,6 +222,7 @@ export function createAuthRoutes(auth, { listDashboards }) {
         '/studio/auth/account/sessions/revoke': () => auth.account.revokeSessions(signedIn(), body),
         '/studio/auth/account/unlink': () => auth.account.unlink(signedIn()),
         '/studio/auth/account/default-dashboard': () => auth.account.defaultDashboard(signedIn(), body),
+        '/studio/auth/account/preferences': async () => ({ preferences: await preferences.write(signedIn().user.id, body?.preferences) }),
         '/studio/auth/account/link/confirm': () => auth.account.linkConfirm(req, res, signedIn()),
         '/studio/auth/account/link/cancel': () => auth.account.linkCancel(signedIn()),
         '/studio/auth/claim/password': () => auth.passwordStep(req, body, { intent: 'claim', current: signedIn() }),
@@ -238,7 +245,8 @@ export function createAuthRoutes(auth, { listDashboards }) {
       if (path.startsWith('/studio/auth/admin/')) signedIn();
       return json(res, 200, await route());
     } catch (error) {
-      const known = error instanceof AuthError;
+      // Preference checks (server/personal.mjs) explain themselves too.
+      const known = error instanceof AuthError || error?.name === 'PreferenceError';
       const status = known ? error.status : 500;
       if (error.retryAfter && !res.headersSent) res.setHeader('retry-after', String(error.retryAfter));
       if (!known) console.error('Sign-in request failed:', error.code || error.name);

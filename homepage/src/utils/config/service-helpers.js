@@ -4,9 +4,11 @@ import path from "path";
 import Docker from "dockerode";
 
 import checkAndCopyConfig, { CONF_DIR, getSettings, substituteEnvironmentVars } from "utils/config/config";
+import { connectionTest, TEST_GROUP } from "utils/config/connection-test.mjs";
 import getDockerArguments from "utils/config/docker";
 import { getKubeConfig } from "utils/config/kubernetes";
 import * as shvl from "utils/config/shvl";
+import { resolveServiceConnections } from "utils/config/studio-connections.mjs";
 import { loadYaml } from "utils/config/yaml";
 import kubernetes from "utils/kubernetes/export";
 import createLogger from "utils/logger";
@@ -56,7 +58,7 @@ export async function servicesFromConfig() {
   const servicesYaml = path.join(CONF_DIR, "services.yaml");
   const rawFileContents = await fs.readFile(servicesYaml, "utf8");
   const fileContents = substituteEnvironmentVars(rawFileContents);
-  const services = loadYaml(fileContents);
+  const services = resolveServiceConnections(loadYaml(fileContents));
   return parseServicesToGroups(services);
 }
 
@@ -773,6 +775,9 @@ export function findGroupByName(groups, name) {
 }
 
 export async function getServiceItem(group, service) {
+  // Test connection: the widget in the dialog, not the saved configuration.
+  const testing = connectionTest.getStore();
+  if (testing && group === TEST_GROUP) return { name: service, widget: testing.widget };
   const configuredServices = await servicesFromConfig();
 
   const serviceGroup = findGroupByName(configuredServices, group);

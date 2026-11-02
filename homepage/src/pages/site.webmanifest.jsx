@@ -1,7 +1,7 @@
+import { appearanceTokens } from "components/studio/appearance.mjs";
 import { dashboardContext, dashboardPath } from "components/studio/dashboard-path.mjs";
 import { withPageAuth } from "utils/auth";
 import checkAndCopyConfig, { getSettings } from "utils/config/config";
-import themes from "utils/styles/themes";
 
 function withinScope(path, basePath) {
   const scoped = dashboardPath(path, basePath);
@@ -16,18 +16,26 @@ async function getProps({ res }) {
   checkAndCopyConfig("settings.yaml");
   const settings = getSettings();
 
-  const palette = themes[settings.color] || themes.slate;
-  const color = palette[settings.theme === "light" ? "light" : "dark"];
+  // The page colour of the dashboard's Studio base, in its own mode.
+  const color = appearanceTokens(settings, true).tokens.bg;
   const dashboard = dashboardContext();
   const scope = `${dashboard.basePath}/`;
   const requestedStart = withinScope(settings.startUrl || "/", dashboard.basePath);
 
-  const pwa = settings.pwa || {};
+  // Dashboard settings › Install as app: off means no manifest at all.
+  if (settings.pwa === false) {
+    res.statusCode = 404;
+    res.setHeader("Cache-Control", "no-store");
+    res.end();
+    return { props: {} };
+  }
+  const pwa = settings.pwa && typeof settings.pwa === "object" ? settings.pwa : {};
+  const appName = typeof pwa.name === "string" && pwa.name.trim() ? pwa.name.trim() : settings.title || "Homepage";
 
   const manifest = {
     id: `/studio/install/${dashboard.id}`,
-    name: settings.title || "Homepage",
-    short_name: settings.title || "Homepage",
+    name: appName,
+    short_name: appName,
     icons: pwa.icons || [
       {
         src: "/studio/brand/icon-192.png",

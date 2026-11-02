@@ -27,9 +27,9 @@ export function previewIcon(value) {
     const name = icon.replace(`${prefix}-`, '').replace('.svg', '').replace(/-#[a-f0-9]{6}$/i, '');
     return NAME.test(name) ? { src: `${ICON_SETS[prefix]}${name}.svg`, mask: true } : null;
   }
-  const extension = icon.endsWith('.svg') ? 'svg' : icon.endsWith('.webp') ? 'webp' : 'png';
+  // Built-in logos: the offline copies served with the app.
   const name = icon.replace(/\.(?:svg|webp|png)$/, '');
-  return NAME.test(name) ? { src: `${ICON_HOST}/gh/homarr-labs/dashboard-icons/${extension}/${name}.${extension}`, mask: false } : null;
+  return NAME.test(name) ? { src: `/studio-icons/webp/${encodeURIComponent(name)}.webp`, mask: false } : null;
 }
 
 const TOKENS = ['bg', 'surface', 'raised', 'text', 'muted', 'line', 'accent', 'accent-soft'];
@@ -49,7 +49,11 @@ export function dashboardPreview(state, platform) {
     if (panel.kind === 'service' || panel.kind === 'serviceWidget') return previewIcon(services.get(panel.nativeLocator?.serviceId)?.config?.icon);
     return null;
   };
-  const board = state.board ?? { columns: 12, panels: [], stacks: [] };
+  const whole = state.board ?? { columns: 24, pages: [{ id: 'home' }], panels: [], stacks: [] };
+  // The preview shows the page a dashboard opens on: its first page.
+  const first = whole.pages?.[0]?.id;
+  const onFirst = item => !first || (item.pageId ?? first) === first;
+  const board = { ...whole, panels: whole.panels.filter(onFirst), stacks: whole.stacks.filter(onFirst) };
   const byId = new Map(board.panels.map(panel => [panel.id, panel]));
   const stacked = new Set(board.stacks.flatMap(stack => stack.panelIds));
   const unit = (rect, panel, count = 1) => ({ x: rect.x, y: rect.y, w: rect.w, h: rect.h, title: String(panel?.title ?? '').slice(0, 120), icon: panel ? iconOf(panel) : null, count });
@@ -60,7 +64,7 @@ export function dashboardPreview(state, platform) {
   return {
     mode,
     tokens: mode === 'system' ? { dark: pick(true), light: pick(false) } : { [mode]: pick(mode === 'dark') },
-    columns: board.columns ?? 12,
+    columns: board.columns ?? 24,
     rows: Math.max(0, ...units.map(item => item.y + item.h)),
     units,
   };

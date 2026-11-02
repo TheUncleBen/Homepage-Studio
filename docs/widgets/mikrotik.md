@@ -1,4 +1,4 @@
-# Mikrotik
+# MikroTik
 
 Integration · type `mikrotik` · [Homepage documentation](https://gethomepage.dev/widgets/services/mikrotik/)
 
