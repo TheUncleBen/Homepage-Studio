@@ -71,7 +71,7 @@ async function setup(t, options = {}) {
     });
   }
   const post = (target, value, { cookie, headers = {} } = {}) => request(target, { method: 'POST', cookie, body: JSON.stringify(value ?? {}), headers: { 'content-type': 'application/json', origin: ORIGIN, 'x-studio-request': '1', ...headers } });
-  return { request, post, stateDir, upstreamCalls };
+  return { request, post, stateDir, upstreamCalls, app };
 }
 
 const sessionCookie = response => {
@@ -399,14 +399,20 @@ test('an unsafe next address after sign-in falls back to the home page', async t
 test('sign-in data that cannot be read fails closed', async t => {
   const context = await setup(t);
   await createAdmin(context);
-  // Corrupt the stored sign-in data and start a second server on it.
+  // Stop the first server so no write of its own can land after the
+  // corruption, then corrupt the stored sign-in data and start a second
+  // server on it.
+  await context.app.shutdown({ graceMs: 0 });
   const authFile = path.join(context.stateDir, 'auth', 'auth.json');
   await fs.writeFile(authFile, '{not json');
   const directory = path.dirname(context.stateDir);
   const configDir = path.join(directory, 'config');
   const app = createStudioServer({ configDir, stateDir: context.stateDir, upstream: 'http://127.0.0.1:9', allowedHosts: HOST, auth: 'on', publicOrigin: ORIGIN });
   const port = await listen(app.server);
-  t.after(() => close(app.server));
+  t.after(async () => {
+    await close(app.server);
+    await app.shutdown({ graceMs: 0 }).catch(() => {});
+  });
   const response = await new Promise((resolve, reject) => {
     http.get({ host: '127.0.0.1', port, path: '/', headers: { host: HOST } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode)); }).on('error', reject);
   });
