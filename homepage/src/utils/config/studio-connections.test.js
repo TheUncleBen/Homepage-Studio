@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
-import { parse } from "yaml";
+import { load } from "js-yaml";
 
 import { resolveServiceConnections, resolveWidgetConnection } from "./studio-connections.mjs";
 
@@ -38,7 +38,7 @@ describe("saved connections in widget settings", () => {
       "              - type: sonarr",
       `                key: '${key}'`,
     ].join("\n");
-    const groups = resolveServiceConnections(parse(yaml), file);
+    const groups = resolveServiceConnections(load(yaml), file);
     const radarr = groups[0].Media[0].Radarr;
     expect(radarr.widget.url).toBe("https://media.example.org");
     expect(radarr.widget.key).toBe("k\"e\\y'1");
