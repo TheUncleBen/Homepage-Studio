@@ -35,16 +35,29 @@ describe("Native discovery metadata bridge", () => {
   it("emits only bounded safe identities and correctly separates native render/proxy indices", () => {
     const manifest = buildDiscoveredSources({ docker: group([service()]) });
     expect(manifest.protocolVersion).toBe(1);
-    expect(manifest.sources).toHaveLength(3);
-    const [parent, plural, singular] = manifest.sources;
-    expect(parent.id).toMatch(/^discovered-service-[a-f0-9]{32}$/);
+    // A service with widgets is shown only by its widget cards (no
+    // duplicate link card); a service without widgets is its own card.
+    expect(manifest.sources).toHaveLength(2);
+    const [plural, singular] = manifest.sources;
+    expect(manifest.sources.map((entry) => entry.kind)).toEqual([
+      "serviceWidget",
+      "serviceWidget",
+    ]);
+    expect(plural.nativeLocator.serviceId).toMatch(
+      /^discovered-service-[a-f0-9]{32}$/,
+    );
+    const linkOnly = buildDiscoveredSources({
+      docker: group([{ name: "Docs", container: "docs", server: "local" }]),
+    });
+    expect(linkOnly.sources.map((entry) => entry.kind)).toEqual(["service"]);
+    expect(linkOnly.sources[0].id).toMatch(/^discovered-service-[a-f0-9]{32}$/);
     expect(plural.id).toMatch(/^discovered-widget-[a-f0-9]{32}$/);
     expect(plural.nativeLocator).toMatchObject({
       sourceKey: "widgets",
       sourceIndex: 0,
       proxyIndex: 0,
       widgetIndex: 0,
-      serviceId: parent.id,
+      serviceId: plural.nativeLocator.discoveryId,
       origin: "docker",
     });
     expect(singular.nativeLocator).toMatchObject({
@@ -100,7 +113,7 @@ describe("Native discovery metadata bridge", () => {
     const repeated = service();
     repeated.widgets.push({ type: "sonarr" });
     const manifest = buildDiscoveredSources({ docker: group([repeated]) });
-    expect(new Set(manifest.sources.map((entry) => entry.id)).size).toBe(4);
+    expect(new Set(manifest.sources.map((entry) => entry.id)).size).toBe(3);
     expect(manifest.warnings).toEqual([
       { code: "POSITIONAL_WIDGET_IDENTITY", count: 1 },
     ]);
@@ -113,12 +126,12 @@ describe("Native discovery metadata bridge", () => {
     });
     const long = { name: "S".repeat(256), widget: { type: "T".repeat(256) } };
     expect(
-      buildDiscoveredSources({ docker: group([long]) }).sources[1].title.length,
+      buildDiscoveredSources({ docker: group([long]) }).sources[0].title.length,
     ).toBe(512);
   });
   it("uses the existing native discovery helpers and propagates outages instead of silently emptying sources", async () => {
     helpers.servicesFromDocker.mockResolvedValueOnce(group([service()]));
-    expect((await discoverySourcesResponse()).sources).toHaveLength(3);
+    expect((await discoverySourcesResponse()).sources).toHaveLength(2);
     helpers.servicesFromKubernetes.mockRejectedValueOnce(
       new Error("fixture offline"),
     );

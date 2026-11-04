@@ -78,13 +78,14 @@ export function buildDiscoveredSources({
       groupPath,
       name: service.name,
     };
-    sources.push({
+    const serviceSource = {
       id: discoveryId,
       kind: "service",
       title: service.name,
       group: groupPath.join(" / "),
       nativeLocator: common,
-    });
+    };
+    const widgetsBefore = sources.length;
     const configuredWidgets = Array.isArray(service.widgets)
       ? service.widgets
       : [];
@@ -128,6 +129,9 @@ export function buildDiscoveredSources({
         nativeLocator: { ...common, ...locator, type: widget.type },
       });
     });
+    // A service with a widget is shown only by its widget cards, as for
+    // services.yaml entries (server/board.mjs boardSources).
+    if (sources.length === widgetsBefore) sources.splice(widgetsBefore, 0, serviceSource);
   });
   const warnings = [];
   if (ambiguous)

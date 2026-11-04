@@ -381,10 +381,13 @@ test('HTTP state, native service and info-widget mutations, stale revisions, bac
   assert.equal(result.status, 200);
   assert.equal(result.json.infoWidgets[0].type, 'datetime');
   const board = structuredClone(result.json.board);
-  board.panels.find((panel) => panel.id === tile.id).rect = { x: 1, y: 30, w: 5, h: 4 };
+  // The service carries a widget, so its widget's card is its only card.
+  const card = board.panels.find((panel) => panel.nativeLocator?.serviceId === tile.id);
+  assert.ok(!board.panels.some((panel) => panel.id === tile.id));
+  card.rect = { x: 1, y: 30, w: 5, h: 4 };
   result = await post('/studio/api/save', { revision: result.json.revision, board });
   assert.equal(result.status, 200);
-  assert.deepEqual(result.json.board.panels.find((panel) => panel.id === tile.id).rect, { x: 1, y: 30, w: 5, h: 4 });
+  assert.deepEqual(result.json.board.panels.find((panel) => panel.id === card.id).rect, { x: 1, y: 30, w: 5, h: 4 });
   const invalid = await post('/studio/api/save', { revision: result.json.revision, servicesYaml: '- broken: [unterminated' });
   assert.equal(invalid.status, 422);
   assert.equal(invalid.json.code, 'INVALID_YAML');
@@ -800,7 +803,9 @@ test('each editor endpoint records its own fixed snapshot action code and never 
   const board = structuredClone(state.board);
   board.panels[0].rect = { ...board.panels[0].rect, x: board.panels[0].rect.x + 1 };
   state = await expectAction('/studio/api/board', { board }, 'arrangement-saved');
-  state = await expectAction('/studio/api/service', { action: 'delete', id: service.id }, 'service-deleted');
+  // Removing the widget removed its service too (one card), so delete another.
+  state = await expectAction('/studio/api/service', { action: 'add', name: 'Printer', group: 'Lab', config: { href: 'https://printer.example.test' } }, 'service-added');
+  state = await expectAction('/studio/api/service', { action: 'delete', id: state.services.find((entry) => entry.name === 'Printer').id }, 'service-deleted');
   state = await expectAction('/studio/api/restore', { backupId: recorded[0] }, 'snapshot-restored');
   const archive = (await request('/studio/api/export')).json;
   await expectAction('/studio/api/import', { archive }, 'dashboard-imported');

@@ -282,9 +282,10 @@ function infoWidgetTitles(infoWidgets) {
 export function boardSources({ services, serviceWidgets, infoWidgets, bookmarks }) {
   const sources = [];
   for (const s of services) {
-    const widgets = serviceWidgets.filter((w) => w.serviceId === s.id);
-    const meaningful = ['href', 'description', 'icon', 'ping', 'siteMonitor', 'showStats', 'container', 'server', 'app', 'namespace', 'podSelector', 'proxmoxNode', 'proxmoxVMID'].some((k) => s.config[k] != null && s.config[k] !== false && s.config[k] !== '');
-    if (!widgets.length || meaningful) sources.push({ id: s.id, kind: 'service', title: s.name, group: s.group, nativeLocator: { serviceId: s.id, groupPath: s.groupPath, name: s.name } });
+    // A service that carries a widget is shown only by that widget's card:
+    // its link, icon and status check belong to the card. A separate link
+    // card would duplicate it (owner rule, 4 Nov 2026: never duplicate a widget).
+    if (!serviceWidgets.some((w) => w.serviceId === s.id)) sources.push({ id: s.id, kind: 'service', title: s.name, group: s.group, nativeLocator: { serviceId: s.id, groupPath: s.groupPath, name: s.name } });
   }
   for (const w of serviceWidgets) {
     const s = services.find((v) => v.id === w.serviceId);

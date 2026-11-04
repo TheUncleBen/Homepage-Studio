@@ -927,11 +927,10 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         if (!list.items.length) options.delete('widgets');
       }
       identities.splice(existing.index, 1);
-      // A technical parent created only for an independent widget need not
-      // become a new empty service tile when its last widget is removed.
-      // Only newly generated technical parents carry this provenance. Older
-      // ambiguous id-only services are preserved rather than inferred/deleted.
-      if (service.id.startsWith('studio-widget-parent-') && options.items.length === 1 && options.has('id')) { parent.items.splice(service.index, 1); byService.delete(service.id); }
+      // The widget card was the service's only card (its link and status
+      // belong to it), so removing the service's last widget removes the
+      // whole entry rather than leaving a link card behind.
+      if (!options.has('widget') && !options.has('widgets')) { parent.items.splice(service.index, 1); byService.delete(service.id); }
     } else {
       const type = named(change.type ?? change.config?.type ?? existing?.type, 'Service widget type');
       const patch = change.config ?? {};
@@ -988,18 +987,16 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         if (!list.items.length) options.delete('widgets');
       }
       byService.set(service.id, byService.get(service.id).filter((identity) => !mine.some((widget) => widget.id === identity.id)));
-      if (service.id.startsWith('studio-widget-parent-') && options.items.length === 1 && options.has('id')) removedServices.add(service.id);
+      if (!options.has('widget') && !options.has('widgets')) removedServices.add(service.id);
     }
-    const parents = new Map();
-    for (const service of current.services.filter((entry) => removedServices.has(entry.id))) {
-      const key = JSON.stringify(service.path.slice(0, -2));
-      parents.set(key, [...(parents.get(key) || []), service]);
-    }
-    for (const [key, list] of parents) {
-      const parent = services.doc.getIn(JSON.parse(key), true);
-      if (!isSeq(parent)) fail('A service here uses an unsupported YAML alias. Edit its YAML directly.');
-      for (const service of list.sort(descending)) parent.items.splice(service.index, 1);
-    }
+    // Every node is found before any is removed, then removed by identity,
+    // so removing a service never shifts the path of one in a nested group.
+    const doomed = current.services.filter((entry) => removedServices.has(entry.id)).map((service) => {
+      const parent = services.doc.getIn(service.path.slice(0, -2), true);
+      if (!isSeq(parent) || !parent.items[service.index]) fail('A service here uses an unsupported YAML alias. Edit its YAML directly.');
+      return { parent, node: parent.items[service.index] };
+    });
+    for (const { parent, node } of doomed) parent.items.splice(parent.items.indexOf(node), 1);
     // Information widgets.
     const info = current.parsed.widgetsYaml;
     const infoGone = current.infoWidgets.filter((entry) => ids.has(entry.id)).sort(descending);
@@ -1079,14 +1076,17 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       taken.add(candidate);
       return candidate;
     };
-    // Services, with every widget they carry.
+    // Services. Every widget is self-contained (owner rule, 4 Nov 2026): a
+    // copied widget gets its own copy of its service (link, icon, status),
+    // holding only the widgets chosen, so the copy never shares an entry
+    // with its original. A chosen service is copied with all its widgets.
     const services = current.parsed.servicesYaml;
     const byService = new Map(current.services.map((entry) => [entry.id, current.serviceWidgets.filter((widget) => widget.serviceId === entry.id).map(({ id }) => ({ id }))]));
-    const copiedServices = new Set();
     for (const service of current.services) {
       const widgets = current.serviceWidgets.filter((widget) => widget.serviceId === service.id);
-      const wanted = ids.has(service.id) || (widgets.length && widgets.every((widget) => ids.has(widget.id)) && service.id.startsWith('studio-widget-parent-'));
-      if (!wanted) continue;
+      const whole = ids.has(service.id);
+      const chosen = whole ? widgets : widgets.filter((widget) => ids.has(widget.id));
+      if (!whole && !chosen.length) continue;
       const parent = services.doc.getIn(service.path.slice(0, -2), true), entry = parent?.items?.[service.index];
       if (!isSeq(parent) || !isMap(entry)) fail('A service here uses an unsupported YAML alias. Edit its YAML directly.');
       const taken = new Set(current.services.filter((other) => stable(other.groupPath) === stable(service.groupPath)).map((other) => other.name));
@@ -1094,35 +1094,29 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       renamePair(copy.items[0], copyName(service.name, taken));
       const options = copy.items[0].value;
       if (!isMap(options)) fail('A service here uses an unsupported YAML alias. Edit its YAML directly.');
+      if (!whole) {
+        if (options.has('widget') && !chosen.some((widget) => widget.sourceKey === 'widget')) options.delete('widget');
+        const list = options.get('widgets', true);
+        if (list != null) {
+          if (!isSeq(list)) fail('Widgets here use an unsupported YAML alias. Edit their YAML directly.');
+          const keep = new Set(chosen.filter((widget) => widget.sourceKey !== 'widget').map((widget) => widget.sourceIndex));
+          list.items = list.items.filter((_, index) => keep.has(index));
+          if (!list.items.length) options.delete('widgets');
+        }
+      }
       const newId = `${service.id.startsWith('studio-widget-parent-') ? 'studio-widget-parent' : 'studio'}-${randomUUID()}`;
       options.set('id', newId);
       // Appended, so the positions of entries read earlier stay valid.
       parent.add(copy);
-      idMap.set(service.id, newId);
-      byService.set(newId, widgets.map((widget) => {
+      if (whole) idMap.set(service.id, newId);
+      // Identities follow the copy's widget order: the list first, then a
+      // single `widget` key, as serviceEntries reads them.
+      const ordered = [...chosen].sort((a, b) => a.index - b.index);
+      byService.set(newId, ordered.map((widget) => {
         const fresh = `widget-${randomUUID()}`;
         idMap.set(widget.id, fresh);
         return { id: fresh };
       }));
-      copiedServices.add(service.id);
-    }
-    // Widgets whose service stays behind: a second widget on the same service.
-    for (const widget of current.serviceWidgets.filter((item) => ids.has(item.id) && !copiedServices.has(item.serviceId))) {
-      const service = current.services.find((entry) => entry.id === widget.serviceId);
-      const parent = services.doc.getIn(service.path.slice(0, -2), true), entry = parent?.items?.[service.index];
-      const options = isMap(entry) ? entry.get(service.name, true) : null;
-      if (!isMap(options)) fail('A service here uses an unsupported YAML alias. Edit its YAML directly.');
-      options.set('id', service.id);
-      const source = widget.sourceKey === 'widget' ? options.get('widget', true) : options.get('widgets', true)?.items?.[widget.sourceIndex];
-      if (!isMap(source)) fail('A widget here uses an unsupported YAML alias. Edit its YAML directly.');
-      let list = options.get('widgets', true);
-      if (list == null) { options.set('widgets', services.doc.createNode([])); list = options.get('widgets', true); }
-      if (!isSeq(list)) fail('Widgets here use an unsupported YAML alias. Edit their YAML directly.');
-      const position = list.items.length;
-      list.add(source.clone());
-      const fresh = `widget-${randomUUID()}`;
-      byService.get(service.id).splice(position, 0, { id: fresh });
-      idMap.set(widget.id, fresh);
     }
     // Information widgets.
     const info = current.parsed.widgetsYaml;

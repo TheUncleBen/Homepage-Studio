@@ -122,14 +122,16 @@ test('nested add, edit, rename, move and delete retain unknown fields, comments 
   result = await store.mutateService({ revision: result.revision, action: 'update', id: added.id, name: 'Moved service', group: 'Media' });
   assert.equal(result.services.find((entry) => entry.id === added.id).group, 'Media');
   const board = structuredClone(result.board);
-  board.panels.find((panel) => panel.id === added.id).rect = { x: 0, y: 40, w: 4, h: 3 };
+  // A service with a widget is shown only by its widget's card.
+  assert.ok(!result.board.panels.some((panel) => panel.id === added.id));
+  board.panels.find((panel) => panel.nativeLocator?.serviceId === added.id).rect = { x: 0, y: 40, w: 4, h: 3 };
   result = await store.saveBoard({ revision: result.revision, board });
   const restarted = createConfigStore(options);
   assert.deepEqual((await restarted.load()).board, result.board);
   assert.equal((await restarted.load()).services.find((entry) => entry.name === 'Moved service').id, added.id);
   result = await restarted.mutateService({ revision: result.revision, action: 'delete', id: added.id });
   assert.ok(!result.services.some((entry) => entry.id === added.id));
-  assert.ok(!result.board.panels.some((panel) => panel.id === added.id));
+  assert.ok(!result.board.panels.some((panel) => panel.nativeLocator?.serviceId === added.id));
 });
 
 test('nested widget edits retain comments and unrelated options while null clears a whole native widget', async (t) => {
@@ -507,7 +509,7 @@ test('deleting a page with its widgets removes their native entries in one save'
   const portainerWidget = result.serviceWidgets.find((entry) => entry.serviceId === portainer.id);
   const clock = result.infoWidgets.find((entry) => entry.type === 'datetime');
   const bookmark = result.bookmarks[0];
-  const away = new Set([firewall.id, firewallWidget.id, portainerWidget.id, clock.id, bookmark.id]);
+  const away = new Set([firewallWidget.id, portainerWidget.id, clock.id, bookmark.id]);
   const board = { ...result.board, pages: [...result.board.pages, { id: 'lab', name: 'Lab' }] };
   let y = 0;
   board.panels = board.panels.map((panel) => (away.has(panel.id) ? { ...panel, pageId: 'lab', rect: { x: 0, y: (y += 10) - 10, w: 8, h: 10 } } : panel));
@@ -517,11 +519,12 @@ test('deleting a page with its widgets removes their native entries in one save'
   assert.ok(result.board.panels.every((panel) => !away.has(panel.id)));
   const services = await fs.readFile(path.join(configDir, 'services.yaml'), 'utf8');
   assert.ok(!services.includes('pfSense'));
-  assert.ok(services.includes('Portainer') && !services.includes('type: portainer'));
+  // The widget card was Portainer's only card, so its whole entry goes.
+  assert.ok(!services.includes('Portainer'));
   assert.ok(services.includes('# Ben\'s dashboard'));
   assert.ok(!(await fs.readFile(path.join(configDir, 'widgets.yaml'), 'utf8')).includes('datetime'));
   assert.ok(!(await fs.readFile(path.join(configDir, 'bookmarks.yaml'), 'utf8')).includes('gethomepage'));
-  assert.ok(result.board.panels.some((panel) => panel.id === portainer.id));
+  assert.ok(!result.board.panels.some((panel) => panel.nativeLocator?.serviceId === portainer.id));
   const backups = await store.listBackups();
   assert.equal(backups[0].action, 'page-deleted');
   await assert.rejects(store.deletePage({ revision: result.revision, pageId: 'home' }), /at least one page|no longer exists/);
@@ -532,9 +535,10 @@ test('a content edit can carry the arrangement, so look, page and the edit commi
   let result = await store.load();
   const board = { ...result.board, pages: [...result.board.pages, { id: 'lab', name: 'Lab' }] };
   const firewall = result.services.find((entry) => entry.name === 'pfSense');
-  board.panels = board.panels.map((panel) => (panel.id === firewall.id ? { ...panel, look: { fill: 'solid', colour: '#336699' }, behaviour: { target: 'same' } } : panel));
+  const firewallWidget = result.serviceWidgets.find((entry) => entry.serviceId === firewall.id);
+  board.panels = board.panels.map((panel) => (panel.id === firewallWidget.id ? { ...panel, look: { fill: 'solid', colour: '#336699' }, behaviour: { target: 'same' } } : panel));
   result = await store.mutateService({ revision: result.revision, action: 'update', id: firewall.id, name: 'Firewall', config: {}, board, pageId: 'lab' });
-  const panel = result.board.panels.find((item) => item.id === firewall.id);
+  const panel = result.board.panels.find((item) => item.id === firewallWidget.id);
   assert.deepEqual(panel.look, { fill: 'solid', colour: '#336699' });
   assert.deepEqual(panel.behaviour, { target: 'same' });
   assert.deepEqual(result.board.pages.map((page) => page.id), ['home', 'lab']);
@@ -551,7 +555,7 @@ test('duplicating a page copies every widget on it, placed and styled like the o
   const portainerWidget = result.serviceWidgets.find((entry) => entry.serviceId !== firewall.id);
   const clock = result.infoWidgets.find((entry) => entry.type === 'datetime');
   const bookmark = result.bookmarks[0];
-  const away = [firewall.id, firewallWidget.id, portainerWidget.id, clock.id, bookmark.id];
+  const away = [firewallWidget.id, portainerWidget.id, clock.id, bookmark.id];
   const board = { ...result.board, pages: [...result.board.pages, { id: 'lab', name: 'Lab' }] };
   board.panels = board.panels.map((panel) => {
     const index = away.indexOf(panel.id);
@@ -563,10 +567,10 @@ test('duplicating a page copies every widget on it, placed and styled like the o
   assert.equal(result.pageId, 'lab-copy');
   assert.deepEqual(result.board.pages.map((page) => page.name), ['Home', 'Lab', 'Lab copy']);
   const copies = result.board.panels.filter((panel) => panel.pageId === 'lab-copy');
-  assert.equal(copies.length, 5);
-  assert.equal(result.board.panels.length, before + 5);
+  assert.equal(copies.length, 4);
+  assert.equal(result.board.panels.length, before + 4);
   assert.deepEqual(copies.find((panel) => panel.kind === 'informationWidget').look, { fill: 'tint' });
-  assert.deepEqual(copies.map((panel) => panel.rect.y).sort((a, b) => a - b), [0, 10, 20, 30, 40]);
+  assert.deepEqual(copies.map((panel) => panel.rect.y).sort((a, b) => a - b), [0, 10, 20, 30]);
   const services = await fs.readFile(path.join(configDir, 'services.yaml'), 'utf8');
   assert.ok(services.includes('pfSense copy'));
   assert.ok(services.includes('{{HOMEPAGE_VAR_FIREWALL_KEY}}'));
