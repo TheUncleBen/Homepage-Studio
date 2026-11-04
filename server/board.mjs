@@ -356,6 +356,30 @@ export function reconcileBoard(sources, previous, { pageId } = {}) {
   return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages, panels, stacks, ...(previous.looks ? { looks: previous.looks } : {}) };
 }
 
+// An editor's arrangement, merged with content that changed underneath it
+// (owner report, 4 Nov 2026: Save must never dead-end). A widget removed
+// since the editor loaded is dropped; one added since keeps its current place
+// (or the next free space if the arrangement now covers it). Everything the
+// editor arranged is kept as it is. Overlaps it made itself still fail.
+export function mergeBoardChange(input, sources, current) {
+  const value = validateStoredBoard(input);
+  const known = new Map(sources.map((s) => [s.id, s]));
+  // reconcileBoard drops what is gone (releasing a stack left with one).
+  const panels = [...value.panels];
+  const have = new Set(panels.map((p) => p.id));
+  const pageIds = new Set(value.pages.map((page) => page.id));
+  const stacked = new Set(value.stacks.flatMap((s) => s.panelIds));
+  const units = [...value.stacks, ...panels.filter((p) => !stacked.has(p.id))];
+  for (const p of current?.panels ?? []) {
+    if (have.has(p.id) || !known.has(p.id) || !pageIds.has(p.pageId)) continue;
+    if (units.some((unit) => unit.pageId === p.pageId && intersects(unit.rect, p.rect))) continue;
+    const kept = { ...p };
+    panels.push(kept);
+    units.push(kept);
+  }
+  return validateBoardChange(reconcileBoard(sources, { ...value, panels }), sources);
+}
+
 export function validateBoardChange(input, sources) {
   const value = validateStoredBoard(input);
   const map = new Map(sources.map((s) => [s.id, s]));

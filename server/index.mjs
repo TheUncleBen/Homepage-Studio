@@ -241,6 +241,20 @@ function readNativeBody(req, budget, { limit = NATIVE_BODY_LIMIT, timeoutMs = NA
   });
 }
 
+// An editor change names its editing session (an id the editor makes when
+// editing starts). The controller replaces it with a key bound to the signed-in
+// session, so undo can only ever reach that person's own steps.
+const EDIT_SESSION = /^[A-Za-z0-9_-]{8,64}$/;
+async function editBody(req) {
+  const body = await readBody(req);
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    const id = body.editSession;
+    delete body.editSession;
+    if (typeof id === 'string' && EDIT_SESSION.test(id)) body.editSession = `${req.studioSessionKey ?? 'local'}:${id}`;
+  }
+  return body;
+}
+
 async function readBody(req, maxBytes = 2 * 1024 * 1024) {
   if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) {
     throw Object.assign(new Error('Send JSON when saving changes.'), { status: 415 });
@@ -590,7 +604,7 @@ function createDashboardHandlers(options = {}) {
       if (path === '/studio/config-ready' && req.method === 'GET') return await readiness(req, res, dashboard, true);
       if (!path.startsWith('/studio/')) await prepareNative();
       if (path === '/studio/catalog.json' && ['GET', 'HEAD'].includes(req.method)) return await serveCatalog(req, res);
-      const saveChange = path === '/studio/api/save' && req.method === 'POST' ? await readBody(req) : undefined;
+      const saveChange = path === '/studio/api/save' && req.method === 'POST' ? await editBody(req) : undefined;
       // Complete board replacements must validate against newly discovered
       // membership. Structured/native-file edits use their revision-checked
       // local sources and retained discovery identities, without a provider wait.
@@ -600,26 +614,28 @@ function createDashboardHandlers(options = {}) {
       }
       if (path === '/studio/api/state' && req.method === 'GET') return json(res, 200, await store.load());
       if (path === '/studio/api/board' && req.method === 'GET') return json(res, 200, await store.loadBoard());
-      if (path === '/studio/api/board' && req.method === 'POST') return json(res, 200, await store.saveBoard(await readBody(req)));
+      if (path === '/studio/api/board' && req.method === 'POST') return json(res, 200, await store.saveBoard(await editBody(req)));
       if (path === '/studio/api/export' && req.method === 'GET') return json(res, 200, await portableExport());
       if (path === '/studio/api/backups' && req.method === 'GET') return json(res, 200, await store.listBackups());
       if (path.startsWith('/studio/api/backups/') && req.method === 'GET') return json(res, 200, await store.exportBackup(path.slice('/studio/api/backups/'.length)));
       if (path === '/studio/api/restore' && req.method === 'POST') return json(res, 200, await store.restoreBackup(await readBody(req)));
       if (path === '/studio/api/import' && req.method === 'POST') return json(res, 200, await portableImport(await readBody(req, MAX_IMPORT_BYTES)));
       if (path === '/studio/api/save' && req.method === 'POST') return json(res, 200, await store.save(saveChange));
-      if (path === '/studio/api/service' && req.method === 'POST') return json(res, 200, await store.mutateService(await readBody(req)));
-      if (path === '/studio/api/info-widget' && req.method === 'POST') return json(res, 200, await store.mutateInfoWidget(await readBody(req)));
-      if (path === '/studio/api/service-widget' && req.method === 'POST') return json(res, 200, await store.mutateServiceWidget(await readBody(req)));
-      if (path === '/studio/api/bookmark' && req.method === 'POST') return json(res, 200, await store.mutateBookmark(await readBody(req)));
-      if (path === '/studio/api/settings' && req.method === 'POST') return json(res, 200, await store.mutateSettings(await readBody(req)));
+      if (path === '/studio/api/undo' && req.method === 'POST') return json(res, 200, await store.undo(await editBody(req)));
+      if (path === '/studio/api/redo' && req.method === 'POST') return json(res, 200, await store.redo(await editBody(req)));
+      if (path === '/studio/api/service' && req.method === 'POST') return json(res, 200, await store.mutateService(await editBody(req)));
+      if (path === '/studio/api/info-widget' && req.method === 'POST') return json(res, 200, await store.mutateInfoWidget(await editBody(req)));
+      if (path === '/studio/api/service-widget' && req.method === 'POST') return json(res, 200, await store.mutateServiceWidget(await editBody(req)));
+      if (path === '/studio/api/bookmark' && req.method === 'POST') return json(res, 200, await store.mutateBookmark(await editBody(req)));
+      if (path === '/studio/api/settings' && req.method === 'POST') return json(res, 200, await store.mutateSettings(await editBody(req)));
       // Administrators only (not in the access lists): removes native content.
-      if (path === '/studio/api/page-delete' && req.method === 'POST') return json(res, 200, await store.deletePage(await readBody(req)));
-      if (path === '/studio/api/page-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePage(await readBody(req)));
-      if (path === '/studio/api/widgets-delete' && req.method === 'POST') return json(res, 200, await store.deletePanels(await readBody(req)));
-      if (path === '/studio/api/widgets-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePanels(await readBody(req)));
+      if (path === '/studio/api/page-delete' && req.method === 'POST') return json(res, 200, await store.deletePage(await editBody(req)));
+      if (path === '/studio/api/page-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePage(await editBody(req)));
+      if (path === '/studio/api/widgets-delete' && req.method === 'POST') return json(res, 200, await store.deletePanels(await editBody(req)));
+      if (path === '/studio/api/widgets-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePanels(await editBody(req)));
       // These two are open to people who may arrange a dashboard, so they answer
       // with the board only, never the configuration files.
-      if (path === '/studio/api/discovery-visibility' && req.method === 'POST') return json(res, 200, boardView(await store.mutateDiscoveryVisibility(await readBody(req))));
+      if (path === '/studio/api/discovery-visibility' && req.method === 'POST') return json(res, 200, boardView(await store.mutateDiscoveryVisibility(await editBody(req))));
       // Appearance only: the display mode and Studio theme keys of settings.yaml,
       // for people allowed to arrange a dashboard but not to read its settings.
       if (path === '/studio/api/appearance' && req.method === 'GET') {
@@ -1080,6 +1096,9 @@ export function createStudioServer(options = {}) {
       if (auth) {
         await authInitialization;
         if (auth.ready) current = await auth.principal(req);
+        // Never sent anywhere: binds editing sessions (undo) to this sign-in.
+        // The role is part of the key, so a changed role starts a new history.
+        if (current) req.studioSessionKey = createHash('sha256').update(JSON.stringify([current.session.id, current.user.role])).digest('hex').slice(0, 32);
         if (isAuthPath(path)) {
           if (!auth.ready) return json(res, 503, { error: 'Sign-in storage is unavailable. Check the application logs and the state volume.', code: 'AUTH_STORAGE_UNAVAILABLE' });
           return await authRoutes.handle(req, res, current);

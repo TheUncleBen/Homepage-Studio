@@ -79,7 +79,8 @@ const VIEW_GET = new Set(['/studio/api/board', '/studio/api/access', '/studio/ca
 // Anyone who can open a dashboard keeps their own preferences.
 const VIEW_POST = new Set(['/studio/api/preferences']);
 // /studio/api/history/probe: the formats of a widget's numbers, for the look's Show as choice.
-const ARRANGE_POST = new Set(['/studio/api/history/probe', '/studio/api/board', '/studio/api/discovery-visibility', '/studio/api/appearance', '/studio/api/logo', '/studio/api/images', '/studio/api/images/delete', '/studio/api/my-images', '/studio/api/my-images/delete', '/studio/api/my-images/use']);
+// /studio/api/undo and /redo: a person's own editing steps (keyed to their sign-in and role).
+const ARRANGE_POST = new Set(['/studio/api/history/probe', '/studio/api/board', '/studio/api/undo', '/studio/api/redo', '/studio/api/discovery-visibility', '/studio/api/appearance', '/studio/api/logo', '/studio/api/images', '/studio/api/images/delete', '/studio/api/my-images', '/studio/api/my-images/delete', '/studio/api/my-images/use']);
 // The editor and settings pages are opened from the Dashboards page.
 const ARRANGE_GET = new Set(['/studio/api/appearance', '/studio/api/images', '/studio/api/my-images', '/studio/edit', '/studio/settings']);
 // Admin operations that also need a recent sign-in.

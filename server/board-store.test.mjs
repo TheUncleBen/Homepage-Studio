@@ -223,7 +223,6 @@ test('invalid board graphs, collisions, missing native panels and playback bound
   const base = current.board, ids = base.panels.map((p) => p.id);
   const invalid = [];
   let board = clone(base); board.panels[1].rect = clone(board.panels[0].rect); invalid.push(board);
-  board = clone(base); board.panels.pop(); invalid.push(board);
   board = clone(base); board.panels[0].rect.w = 13; invalid.push(board);
   board = clone(base); board.stacks = [{ id: 'self', panelIds: [ids[0], 'self'], rect: base.panels[0].rect }]; invalid.push(board);
   board = clone(base); board.stacks = [{ id: 'repeat', panelIds: [ids[0], ids[0]], rect: base.panels[0].rect }]; invalid.push(board);
@@ -234,6 +233,10 @@ test('invalid board graphs, collisions, missing native panels and playback bound
   for (const value of invalid) await assert.rejects(store.saveBoard({ revision: current.revision, board: value }));
   assert.equal((await store.listBackups()).length, count);
   assert.equal((await store.load()).revision, current.revision);
+  // An arrangement that leaves a panel out keeps that panel where it is.
+  board = clone(base); const left = board.panels.pop();
+  const saved = await store.saveBoard({ revision: current.revision, board });
+  assert.deepEqual(saved.board.panels.find((p) => p.id === left.id).rect, left.rect);
 });
 
 test('removing a stacked source collapses a single-member stack into a free panel with stable identity', async (t) => {

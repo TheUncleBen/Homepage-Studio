@@ -213,16 +213,16 @@ test('invalid visibility preferences and stale mutations are rejected before any
   assert.deepEqual(await tree(root), before);
 });
 
-test('a discovery-only source arrival prevents saving an obsolete board despite unchanged file revision', async t => {
-  const { root, store, provider } = await fixture(t);
-  const saved = await savedStack(store), before = await tree(root);
+test('a discovery-only source arrival is kept when an arrangement made before it is saved', async t => {
+  const { store, provider } = await fixture(t);
+  const saved = await savedStack(store);
   provider.response = manifest([source(), source(1, true), source(2)]);
   const refreshed = await refresh(store);
   assert.equal(refreshed.revision, saved.revision);
   assert.equal(refreshed.board.panels.length, 3);
-  await assert.rejects(store.saveBoard({ revision: saved.revision, board: saved.board }), error => error.code === 'INVALID_BOARD');
-  assert.deepEqual(await tree(root), before);
-  assert.deepEqual(refreshed.board.stacks, saved.board.stacks);
+  const result = await store.saveBoard({ revision: saved.revision, board: saved.board });
+  assert.deepEqual(result.board.panels.map(panel => panel.id).sort(), refreshed.board.panels.map(panel => panel.id).sort());
+  assert.deepEqual(result.board.stacks, saved.board.stacks);
 });
 
 test('external native YAML edits win over stale dashboard saves and are not overwritten by discovery state', async t => {

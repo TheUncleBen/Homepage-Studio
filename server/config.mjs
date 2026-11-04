@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { parseDocument, isMap, isSeq, isScalar } from 'yaml';
-import { MAX_PANELS, stableValue, reconcileIdentities, identityRecords, validateIdentityRecords, boardSources, reconcileBoard, validateStoredBoard, validateBoardChange, nextPosition } from './board.mjs';
+import { MAX_PANELS, stableValue, reconcileIdentities, identityRecords, validateIdentityRecords, boardSources, reconcileBoard, validateStoredBoard, validateBoardChange, mergeBoardChange, nextPosition } from './board.mjs';
 import { validateDiscoveryManifest, validateStoredDiscoveredSources, validateHiddenDiscoveredIds, mergeDiscoveredSources } from './discovery.mjs';
 import { readNativeIndexingPolicy } from './indexing-policy.mjs';
 
@@ -30,6 +30,10 @@ const MAX_BACKUP_BYTES = 20 * MAX_FILE_BYTES;
 // JSON) beside its files.
 export const MAX_IMPORT_BYTES = 100 * 1024 * 1024;
 export const DEFAULT_BACKUP_RETENTION = 25;
+// Bounds on undo history kept in memory per editing session.
+export const MAX_EDIT_STEPS = 100;
+export const MAX_EDIT_SESSIONS = 16;
+export const MAX_EDIT_SESSION_BYTES = 48 * 1024 * 1024;
 // Fixed codes naming the API operation that created a pre-change snapshot.
 // They are chosen by the server per endpoint and never contain request text.
 // Every snapshot names one.
@@ -37,6 +41,7 @@ const CONTENT_ACTIONS = { add: 'added', update: 'edited', delete: 'deleted' };
 export const SNAPSHOT_ACTIONS = Object.freeze([
   'arrangement-saved', 'settings-saved', 'files-saved', 'snapshot-restored', 'dashboard-imported',
   'discovered-panel-hidden', 'discovered-panel-shown', 'page-deleted', 'page-duplicated', 'widgets-deleted', 'widgets-duplicated',
+  'change-undone', 'change-redone',
   ...['service', 'service-widget', 'info-widget', 'bookmark'].flatMap((kind) => Object.values(CONTENT_ACTIONS).map((verb) => `${kind}-${verb}`)),
 ]);
 const snapshotAction = (value) => (SNAPSHOT_ACTIONS.includes(value) ? value : null);
@@ -556,6 +561,49 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     return next;
   };
 
+  // Editing sessions (owner decision, 4 Nov 2026: autosave with Undo and
+  // Redo). Every change the editor makes carries its session's key, which the
+  // controller builds from the signed-in session and the editor's own id, so
+  // one person's undo can only reach their own steps. Each committed change
+  // records the files before it; undo puts them back while nothing else has
+  // changed the dashboard since. Only a session's first change keeps its
+  // snapshot, so the snapshot history holds one entry per editing session.
+  // Steps live in memory: a restart or another writer ends undo.
+  const editSessions = new Map();
+  let activeEdit = null;
+  const editEntry = (key, create) => {
+    if (typeof key !== 'string' || !key || key.length > 256) return null;
+    let entry = editSessions.get(key);
+    if (!entry && create) {
+      entry = { steps: [], redo: [], bytes: 0, started: false, usedAt: 0 };
+      editSessions.set(key, entry);
+      // The oldest idle sessions go first; a few people edit at once.
+      while (editSessions.size > MAX_EDIT_SESSIONS) editSessions.delete(editSessions.keys().next().value);
+    }
+    if (entry) {
+      entry.usedAt = Date.now();
+      editSessions.delete(key);
+      editSessions.set(key, entry);
+    }
+    return entry;
+  };
+  const rawBytes = (raw) => ALL_FILES.reduce((sum, name) => sum + (raw[name] == null ? 0 : Buffer.byteLength(raw[name])), 0);
+  const pushStep = (entry, list, step) => {
+    entry[list].push(step);
+    entry.bytes += step.bytes;
+    while (entry.steps.length + entry.redo.length > MAX_EDIT_STEPS || entry.bytes > MAX_EDIT_SESSION_BYTES) {
+      const from = entry.steps.length ? entry.steps : entry.redo;
+      entry.bytes -= from.shift().bytes;
+    }
+  };
+  // Runs one editor change inside its editing session (if it names one).
+  const editing = (change, operation) => serialized(async () => {
+    const key = object(change) ? change.editSession : undefined;
+    activeEdit = key === undefined ? null : { key, entry: editEntry(key, true), action: null };
+    try { return await operation(); }
+    finally { activeEdit = null; }
+  });
+
   async function rawSnapshot() {
     await verifyDirectory(configDir);
     await verifyDirectory(stateDir);
@@ -734,7 +782,41 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       await maintainBackups();
       throw error;
     }
+    const edit = activeEdit?.entry;
+    if (edit) {
+      // The save is complete, so its backup is no longer needed for recovery.
+      if (edit.started) await safeRemove(backupLocation(backupId));
+      edit.started = true;
+      const step = { before: current.raw, afterRevision: revisionOf(await rawSnapshot()), bytes: rawBytes(current.raw) };
+      if (activeEdit.action === 'undo') pushStep(edit, 'redo', step);
+      else {
+        if (activeEdit.action !== 'redo') { edit.bytes -= edit.redo.reduce((sum, item) => sum + item.bytes, 0); edit.redo = []; }
+        pushStep(edit, 'steps', step);
+      }
+    }
     await maintainBackups();
+  }
+
+  // Undo (or redo) the editing session's latest step.
+  async function stepEditInner(change, direction) {
+    const entry = editEntry(change.editSession, false);
+    const list = direction === 'undo' ? entry?.steps : entry?.redo;
+    if (!list?.length) fail(direction === 'undo' ? 'There is nothing to undo.' : 'There is nothing to redo.', 'NOTHING_TO_UNDO', 409);
+    const current = await readCurrent();
+    checkRevision(change.revision, current);
+    const step = list.at(-1);
+    if (current.revision !== step.afterRevision) {
+      editSessions.delete(change.editSession);
+      fail('This dashboard was changed somewhere else, so this step can no longer be undone.', 'UNDO_UNAVAILABLE', 409);
+    }
+    list.pop();
+    entry.bytes -= step.bytes;
+    activeEdit.action = direction;
+    await commit(current, { ...step.before }, direction === 'undo' ? 'change-undone' : 'change-redone');
+    // The board only, like an arrangement save: people who may arrange (but
+    // not read settings) can undo their own moves.
+    const result = response(await readCurrent());
+    return { revision: result.revision, configurationRevision: result.configurationRevision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, warnings: result.warnings, canUndo: entry.steps.length > 0, canRedo: entry.redo.length > 0 };
   }
   async function saveCurrent(current, change, action, forced = {}, restoredState) {
     checkRevision(change.revision, current);
@@ -770,7 +852,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       bookmarks: identityRecords(candidate.bookmarks),
       discoveredSources: candidate.discoveredSources.map(({ available, ...source }) => source),
       hiddenDiscoveredIds: candidate.hiddenDiscoveredIds,
-      board: own(change, 'board') ? validateBoardChange(change.board, candidate.sources) : candidate.board,
+      board: own(change, 'board') ? (action === 'arrangement-saved' ? mergeBoardChange(change.board, candidate.sources, current.board) : validateBoardChange(change.board, candidate.sources)) : candidate.board,
     };
     desired['state.json'] = `${JSON.stringify(state, null, 2)}\n`;
     await commit(current, desired, action);
@@ -1321,11 +1403,11 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     }),
     load: () => serialized(async () => response(await readCurrent())),
     loadBoard: () => serialized(async () => { const current = await readCurrent(); return { revision: current.revision, configurationRevision: current.configurationRevision, board: current.board, discoveredSources: current.discoveredSources, hiddenDiscoveredIds: current.hiddenDiscoveredIds, newDiscoveredIds: newDiscoveredIds(current), warnings: discoveryWarnings }; }),
-    saveBoard: (change) => serialized(async () => {
+    saveBoard: (change) => editing(change, async () => {
       const result = await saveCurrent(await readCurrent(), { revision: change.revision, board: change.board }, 'arrangement-saved');
       return { revision: result.revision, configurationRevision: result.configurationRevision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, warnings: result.warnings };
     }),
-    mutateDiscoveryVisibility: (change) => serialized(async () => {
+    mutateDiscoveryVisibility: (change) => editing(change, async () => {
       const current = await readCurrent();
       checkRevision(change.revision, current);
       if (typeof change.hidden !== 'boolean') fail('Discovered panel visibility must be a boolean.', 'INVALID_ACTION', 400);
@@ -1336,15 +1418,17 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     }),
     // Raw file saves never carry an editor arrangement; a board they send is checked strictly.
     save: ({ arrangement: ignored, ...change }) => serialized(async () => saveCurrent(await readCurrent(), change, 'files-saved')),
-    mutateService: (change) => serialized(() => mutateServiceInner(change)),
-    mutateInfoWidget: (change) => serialized(() => mutateInfoInner(change)),
-    mutateBookmark: (change) => serialized(() => mutateBookmarkInner(change)),
-    mutateServiceWidget: (change) => serialized(() => mutateServiceWidgetInner(change)),
-    mutateSettings: (change) => serialized(() => mutateSettingsInner(change)),
-    deletePage: (change) => serialized(() => deletePageInner(change)),
-    duplicatePage: (change) => serialized(() => duplicatePageInner(change)),
-    deletePanels: (change) => serialized(() => deletePanelsInner(change)),
-    duplicatePanels: (change) => serialized(() => duplicatePanelsInner(change)),
+    undo: (change) => editing(change, () => stepEditInner(change, 'undo')),
+    redo: (change) => editing(change, () => stepEditInner(change, 'redo')),
+    mutateService: (change) => editing(change, () => mutateServiceInner(change)),
+    mutateInfoWidget: (change) => editing(change, () => mutateInfoInner(change)),
+    mutateBookmark: (change) => editing(change, () => mutateBookmarkInner(change)),
+    mutateServiceWidget: (change) => editing(change, () => mutateServiceWidgetInner(change)),
+    mutateSettings: (change) => editing(change, () => mutateSettingsInner(change)),
+    deletePage: (change) => editing(change, () => deletePageInner(change)),
+    duplicatePage: (change) => editing(change, () => duplicatePageInner(change)),
+    deletePanels: (change) => editing(change, () => deletePanelsInner(change)),
+    duplicatePanels: (change) => editing(change, () => duplicatePanelsInner(change)),
     listBackups: () => serialized(async () => {
       await ready();
       const names = await orderedBackupNames();
