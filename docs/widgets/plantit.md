@@ -1,5 +1,7 @@
 # Plant-it
 
+Plant care. Events, Plants, Photos, Species.
+
 Integration · type `plantit` · [Homepage documentation](https://gethomepage.dev/widgets/services/plantit/)
 
 [All widgets](README.md)
@@ -18,7 +20,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://plant-it.host.or.ip:port`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `events`, `plants`, `photos`, `species`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `events`, `plants`, `photos`, `species`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_plantit_key` | `HOMEPAGE_FILE_PLANTIT_KEY: /run/secrets/homepage_plantit_key` | `{{HOMEPAGE_FILE_PLANTIT_KEY}}` |
+
+For a second Plant-it with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

@@ -1,5 +1,7 @@
 # pyLoad
 
+Download manager. Speed, Active, Queue, Total.
+
 Integration · type `pyload` · [Homepage documentation](https://gethomepage.dev/widgets/services/pyload/)
 
 [All widgets](README.md)
@@ -18,7 +20,18 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Username | `username` | Text | Example: `username`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `speed`, `active`, `queue`, `total`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `speed`, `active`, `queue`, `total`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_pyload_password` | `HOMEPAGE_FILE_PYLOAD_PASSWORD: /run/secrets/homepage_pyload_password` | `{{HOMEPAGE_FILE_PYLOAD_PASSWORD}}` |
+| API key | `homepage_pyload_key` | `HOMEPAGE_FILE_PYLOAD_KEY: /run/secrets/homepage_pyload_key` | `{{HOMEPAGE_FILE_PYLOAD_KEY}}` |
+
+For a second pyLoad with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

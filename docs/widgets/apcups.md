@@ -1,5 +1,7 @@
 # APC UPS Monitoring
 
+UPS monitoring. Status, Load, Battery Charge, Time Left.
+
 Integration · type `apcups` · [Homepage documentation](https://gethomepage.dev/widgets/services/apcups/)
 
 [All widgets](README.md)

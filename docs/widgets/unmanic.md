@@ -1,5 +1,7 @@
 # Unmanic
 
+Media library optimiser. Active Workers, Total Workers, Queue Length.
+
 Integration · type `unmanic` · [Homepage documentation](https://gethomepage.dev/widgets/services/unmanic/)
 
 [All widgets](README.md)
@@ -15,7 +17,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://unmanic.host.or.ip:port`. |
-| Visible fields | `fields` | List | Choices: `active_workers`, `total_workers`, `records_total`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `active_workers`, `total_workers`, `records_total`. Leave unset for its usual fields. |
 
 ## Examples
 

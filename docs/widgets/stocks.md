@@ -1,5 +1,7 @@
 # Stocks
 
+Stock prices. The prices of the symbols you choose.
+
 Integration · type `stocks` · [Homepage documentation](https://gethomepage.dev/widgets/services/stocks/)
 
 [All widgets](README.md)

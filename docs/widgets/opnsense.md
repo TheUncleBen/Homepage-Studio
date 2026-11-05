@@ -1,5 +1,7 @@
 # OPNsense
 
+Firewall. CPU Load, Active Memory, WAN Upload, WAN Download.
+
 Integration · type `opnsense` · [Homepage documentation](https://gethomepage.dev/widgets/services/opnsense/)
 
 [All widgets](README.md)
@@ -25,7 +27,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Username | `username` | Text | Example: `key`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | WAN interface | `wan` | Text | Example: `opt1`. |
-| Visible fields | `fields` | List | Choices: `cpu`, `memory`, `wanUpload`, `wanDownload`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `cpu`, `memory`, `wanUpload`, `wanDownload`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_opnsense_password` | `HOMEPAGE_FILE_OPNSENSE_PASSWORD: /run/secrets/homepage_opnsense_password` | `{{HOMEPAGE_FILE_OPNSENSE_PASSWORD}}` |
+
+For a second OPNsense with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

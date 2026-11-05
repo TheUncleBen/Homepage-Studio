@@ -1,5 +1,7 @@
 # Channels DVR Server
 
+TV DVR. Shows, Recordings, Scheduled, Passes.
+
 Integration · type `channelsdvrserver` · [Homepage documentation](https://gethomepage.dev/widgets/services/channelsdvrserver/)
 
 [All widgets](README.md)

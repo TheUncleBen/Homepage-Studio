@@ -1,5 +1,7 @@
 # Prometheus Metric
 
+Prometheus queries. The results of the queries you write.
+
 Integration · type `prometheusmetric` · [Homepage documentation](https://gethomepage.dev/widgets/services/prometheusmetric/)
 
 [All widgets](README.md)

@@ -3,9 +3,11 @@ import { useTranslation } from "next-i18next/pages";
 import Block from "components/services/widget/block";
 import Container from "components/services/widget/container";
 import useWidgetAPI from "utils/proxy/use-widget-api";
+import { useUncappedFields } from "utils/widget-fields";
 
 export default function Component({ service }) {
   const { t } = useTranslation();
+  const uncapped = useUncappedFields();
 
   const { widget } = service;
 
@@ -16,8 +18,10 @@ export default function Component({ service }) {
     version === 1 ? "interface" : "interfacev2",
   );
 
-  const showWanIP = widget.fields?.filter((f) => f !== "wanIP").length <= 4 && widget.fields?.includes("wanIP");
-  const showDiskUsage = widget.fields?.filter((f) => f !== "disk").length <= 4 && widget.fields?.includes("disk");
+  // Studio: in a Studio card every chosen value shows (no four-value limit).
+  const fits = (field) => uncapped || widget.fields?.filter((f) => f !== field).length <= 4;
+  const showWanIP = fits("wanIP") && widget.fields?.includes("wanIP");
+  const showDiskUsage = fits("disk") && widget.fields?.includes("disk");
 
   if (systemError || interfaceError) {
     const finalError = systemError ?? interfaceError;

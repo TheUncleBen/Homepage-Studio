@@ -1,5 +1,7 @@
 # Netdata
 
+System monitoring. Warnings, Criticals.
+
 Integration · type `netdata` · [Homepage documentation](https://gethomepage.dev/widgets/services/netdata/)
 
 [All widgets](README.md)
@@ -15,7 +17,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://netdata.host.or.ip`. |
-| Visible fields | `fields` | List | Choices: `warnings`, `criticals`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `warnings`, `criticals`. Leave unset for its usual fields. |
 
 ## Examples
 

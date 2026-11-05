@@ -1,5 +1,7 @@
 # Romm
 
+Game ROM library. Platforms, Games, Saves, States, Screenshots, Total Size.
+
 Integration · type `romm` · [Homepage documentation](https://gethomepage.dev/widgets/services/romm/)
 
 [All widgets](README.md)
@@ -11,7 +13,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://romm.host.or.ip`. |
-| Visible fields | `fields` | List | Choices: `platforms`, `totalRoms`, `saves`, `states`, `screenshots`, `totalfilesize`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `platforms`, `totalRoms`, `saves`, `states`, `screenshots`, `totalfilesize`. Leave unset for its usual fields. |
 
 ## Examples
 

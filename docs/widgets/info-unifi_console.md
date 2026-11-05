@@ -1,5 +1,7 @@
 # UniFi Controller
 
+Connectivity status from a UniFi Network controller.
+
 Information widget · type `unifi_console` · [Homepage documentation](https://gethomepage.dev/widgets/info/unifi_controller/)
 
 [All widgets](README.md)
@@ -31,6 +33,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Username | `username` | Text | Example: `user`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_unifi_console_password` | `HOMEPAGE_FILE_UNIFI_CONSOLE_PASSWORD: /run/secrets/homepage_unifi_console_password` | `{{HOMEPAGE_FILE_UNIFI_CONSOLE_PASSWORD}}` |
+| API key | `homepage_unifi_console_key` | `HOMEPAGE_FILE_UNIFI_CONSOLE_KEY: /run/secrets/homepage_unifi_console_key` | `{{HOMEPAGE_FILE_UNIFI_CONSOLE_KEY}}` |
+
+For a second UniFi Controller with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

@@ -1,5 +1,7 @@
 # Custom API
 
+Values from any JSON API, on their own.
+
 Information widget · type `customapi` · [Homepage documentation](https://gethomepage.dev/widgets/info/customapi/)
 
 [All widgets](README.md)
@@ -31,6 +33,16 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Request headers | `headers` | Settings (name: value) |  |
 | Value mappings | `mappings` | List |  |
 | Request Body | `requestBody` | Text or Settings (name: value) |  |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_customapi_password` | `HOMEPAGE_FILE_CUSTOMAPI_PASSWORD: /run/secrets/homepage_customapi_password` | `{{HOMEPAGE_FILE_CUSTOMAPI_PASSWORD}}` |
+
+For a second Custom API with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

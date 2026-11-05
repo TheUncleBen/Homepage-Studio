@@ -1,5 +1,7 @@
 # EVCC
 
+EV charging. Production, Grid, Consumption, Charger.
+
 Integration · type `evcc` · [Homepage documentation](https://gethomepage.dev/widgets/services/evcc/)
 
 [All widgets](README.md)
@@ -15,7 +17,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://evcc.host.or.ip:port`. |
-| Visible fields | `fields` | List | Choices: `pv_power`, `grid_power`, `home_power`, `charge_power`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `pv_power`, `grid_power`, `home_power`, `charge_power`. Leave unset for its usual fields. |
 
 ## Examples
 

@@ -1,5 +1,7 @@
 # UniFi Controller
 
+Network controller. Uptime, WAN, LAN, LAN Users, LAN Devices, WLAN and 2 more.
+
 Integration · type `unifi` · [Homepage documentation](https://gethomepage.dev/widgets/services/unifi-controller/)
 
 [All widgets](README.md)
@@ -33,7 +35,18 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Username | `username` | Text | Example: `user`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `uptime`, `wan`, `lan`, `lan_users`, `lan_devices`, `wlan`, `wlan_users`, `wlan_devices`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `uptime`, `wan`, `lan`, `lan_users`, `lan_devices`, `wlan`, `wlan_users`, `wlan_devices`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_unifi_password` | `HOMEPAGE_FILE_UNIFI_PASSWORD: /run/secrets/homepage_unifi_password` | `{{HOMEPAGE_FILE_UNIFI_PASSWORD}}` |
+| API key | `homepage_unifi_key` | `HOMEPAGE_FILE_UNIFI_KEY: /run/secrets/homepage_unifi_key` | `{{HOMEPAGE_FILE_UNIFI_KEY}}` |
+
+For a second UniFi Controller with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

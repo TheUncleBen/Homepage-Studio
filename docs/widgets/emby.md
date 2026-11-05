@@ -1,5 +1,7 @@
 # Emby
 
+Media server. Movies, Series, Episodes, Songs.
+
 Integration · type `emby` · [Homepage documentation](https://gethomepage.dev/widgets/services/emby/)
 
 [All widgets](README.md)
@@ -28,7 +30,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Enable Media Control | `enableMediaControl` | On/off | Example: `false`. |
 | Show Episode Number | `showEpisodeNumber` | On/off | Example: `true`. |
 | Expand One Stream To Two Rows | `expandOneStreamToTwoRows` | On/off | Example: `false`. |
-| Visible fields | `fields` | List | Choices: `movies`, `series`, `episodes`, `songs`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `movies`, `series`, `episodes`, `songs`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_emby_key` | `HOMEPAGE_FILE_EMBY_KEY: /run/secrets/homepage_emby_key` | `{{HOMEPAGE_FILE_EMBY_KEY}}` |
+
+For a second Emby with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

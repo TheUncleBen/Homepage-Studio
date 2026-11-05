@@ -1,5 +1,7 @@
 # Dockhand
 
+Docker management. Running, Stopped, Paused, Total, CPU, Memory and 5 more.
+
 Integration · type `dockhand` · [Homepage documentation](https://gethomepage.dev/widgets/services/dockhand/)
 
 [All widgets](README.md)
@@ -23,7 +25,18 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Username | `username` | Text | Example: `your-user`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `running`, `stopped`, `paused`, `total`, `cpu`, `memory`, `images`, `volumes`, `events_today`, `pending_updates`, `stacks`. The widget shows them in the order you list them, up to 4. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `running`, `stopped`, `paused`, `total`, `cpu`, `memory`, `images`, `volumes`, `events_today`, `pending_updates`, `stacks`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_dockhand_password` | `HOMEPAGE_FILE_DOCKHAND_PASSWORD: /run/secrets/homepage_dockhand_password` | `{{HOMEPAGE_FILE_DOCKHAND_PASSWORD}}` |
+| API key | `homepage_dockhand_key` | `HOMEPAGE_FILE_DOCKHAND_KEY: /run/secrets/homepage_dockhand_key` | `{{HOMEPAGE_FILE_DOCKHAND_KEY}}` |
+
+For a second Dockhand with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

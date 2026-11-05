@@ -1,5 +1,7 @@
 # Jellyfin
 
+Media server. Movies, Series, Episodes, Songs, Albums.
+
 Integration · type `jellyfin` · [Homepage documentation](https://gethomepage.dev/widgets/services/jellyfin/)
 
 [All widgets](README.md)
@@ -32,7 +34,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Enable Media Control | `enableMediaControl` | On/off | Example: `false`. |
 | Show Episode Number | `showEpisodeNumber` | On/off | Example: `true`. |
 | Expand One Stream To Two Rows | `expandOneStreamToTwoRows` | On/off | Example: `false`. |
-| Visible fields | `fields` | List | Choices: `movies`, `series`, `episodes`, `songs`, `albums`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `movies`, `series`, `episodes`, `songs`, `albums`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_jellyfin_key` | `HOMEPAGE_FILE_JELLYFIN_KEY: /run/secrets/homepage_jellyfin_key` | `{{HOMEPAGE_FILE_JELLYFIN_KEY}}` |
+
+For a second Jellyfin with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

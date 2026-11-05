@@ -1,5 +1,7 @@
 # Caddy
 
+Web server and reverse proxy. Upstreams, Current requests, Failed requests.
+
 Integration · type `caddy` · [Homepage documentation](https://gethomepage.dev/widgets/services/caddy/)
 
 [All widgets](README.md)
@@ -15,7 +17,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://caddy.host.or.ip:adminport`. |
-| Visible fields | `fields` | List | Choices: `upstreams`, `requests`, `requests_failed`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `upstreams`, `requests`, `requests_failed`. Leave unset for its usual fields. |
 
 ## Examples
 

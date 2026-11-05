@@ -1,5 +1,7 @@
 # Open-Meteo
 
+Current weather from Open-Meteo, no key needed.
+
 Information widget · type `openmeteo` · [Homepage documentation](https://gethomepage.dev/widgets/info/openmeteo/)
 
 [All widgets](README.md)

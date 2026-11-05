@@ -1,5 +1,7 @@
 # OpenMediaVault
 
+NAS. Services, S.M.A.R.T. and update status.
+
 Integration · type `openmediavault` · [Homepage documentation](https://gethomepage.dev/widgets/services/openmediavault/)
 
 [All widgets](README.md)
@@ -31,6 +33,16 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Method | `method` | Text | Example: `services.getStatus`. |
 | Visible fields | `fields` | List | `services.getStatus`: Shows status of running services. Allowed fields: `["running", "stopped", "total"]`: `running`, `stopped`, `total`. `smart.getListBg`: Shows S.M.A.R.T. status from disks. Allowed fields: `["passed", "failed"]`: `passed`, `failed`. `downloader.getDownloadList`: Displays the number of tasks from the Downloader plugin currently being downloaded and total. Allowed fields: `["downloading", "total"]`: `downloading`, `total`. Allowed fields depend on the native mode or version. Review the contextual lists in the documentation; keep their order. Leave unset for the native default. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_openmediavault_password` | `HOMEPAGE_FILE_OPENMEDIAVAULT_PASSWORD: /run/secrets/homepage_openmediavault_password` | `{{HOMEPAGE_FILE_OPENMEDIAVAULT_PASSWORD}}` |
+
+For a second OpenMediaVault with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

@@ -98,6 +98,16 @@
           "type": "p",
           "text": "The username and password are the same as used to login to the web interface."
         }
+      ],
+      "description": "DNS ad blocker. Queries, Blocked, Filtered, Latency.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_ADGUARD_PASSWORD",
+          "secret": "homepage_adguard_password",
+          "reference": "{{HOMEPAGE_FILE_ADGUARD_PASSWORD}}"
+        }
       ]
     },
     {
@@ -142,7 +152,8 @@
           "type": "p",
           "text": "[!NOTE] By default apcupsd daemon is bound to 127.0.0.1. Edit `/etc/apcupsd.conf` and change `NISIP` to an IP accessible from your homepage docker (usually your internal LAN interface)."
         }
-      ]
+      ],
+      "description": "UPS monitoring. Status, Load, Battery Charge, Time Left."
     },
     {
       "type": "arcane",
@@ -232,6 +243,16 @@
           "type": "p",
           "text": "Using an API key for the widget requires permissions for: `containers:list`, `images:list`, and `image-updates:read`."
         }
+      ],
+      "description": "Docker management. Running, Stopped, Total, Images, Used, Unused and 1 more.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_ARCANE_KEY",
+          "secret": "homepage_arcane_key",
+          "reference": "{{HOMEPAGE_FILE_ARCANE_KEY}}"
+        }
       ]
     },
     {
@@ -281,8 +302,7 @@
             "degraded",
             "suspended",
             "missing"
-          ],
-          "maxItems": 4
+          ]
         }
       ],
       "defaults": {
@@ -321,6 +341,16 @@
         {
           "type": "p",
           "text": "This creates a new account called `readonly` and attaches the `role:readonly` role to it."
+        }
+      ],
+      "description": "GitOps deployments. Apps, synced, out of sync, healthy and more.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_ARGOCD_KEY",
+          "secret": "homepage_argocd_key",
+          "reference": "{{HOMEPAGE_FILE_ARGOCD_KEY}}"
         }
       ]
     },
@@ -406,6 +436,16 @@
           "type": "p",
           "text": "Define same username and password that is used for login from web or supported apps"
         }
+      ],
+      "description": "Manga and comics server. Series, Archives, Chapters, Categories.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_ATSUMERU_PASSWORD",
+          "secret": "homepage_atsumeru_password",
+          "reference": "{{HOMEPAGE_FILE_ATSUMERU_PASSWORD}}"
+        }
       ]
     },
     {
@@ -478,6 +518,16 @@
         {
           "type": "p",
           "text": "You can find your API token by logging into the Audiobookshelf web app as an admin, go to the config → users page, and click on your account."
+        }
+      ],
+      "description": "Audiobook and podcast server. Podcasts, Duration, Books.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_AUDIOBOOKSHELF_KEY",
+          "secret": "homepage_audiobookshelf_key",
+          "reference": "{{HOMEPAGE_FILE_AUDIOBOOKSHELF_KEY}}"
         }
       ]
     },
@@ -605,6 +655,16 @@
             ]
           ]
         }
+      ],
+      "description": "Identity provider. Users, Logins (24h), Failed Logins (24h), Auths (24h).",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_AUTHENTIK_KEY",
+          "secret": "homepage_authentik_key",
+          "reference": "{{HOMEPAGE_FILE_AUTHENTIK_KEY}}"
+        }
       ]
     },
     {
@@ -677,6 +737,16 @@
         {
           "type": "p",
           "text": "Find your API key under `Settings > API Keys`."
+        }
+      ],
+      "description": "Release automation. Approved, Rejected, Filters, Indexers.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_AUTOBRR_KEY",
+          "secret": "homepage_autobrr_key",
+          "reference": "{{HOMEPAGE_FILE_AUTOBRR_KEY}}"
         }
       ]
     },
@@ -833,6 +903,16 @@
           "type": "p",
           "text": "You will need to generate a personal access token for an existing user, see the [azure documentation](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&tabs=Windows#create-a-pat)"
         }
+      ],
+      "description": "Pipelines and pull requests. Result, Status.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_AZUREDEVOPS_KEY",
+          "secret": "homepage_azuredevops_key",
+          "reference": "{{HOMEPAGE_FILE_AZUREDEVOPS_KEY}}"
+        }
       ]
     },
     {
@@ -891,8 +971,7 @@
             "num_failure_30",
             "bytes_added_30"
           ],
-          "description": "Optional ordered list of visible native fields. Leave unset for the native default.",
-          "maxItems": 4
+          "description": "Optional ordered list of visible native fields. Leave unset for the native default."
         }
       ],
       "defaults": {
@@ -919,6 +998,16 @@
         {
           "type": "p",
           "text": "**Allowed fields:** `[\"num_success_latest\",\"num_failure_latest\",\"num_success_30\",\"num_plans\",\"num_failure_30\",\"bytes_added_30\"]`"
+        }
+      ],
+      "description": "Restic backups. Succeeding, Failing, Successes, Plans, Failures, Bytes Added.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_BACKREST_PASSWORD",
+          "secret": "homepage_backrest_password",
+          "reference": "{{HOMEPAGE_FILE_BACKREST_PASSWORD}}"
         }
       ]
     },
@@ -990,6 +1079,16 @@
         {
           "type": "p",
           "text": "Find your API key under `Settings > General`."
+        }
+      ],
+      "description": "Subtitle manager. Missing Episodes, Missing Movies.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_BAZARR_KEY",
+          "secret": "homepage_bazarr_key",
+          "reference": "{{HOMEPAGE_FILE_BAZARR_KEY}}"
         }
       ]
     },
@@ -1151,6 +1250,16 @@
             ]
           ]
         }
+      ],
+      "description": "Server monitoring. Systems, Up.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_BESZEL_PASSWORD",
+          "secret": "homepage_beszel_password",
+          "reference": "{{HOMEPAGE_FILE_BESZEL_PASSWORD}}"
+        }
       ]
     },
     {
@@ -1216,6 +1325,16 @@
         {
           "type": "p",
           "text": "The widget authenticates with your Booklore credentials to surface total libraries, books, and reading progress counts for your account."
+        }
+      ],
+      "description": "Book library. Libraries, Books, Reading, Finished.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_BOOKLORE_PASSWORD",
+          "secret": "homepage_booklore_password",
+          "reference": "{{HOMEPAGE_FILE_BOOKLORE_PASSWORD}}"
         }
       ]
     },
@@ -1307,6 +1426,16 @@
           "type": "p",
           "text": "Default fields: `[\"books\", \"authors\", \"reading\", \"finished\"]`."
         }
+      ],
+      "description": "Books, Authors, Series, Storage, Reading, Finished.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_BOOKORBIT_PASSWORD",
+          "secret": "homepage_bookorbit_password",
+          "reference": "{{HOMEPAGE_FILE_BOOKORBIT_PASSWORD}}"
+        }
       ]
     },
     {
@@ -1364,7 +1493,8 @@
           "type": "p",
           "text": "Learn more about [Caddy](https://github.com/caddyserver/caddy)."
         }
-      ]
+      ],
+      "description": "Web server and reverse proxy. Upstreams, Current requests, Failed requests."
     },
     {
       "type": "calendar",
@@ -1524,7 +1654,8 @@
           "type": "p",
           "text": "This custom integration allows you to show events from any calendar that supports iCal format, for example, Google Calendar (go to `Settings`, select specific calendar, go to `Integrate calendar`, copy URL from `Public Address in iCal format`)."
         }
-      ]
+      ],
+      "description": "Calendar. Upcoming events from your calendars and media apps."
     },
     {
       "type": "calibreweb",
@@ -1608,6 +1739,16 @@
           "type": "p",
           "text": "**Note: widget requires calibre-web ≥ v0.6.21.**"
         }
+      ],
+      "description": "E-book library. Books, Authors, Categories, Series.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_CALIBREWEB_PASSWORD",
+          "secret": "homepage_calibreweb_password",
+          "reference": "{{HOMEPAGE_FILE_CALIBREWEB_PASSWORD}}"
+        }
       ]
     },
     {
@@ -1679,6 +1820,16 @@
           "type": "p",
           "text": "Find your API key under `Settings > API`."
         }
+      ],
+      "description": "Website change monitoring. Diffs Detected, Total Observed.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_CHANGEDETECTIONIO_KEY",
+          "secret": "homepage_changedetectionio_key",
+          "reference": "{{HOMEPAGE_FILE_CHANGEDETECTIONIO_KEY}}"
+        }
       ]
     },
     {
@@ -1719,7 +1870,8 @@
           "type": "p",
           "text": "Learn more about [Channels DVR Server](https://getchannels.com/dvr-server/)."
         }
-      ]
+      ],
+      "description": "TV DVR. Shows, Recordings, Scheduled, Passes."
     },
     {
       "type": "checkmk",
@@ -1795,6 +1947,16 @@
         {
           "type": "p",
           "text": "To setup authentication, follow the official [Checkmk API](https://docs.checkmk.com/latest/en/rest_api.html?lquery=api#bearerauth) documentation."
+        }
+      ],
+      "description": "Infrastructure monitoring. Service issues, Host issues.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_CHECKMK_PASSWORD",
+          "secret": "homepage_checkmk_password",
+          "reference": "{{HOMEPAGE_FILE_CHECKMK_PASSWORD}}"
         }
       ]
     },
@@ -1877,6 +2039,16 @@
         {
           "type": "p",
           "text": "_As of v0.6.10 this widget no longer accepts a Cloudflare global API key (or account email) due to security concerns. Instead, you should setup an API token which only requires the permissions `Account.Cloudflare Tunnel:Read`._"
+        }
+      ],
+      "description": "Cloudflare tunnels. Status, Origin IP.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_CLOUDFLARED_KEY",
+          "secret": "homepage_cloudflared_key",
+          "reference": "{{HOMEPAGE_FILE_CLOUDFLARED_KEY}}"
         }
       ]
     },
@@ -1978,6 +2150,16 @@
           "type": "p",
           "text": "Allowed fields: no configurable fields for this widget."
         }
+      ],
+      "description": "Cryptocurrency prices. The prices of the coins you choose.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_COINMARKETCAP_KEY",
+          "secret": "homepage_coinmarketcap_key",
+          "reference": "{{HOMEPAGE_FILE_COINMARKETCAP_KEY}}"
+        }
       ]
     },
     {
@@ -2069,6 +2251,16 @@
               "text": "`alerts` counts alerts raised by your own engine in the last 24 hours. Alerts originating from the CrowdSec community blocklist are excluded."
             }
           ]
+        }
+      ],
+      "description": "Security engine. Alerts, Bans.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_CROWDSEC_PASSWORD",
+          "secret": "homepage_crowdsec_password",
+          "reference": "{{HOMEPAGE_FILE_CROWDSEC_PASSWORD}}"
         }
       ]
     },
@@ -2373,6 +2565,16 @@
           "type": "p",
           "text": "Both formats result in `{\"foo\":\"bar\"}` being sent as the request body. Don't forget to set your `Content-Type` headers!"
         }
+      ],
+      "description": "Any JSON API. The values you map from its response.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_CUSTOMAPI_PASSWORD",
+          "secret": "homepage_customapi_password",
+          "reference": "{{HOMEPAGE_FILE_CUSTOMAPI_PASSWORD}}"
+        }
       ]
     },
     {
@@ -2457,6 +2659,16 @@
           "type": "p",
           "text": "Uses the same password used to login to the webui, see [the deluge FAQ](https://dev.deluge-torrent.org/wiki/Faq#Whatisthedefaultpassword)."
         }
+      ],
+      "description": "Torrent client. Leech, Download, Seed, Upload.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_DELUGE_PASSWORD",
+          "secret": "homepage_deluge_password",
+          "reference": "{{HOMEPAGE_FILE_DELUGE_PASSWORD}}"
+        }
       ]
     },
     {
@@ -2501,7 +2713,8 @@
           "type": "p",
           "text": "The url should point to the DeveLanCacheUI Backend (API)"
         }
-      ]
+      ],
+      "description": "Game download cache. Cache Hit Bytes, Cache Miss Bytes."
     },
     {
       "type": "dispatcharr",
@@ -2590,6 +2803,16 @@
           "type": "p",
           "text": "Learn more about [Dispatcharr](https://github.com/Dispatcharr/Dispatcharr)."
         }
+      ],
+      "description": "IPTV stream manager. Channels, Streams.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_DISPATCHARR_PASSWORD",
+          "secret": "homepage_dispatcharr_password",
+          "reference": "{{HOMEPAGE_FILE_DISPATCHARR_PASSWORD}}"
+        }
       ]
     },
     {
@@ -2609,7 +2832,8 @@
           "url": "https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/src/widgets/components.js",
           "sha256": "1879ff66562a6dc6cb48c592472c598fd17b6791ccb220cae27886fe4c40a4c7"
         }
-      ]
+      ],
+      "description": "Docker container. CPU, MEM, RX, TX."
     },
     {
       "type": "dockhand",
@@ -2694,8 +2918,7 @@
             "pending_updates",
             "stacks"
           ],
-          "description": "Optional ordered list of visible native fields. Leave unset for the native default.",
-          "maxItems": 4
+          "description": "Optional ordered list of visible native fields. Leave unset for the native default."
         }
       ],
       "defaults": {
@@ -2726,6 +2949,23 @@
         {
           "type": "p",
           "text": "**Allowed fields:** (max 4): `running`, `stopped`, `paused`, `total`, `cpu`, `memory`, `images`, `volumes`, `events_today`, `pending_updates`, `stacks`. **Default fields:** `running`, `total`, `cpu`, `memory`."
+        }
+      ],
+      "description": "Docker management. Running, Stopped, Paused, Total, CPU, Memory and 5 more.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_DOCKHAND_PASSWORD",
+          "secret": "homepage_dockhand_password",
+          "reference": "{{HOMEPAGE_FILE_DOCKHAND_PASSWORD}}"
+        },
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_DOCKHAND_KEY",
+          "secret": "homepage_dockhand_key",
+          "reference": "{{HOMEPAGE_FILE_DOCKHAND_KEY}}"
         }
       ]
     },
@@ -2802,6 +3042,16 @@
         {
           "type": "p",
           "text": "Default fields: `[\"jobs\", \"errors\", \"lastBackup\", \"nextRun\"]`"
+        }
+      ],
+      "description": "Backups. Jobs, Stored, Last Run, Next Run, Running, Warnings and 1 more.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_DUPLICATI_PASSWORD",
+          "secret": "homepage_duplicati_password",
+          "reference": "{{HOMEPAGE_FILE_DUPLICATI_PASSWORD}}"
         }
       ]
     },
@@ -2949,6 +3199,16 @@
           "type": "p",
           "text": "As of v0.6.11 the widget supports fields `[\"movies\", \"series\", \"episodes\", \"songs\"]`. These blocks are disabled by default but can be enabled with the `enableBlocks` option, and the \"Now Playing\" feature (enabled by default) can be disabled with the `enableNowPlaying` option."
         }
+      ],
+      "description": "Media server. Movies, Series, Episodes, Songs.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_EMBY_KEY",
+          "secret": "homepage_emby_key",
+          "reference": "{{HOMEPAGE_FILE_EMBY_KEY}}"
+        }
       ]
     },
     {
@@ -3038,6 +3298,16 @@
           "type": "p",
           "text": "By default ESPHome will only mark devices as `offline` if their address cannot be pinged. If it has an invalid config or its name cannot be resolved (by DNS) its status will be marked as `unknown`. To group both `offline` and `unknown` devices together, users should use the `offline_alt` field instead. This sums all devices that are _not_ online together."
         }
+      ],
+      "description": "Smart home devices. Total, Online, Offline, Unknown.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_ESPHOME_PASSWORD",
+          "secret": "homepage_esphome_password",
+          "reference": "{{HOMEPAGE_FILE_ESPHOME_PASSWORD}}"
+        }
       ]
     },
     {
@@ -3096,7 +3366,8 @@
           "type": "p",
           "text": "Learn more about [EVCC](https://github.com/evcc-io/evcc)."
         }
-      ]
+      ],
+      "description": "EV charging. Production, Grid, Consumption, Charger."
     },
     {
       "type": "feed",
@@ -3198,7 +3469,8 @@
           "type": "p",
           "text": "Feeds are fetched by homepage, not your browser, and cached for 10 minutes."
         }
-      ]
+      ],
+      "description": "RSS or Atom feed. The latest items."
     },
     {
       "type": "filebrowser",
@@ -3291,6 +3563,16 @@
         {
           "type": "p",
           "text": "If you are using [Proxy header authentication](https://filebrowser.org/configuration/authentication-method#proxy-header) you have to set `authHeader` and `username`."
+        }
+      ],
+      "description": "File manager. Available, Used, Total.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_FILEBROWSER_PASSWORD",
+          "secret": "homepage_filebrowser_password",
+          "reference": "{{HOMEPAGE_FILE_FILEBROWSER_PASSWORD}}"
         }
       ]
     },
@@ -3403,6 +3685,16 @@
           "type": "p",
           "text": "Version 2 uses the [\"Fenrus Dashboard Endpoint\"](https://fileflows.com/docs/webconsole/config/settings/general#fenrus-dashboard-endpoint), which must be enabled. Use the token shown there as the `key`."
         }
+      ],
+      "description": "File processing. Queue, Processing, Processed, Time.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_FILEFLOWS_KEY",
+          "secret": "homepage_fileflows_key",
+          "reference": "{{HOMEPAGE_FILE_FILEFLOWS_KEY}}"
+        }
       ]
     },
     {
@@ -3473,6 +3765,16 @@
         {
           "type": "p",
           "text": "Find your API key under `Options > Profile > OAuth > Personal Access Tokens`."
+        }
+      ],
+      "description": "Personal finance. Net Worth, Budget.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_FIREFLY_KEY",
+          "secret": "homepage_firefly_key",
+          "reference": "{{HOMEPAGE_FILE_FIREFLY_KEY}}"
         }
       ]
     },
@@ -3553,6 +3855,16 @@
         {
           "type": "p",
           "text": "Learn more about [Flood](https://github.com/jesec/flood)."
+        }
+      ],
+      "description": "Torrent client. Leech, Download, Seed, Upload.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_FLOOD_PASSWORD",
+          "secret": "homepage_flood_password",
+          "reference": "{{HOMEPAGE_FILE_FLOOD_PASSWORD}}"
         }
       ]
     },
@@ -3635,6 +3947,16 @@
         {
           "type": "p",
           "text": "Please refer to [Enable the API in FreshRSS](https://freshrss.github.io/FreshRSS/en/users/06_Mobile_access.html#enable-the-api-in-freshrss) for the \"API password\" to be entered in the password field."
+        }
+      ],
+      "description": "RSS reader. Subscriptions, Unread.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_FRESHRSS_PASSWORD",
+          "secret": "homepage_freshrss_password",
+          "reference": "{{HOMEPAGE_FILE_FRESHRSS_PASSWORD}}"
         }
       ]
     },
@@ -3730,6 +4052,16 @@
           "type": "p",
           "text": "A recent event listing is disabled by default, but can be enabled with the `enableRecentEvents` option."
         }
+      ],
+      "description": "Camera NVR. Cameras, Uptime, Version.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_FRIGATE_PASSWORD",
+          "secret": "homepage_frigate_password",
+          "reference": "{{HOMEPAGE_FILE_FRIGATE_PASSWORD}}"
+        }
       ]
     },
     {
@@ -3771,8 +4103,7 @@
             "externalIPAddress",
             "externalIPv6Address",
             "externalIPv6Prefix"
-          ],
-          "maxItems": 4
+          ]
         }
       ],
       "defaults": {
@@ -3804,7 +4135,8 @@
           "type": "p",
           "text": "Credentials are not needed and, as such, you may want to consider using `http` instead of `https` as those requests are significantly faster."
         }
-      ]
+      ],
+      "description": "Router. Status, Uptime, Max. Down, Max. Up, Down, Up and 5 more."
     },
     {
       "type": "gamedig",
@@ -3853,8 +4185,7 @@
             "maxPlayers",
             "bots",
             "ping"
-          ],
-          "maxItems": 4
+          ]
         },
         {
           "key": "gameToken",
@@ -3893,6 +4224,16 @@
         {
           "type": "p",
           "text": "Uses the [GameDig](https://www.npmjs.com/package/gamedig) library to get game server information for any supported server type."
+        }
+      ],
+      "description": "Game server status. Status, Name, Map, Current players, Players, Max players and 2 more.",
+      "secrets": [
+        {
+          "key": "gameToken",
+          "label": "Game token",
+          "variable": "HOMEPAGE_FILE_GAMEDIG_GAME_TOKEN",
+          "secret": "homepage_gamedig_game_token",
+          "reference": "{{HOMEPAGE_FILE_GAMEDIG_GAME_TOKEN}}"
         }
       ]
     },
@@ -3951,7 +4292,8 @@
           "type": "p",
           "text": "Learn more about [Gatus](https://github.com/TwiN/gatus)."
         }
-      ]
+      ],
+      "description": "Health checks. Sites Up, Sites Down, Uptime."
     },
     {
       "type": "ghostfolio",
@@ -4036,6 +4378,16 @@
           "type": "p",
           "text": "_Note that the Bearer token is valid for 6 months, after which a new one must be generated._"
         }
+      ],
+      "description": "Wealth tracking. Today, One year, All time, Net Worth.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_GHOSTFOLIO_KEY",
+          "secret": "homepage_ghostfolio_key",
+          "reference": "{{HOMEPAGE_FILE_GHOSTFOLIO_KEY}}"
+        }
       ]
     },
     {
@@ -4108,6 +4460,16 @@
         {
           "type": "p",
           "text": "API token requires `notifications`, `repository` and `issue` permissions. See the [gitea documentation](https://docs.gitea.com/development/api-usage#generating-and-listing-api-tokens) for details on generating tokens."
+        }
+      ],
+      "description": "Git hosting. Repositories, Notifications, Issues, Pull Requests.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_GITEA_KEY",
+          "secret": "homepage_gitea_key",
+          "reference": "{{HOMEPAGE_FILE_GITEA_KEY}}"
         }
       ]
     },
@@ -4196,6 +4558,16 @@
         {
           "type": "p",
           "text": "Your Gitlab user ID can be found on [your profile page](https://support.circleci.com/hc/en-us/articles/20761157174043-How-to-find-your-GitLab-User-ID)."
+        }
+      ],
+      "description": "Git hosting. Events, Issues, Merge Requests, Projects.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_GITLAB_KEY",
+          "secret": "homepage_gitlab_key",
+          "reference": "{{HOMEPAGE_FILE_GITLAB_KEY}}"
         }
       ]
     },
@@ -4405,6 +4777,16 @@
           "type": "p",
           "text": "All widgets offer an alternative to the full or \"graph\" view, which is the compact, or \"graphless\" view."
         }
+      ],
+      "description": "System monitoring. CPU, memory, disks, network, sensors and more.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_GLANCES_PASSWORD",
+          "secret": "homepage_glances_password",
+          "reference": "{{HOMEPAGE_FILE_GLANCES_PASSWORD}}"
+        }
       ]
     },
     {
@@ -4526,6 +4908,16 @@
             ]
           ]
         }
+      ],
+      "description": "VPN client. Public IP, Region, Country, Port Forwarded.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_GLUETUN_KEY",
+          "secret": "homepage_gluetun_key",
+          "reference": "{{HOMEPAGE_FILE_GLUETUN_KEY}}"
+        }
       ]
     },
     {
@@ -4597,6 +4989,16 @@
         {
           "type": "p",
           "text": "Get a Gotify client token from an existing client or create a new one on your Gotify admin page."
+        }
+      ],
+      "description": "Notifications. Applications, Clients, Messages.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_GOTIFY_KEY",
+          "secret": "homepage_gotify_key",
+          "reference": "{{HOMEPAGE_FILE_GOTIFY_KEY}}"
         }
       ]
     },
@@ -4727,6 +5129,16 @@
             ]
           ]
         }
+      ],
+      "description": "Dashboards and alerts. Dashboards, Data Sources, Total Alerts, Alerts Triggered.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_GRAFANA_PASSWORD",
+          "secret": "homepage_grafana_password",
+          "reference": "{{HOMEPAGE_FILE_GRAFANA_PASSWORD}}"
+        }
       ]
     },
     {
@@ -4806,7 +5218,8 @@
           "type": "p",
           "text": "If more than 4 fields are provided, only the first 4 are displayed."
         }
-      ]
+      ],
+      "description": "TV tuner. Channels, HD, Tuners, Channel, Network, Strength and 3 more."
     },
     {
       "type": "headscale",
@@ -4893,6 +5306,16 @@
         {
           "type": "p",
           "text": "To find your node ID, you can use `headscale nodes list` command."
+        }
+      ],
+      "description": "Tailscale control server. Name, Address, Last Seen, Status.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_HEADSCALE_KEY",
+          "secret": "homepage_headscale_key",
+          "reference": "{{HOMEPAGE_FILE_HEADSCALE_KEY}}"
         }
       ]
     },
@@ -4988,6 +5411,16 @@
             "Copy the API key that is generated for you."
           ]
         }
+      ],
+      "description": "Cron job monitoring. Status, Last Ping.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_HEALTHCHECKS_KEY",
+          "secret": "homepage_healthchecks_key",
+          "reference": "{{HOMEPAGE_FILE_HEALTHCHECKS_KEY}}"
+        }
       ]
     },
     {
@@ -5007,7 +5440,8 @@
           "url": "https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/src/widgets/components.js",
           "sha256": "1879ff66562a6dc6cb48c592472c598fd17b6791ccb220cae27886fe4c40a4c7"
         }
-      ]
+      ],
+      "description": "Bookmark manager. Bookmarks, Favorites, Archived, Highlights, Lists, Tags."
     },
     {
       "type": "homeassistant",
@@ -5125,6 +5559,16 @@
             "`template` will query the specified template, see [Home Assistant Templating](https://www.home-assistant.io/docs/configuration/templating) if no template label is defined it will be empty"
           ]
         }
+      ],
+      "description": "Smart home. People home, lights and switches on, or your own queries.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_HOMEASSISTANT_KEY",
+          "secret": "homepage_homeassistant_key",
+          "reference": "{{HOMEPAGE_FILE_HOMEASSISTANT_KEY}}"
+        }
       ]
     },
     {
@@ -5219,6 +5663,16 @@
           "type": "p",
           "text": "If more than 4 fields are provided, only the first 4 are displayed."
         }
+      ],
+      "description": "Home inventory. Items, With Warranty, Locations, Labels, Users, Total Value.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_HOMEBOX_PASSWORD",
+          "secret": "homepage_homebox_password",
+          "reference": "{{HOMEPAGE_FILE_HOMEBOX_PASSWORD}}"
+        }
       ]
     },
     {
@@ -5300,6 +5754,16 @@
         {
           "type": "p",
           "text": "The Homebridge API is actually provided by the Config UI X plugin that has been included with Homebridge for a while, still it is required to be installed for this widget to work."
+        }
+      ],
+      "description": "Smart home bridge. Updates, Child Bridges.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_HOMEBRIDGE_PASSWORD",
+          "secret": "homepage_homebridge_password",
+          "reference": "{{HOMEPAGE_FILE_HOMEBRIDGE_PASSWORD}}"
         }
       ]
     },
@@ -5440,7 +5904,8 @@
             }
           ]
         }
-      ]
+      ],
+      "description": "Embedded web page. A page from another site."
     },
     {
       "type": "immich",
@@ -5551,6 +6016,16 @@
           "type": "p",
           "text": "Find your API key under `Account Settings > API Keys`. The key should have the `server.statistics` permission."
         }
+      ],
+      "description": "Photo library. Users, Photos, Videos, Storage.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_IMMICH_KEY",
+          "secret": "homepage_immich_key",
+          "reference": "{{HOMEPAGE_FILE_IMMICH_KEY}}"
+        }
       ]
     },
     {
@@ -5621,6 +6096,16 @@
         {
           "type": "p",
           "text": "If Jackett has an admin password set, you must set the `password` field for the widget to work."
+        }
+      ],
+      "description": "Torrent indexers. Configured, Errored.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_JACKETT_PASSWORD",
+          "secret": "homepage_jackett_password",
+          "reference": "{{HOMEPAGE_FILE_JACKETT_PASSWORD}}"
         }
       ]
     },
@@ -5705,6 +6190,16 @@
         {
           "type": "p",
           "text": "Basic widget to show number of items in download queue, along with the queue size and current download speed."
+        }
+      ],
+      "description": "Download manager. Queue, Size, Remaining, Speed.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_JDOWNLOADER_PASSWORD",
+          "secret": "homepage_jdownloader_password",
+          "reference": "{{HOMEPAGE_FILE_JDOWNLOADER_PASSWORD}}"
         }
       ]
     },
@@ -5888,6 +6383,16 @@
             ]
           ]
         }
+      ],
+      "description": "Media server. Movies, Series, Episodes, Songs, Albums.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_JELLYFIN_KEY",
+          "secret": "homepage_jellyfin_key",
+          "reference": "{{HOMEPAGE_FILE_JELLYFIN_KEY}}"
+        }
       ]
     },
     {
@@ -5907,7 +6412,8 @@
           "url": "https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/src/widgets/components.js",
           "sha256": "1879ff66562a6dc6cb48c592472c598fd17b6791ccb220cae27886fe4c40a4c7"
         }
-      ]
+      ],
+      "description": "Media requests. Pending, Approved, Available, Completed, Processing, Open Issues."
     },
     {
       "type": "jellystat",
@@ -5991,6 +6497,16 @@
           "type": "p",
           "text": "You can create an API key from inside Jellystat at `Settings > API Key`."
         }
+      ],
+      "description": "Jellyfin statistics. Songs, Movies, Episodes, Other.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_JELLYSTAT_KEY",
+          "secret": "homepage_jellystat_key",
+          "reference": "{{HOMEPAGE_FILE_JELLYSTAT_KEY}}"
+        }
       ]
     },
     {
@@ -6065,6 +6581,16 @@
         {
           "type": "p",
           "text": "Generate an API key for your user at `User Settings > API Keys`."
+        }
+      ],
+      "description": "Bookmark manager. Bookmarks, Favorites, Archived, Highlights, Lists, Tags.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_KARAKEEP_KEY",
+          "secret": "homepage_karakeep_key",
+          "reference": "{{HOMEPAGE_FILE_KARAKEEP_KEY}}"
         }
       ]
     },
@@ -6158,6 +6684,23 @@
         {
           "type": "p",
           "text": "Uses the same admin role username and password used to login from the web."
+        }
+      ],
+      "description": "Comics and books server. Series, Files.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_KAVITA_PASSWORD",
+          "secret": "homepage_kavita_password",
+          "reference": "{{HOMEPAGE_FILE_KAVITA_PASSWORD}}"
+        },
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_KAVITA_KEY",
+          "secret": "homepage_kavita_key",
+          "reference": "{{HOMEPAGE_FILE_KAVITA_KEY}}"
         }
       ]
     },
@@ -6294,6 +6837,23 @@
             ]
           ]
         }
+      ],
+      "description": "Comics server. Libraries, Series, Books.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_KOMGA_PASSWORD",
+          "secret": "homepage_komga_password",
+          "reference": "{{HOMEPAGE_FILE_KOMGA_PASSWORD}}"
+        },
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_KOMGA_KEY",
+          "secret": "homepage_komga_key",
+          "reference": "{{HOMEPAGE_FILE_KOMGA_KEY}}"
+        }
       ]
     },
     {
@@ -6428,6 +6988,23 @@
           "type": "p",
           "text": "Allowed fields (max 4): `[\"total\", \"running\", \"stopped\", \"unhealthy\", \"unknown\"]`. Allowed fields with `showStacks` (max 4): `[\"total\", \"running\", \"down\", \"unhealthy\", \"unknown\"]`. Allowed fields with `showSummary`: `[\"servers\", \"stacks\", \"containers\"]`."
         }
+      ],
+      "description": "Server and container management. Total, Running, Stopped, Unhealthy, Unknown.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_KOMODO_KEY",
+          "secret": "homepage_komodo_key",
+          "reference": "{{HOMEPAGE_FILE_KOMODO_KEY}}"
+        },
+        {
+          "key": "secret",
+          "label": "Secret",
+          "variable": "HOMEPAGE_FILE_KOMODO_SECRET",
+          "secret": "homepage_komodo_secret",
+          "reference": "{{HOMEPAGE_FILE_KOMODO_SECRET}}"
+        }
       ]
     },
     {
@@ -6534,6 +7111,16 @@
           "type": "p",
           "text": "You may optionally pass values for `snapshotHost` and / or `snapshotPath` to select a specific backup source for the widget."
         }
+      ],
+      "description": "Backups. Status, Size, Last Run, Next Run.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_KOPIA_PASSWORD",
+          "secret": "homepage_kopia_password",
+          "reference": "{{HOMEPAGE_FILE_KOPIA_PASSWORD}}"
+        }
       ]
     },
     {
@@ -6553,7 +7140,8 @@
           "url": "https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/src/widgets/components.js",
           "sha256": "1879ff66562a6dc6cb48c592472c598fd17b6791ccb220cae27886fe4c40a4c7"
         }
-      ]
+      ],
+      "description": "Kubernetes. CPU, MEM."
     },
     {
       "type": "lidarr",
@@ -6625,6 +7213,16 @@
           "type": "p",
           "text": "Find your API key under `Settings > General`."
         }
+      ],
+      "description": "Music manager. Wanted, Queued, Artists.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_LIDARR_KEY",
+          "secret": "homepage_lidarr_key",
+          "reference": "{{HOMEPAGE_FILE_LIDARR_KEY}}"
+        }
       ]
     },
     {
@@ -6692,6 +7290,16 @@
         {
           "type": "p",
           "text": "Learn more about [Linkwarden](https://linkwarden.app/)."
+        }
+      ],
+      "description": "Bookmark manager. Links, Collections, Tags.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_LINKWARDEN_KEY",
+          "secret": "homepage_linkwarden_key",
+          "reference": "{{HOMEPAGE_FILE_LINKWARDEN_KEY}}"
         }
       ]
     },
@@ -6787,6 +7395,16 @@
           "type": "p",
           "text": "The widget comes in two 'flavors', one shows data for all vehicles or for just a specific vehicle with the `vehicleID` parameter."
         }
+      ],
+      "description": "Vehicle maintenance. Vehicles, Service Records, Reminders.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_LUBELOGGER_PASSWORD",
+          "secret": "homepage_lubelogger_password",
+          "reference": "{{HOMEPAGE_FILE_LUBELOGGER_PASSWORD}}"
+        }
       ]
     },
     {
@@ -6856,6 +7474,16 @@
           "type": "p",
           "text": "Learn more about [Mailcow](https://github.com/mailcow/mailcow-dockerized)."
         }
+      ],
+      "description": "Mail server. Domains, Mailboxes, Mails, Storage.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_MAILCOW_KEY",
+          "secret": "homepage_mailcow_key",
+          "reference": "{{HOMEPAGE_FILE_MAILCOW_KEY}}"
+        }
       ]
     },
     {
@@ -6923,7 +7551,8 @@
           "type": "p",
           "text": "Default fields: `[\"itemsHandled\", \"episodesHandled\", \"moviesHandled\", \"reclaimable\"]`."
         }
-      ]
+      ],
+      "description": "Media library clean-up. Items Handled, Episodes Handled, Movies Handled, Shows Handled, Seasons Handled, Reclaimable and 3 more."
     },
     {
       "type": "mastodon",
@@ -6984,7 +7613,8 @@
           "type": "p",
           "text": "Use the base URL of the Mastodon instance you'd like to pull stats for. Does not require authentication as the stats are part of the public API endpoints."
         }
-      ]
+      ],
+      "description": "Social network. Users, Posts, Domains."
     },
     {
       "type": "mealie",
@@ -7078,6 +7708,16 @@
           "type": "p",
           "text": "Generate a user API key under `Profile > Manage Your API Tokens > Generate`."
         }
+      ],
+      "description": "Recipes. Recipes, Users, Categories, Tags.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_MEALIE_KEY",
+          "secret": "homepage_mealie_key",
+          "reference": "{{HOMEPAGE_FILE_MEALIE_KEY}}"
+        }
       ]
     },
     {
@@ -7145,6 +7785,16 @@
         {
           "type": "p",
           "text": "Learn more about [Medusa](https://github.com/pymedusa/Medusa)."
+        }
+      ],
+      "description": "TV show manager. Wanted, Queued, Series.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_MEDUSA_KEY",
+          "secret": "homepage_medusa_key",
+          "reference": "{{HOMEPAGE_FILE_MEDUSA_KEY}}"
         }
       ]
     },
@@ -7226,6 +7876,16 @@
           "type": "p",
           "text": "HTTPS may be required, [per the documentation](https://help.mikrotik.com/docs/display/ROS/REST+API#RESTAPI-Overview)"
         }
+      ],
+      "description": "Router. Uptime, CPU Load, Memory Used, Leases.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_MIKROTIK_PASSWORD",
+          "secret": "homepage_mikrotik_password",
+          "reference": "{{HOMEPAGE_FILE_MIKROTIK_PASSWORD}}"
+        }
       ]
     },
     {
@@ -7277,7 +7937,8 @@
           "sha256": "80fbe32535752b77c7e7e16430a272920c2d486da0b348c82eeb4b20b47fcfd4"
         }
       ],
-      "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON."
+      "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON.",
+      "description": "Minecraft server. Players, Version, Status."
     },
     {
       "type": "miniflux",
@@ -7348,6 +8009,16 @@
           "type": "p",
           "text": "Api key is found under Settings > API keys"
         }
+      ],
+      "description": "RSS reader. Unread, Read.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_MINIFLUX_KEY",
+          "secret": "homepage_miniflux_key",
+          "reference": "{{HOMEPAGE_FILE_MINIFLUX_KEY}}"
+        }
       ]
     },
     {
@@ -7388,7 +8059,8 @@
           "type": "p",
           "text": "Pass the stream URL from a service like [µStreamer](https://github.com/pikvm/ustreamer) or [camera-streamer](https://github.com/ayufan/camera-streamer)."
         }
-      ]
+      ],
+      "description": "Camera stream. A live camera picture."
     },
     {
       "type": "moonraker",
@@ -7462,6 +8134,16 @@
           "type": "p",
           "text": "If your moonraker instance has an active authorization and your homepage ip isn't whitelisted you need to add your api key ([Authorization Documentation](https://moonraker.readthedocs.io/en/latest/web_api/#authorization))."
         }
+      ],
+      "description": "3D printer (Klipper). Printer State, Print Status, Progress, Layers.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_MOONRAKER_KEY",
+          "secret": "homepage_moonraker_key",
+          "reference": "{{HOMEPAGE_FILE_MOONRAKER_KEY}}"
+        }
       ]
     },
     {
@@ -7534,6 +8216,16 @@
           "type": "p",
           "text": "API must be enabled in Mylar3 settings."
         }
+      ],
+      "description": "Comics manager. Series, Issues, Wanted.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_MYLAR_KEY",
+          "secret": "homepage_mylar_key",
+          "reference": "{{HOMEPAGE_FILE_MYLAR_KEY}}"
+        }
       ]
     },
     {
@@ -7601,6 +8293,16 @@
         {
           "type": "p",
           "text": "Learn more about [MySpeed](https://myspeed.dev/)."
+        }
+      ],
+      "description": "Internet speed history. Ping, Download, Upload.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_MYSPEED_PASSWORD",
+          "secret": "homepage_myspeed_password",
+          "reference": "{{HOMEPAGE_FILE_MYSPEED_PASSWORD}}"
         }
       ]
     },
@@ -7682,6 +8384,16 @@
         {
           "type": "p",
           "text": "Allowed fields: no configurable fields for this widget."
+        }
+      ],
+      "description": "Music server. What is playing now.",
+      "secrets": [
+        {
+          "key": "token",
+          "label": "Token",
+          "variable": "HOMEPAGE_FILE_NAVIDROME_TOKEN",
+          "secret": "homepage_navidrome_token",
+          "reference": "{{HOMEPAGE_FILE_NAVIDROME_TOKEN}}"
         }
       ]
     },
@@ -7798,6 +8510,16 @@
             ]
           ]
         }
+      ],
+      "description": "Network device scanner. Total, Connected, New Devices, Down Alerts.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_NETALERTX_KEY",
+          "secret": "homepage_netalertx_key",
+          "reference": "{{HOMEPAGE_FILE_NETALERTX_KEY}}"
+        }
       ]
     },
     {
@@ -7874,6 +8596,16 @@
           "type": "p",
           "text": "By default `online` and `users` are shown. `login_expired` (peers whose login has expired) is optional."
         }
+      ],
+      "description": "Mesh VPN. Online Peers, Users, Login Expired.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_NETBIRD_KEY",
+          "secret": "homepage_netbird_key",
+          "reference": "{{HOMEPAGE_FILE_NETBIRD_KEY}}"
+        }
       ]
     },
     {
@@ -7930,7 +8662,8 @@
           "type": "p",
           "text": "Learn more about [Netdata](https://github.com/netdata/netdata)."
         }
-      ]
+      ],
+      "description": "System monitoring. Warnings, Criticals."
     },
     {
       "type": "nextcloud",
@@ -8032,6 +8765,23 @@
           "type": "p",
           "text": "Note \"cpuload\" and \"memoryusage\" were deprecated in v0.6.18 and a maximum of 4 fields can be displayed."
         }
+      ],
+      "description": "File sync and collaboration. Cpu Load, Memory Usage, Free Space, Active Users, Files, Shared Items.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_NEXTCLOUD_KEY",
+          "secret": "homepage_nextcloud_key",
+          "reference": "{{HOMEPAGE_FILE_NEXTCLOUD_KEY}}"
+        },
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_NEXTCLOUD_PASSWORD",
+          "secret": "homepage_nextcloud_password",
+          "reference": "{{HOMEPAGE_FILE_NEXTCLOUD_PASSWORD}}"
+        }
       ]
     },
     {
@@ -8086,6 +8836,16 @@
         {
           "type": "p",
           "text": "Api key is found under Account > API, profile ID is found under Setup > Endpoints > ID"
+        }
+      ],
+      "description": "DNS filtering. Status.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_NEXTDNS_KEY",
+          "secret": "homepage_nextdns_key",
+          "reference": "{{HOMEPAGE_FILE_NEXTDNS_KEY}}"
         }
       ]
     },
@@ -8169,6 +8929,16 @@
         {
           "type": "p",
           "text": "Use a \"view-only\" user for the username and password."
+        }
+      ],
+      "description": "Reverse proxy. Enabled, Disabled, Total.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_NPM_PASSWORD",
+          "secret": "homepage_npm_password",
+          "reference": "{{HOMEPAGE_FILE_NPM_PASSWORD}}"
         }
       ]
     },
@@ -8325,6 +9095,23 @@
           "type": "p",
           "text": "See the [ntfy documentation](https://docs.ntfy.sh/config/#access-control) for details on access control."
         }
+      ],
+      "description": "Notifications. Title, Message, Priority, Last Received, Tags.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "Access token",
+          "variable": "HOMEPAGE_FILE_NTFY_KEY",
+          "secret": "homepage_ntfy_key",
+          "reference": "{{HOMEPAGE_FILE_NTFY_KEY}}"
+        },
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_NTFY_PASSWORD",
+          "secret": "homepage_ntfy_password",
+          "reference": "{{HOMEPAGE_FILE_NTFY_PASSWORD}}"
+        }
       ]
     },
     {
@@ -8408,6 +9195,16 @@
           "type": "p",
           "text": "This widget uses the same authentication method as your browser when logging in (HTTP Basic Auth), and is often referred to as the ControlUsername and ControlPassword inside of Nzbget documentation."
         }
+      ],
+      "description": "Usenet downloader. Rate, Remaining, Downloaded.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_NZBGET_PASSWORD",
+          "secret": "homepage_nzbget_password",
+          "reference": "{{HOMEPAGE_FILE_NZBGET_PASSWORD}}"
+        }
       ]
     },
     {
@@ -8476,6 +9273,16 @@
         {
           "type": "p",
           "text": "Learn more about [OctoPrint](https://octoprint.org/)."
+        }
+      ],
+      "description": "3D printer. Status, Tool temp, Bed temp, Completion.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_OCTOPRINT_KEY",
+          "secret": "homepage_octoprint_key",
+          "reference": "{{HOMEPAGE_FILE_OCTOPRINT_KEY}}"
         }
       ]
     },
@@ -8569,6 +9376,16 @@
           "type": "p",
           "text": "The widget supports controller versions 3, 4, 5 and 6."
         }
+      ],
+      "description": "Network controller. Connected APs, Active devices, Alerts, Connected gateways, Connected switches.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_OMADA_PASSWORD",
+          "secret": "homepage_omada_password",
+          "reference": "{{HOMEPAGE_FILE_OMADA_PASSWORD}}"
+        }
       ]
     },
     {
@@ -8641,6 +9458,16 @@
           "type": "p",
           "text": "Find your API key under `Settings > Configuration > General`."
         }
+      ],
+      "description": "Media requests. Pending, Approved, Available.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_OMBI_KEY",
+          "secret": "homepage_ombi_key",
+          "reference": "{{HOMEPAGE_FILE_OMBI_KEY}}"
+        }
       ]
     },
     {
@@ -8699,7 +9526,8 @@
           "type": "p",
           "text": "Learn more about [OpenDTU](https://github.com/tbnobody/OpenDTU)."
         }
-      ]
+      ],
+      "description": "Solar inverter monitoring. Today, Power %, Power, Limit."
     },
     {
       "type": "openmediavault",
@@ -8832,6 +9660,16 @@
           "type": "p",
           "text": "`downloader.getDownloadList`: Displays the number of tasks from the Downloader plugin currently being downloaded and total. Allowed fields: `[\"downloading\", \"total\"]`"
         }
+      ],
+      "description": "NAS. Services, S.M.A.R.T. and update status.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_OPENMEDIAVAULT_PASSWORD",
+          "secret": "homepage_openmediavault_password",
+          "reference": "{{HOMEPAGE_FILE_OPENMEDIAVAULT_PASSWORD}}"
+        }
       ]
     },
     {
@@ -8953,6 +9791,16 @@
           "type": "p",
           "text": "This username and password will be used in Homepage's services.yaml to grant access."
         }
+      ],
+      "description": "Router. Status, Transmitted, Received, Uptime, CPU Load Avg (5m).",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_OPENWRT_PASSWORD",
+          "secret": "homepage_openwrt_password",
+          "reference": "{{HOMEPAGE_FILE_OPENWRT_PASSWORD}}"
+        }
       ]
     },
     {
@@ -9059,6 +9907,16 @@
           "type": "p",
           "text": "Finally, create a new API key which will download an `apikey.txt` file with your key and secret in it. Use the values as the username and password fields, respectively, in your homepage config."
         }
+      ],
+      "description": "Firewall. CPU Load, Active Memory, WAN Upload, WAN Download.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_OPNSENSE_PASSWORD",
+          "secret": "homepage_opnsense_password",
+          "reference": "{{HOMEPAGE_FILE_OPNSENSE_PASSWORD}}"
+        }
       ]
     },
     {
@@ -9078,7 +9936,8 @@
           "url": "https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/src/widgets/components.js",
           "sha256": "1879ff66562a6dc6cb48c592472c598fd17b6791ccb220cae27886fe4c40a4c7"
         }
-      ]
+      ],
+      "description": "Media requests. Pending, Approved, Available, Completed, Processing, Open Issues."
     },
     {
       "type": "pangolin",
@@ -9187,6 +10046,16 @@
           "type": "p",
           "text": "**Self-Hosted:** Enable the [Integration API](https://docs.pangolin.net/self-host/advanced/integration-api) in your Pangolin configuration before creating the key."
         }
+      ],
+      "description": "Tunnelled reverse proxy. Sites, Resources, Targets, Traffic, In, Out.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_PANGOLIN_KEY",
+          "secret": "homepage_pangolin_key",
+          "reference": "{{HOMEPAGE_FILE_PANGOLIN_KEY}}"
+        }
       ]
     },
     {
@@ -9280,6 +10149,23 @@
         {
           "type": "p",
           "text": "Use username & password, or the token key. Information about the token can be found in the [Paperless-ngx API documentation](https://docs.paperless-ngx.com/api/#authorization). If both are provided, the token will be used."
+        }
+      ],
+      "description": "Document archive. Total, Inbox.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_PAPERLESSNGX_PASSWORD",
+          "secret": "homepage_paperlessngx_password",
+          "reference": "{{HOMEPAGE_FILE_PAPERLESSNGX_PASSWORD}}"
+        },
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_PAPERLESSNGX_KEY",
+          "secret": "homepage_paperlessngx_key",
+          "reference": "{{HOMEPAGE_FILE_PAPERLESSNGX_KEY}}"
         }
       ]
     },
@@ -9389,6 +10275,16 @@
               "text": "This widget requires an additional tool, [PeaNUT](https://github.com/Brandawg93/PeaNUT), as noted. Other projects exist to achieve similar results using a `customapi` widget, for example [NUTCase](https://github.com/ArthurMitchell42/nutcase#using-nutcase-homepage)."
             }
           ]
+        }
+      ],
+      "description": "UPS monitoring. Battery Charge, UPS Load, UPS Status.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_PEANUT_PASSWORD",
+          "secret": "homepage_peanut_password",
+          "reference": "{{HOMEPAGE_FILE_PEANUT_PASSWORD}}"
         }
       ]
     },
@@ -9537,6 +10433,16 @@
           "type": "p",
           "text": "Load is returned instead of cpu utilization. This is a limitation in the pfSense API due to the complexity of this calculation. This may become available in future versions."
         }
+      ],
+      "description": "Firewall. Load Avg, Mem Usage, Temp, WAN Status, WAN IP, Disk Usage.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_PFSENSE_PASSWORD",
+          "secret": "homepage_pfsense_password",
+          "reference": "{{HOMEPAGE_FILE_PFSENSE_PASSWORD}}"
+        }
       ]
     },
     {
@@ -9636,6 +10542,23 @@
           "type": "p",
           "text": "Authentication is possible via [app passwords](https://docs.photoprism.app/user-guide/settings/account/#apps-and-devices) or username/password."
         }
+      ],
+      "description": "Photo library. Albums, Photos, Videos, People.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_PHOTOPRISM_PASSWORD",
+          "secret": "homepage_photoprism_password",
+          "reference": "{{HOMEPAGE_FILE_PHOTOPRISM_PASSWORD}}"
+        },
+        {
+          "key": "key",
+          "label": "App password",
+          "variable": "HOMEPAGE_FILE_PHOTOPRISM_KEY",
+          "secret": "homepage_photoprism_key",
+          "reference": "{{HOMEPAGE_FILE_PHOTOPRISM_KEY}}"
+        }
       ]
     },
     {
@@ -9730,6 +10653,16 @@
           "type": "p",
           "text": "Note: by default the \"blocked\" and \"blocked_percent\" fields are merged e.g. \"1,234 (15%)\" but explicitly including the \"blocked_percent\" field will change them to display separately."
         }
+      ],
+      "description": "DNS ad blocker. Queries, Blocked, Blocked %, Gravity.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_PIHOLE_KEY",
+          "secret": "homepage_pihole_key",
+          "reference": "{{HOMEPAGE_FILE_PIHOLE_KEY}}"
+        }
       ]
     },
     {
@@ -9749,7 +10682,8 @@
           "url": "https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/src/widgets/components.js",
           "sha256": "1879ff66562a6dc6cb48c592472c598fd17b6791ccb220cae27886fe4c40a4c7"
         }
-      ]
+      ],
+      "description": "Network device scanner. Total, Connected, New Devices, Down Alerts."
     },
     {
       "type": "plantit",
@@ -9821,6 +10755,16 @@
         {
           "type": "p",
           "text": "API key can be created from the REST API."
+        }
+      ],
+      "description": "Plant care. Events, Plants, Photos, Species.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_PLANTIT_KEY",
+          "secret": "homepage_plantit_key",
+          "reference": "{{HOMEPAGE_FILE_PLANTIT_KEY}}"
         }
       ]
     },
@@ -9894,6 +10838,16 @@
         {
           "type": "p",
           "text": "The core Plex API is somewhat limited but basic info regarding library sizes and the number of active streams is supported. For more detailed info regarding active streams see the [Plex Tautulli widget](https://gethomepage.dev/widgets/services/plex-tautulli/)."
+        }
+      ],
+      "description": "Media server. Active Streams, Albums, Movies, TV Shows.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_PLEX_KEY",
+          "secret": "homepage_plex_key",
+          "reference": "{{HOMEPAGE_FILE_PLEX_KEY}}"
         }
       ]
     },
@@ -10013,6 +10967,16 @@
             "For Kubernetes mode (`kubernetes: true`): `[\"applications\", \"services\", \"namespaces\"]`"
           ]
         }
+      ],
+      "description": "Docker management. Running, Stopped, Total.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_PORTAINER_KEY",
+          "secret": "homepage_portainer_key",
+          "reference": "{{HOMEPAGE_FILE_PORTAINER_KEY}}"
+        }
       ]
     },
     {
@@ -10070,7 +11034,8 @@
           "type": "p",
           "text": "Learn more about [Prometheus](https://github.com/prometheus/prometheus)."
         }
-      ]
+      ],
+      "description": "Monitoring. Targets Up, Targets Down, Total Targets."
     },
     {
       "type": "prometheusmetric",
@@ -10191,7 +11156,8 @@
           "type": "p",
           "text": "The `dateStyle` and `timeStyle` options of the `date` format are passed directly to [Intl.DateTimeFormat](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/DateTimeFormat) and the `style` and `numeric` options of `relativeDate` are passed to [Intl.RelativeTimeFormat](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/RelativeTimeFormat/RelativeTimeFormat). For the `number` format, options of [Intl.NumberFormat](https://developer.mozilla.org/de/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat) can be used, e.g. `maximumFractionDigits` or `minimumFractionDigits`."
         }
-      ]
+      ],
+      "description": "Prometheus queries. The results of the queries you write."
     },
     {
       "type": "prowlarr",
@@ -10263,6 +11229,16 @@
         {
           "type": "p",
           "text": "Find your API key under `Settings > General`."
+        }
+      ],
+      "description": "Indexer manager. Grabs, Queries, Fail Grabs, Fail Queries.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_PROWLARR_KEY",
+          "secret": "homepage_prowlarr_key",
+          "reference": "{{HOMEPAGE_FILE_PROWLARR_KEY}}"
         }
       ]
     },
@@ -10371,6 +11347,16 @@
           "type": "p",
           "text": "You can set the optional `node` setting when you want to show metrics for a single node. By default it will show the average for the complete cluster."
         }
+      ],
+      "description": "Virtualisation. VMs, LXC, CPU, MEM.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_PROXMOX_PASSWORD",
+          "secret": "homepage_proxmox_password",
+          "reference": "{{HOMEPAGE_FILE_PROXMOX_PASSWORD}}"
+        }
       ]
     },
     {
@@ -10466,6 +11452,16 @@
           "type": "p",
           "text": "Create a user and an API token similar to the [Proxmox VE description](https://gethomepage.dev/widgets/services/proxmox/). The \"Audit\" role is required for both the user and token (not group)."
         }
+      ],
+      "description": "Backups. Datastore, Failed Tasks 24h, CPU, Memory.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_PROXMOXBACKUPSERVER_PASSWORD",
+          "secret": "homepage_proxmoxbackupserver_password",
+          "reference": "{{HOMEPAGE_FILE_PROXMOXBACKUPSERVER_PASSWORD}}"
+        }
       ]
     },
     {
@@ -10532,6 +11528,16 @@
         {
           "type": "p",
           "text": "Learn more about [Pterodactyl](https://github.com/pterodactyl)."
+        }
+      ],
+      "description": "Game server panel. Nodes, Servers.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_PTERODACTYL_KEY",
+          "secret": "homepage_pterodactyl_key",
+          "reference": "{{HOMEPAGE_FILE_PTERODACTYL_KEY}}"
         }
       ]
     },
@@ -10621,6 +11627,16 @@
         {
           "type": "p",
           "text": "Learn more about [Pulse](https://github.com/rcourtman/Pulse)."
+        }
+      ],
+      "description": "Proxmox monitoring. Nodes, VMs, LXCs.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_PULSE_KEY",
+          "secret": "homepage_pulse_key",
+          "reference": "{{HOMEPAGE_FILE_PULSE_KEY}}"
         }
       ]
     },
@@ -10712,6 +11728,23 @@
         {
           "type": "p",
           "text": "Learn more about [Pyload](https://github.com/pyload/pyload)."
+        }
+      ],
+      "description": "Download manager. Speed, Active, Queue, Total.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_PYLOAD_PASSWORD",
+          "secret": "homepage_pyload_password",
+          "reference": "{{HOMEPAGE_FILE_PYLOAD_PASSWORD}}"
+        },
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_PYLOAD_KEY",
+          "secret": "homepage_pyload_key",
+          "reference": "{{HOMEPAGE_FILE_PYLOAD_KEY}}"
         }
       ]
     },
@@ -10834,6 +11867,23 @@
           "type": "p",
           "text": "API Key is located in `Options > WebUI > Authentication > API Key`."
         }
+      ],
+      "description": "Torrent client. Leech, Download, Seed, Upload.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_QBITTORRENT_PASSWORD",
+          "secret": "homepage_qbittorrent_password",
+          "reference": "{{HOMEPAGE_FILE_QBITTORRENT_PASSWORD}}"
+        },
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_QBITTORRENT_KEY",
+          "secret": "homepage_qbittorrent_key",
+          "reference": "{{HOMEPAGE_FILE_QBITTORRENT_KEY}}"
+        }
       ]
     },
     {
@@ -10930,6 +11980,16 @@
         {
           "type": "p",
           "text": "If the QNAP device has multiple volumes, the _poolUsage_ will be a sum of all volumes."
+        }
+      ],
+      "description": "NAS. CPU Usage, MEM Usage, System Temp, Pool Usage, Volume Usage.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_QNAP_PASSWORD",
+          "secret": "homepage_qnap_password",
+          "reference": "{{HOMEPAGE_FILE_QNAP_PASSWORD}}"
         }
       ]
     },
@@ -11042,6 +12102,16 @@
           "type": "p",
           "text": "Note: `ratio` and `freeSpace` are only available with the 'single instance' version of the widget."
         }
+      ],
+      "description": "qBittorrent web interface. Leech, Download, Seed, Upload, Total, Errored and 2 more.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_QUI_KEY",
+          "secret": "homepage_qui_key",
+          "reference": "{{HOMEPAGE_FILE_QUI_KEY}}"
+        }
       ]
     },
     {
@@ -11130,6 +12200,16 @@
           "type": "p",
           "text": "A detailed queue listing is disabled by default, but can be enabled with the `enableQueue` option."
         }
+      ],
+      "description": "Movie manager. Wanted, Missing, Queued, Movies.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_RADARR_KEY",
+          "secret": "homepage_radarr_key",
+          "reference": "{{HOMEPAGE_FILE_RADARR_KEY}}"
+        }
       ]
     },
     {
@@ -11202,6 +12282,16 @@
           "type": "p",
           "text": "Find your API key under `Settings > General`."
         }
+      ],
+      "description": "Book manager. Wanted, Queued, Books.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_READARR_KEY",
+          "secret": "homepage_readarr_key",
+          "reference": "{{HOMEPAGE_FILE_READARR_KEY}}"
+        }
       ]
     },
     {
@@ -11256,7 +12346,8 @@
           "sha256": "bcc87f9a855f1aa302131f2e0de0626169beacd3e15c345becf9d91b2d42e03b"
         }
       ],
-      "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON."
+      "coverage": "Configuration aids from native examples and explicitly reviewed documentation. This is not a complete validation schema; additional native options remain available through advanced YAML/JSON.",
+      "description": "Game ROM library. Platforms, Games, Saves, States, Screenshots, Total Size."
     },
     {
       "type": "rutorrent",
@@ -11343,6 +12434,16 @@
           "type": "p",
           "text": "This requires the `httprpc` plugin to be installed and enabled, and is part of the default ruTorrent plugins. If you have not explicitly removed or disable this plugin, it should be available."
         }
+      ],
+      "description": "Torrent client. Active, Upload, Download.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_RUTORRENT_PASSWORD",
+          "secret": "homepage_rutorrent_password",
+          "reference": "{{HOMEPAGE_FILE_RUTORRENT_PASSWORD}}"
+        }
       ]
     },
     {
@@ -11415,6 +12516,16 @@
           "type": "p",
           "text": "Find your API key under `Config > General`."
         }
+      ],
+      "description": "Usenet downloader. Rate, Queue, Time Left.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_SABNZBD_KEY",
+          "secret": "homepage_sabnzbd_key",
+          "reference": "{{HOMEPAGE_FILE_SABNZBD_KEY}}"
+        }
       ]
     },
     {
@@ -11472,7 +12583,8 @@
           "type": "p",
           "text": "Learn more about [Scrutiny](https://github.com/AnalogJ/scrutiny)."
         }
-      ]
+      ],
+      "description": "Disk health. Passed, Failed, Unknown."
     },
     {
       "type": "seerr",
@@ -11551,6 +12663,16 @@
           "type": "p",
           "text": "_Jellyseerr and Overseerr merged into Seerr. Use `type: seerr` (legacy `type: jellyseerr` and `type: overseerr` are aliased)._"
         }
+      ],
+      "description": "Media requests. Pending, Approved, Available, Completed, Processing, Open Issues.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_SEERR_KEY",
+          "secret": "homepage_seerr_key",
+          "reference": "{{HOMEPAGE_FILE_SEERR_KEY}}"
+        }
       ]
     },
     {
@@ -11620,6 +12742,16 @@
         {
           "type": "p",
           "text": "Learn more about [Slskd](https://github.com/slskd/slskd)."
+        }
+      ],
+      "description": "Soulseek client. Network, Update, Downloads, Uploads, Files.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_SLSKD_KEY",
+          "secret": "homepage_slskd_key",
+          "reference": "{{HOMEPAGE_FILE_SLSKD_KEY}}"
         }
       ]
     },
@@ -11708,6 +12840,16 @@
           "type": "p",
           "text": "A detailed queue listing is disabled by default, but can be enabled with the `enableQueue` option."
         }
+      ],
+      "description": "TV show manager. Wanted, Queued, Series.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_SONARR_KEY",
+          "secret": "homepage_sonarr_key",
+          "reference": "{{HOMEPAGE_FILE_SONARR_KEY}}"
+        }
       ]
     },
     {
@@ -11776,6 +12918,16 @@
         {
           "type": "p",
           "text": "Learn more about [SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness)."
+        }
+      ],
+      "description": "Fitness and nutrition. Eaten, Burned, Remaining, Steps.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_SPARKYFITNESS_KEY",
+          "secret": "homepage_sparkyfitness_key",
+          "reference": "{{HOMEPAGE_FILE_SPARKYFITNESS_KEY}}"
         }
       ]
     },
@@ -11905,6 +13057,16 @@
             ]
           ]
         }
+      ],
+      "description": "Internet speed history. Download, Upload, Ping.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_SPEEDTEST_KEY",
+          "secret": "homepage_speedtest_key",
+          "reference": "{{HOMEPAGE_FILE_SPEEDTEST_KEY}}"
+        }
       ]
     },
     {
@@ -11965,7 +13127,8 @@
           "type": "p",
           "text": "4 spools are displayed by default. If more than 4 spools are configured in spoolman you can use the spoolIds configuration option to control which are displayed."
         }
-      ]
+      ],
+      "description": "3D printer filament. The filament left on each spool."
     },
     {
       "type": "sportarr",
@@ -12036,6 +13199,16 @@
         {
           "type": "p",
           "text": "Find your API key under `Settings > General`."
+        }
+      ],
+      "description": "Sports media manager. Wanted, Queued, Leagues.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_SPORTARR_KEY",
+          "secret": "homepage_sportarr_key",
+          "reference": "{{HOMEPAGE_FILE_SPORTARR_KEY}}"
         }
       ]
     },
@@ -12123,6 +13296,16 @@
         {
           "type": "p",
           "text": "If more than 4 fields are provided, only the first 4 are displayed."
+        }
+      ],
+      "description": "Media organiser. Scenes, Scenes Played, Total Plays, Time Watched, Scenes Size, Scenes Duration and 8 more.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_STASH_KEY",
+          "secret": "homepage_stash_key",
+          "reference": "{{HOMEPAGE_FILE_STASH_KEY}}"
         }
       ]
     },
@@ -12225,7 +13408,8 @@
           "type": "p",
           "text": "The service widget allows for up to 28 items in the watchlist. You may get rate limited if using the information and service widgets together."
         }
-      ]
+      ],
+      "description": "Stock prices. The prices of the symbols you choose."
     },
     {
       "type": "suwayomi",
@@ -12296,8 +13480,7 @@
             "nondownloadedread",
             "nondownloadedunread"
           ],
-          "description": "Optional ordered list of visible native fields. Leave unset for the native default.",
-          "maxItems": 4
+          "description": "Optional ordered list of visible native fields. Leave unset for the native default."
         }
       ],
       "defaults": {
@@ -12324,6 +13507,16 @@
         {
           "type": "p",
           "text": "The widget defaults to the first four above. If more than four fields are provided, only the first 4 are displayed. Category IDs can be obtained from the url when navigating to it, `?tab={categoryID}`."
+        }
+      ],
+      "description": "Manga server. Downloaded, read and unread chapters.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_SUWAYOMI_PASSWORD",
+          "secret": "homepage_suwayomi_password",
+          "reference": "{{HOMEPAGE_FILE_SUWAYOMI_PASSWORD}}"
         }
       ]
     },
@@ -12383,7 +13576,8 @@
           "type": "p",
           "text": "Learn more about [SWAG Dashboard](https://github.com/linuxserver/docker-mods/tree/swag-dashboard)."
         }
-      ]
+      ],
+      "description": "Reverse proxy. Proxied, With Auth, Outdated, Banned."
     },
     {
       "type": "syncthing",
@@ -12452,6 +13646,16 @@
           "type": "p",
           "text": "Learn more about [Syncthing](https://syncthing.net/)."
         }
+      ],
+      "description": "File sync. Connected, Synced, Errors, Storage.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_SYNCTHING_KEY",
+          "secret": "homepage_syncthing_key",
+          "reference": "{{HOMEPAGE_FILE_SYNCTHING_KEY}}"
+        }
       ]
     },
     {
@@ -12513,7 +13717,8 @@
           "type": "p",
           "text": "Pulls stats from the [relay server](https://docs.syncthing.net/users/strelaysrv.html). [See here](https://github.com/gethomepage/homepage/pull/230#issuecomment-1253053472) for more information on configuration."
         }
-      ]
+      ],
+      "description": "Syncthing relay. Sessions, Connections, Bytes Proxied."
     },
     {
       "type": "diskstation",
@@ -12644,6 +13849,16 @@
             "Reattempt"
           ]
         }
+      ],
+      "description": "NAS. Uptime, Available, CPU, MEM.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_DISKSTATION_PASSWORD",
+          "secret": "homepage_diskstation_password",
+          "reference": "{{HOMEPAGE_FILE_DISKSTATION_PASSWORD}}"
+        }
       ]
     },
     {
@@ -12727,6 +13942,16 @@
         {
           "type": "p",
           "text": "Note: the widget is not compatible with 2FA."
+        }
+      ],
+      "description": "Download manager. Leech, Download, Seed, Upload.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_DOWNLOADSTATION_PASSWORD",
+          "secret": "homepage_downloadstation_password",
+          "reference": "{{HOMEPAGE_FILE_DOWNLOADSTATION_PASSWORD}}"
         }
       ]
     },
@@ -12814,6 +14039,16 @@
           "type": "p",
           "text": "To find your device ID, go to the [machine overview page](https://login.tailscale.com/admin/machines) and select your machine. In the \"Machine Details\" section, copy your `ID`. It will end with `CNTRL`."
         }
+      ],
+      "description": "Mesh VPN. Address, Last Seen, Expires, User, Hostname, Name and 7 more.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_TAILSCALE_KEY",
+          "secret": "homepage_tailscale_key",
+          "reference": "{{HOMEPAGE_FILE_TAILSCALE_KEY}}"
+        }
       ]
     },
     {
@@ -12881,6 +14116,16 @@
         {
           "type": "p",
           "text": "Generate a user API key under `Settings > API > Generate`. For the token's scope, use `read`."
+        }
+      ],
+      "description": "Recipes. Users, Recipes, Keywords.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_TANDOOR_KEY",
+          "secret": "homepage_tandoor_key",
+          "reference": "{{HOMEPAGE_FILE_TANDOOR_KEY}}"
         }
       ]
     },
@@ -12974,6 +14219,16 @@
           "type": "p",
           "text": "Allowed fields: no configurable fields for this widget."
         }
+      ],
+      "description": "Plex monitoring. What is playing now, with transcoding and bitrate.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_TAUTULLI_KEY",
+          "secret": "homepage_tautulli_key",
+          "reference": "{{HOMEPAGE_FILE_TAUTULLI_KEY}}"
+        }
       ]
     },
     {
@@ -13042,6 +14297,16 @@
         {
           "type": "p",
           "text": "Learn more about [Tdarr](https://github.com/HaveAGitGat/Tdarr)."
+        }
+      ],
+      "description": "Transcoding. Queue, Processed, Errored, Saved.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_TDARR_KEY",
+          "secret": "homepage_tdarr_key",
+          "reference": "{{HOMEPAGE_FILE_TDARR_KEY}}"
         }
       ]
     },
@@ -13117,8 +14382,7 @@
             "totalBlocked",
             "totalDropped",
             "totalClients"
-          ],
-          "maxItems": 4
+          ]
         }
       ],
       "defaults": {
@@ -13169,6 +14433,16 @@
         {
           "type": "p",
           "text": "`range` value determines how far back of statistics to pull data for. The value comes directly from Technitium API documentation found [here](https://github.com/TechnitiumSoftware/DnsServer/blob/master/APIDOCS.md#dashboard-api-calls), defined as `\"type\"`. The value can be one of: `LastHour`, `LastDay`, `LastWeek`, `LastMonth`, `LastYear`."
+        }
+      ],
+      "description": "DNS server. Queries, Success, Failures, NX Domains, Refused, Authoritative and 5 more.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_TECHNITIUM_KEY",
+          "secret": "homepage_technitium_key",
+          "reference": "{{HOMEPAGE_FILE_TECHNITIUM_KEY}}"
         }
       ]
     },
@@ -13296,6 +14570,16 @@
           "type": "p",
           "text": "Allowed fields (for summary view): `[\"streams\", \"transcodes\", \"directplay\", \"bitrate\"]`."
         }
+      ],
+      "description": "Stream monitoring. Streams, Transcodes, Direct Play, Bitrate.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_TRACEARR_KEY",
+          "secret": "homepage_tracearr_key",
+          "reference": "{{HOMEPAGE_FILE_TRACEARR_KEY}}"
+        }
       ]
     },
     {
@@ -13378,6 +14662,16 @@
         {
           "type": "p",
           "text": "No extra configuration is required. If your traefik install requires authentication, include the username and password used to login to the web interface."
+        }
+      ],
+      "description": "Reverse proxy. Routers, Services, Middleware.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_TRAEFIK_PASSWORD",
+          "secret": "homepage_traefik_password",
+          "reference": "{{HOMEPAGE_FILE_TRAEFIK_PASSWORD}}"
         }
       ]
     },
@@ -13474,6 +14768,16 @@
           "type": "p",
           "text": "Uses the same username and password used to login from the web."
         }
+      ],
+      "description": "Torrent client. Leech, Download, Seed, Upload.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_TRANSMISSION_PASSWORD",
+          "secret": "homepage_transmission_password",
+          "reference": "{{HOMEPAGE_FILE_TRANSMISSION_PASSWORD}}"
+        }
       ]
     },
     {
@@ -13549,6 +14853,16 @@
         {
           "type": "p",
           "text": "Find (or create) your ETAPI key under `Options > ETAPI > Create new ETAPI token`."
+        }
+      ],
+      "description": "Notes. Version, Notes, Database Size.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_TRILIUM_KEY",
+          "secret": "homepage_trilium_key",
+          "reference": "{{HOMEPAGE_FILE_TRILIUM_KEY}}"
         }
       ]
     },
@@ -13712,6 +15026,23 @@
           "type": "p",
           "text": "To use the `enablePools` option with TrueNAS Core, the `nasType` parameter is required."
         }
+      ],
+      "description": "NAS. System Load, Uptime, Alerts.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_TRUENAS_PASSWORD",
+          "secret": "homepage_truenas_password",
+          "reference": "{{HOMEPAGE_FILE_TRUENAS_PASSWORD}}"
+        },
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_TRUENAS_KEY",
+          "secret": "homepage_truenas_key",
+          "reference": "{{HOMEPAGE_FILE_TRUENAS_KEY}}"
+        }
       ]
     },
     {
@@ -13784,6 +15115,16 @@
         {
           "type": "p",
           "text": "You must be running at least version 0.4.4"
+        }
+      ],
+      "description": "YouTube archive. Queue, Videos, Channels, Playlists.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_TUBEARCHIVIST_KEY",
+          "secret": "homepage_tubearchivist_key",
+          "reference": "{{HOMEPAGE_FILE_TUBEARCHIVIST_KEY}}"
         }
       ]
     },
@@ -13923,6 +15264,23 @@
             }
           ]
         }
+      ],
+      "description": "Network controller. Uptime, WAN, LAN, LAN Users, LAN Devices, WLAN and 2 more.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_UNIFI_PASSWORD",
+          "secret": "homepage_unifi_password",
+          "reference": "{{HOMEPAGE_FILE_UNIFI_PASSWORD}}"
+        },
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_UNIFI_KEY",
+          "secret": "homepage_unifi_key",
+          "reference": "{{HOMEPAGE_FILE_UNIFI_KEY}}"
+        }
       ]
     },
     {
@@ -14021,6 +15379,16 @@
             }
           ]
         }
+      ],
+      "description": "Network storage. Total, Used, Available, Status.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_UNIFI_DRIVE_PASSWORD",
+          "secret": "homepage_unifi_drive_password",
+          "reference": "{{HOMEPAGE_FILE_UNIFI_DRIVE_PASSWORD}}"
+        }
       ]
     },
     {
@@ -14078,7 +15446,8 @@
           "type": "p",
           "text": "Learn more about [Unmanic](https://github.com/Unmanic/unmanic)."
         }
-      ]
+      ],
+      "description": "Media library optimiser. Active Workers, Total Workers, Queue Length."
     },
     {
       "type": "unraid",
@@ -14184,8 +15553,7 @@
             "pool4FreeSpace",
             "pool4UsedPercent"
           ],
-          "description": "Optional ordered list of visible native fields. Leave unset for the native default.",
-          "maxItems": 4
+          "description": "Optional ordered list of visible native fields. Leave unset for the native default."
         }
       ],
       "defaults": {
@@ -14234,6 +15602,16 @@
         {
           "type": "p",
           "text": "**Allowed fields:** `[\"cpu\",\"memoryPercent\",\"memoryAvailable\",\"memoryUsed\",\"notifications\",\"arrayFree\",\"arrayUsedSpace\",\"arrayUsedPercent\",\"status\",\"pool1UsedSpace\",\"pool1FreeSpace\",\"pool1UsedPercent\",\"pool2UsedSpace\",\"pool2FreeSpace\",\"pool2UsedPercent\",\"pool3UsedSpace\",\"pool3FreeSpace\",\"pool3UsedPercent\",\"pool4UsedSpace\",\"pool4FreeSpace\",\"pool4UsedPercent\"]`"
+        }
+      ],
+      "description": "NAS. CPU, Memory Percent, Memory Available, Memory Used, Notifications, Array Free and 15 more.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_UNRAID_KEY",
+          "secret": "homepage_unraid_key",
+          "reference": "{{HOMEPAGE_FILE_UNRAID_KEY}}"
         }
       ]
     },
@@ -14308,7 +15686,8 @@
           "type": "p",
           "text": "As Uptime Kuma does not yet have a full API the widget uses data from a single \"status page\". As such you will need a status page setup with a group of monitored sites, which is where you get the slug (the url without the `/status/` portion). E.g. if your status page is URL http://uptimekuma.host/status/statuspageslug, insert `slug: statuspageslug`."
         }
-      ]
+      ],
+      "description": "Uptime monitoring. Sites Up, Sites Down, Uptime, Incident."
     },
     {
       "type": "uptimerobot",
@@ -14425,6 +15804,16 @@
           "type": "p",
           "text": "Allowed fields: `[\"sitesUp\", \"sitesDown\"]`."
         }
+      ],
+      "description": "Uptime monitoring. Status, Uptime, Last Downtime, Downtime Duration.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_UPTIMEROBOT_KEY",
+          "secret": "homepage_uptimerobot_key",
+          "reference": "{{HOMEPAGE_FILE_UPTIMEROBOT_KEY}}"
+        }
       ]
     },
     {
@@ -14531,6 +15920,16 @@
         {
           "type": "p",
           "text": "Note: client status is only shown for backups that the specified user has access to. Disk Usage shown is the total for all backups, regardless of permissions."
+        }
+      ],
+      "description": "Backups. Ok, Errors, Out of Date, Used Storage.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_URBACKUP_PASSWORD",
+          "secret": "homepage_urbackup_password",
+          "reference": "{{HOMEPAGE_FILE_URBACKUP_PASSWORD}}"
         }
       ]
     },
@@ -14654,6 +16053,16 @@
             ]
           ]
         }
+      ],
+      "description": "Tasks. Active Projects, Tasks Due This Week, Overdue Tasks, Tasks In Progress.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_VIKUNJA_KEY",
+          "secret": "homepage_vikunja_key",
+          "reference": "{{HOMEPAGE_FILE_VIKUNJA_KEY}}"
+        }
       ]
     },
     {
@@ -14740,6 +16149,16 @@
           "type": "p",
           "text": "Default fields: `[\"activeSubscriptions\", \"nextRenewingSubscription\", \"thisMonthlyCost\", \"nextMonthlyCost\"]`."
         }
+      ],
+      "description": "Subscription tracker. Subscriptions, Next Payment, Prev. Month, This Month, Next Month.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_WALLOS_KEY",
+          "secret": "homepage_wallos_key",
+          "reference": "{{HOMEPAGE_FILE_WALLOS_KEY}}"
+        }
       ]
     },
     {
@@ -14811,6 +16230,16 @@
         {
           "type": "p",
           "text": "To use this widget, Watchtower needs to be configured to [enable metrics](https://watchtower.nickfedor.com/dev/advanced-features/metrics-api/)."
+        }
+      ],
+      "description": "Container updates. Scanned, Updated, Failed.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_WATCHTOWER_KEY",
+          "secret": "homepage_watchtower_key",
+          "reference": "{{HOMEPAGE_FILE_WATCHTOWER_KEY}}"
         }
       ]
     },
@@ -14949,6 +16378,16 @@
             ]
           ]
         }
+      ],
+      "description": "WireGuard VPN. Connected, Enabled, Disabled, Total.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_WGEASY_PASSWORD",
+          "secret": "homepage_wgeasy_password",
+          "reference": "{{HOMEPAGE_FILE_WGEASY_PASSWORD}}"
+        }
       ]
     },
     {
@@ -15038,6 +16477,23 @@
           "type": "p",
           "text": "Learn more about [What's Up Docker](https://github.com/fmartinou/whats-up-docker)."
         }
+      ],
+      "description": "Container updates. Monitoring, Updates.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_WHATSUPDOCKER_PASSWORD",
+          "secret": "homepage_whatsupdocker_password",
+          "reference": "{{HOMEPAGE_FILE_WHATSUPDOCKER_PASSWORD}}"
+        },
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_WHATSUPDOCKER_KEY",
+          "secret": "homepage_whatsupdocker_key",
+          "reference": "{{HOMEPAGE_FILE_WHATSUPDOCKER_KEY}}"
+        }
       ]
     },
     {
@@ -15116,6 +16572,16 @@
         {
           "type": "p",
           "text": "Learn more about [Xteve](https://github.com/xteve-project/xTeVe)."
+        }
+      ],
+      "description": "IPTV proxy. All Streams, Active Streams, XEPG Channels.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_XTEVE_PASSWORD",
+          "secret": "homepage_xteve_password",
+          "reference": "{{HOMEPAGE_FILE_XTEVE_PASSWORD}}"
         }
       ]
     },
@@ -15218,6 +16684,16 @@
             }
           ]
         }
+      ],
+      "description": "Spotify statistics. Songs, Time, Artists.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_YOURSPOTIFY_KEY",
+          "secret": "homepage_yourspotify_key",
+          "reference": "{{HOMEPAGE_FILE_YOURSPOTIFY_KEY}}"
+        }
       ]
     },
     {
@@ -15300,6 +16776,16 @@
         {
           "type": "p",
           "text": "See the [Zabbix documentation](https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/users/api_tokens) for details on generating API tokens."
+        }
+      ],
+      "description": "Infrastructure monitoring. Not classified, Information, Warning, Average, High, Disaster.",
+      "secrets": [
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_ZABBIX_KEY",
+          "secret": "homepage_zabbix_key",
+          "reference": "{{HOMEPAGE_FILE_ZABBIX_KEY}}"
         }
       ]
     }
@@ -15481,6 +16967,16 @@
           "type": "p",
           "text": "Mappings support the same `field`, `format`, `remap`, `scale`, `prefix` and `suffix` options as the [Custom API service widget](https://gethomepage.dev/widgets/services/customapi/). The `additionalField` option and the `display` modes are not supported."
         }
+      ],
+      "description": "Values from any JSON API, on their own.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_CUSTOMAPI_PASSWORD",
+          "secret": "homepage_customapi_password",
+          "reference": "{{HOMEPAGE_FILE_CUSTOMAPI_PASSWORD}}"
+        }
       ]
     },
     {
@@ -15583,7 +17079,8 @@
           "type": "p",
           "text": "A few examples,"
         }
-      ]
+      ],
+      "description": "The date and time, in the format you choose."
     },
     {
       "type": "glances",
@@ -15784,6 +17281,16 @@
           "type": "p",
           "text": "The built-in `cputemp` sensor matching already checks common prefixes such as `cpu_thermal`, `Core`, `Tctl`, and `Temperature`. Use `cpuSensorLabel` to add your own Glances sensor label prefix when your system reports CPU temperatures under a different name."
         }
+      ],
+      "description": "CPU, memory, disks and more from a Glances server.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_GLANCES_PASSWORD",
+          "secret": "homepage_glances_password",
+          "reference": "{{HOMEPAGE_FILE_GLANCES_PASSWORD}}"
+        }
       ]
     },
     {
@@ -15833,7 +17340,8 @@
           "type": "p",
           "text": "Valid text sizes are `4xl`, `3xl`, `2xl`, `xl`, `md`, `sm`, `xs`."
         }
-      ]
+      ],
+      "description": "A line of text, such as a welcome."
     },
     {
       "type": "kubernetes",
@@ -15897,7 +17405,8 @@
           "type": "p",
           "text": "It provides CPU and Memory usage, by node and/or at the cluster level."
         }
-      ]
+      ],
+      "description": "Cluster and node CPU and memory."
     },
     {
       "type": "logo",
@@ -15939,7 +17448,8 @@
           "type": "p",
           "text": "_Added in v0.4.18, updated in 0.X.X_"
         }
-      ]
+      ],
+      "description": "An image or logo."
     },
     {
       "type": "longhorn",
@@ -16035,7 +17545,8 @@
           "type": "p",
           "text": "It can show the aggregate metrics and/or the individual node metrics."
         }
-      ]
+      ],
+      "description": "Longhorn storage use, in total or per node."
     },
     {
       "type": "openmeteo",
@@ -16148,7 +17659,8 @@
           "type": "p",
           "text": "You can optionally not pass a `latitude` and `longitude` and the widget will use your current location (requires a secure context, eg. HTTPS)."
         }
-      ]
+      ],
+      "description": "Current weather from Open-Meteo, no key needed."
     },
     {
       "type": "openweathermap",
@@ -16268,6 +17780,16 @@
         {
           "type": "p",
           "text": "You can optionally not pass a `latitude` and `longitude` and the widget will use your current location (requires a secure context, eg. HTTPS)."
+        }
+      ],
+      "description": "Current weather from OpenWeatherMap.",
+      "secrets": [
+        {
+          "key": "apiKey",
+          "label": "Api Key",
+          "variable": "HOMEPAGE_FILE_OPENWEATHERMAP_API_KEY",
+          "secret": "homepage_openweathermap_api_key",
+          "reference": "{{HOMEPAGE_FILE_OPENWEATHERMAP_API_KEY}}"
         }
       ]
     },
@@ -16500,7 +18022,8 @@
           "type": "p",
           "text": "You can additionally supply an optional `expanded` property set to true in order to show additional details about the resources. By default the expanded property is set to false when not supplied."
         }
-      ]
+      ],
+      "description": "CPU, memory, disk and more where Studio runs."
     },
     {
       "type": "search",
@@ -16612,7 +18135,8 @@
           "type": "p",
           "text": "_Added in v0.1.6, updated in 0.6.0_"
         }
-      ]
+      ],
+      "description": "A search box for the web search engine you choose."
     },
     {
       "type": "stocks",
@@ -16715,7 +18239,8 @@
           "type": "p",
           "text": "The above configuration would result in something like this:"
         }
-      ]
+      ],
+      "description": "Stock prices and the day’s change."
     },
     {
       "type": "unifi_console",
@@ -16825,6 +18350,23 @@
             }
           ]
         }
+      ],
+      "description": "Connectivity status from a UniFi Network controller.",
+      "secrets": [
+        {
+          "key": "password",
+          "label": "Password",
+          "variable": "HOMEPAGE_FILE_UNIFI_CONSOLE_PASSWORD",
+          "secret": "homepage_unifi_console_password",
+          "reference": "{{HOMEPAGE_FILE_UNIFI_CONSOLE_PASSWORD}}"
+        },
+        {
+          "key": "key",
+          "label": "API key",
+          "variable": "HOMEPAGE_FILE_UNIFI_CONSOLE_KEY",
+          "secret": "homepage_unifi_console_key",
+          "reference": "{{HOMEPAGE_FILE_UNIFI_CONSOLE_KEY}}"
+        }
       ]
     },
     {
@@ -16845,7 +18387,8 @@
       ],
       "setupNotes": [
         "A distinct native implementation exists in the source, but the pinned documentation has no dedicated WeatherAPI configuration page. Use advanced configuration with source review; this entry is not evidence of live-tested support."
-      ]
+      ],
+      "description": "Current weather from WeatherAPI."
     }
   ]
 }

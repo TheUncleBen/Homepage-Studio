@@ -1,5 +1,7 @@
 # Stocks
 
+Stock prices and the day’s change.
+
 Information widget · type `stocks` · [Homepage documentation](https://gethomepage.dev/widgets/info/stocks/)
 
 [All widgets](README.md)

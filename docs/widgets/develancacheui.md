@@ -1,5 +1,7 @@
 # DeveLanCacheUI
 
+Game download cache. Cache Hit Bytes, Cache Miss Bytes.
+
 Integration · type `develancacheui` · [Homepage documentation](https://gethomepage.dev/widgets/services/develancacheui/)
 
 [All widgets](README.md)

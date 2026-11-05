@@ -100,7 +100,51 @@ function Block({ block }) {
   }
 }
 
-export default function Guide({ blocks = [], notes = [], docs }) {
+// Each secret the widget takes, with the exact names to use for it as a
+// Docker secret (docs/DEPLOY.md, "Widget API keys as Docker secrets").
+export function SecretSteps({ secrets, name }) {
+  return (
+    <div className="studio-guide-secrets">
+      <h4>Keeping {secrets.length > 1 ? "its secrets" : `the ${secrets[0].label.toLowerCase()}`} out of the files</h4>
+      <p>
+        A value typed into the settings stays in the snapshot history. Store it as a Docker secret instead and the
+        settings only name it:
+      </p>
+      <ol>
+        <li>
+          Create a Docker secret named{" "}
+          {secrets.map((entry, index) => (
+            <Fragment key={entry.key}>
+              {index > 0 && (index === secrets.length - 1 ? " and " : ", ")}
+              <code>{entry.secret}</code>
+            </Fragment>
+          ))}{" "}
+          holding the {secrets.length > 1 ? "values" : "value"}.
+        </li>
+        <li>
+          In the stack, add {secrets.length > 1 ? "each" : "it"} to Studio&apos;s secrets and add to its environment:
+          <pre>{secrets.map((entry) => `${entry.variable}: /run/secrets/${entry.secret}`).join("\n")}</pre>
+        </li>
+        <li>
+          Update the stack, then enter{" "}
+          {secrets.map((entry, index) => (
+            <Fragment key={entry.key}>
+              {index > 0 && "; "}
+              <code>{entry.reference}</code> as {entry.label}
+            </Fragment>
+          ))}
+          .
+        </li>
+      </ol>
+      <p>
+        For a second {name || "widget"} with different credentials, add a suffix to each name, such as{" "}
+        <code>{`${secrets[0].secret}_2`}</code> and <code>{`${secrets[0].variable}_2`}</code>.
+      </p>
+    </div>
+  );
+}
+
+export default function Guide({ blocks = [], notes = [], secrets = [], name, docs }) {
   return (
     <div className="studio-guide">
       {notes.map((note, index) => (
@@ -111,6 +155,7 @@ export default function Guide({ blocks = [], notes = [], docs }) {
       {blocks.map((block, index) => (
         <Block key={index} block={block} />
       ))}
+      {secrets.length > 0 && <SecretSteps secrets={secrets} name={name} />}
       {docs && (
         <a className="studio-guide-docs" href={docs} target="_blank" rel="noopener noreferrer">
           <StudioIcon name="book" size={16} />

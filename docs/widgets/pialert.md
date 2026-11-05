@@ -1,5 +1,7 @@
 # Pialert
 
+Network device scanner. Total, Connected, New Devices, Down Alerts.
+
 Integration · type `pialert` · [Homepage documentation](https://gethomepage.dev/widgets/services/)
 
 [All widgets](README.md)

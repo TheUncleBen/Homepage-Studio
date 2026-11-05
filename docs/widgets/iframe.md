@@ -1,5 +1,7 @@
 # iFrame
 
+Embedded web page. A page from another site.
+
 Integration · type `iframe` · [Homepage documentation](https://gethomepage.dev/widgets/services/iframe/)
 
 [All widgets](README.md)

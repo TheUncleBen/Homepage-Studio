@@ -1,5 +1,7 @@
 # QNAP
 
+NAS. CPU Usage, MEM Usage, System Temp, Pool Usage, Volume Usage.
+
 Integration · type `qnap` · [Homepage documentation](https://gethomepage.dev/widgets/services/qnap/)
 
 [All widgets](README.md)
@@ -19,8 +21,18 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Service URL | `url` | Text | Example: `http://qnap.host.or.ip:port`. |
 | Username | `username` | Text | Example: `user`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `cpuUsage`, `memUsage`, `systemTempC`, `poolUsage`, `volumeUsage`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `cpuUsage`, `memUsage`, `systemTempC`, `poolUsage`, `volumeUsage`. Leave unset for its usual fields. |
 | Volume | `volume` | Text | Optional QNAP volume name to show through the volumeUsage field; poolUsage otherwise aggregates volumes. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_qnap_password` | `HOMEPAGE_FILE_QNAP_PASSWORD: /run/secrets/homepage_qnap_password` | `{{HOMEPAGE_FILE_QNAP_PASSWORD}}` |
+
+For a second QNAP with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

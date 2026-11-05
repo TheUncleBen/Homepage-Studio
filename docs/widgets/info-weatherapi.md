@@ -1,5 +1,7 @@
 # WeatherAPI
 
+Current weather from WeatherAPI.
+
 Information widget · type `weatherapi` · [Homepage documentation](https://gethomepage.dev/widgets/info/)
 
 [All widgets](README.md)

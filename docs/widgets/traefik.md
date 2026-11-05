@@ -1,5 +1,7 @@
 # Traefik
 
+Reverse proxy. Routers, Services, Middleware.
+
 Integration · type `traefik` · [Homepage documentation](https://gethomepage.dev/widgets/services/traefik/)
 
 [All widgets](README.md)
@@ -19,7 +21,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Service URL | `url` | Text | Example: `http://traefik.host.or.ip`. |
 | Username | `username` | Text | Example: `username`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `routers`, `services`, `middleware`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `routers`, `services`, `middleware`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_traefik_password` | `HOMEPAGE_FILE_TRAEFIK_PASSWORD: /run/secrets/homepage_traefik_password` | `{{HOMEPAGE_FILE_TRAEFIK_PASSWORD}}` |
+
+For a second Traefik with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

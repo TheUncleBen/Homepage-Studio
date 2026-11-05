@@ -1,5 +1,7 @@
 # Overseerr
 
+Media requests. Pending, Approved, Available, Completed, Processing, Open Issues.
+
 Integration · type `overseerr` · [Homepage documentation](https://gethomepage.dev/widgets/services/)
 
 [All widgets](README.md)

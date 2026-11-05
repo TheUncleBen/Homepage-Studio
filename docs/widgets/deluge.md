@@ -1,5 +1,7 @@
 # Deluge
 
+Torrent client. Leech, Download, Seed, Upload.
+
 Integration · type `deluge` · [Homepage documentation](https://gethomepage.dev/widgets/services/deluge/)
 
 [All widgets](README.md)
@@ -19,7 +21,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Service URL | `url` | Text | Example: `http://deluge.host.or.ip`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Enable Leech Progress | `enableLeechProgress` | On/off | Example: `true`. |
-| Visible fields | `fields` | List | Choices: `leech`, `download`, `seed`, `upload`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `leech`, `download`, `seed`, `upload`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_deluge_password` | `HOMEPAGE_FILE_DELUGE_PASSWORD: /run/secrets/homepage_deluge_password` | `{{HOMEPAGE_FILE_DELUGE_PASSWORD}}` |
+
+For a second Deluge with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

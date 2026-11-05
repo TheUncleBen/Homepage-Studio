@@ -1,5 +1,7 @@
 # LubeLogger
 
+Vehicle maintenance. Vehicles, Service Records, Reminders.
+
 Integration · type `lubelogger` · [Homepage documentation](https://gethomepage.dev/widgets/services/lubelogger/)
 
 [All widgets](README.md)
@@ -20,7 +22,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Username | `username` | Text | Example: `lubeloggerusername`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Vehicle ID | `vehicleID` | Number | Example: `1`. |
-| Visible fields | `fields` | List | Choices: `vehicles`, `serviceRecords`, `reminders`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `vehicles`, `serviceRecords`, `reminders`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_lubelogger_password` | `HOMEPAGE_FILE_LUBELOGGER_PASSWORD: /run/secrets/homepage_lubelogger_password` | `{{HOMEPAGE_FILE_LUBELOGGER_PASSWORD}}` |
+
+For a second LubeLogger with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

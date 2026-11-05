@@ -1,5 +1,7 @@
 # Greeting
 
+A line of text, such as a welcome.
+
 Information widget · type `greeting` · [Homepage documentation](https://gethomepage.dev/widgets/info/greeting/)
 
 [All widgets](README.md)

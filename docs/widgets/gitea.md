@@ -1,5 +1,7 @@
 # Gitea
 
+Git hosting. Repositories, Notifications, Issues, Pull Requests.
+
 Integration · type `gitea` · [Homepage documentation](https://gethomepage.dev/widgets/services/gitea/)
 
 [All widgets](README.md)
@@ -18,7 +20,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://gitea.host.or.ip:port`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `repositories`, `notifications`, `issues`, `pulls`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `repositories`, `notifications`, `issues`, `pulls`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_gitea_key` | `HOMEPAGE_FILE_GITEA_KEY: /run/secrets/homepage_gitea_key` | `{{HOMEPAGE_FILE_GITEA_KEY}}` |
+
+For a second Gitea with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

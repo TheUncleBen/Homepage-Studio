@@ -1,5 +1,7 @@
 # Uptime Kuma
 
+Uptime monitoring. Sites Up, Sites Down, Uptime, Incident.
+
 Integration · type `uptimekuma` · [Homepage documentation](https://gethomepage.dev/widgets/services/uptime-kuma/)
 
 [All widgets](README.md)
@@ -18,7 +20,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://uptimekuma.host.or.ip:port`. |
 | Slug | `slug` | Text | Example: `statuspageslug`. |
-| Visible fields | `fields` | List | Choices: `up`, `down`, `uptime`, `incident`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `up`, `down`, `uptime`, `incident`. Leave unset for its usual fields. |
 
 ## Examples
 

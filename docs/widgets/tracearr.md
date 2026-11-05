@@ -1,5 +1,7 @@
 # Tracearr
 
+Stream monitoring. Streams, Transcodes, Direct Play, Bitrate.
+
 Integration · type `tracearr` · [Homepage documentation](https://gethomepage.dev/widgets/services/tracearr/)
 
 [All widgets](README.md)
@@ -25,6 +27,16 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Show Episode Number | `showEpisodeNumber` | On/off | Example: `true`. |
 | Expand One Stream To Two Rows | `expandOneStreamToTwoRows` | On/off | Example: `false`. |
 | Visible fields | `fields` | List | Allowed fields (for summary view): `["streams", "transcodes", "directplay", "bitrate"]`.: `streams`, `transcodes`, `directplay`, `bitrate`. Allowed fields depend on the native mode or version. Review the contextual lists in the documentation; keep their order. Leave unset for the native default. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_tracearr_key` | `HOMEPAGE_FILE_TRACEARR_KEY: /run/secrets/homepage_tracearr_key` | `{{HOMEPAGE_FILE_TRACEARR_KEY}}` |
+
+For a second Tracearr with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

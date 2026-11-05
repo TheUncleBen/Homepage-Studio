@@ -1,5 +1,7 @@
 # Navidrome
 
+Music server. What is playing now.
+
 Integration · type `navidrome` · [Homepage documentation](https://gethomepage.dev/widgets/services/navidrome/)
 
 [All widgets](README.md)
@@ -22,6 +24,16 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | User | `user` | Text | Example: `username`. |
 | Token | `token` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Salt | `salt` | Text | Example: `randomsalt`. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Token | `homepage_navidrome_token` | `HOMEPAGE_FILE_NAVIDROME_TOKEN: /run/secrets/homepage_navidrome_token` | `{{HOMEPAGE_FILE_NAVIDROME_TOKEN}}` |
+
+For a second Navidrome with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

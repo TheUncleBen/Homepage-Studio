@@ -1,5 +1,7 @@
 # Calendar
 
+Calendar. Upcoming events from your calendars and media apps.
+
 Integration · type `calendar` · [Homepage documentation](https://gethomepage.dev/widgets/services/calendar/)
 
 [All widgets](README.md)

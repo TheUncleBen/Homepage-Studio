@@ -1,5 +1,7 @@
 # ruTorrent
 
+Torrent client. Active, Upload, Download.
+
 Integration · type `rutorrent` · [Homepage documentation](https://gethomepage.dev/widgets/services/rutorrent/)
 
 [All widgets](README.md)
@@ -19,7 +21,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Service URL | `url` | Text | Example: `http://rutorrent.host.or.ip`. |
 | Username | `username` | Text or On/off | Use a credential string, omit when unnecessary, or use the native boolean false to disable it. Boolean true is not a credential. Example: `username`. |
 | Password | `password` | Text or On/off | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. Use a credential string, omit when unnecessary, or use the native boolean false to disable it. Boolean true is not a credential. |
-| Visible fields | `fields` | List | Choices: `active`, `upload`, `download`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `active`, `upload`, `download`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_rutorrent_password` | `HOMEPAGE_FILE_RUTORRENT_PASSWORD: /run/secrets/homepage_rutorrent_password` | `{{HOMEPAGE_FILE_RUTORRENT_PASSWORD}}` |
+
+For a second ruTorrent with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

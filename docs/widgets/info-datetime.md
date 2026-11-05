@@ -1,5 +1,7 @@
 # Date & Time
 
+The date and time, in the format you choose.
+
 Information widget · type `datetime` · [Homepage documentation](https://gethomepage.dev/widgets/info/datetime/)
 
 [All widgets](README.md)

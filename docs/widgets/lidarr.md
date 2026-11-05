@@ -1,5 +1,7 @@
 # Lidarr
 
+Music manager. Wanted, Queued, Artists.
+
 Integration · type `lidarr` · [Homepage documentation](https://gethomepage.dev/widgets/services/lidarr/)
 
 [All widgets](README.md)
@@ -18,7 +20,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://lidarr.host.or.ip`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `wanted`, `queued`, `artists`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `wanted`, `queued`, `artists`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_lidarr_key` | `HOMEPAGE_FILE_LIDARR_KEY: /run/secrets/homepage_lidarr_key` | `{{HOMEPAGE_FILE_LIDARR_KEY}}` |
+
+For a second Lidarr with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

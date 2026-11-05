@@ -119,7 +119,8 @@ test('reviewed nonstandard documentation lists expose native field selections', 
       assert.equal(Object.hasOwn(widget(type, 'service', source).defaults, 'fields'), false);
     }
   }
-  for (const type of ['backrest', 'dockhand', 'suwayomi', 'unraid']) assert.equal(field(type, 'fields').maxItems, 4);
+  // Homepage's four-value limit does not apply in Studio cards (4 Nov 2026).
+  for (const item of shipped.service) for (const entry of item.fields) assert.equal(Object.hasOwn(entry, 'maxItems'), false, item.type);
   assert.match(widget('emby').setupNotes.join(' '), /enableBlocks/);
   assert.match(widget('unraid').setupNotes.join(' '), /pool name/);
   assert.match(field('evcc', 'fields').source, /src\/widgets\/evcc\/component\.jsx$/);
@@ -181,6 +182,31 @@ test('every widget Homepage registers or documents is in the shipped catalog', a
     assert.deepEqual(undocumented, [], `Documented ${kind} widgets missing from the catalog: ${undocumented.join(', ')}`);
   }
   assert.ok(widget('netbird', 'service', shipped));
+});
+
+// Owner request, 4 Nov 2026: each integration says what it is and shows,
+// instead of one shared line.
+test('every widget has its own description of what it is and what it shows', () => {
+  for (const kind of ['service', 'info']) for (const item of shipped[kind]) assert.ok(item.description && item.description.length > item.name.length + 2, `${kind} ${item.type}`);
+  assert.equal(widget('pfsense', 'service', shipped).description, 'Firewall. Load Avg, Mem Usage, Temp, WAN Status, WAN IP, Disk Usage.');
+  assert.equal(widget('portainer', 'service', shipped).description, 'Docker management. Running, Stopped, Total.');
+  assert.match(widget('netbird', 'service', shipped).description, /^Mesh VPN\. Online Peers, Users, Login Expired\.$/);
+  const services = shipped.service.map(item => item.description);
+  assert.ok(new Set(services).size > services.length * 0.9, 'descriptions are mostly distinct');
+});
+
+test('every secret setting names its exact Docker secret, variable and reference', () => {
+  assert.deepEqual(widget('pfsense', 'service', shipped).secrets, [{ key: 'password', label: 'Password', variable: 'HOMEPAGE_FILE_PFSENSE_PASSWORD', secret: 'homepage_pfsense_password', reference: '{{HOMEPAGE_FILE_PFSENSE_PASSWORD}}' }]);
+  assert.equal(widget('unifi_drive', 'service', shipped).secrets[0].variable, 'HOMEPAGE_FILE_UNIFI_DRIVE_PASSWORD');
+  for (const kind of ['service', 'info']) for (const item of shipped[kind]) {
+    const sensitive = item.fields.filter(field => field.sensitive).map(field => field.key);
+    assert.deepEqual((item.secrets || []).map(entry => entry.key), sensitive, item.type);
+    for (const entry of item.secrets || []) {
+      assert.match(entry.variable, /^HOMEPAGE_FILE_[A-Z0-9_]+$/);
+      assert.equal(entry.reference, `{{${entry.variable}}}`);
+      assert.equal(entry.secret, entry.variable.replace('HOMEPAGE_FILE_', 'homepage_').toLowerCase());
+    }
+  }
 });
 
 test('incomplete documentation examples stay visible as warnings rather than fabricated schemas', () => {

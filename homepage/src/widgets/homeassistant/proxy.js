@@ -85,7 +85,9 @@ export default async function homeassistantProxyHandler(req, res) {
         return res.status(400).json({ error: "Error parsing widget custom label" });
       }
     }
-    queries = widget.custom.slice(0, 4);
+    // Studio: every dashboard renders in Studio cards, which have no four-value
+    // limit (owner request, 4 Nov 2026), so every custom query is answered.
+    queries = widget.custom;
   }
 
   const results = await Promise.all(queries.map((q) => getQuery(q, widget)));

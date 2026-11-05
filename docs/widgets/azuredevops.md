@@ -1,5 +1,7 @@
 # Azure DevOps
 
+Pipelines and pull requests. Result, Status.
+
 Integration · type `azuredevops` · [Homepage documentation](https://gethomepage.dev/widgets/services/azuredevops/)
 
 [All widgets](README.md)
@@ -30,6 +32,16 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Repository Id | `repositoryId` | Text | Example: `prRepositoryId`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Visible fields | `fields` | List | Pipelines: `result`, `status`. Pull requests: `totalPrs`, `myPrs`, `approved`. Allowed fields depend on the native mode or version. Review the contextual lists in the documentation; keep their order. Leave unset for the native default. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_azuredevops_key` | `HOMEPAGE_FILE_AZUREDEVOPS_KEY: /run/secrets/homepage_azuredevops_key` | `{{HOMEPAGE_FILE_AZUREDEVOPS_KEY}}` |
+
+For a second Azure DevOps with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

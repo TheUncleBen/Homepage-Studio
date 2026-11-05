@@ -1,5 +1,7 @@
 # HDHomerun
 
+TV tuner. Channels, HD, Tuners, Channel, Network, Strength and 3 more.
+
 Integration · type `hdhomerun` · [Homepage documentation](https://gethomepage.dev/widgets/services/hdhomerun/)
 
 [All widgets](README.md)
@@ -18,7 +20,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://hdhomerun.host.or.ip`. |
 | Tuner | `tuner` | Number | Example: `0`. |
-| Visible fields | `fields` | List | Choices: `channels`, `hd`, `tunerCount`, `channelNumber`, `channelNetwork`, `signalStrength`, `signalQuality`, `symbolQuality`, `networkRate`, `clientIP`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `channels`, `hd`, `tunerCount`, `channelNumber`, `channelNetwork`, `signalStrength`, `signalQuality`, `symbolQuality`, `networkRate`, `clientIP`. Leave unset for its usual fields. |
 
 ## Examples
 

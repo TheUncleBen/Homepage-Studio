@@ -1,5 +1,7 @@
 # Kubernetes
 
+Cluster and node CPU and memory.
+
 Information widget · type `kubernetes` · [Homepage documentation](https://gethomepage.dev/widgets/info/kubernetes/)
 
 [All widgets](README.md)

@@ -1,5 +1,7 @@
 # Technitium DNS Server
 
+DNS server. Queries, Success, Failures, NX Domains, Refused, Authoritative and 5 more.
+
 Integration · type `technitium` · [Homepage documentation](https://gethomepage.dev/widgets/services/technitium/)
 
 [All widgets](README.md)
@@ -32,7 +34,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Node | `node` | Text | Example: `<node dns name or cluster>`. |
 | Range | `range` | Text | Example: `LastDay`. |
-| Visible fields | `fields` | List | Choices: `totalQueries`, `totalNoError`, `totalServerFailure`, `totalNxDomain`, `totalRefused`, `totalAuthoritative`, `totalRecursive`, `totalCached`, `totalBlocked`, `totalDropped`, `totalClients`. The widget shows them in the order you list them, up to 4. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `totalQueries`, `totalNoError`, `totalServerFailure`, `totalNxDomain`, `totalRefused`, `totalAuthoritative`, `totalRecursive`, `totalCached`, `totalBlocked`, `totalDropped`, `totalClients`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_technitium_key` | `HOMEPAGE_FILE_TECHNITIUM_KEY: /run/secrets/homepage_technitium_key` | `{{HOMEPAGE_FILE_TECHNITIUM_KEY}}` |
+
+For a second Technitium DNS Server with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

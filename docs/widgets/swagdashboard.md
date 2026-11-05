@@ -1,5 +1,7 @@
 # SWAG Dashboard
 
+Reverse proxy. Proxied, With Auth, Outdated, Banned.
+
 Integration · type `swagdashboard` · [Homepage documentation](https://gethomepage.dev/widgets/services/swagdashboard/)
 
 [All widgets](README.md)
@@ -15,7 +17,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://swagdashboard.host.or.ip:adminport`. |
-| Visible fields | `fields` | List | Choices: `proxied`, `auth`, `outdated`, `banned`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `proxied`, `auth`, `outdated`, `banned`. Leave unset for its usual fields. |
 
 ## Examples
 

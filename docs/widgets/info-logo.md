@@ -1,5 +1,7 @@
 # Logo
 
+An image or logo.
+
 Information widget · type `logo` · [Homepage documentation](https://gethomepage.dev/widgets/info/logo/)
 
 [All widgets](README.md)

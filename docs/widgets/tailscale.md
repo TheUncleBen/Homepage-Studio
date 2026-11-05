@@ -1,5 +1,7 @@
 # Tailscale
 
+Mesh VPN. Address, Last Seen, Expires, User, Hostname, Name and 7 more.
+
 Integration · type `tailscale` · [Homepage documentation](https://gethomepage.dev/widgets/services/tailscale/)
 
 [All widgets](README.md)
@@ -20,7 +22,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Deviceid | `deviceid` | Text | Example: `deviceid`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `address`, `last_seen`, `expires`, `user`, `hostname`, `name`, `client_version`, `os`, `created`, `authorized`, `is_external`, `update_available`, `tags`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `address`, `last_seen`, `expires`, `user`, `hostname`, `name`, `client_version`, `os`, `created`, `authorized`, `is_external`, `update_available`, `tags`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_tailscale_key` | `HOMEPAGE_FILE_TAILSCALE_KEY: /run/secrets/homepage_tailscale_key` | `{{HOMEPAGE_FILE_TAILSCALE_KEY}}` |
+
+For a second Tailscale with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

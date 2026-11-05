@@ -1,5 +1,7 @@
 # Longhorn
 
+Longhorn storage use, in total or per node.
+
 Information widget · type `longhorn` · [Homepage documentation](https://gethomepage.dev/widgets/info/longhorn/)
 
 [All widgets](README.md)

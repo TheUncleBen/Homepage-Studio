@@ -130,9 +130,8 @@ export default async function suwayomiProxyHandler(req, res) {
 
   if (!widget.fields || widget.fields.length === 0) {
     widget.fields = ["download", "nondownload", "read", "unread"];
-  } else if (widget.fields.length > 4) {
-    widget.fields = widget.fields.slice(0, 4);
   }
+  // Studio: no four-value limit; every dashboard renders in Studio cards.
 
   const url = new URL(formatApiCall(widgets[widget.type].api, { endpoint, ...widget }));
 

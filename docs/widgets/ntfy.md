@@ -1,5 +1,7 @@
 # ntfy
 
+Notifications. Title, Message, Priority, Last Received, Tags.
+
 Integration · type `ntfy` · [Homepage documentation](https://gethomepage.dev/widgets/services/ntfy/)
 
 [All widgets](README.md)
@@ -34,10 +36,21 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://ntfy.host.or.ip:port`. |
 | Topic | `topic` | Text | Example: `mytopic`. |
-| Visible fields | `fields` | List | Choices: `title`, `message`, `priority`, `lastReceived`, `tags`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `title`, `message`, `priority`, `lastReceived`, `tags`. Leave unset for its usual fields. |
 | Access token | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. Optional Bearer token for a private topic. Omit for public topics or Basic authentication. |
 | Username | `username` | Text | Optional Basic authentication username; use together with password. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. Optional Basic authentication password; use together with username. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Access token | `homepage_ntfy_key` | `HOMEPAGE_FILE_NTFY_KEY: /run/secrets/homepage_ntfy_key` | `{{HOMEPAGE_FILE_NTFY_KEY}}` |
+| Password | `homepage_ntfy_password` | `HOMEPAGE_FILE_NTFY_PASSWORD: /run/secrets/homepage_ntfy_password` | `{{HOMEPAGE_FILE_NTFY_PASSWORD}}` |
+
+For a second ntfy with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

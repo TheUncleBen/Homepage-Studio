@@ -7,9 +7,12 @@ import Block from "components/services/widget/block";
 import Container from "components/services/widget/container";
 import * as shvl from "utils/config/shvl";
 import useWidgetAPI from "utils/proxy/use-widget-api";
+import { useUncappedFields } from "utils/widget-fields";
 
 export default function Component({ service }) {
   const { t } = useTranslation();
+  // Studio: no four-value limit inside a Studio card.
+  const limit = useUncappedFields() ? Infinity : 4;
 
   const { widget } = service;
 
@@ -60,7 +63,7 @@ export default function Component({ service }) {
       default:
         return (
           <Container service={service}>
-            {mappings.slice(0, 4).map((item) => (
+            {mappings.slice(0, limit).map((item) => (
               <Block label={item.label} key={item.label} />
             ))}
           </Container>
@@ -166,7 +169,7 @@ export default function Component({ service }) {
     default:
       return (
         <Container service={service}>
-          {mappings.slice(0, 4).map((mapping) => (
+          {mappings.slice(0, limit).map((mapping) => (
             <Block
               label={mapping.label}
               key={mapping.label}

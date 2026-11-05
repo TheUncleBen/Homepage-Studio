@@ -1,5 +1,7 @@
 # Beszel
 
+Server monitoring. Systems, Up.
+
 Integration · type `beszel` · [Homepage documentation](https://gethomepage.dev/widgets/services/beszel/)
 
 [All widgets](README.md)
@@ -33,6 +35,16 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | System Id | `systemId` | Text | Example: `systemId`. |
 | Beszel version | `version` | Number | A choice in the dialog: Before 0.9.0 (`1`, the default when left out), 0.9.0 or later (`2`). Which Beszel you run, so the widget uses the matching API. Homepage can't detect it. |
 | Visible fields | `fields` | List | Allowed fields for 'overview' mode: `["systems", "up"]`: `systems`, `up`. Allowed fields for a single system: `["name", "status", "updated", "cpu", "memory", "disk", "network"]`: `name`, `status`, `updated`, `cpu`, `memory`, `disk`, `network`. Allowed fields depend on the native mode or version. Review the contextual lists in the documentation; keep their order. Leave unset for the native default. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_beszel_password` | `HOMEPAGE_FILE_BESZEL_PASSWORD: /run/secrets/homepage_beszel_password` | `{{HOMEPAGE_FILE_BESZEL_PASSWORD}}` |
+
+For a second Beszel with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

@@ -1,5 +1,7 @@
 # Kubernetes
 
+Kubernetes. CPU, MEM.
+
 Integration · type `kubernetes` · [Homepage documentation](https://gethomepage.dev/widgets/services/)
 
 [All widgets](README.md)

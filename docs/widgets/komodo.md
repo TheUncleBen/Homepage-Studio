@@ -1,5 +1,7 @@
 # Komodo
 
+Server and container management. Total, Running, Stopped, Unhealthy, Unknown.
+
 Integration · type `komodo` · [Homepage documentation](https://gethomepage.dev/widgets/services/komodo/)
 
 [All widgets](README.md)
@@ -24,6 +26,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Show Summary | `showSummary` | On/off | Example: `true`. |
 | Show Stacks | `showStacks` | On/off | Example: `true`. |
 | Visible fields | `fields` | List | Allowed fields (max 4): `["total", "running", "stopped", "unhealthy", "unknown"]`.: `total`, `running`, `stopped`, `unhealthy`, `unknown`. Allowed fields with `showStacks` (max 4): `["total", "running", "down", "unhealthy", "unknown"]`.: `total`, `running`, `down`, `unhealthy`, `unknown`. Allowed fields with `showSummary`: `["servers", "stacks", "containers"]`.: `servers`, `stacks`, `containers`. Allowed fields depend on the native mode or version. Review the contextual lists in the documentation; keep their order. Leave unset for the native default. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_komodo_key` | `HOMEPAGE_FILE_KOMODO_KEY: /run/secrets/homepage_komodo_key` | `{{HOMEPAGE_FILE_KOMODO_KEY}}` |
+| Secret | `homepage_komodo_secret` | `HOMEPAGE_FILE_KOMODO_SECRET: /run/secrets/homepage_komodo_secret` | `{{HOMEPAGE_FILE_KOMODO_SECRET}}` |
+
+For a second Komodo with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

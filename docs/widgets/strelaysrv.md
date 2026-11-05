@@ -1,5 +1,7 @@
 # Syncthing Relay Server
 
+Syncthing relay. Sessions, Connections, Bytes Proxied.
+
 Integration · type `strelaysrv` · [Homepage documentation](https://gethomepage.dev/widgets/services/syncthing-relay-server/)
 
 [All widgets](README.md)
@@ -17,7 +19,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://syncthing.host.or.ip:22070`. |
-| Visible fields | `fields` | List | Choices: `numActiveSessions`, `numConnections`, `bytesProxied`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `numActiveSessions`, `numConnections`, `bytesProxied`. Leave unset for its usual fields. |
 
 ## Examples
 

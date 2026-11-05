@@ -36,7 +36,7 @@ function settingNotes(field) {
   if (field.sensitive) notes.push('Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference.');
   const choiceList = Boolean(field.choiceLabels && field.choices?.length);
   if (choiceList) notes.push(`A choice in the dialog: ${field.choices.map(choice => `${field.choiceLabels[String(choice)]} (${code(choice)}${choice === field.defaultChoice ? ', the default when left out' : ''})`).join(', ')}.`);
-  else if (field.choices?.length) notes.push(`Choices: ${field.choices.map(code).join(', ')}. The widget shows them in the order you list them${field.maxItems ? `, up to ${field.maxItems}` : ''}. Leave unset for its usual fields.`);
+  else if (field.choices?.length) notes.push(`Choices: ${field.choices.map(code).join(', ')}. Leave unset for its usual fields.`);
   if (field.optionGroups?.length) notes.push(field.optionGroups.map(group => `${group.context}: ${(group.choices || []).map(code).join(', ')}`).join('. ') + '.');
   if (field.description && (choiceList || !field.choices?.length)) notes.push(field.description);
   if (!choiceList && field.exampleValue !== null && field.exampleValue !== undefined && !field.sensitive && typeof field.exampleValue !== 'object') notes.push(`Example: ${code(field.exampleValue)}.`);
@@ -44,7 +44,7 @@ function settingNotes(field) {
 }
 
 export function widgetPage(kind, widget) {
-  const lines = [`# ${widget.name}`, '', `${KIND[kind]} · type ${code(widget.type)} · [Homepage documentation](${widget.docs})`, ''];
+  const lines = [`# ${widget.name}`, '', ...(widget.description ? [widget.description, ''] : []), `${KIND[kind]} · type ${code(widget.type)} · [Homepage documentation](${widget.docs})`, ''];
   lines.push('[All widgets](README.md)', '');
   if (widget.documentationStatus !== 'documented-example') {
     lines.push('> **Set up in YAML.** Homepage has no complete documented example for this widget, so Studio shows no form for it. Add it, then write its options in the dialog\'s YAML view.', '');
@@ -60,6 +60,12 @@ export function widgetPage(kind, widget) {
     lines.push('| Setting | YAML key | Type | Notes |', '| --- | --- | --- | --- |');
     for (const field of fields) lines.push(`| ${cell(field.label)} | ${code(field.key)} | ${cell((field.valueTypes || [field.type]).map(type => TYPE[type] || type).join(' or '))} | ${cell(settingNotes(field))} |`);
     lines.push('');
+  }
+  if (widget.secrets?.length) {
+    lines.push('## Keeping its secrets out of the files', '', 'Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:', '');
+    lines.push('| Setting | Docker secret | Environment variable | Enter in the setting |', '| --- | --- | --- | --- |');
+    for (const entry of widget.secrets) lines.push(`| ${cell(entry.label)} | ${code(entry.secret)} | ${code(`${entry.variable}: /run/secrets/${entry.secret}`)} | ${code(entry.reference)} |`);
+    lines.push('', `For a second ${widget.name} with different credentials, add a suffix such as \`_2\` to each name.`, '');
   }
   if (widget.examples?.length) {
     lines.push('## Examples', '', 'From Homepage\'s documentation. Values are examples, not defaults.', '');

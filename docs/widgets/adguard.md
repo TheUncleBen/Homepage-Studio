@@ -1,5 +1,7 @@
 # AdGuard Home
 
+DNS ad blocker. Queries, Blocked, Filtered, Latency.
+
 Integration · type `adguard` · [Homepage documentation](https://gethomepage.dev/widgets/services/adguard-home/)
 
 [All widgets](README.md)
@@ -19,7 +21,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Service URL | `url` | Text | Example: `http://adguard.host.or.ip`. |
 | Username | `username` | Text | Example: `admin`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `queries`, `blocked`, `filtered`, `latency`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `queries`, `blocked`, `filtered`, `latency`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_adguard_password` | `HOMEPAGE_FILE_ADGUARD_PASSWORD: /run/secrets/homepage_adguard_password` | `{{HOMEPAGE_FILE_ADGUARD_PASSWORD}}` |
+
+For a second AdGuard Home with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

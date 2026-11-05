@@ -1,5 +1,7 @@
 # Feed
 
+RSS or Atom feed. The latest items.
+
 Integration · type `feed` · [Homepage documentation](https://gethomepage.dev/widgets/services/feed/)
 
 [All widgets](README.md)

@@ -1,5 +1,7 @@
 # Duplicati
 
+Backups. Jobs, Stored, Last Run, Next Run, Running, Warnings and 1 more.
+
 Integration · type `duplicati` · [Homepage documentation](https://gethomepage.dev/widgets/services/duplicati/)
 
 [All widgets](README.md)
@@ -18,7 +20,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://duplicati.host.or.ip:8200`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `jobs`, `stored`, `lastBackup`, `nextRun`, `running`, `warnings`, `errors`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `jobs`, `stored`, `lastBackup`, `nextRun`, `running`, `warnings`, `errors`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_duplicati_password` | `HOMEPAGE_FILE_DUPLICATI_PASSWORD: /run/secrets/homepage_duplicati_password` | `{{HOMEPAGE_FILE_DUPLICATI_PASSWORD}}` |
+
+For a second Duplicati with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

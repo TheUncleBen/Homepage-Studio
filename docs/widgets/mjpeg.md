@@ -1,5 +1,7 @@
 # MJPEG
 
+Camera stream. A live camera picture.
+
 Integration · type `mjpeg` · [Homepage documentation](https://gethomepage.dev/widgets/services/mjpeg/)
 
 [All widgets](README.md)

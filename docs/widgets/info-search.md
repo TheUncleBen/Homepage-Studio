@@ -1,5 +1,7 @@
 # Search
 
+A search box for the web search engine you choose.
+
 Information widget · type `search` · [Homepage documentation](https://gethomepage.dev/widgets/info/search/)
 
 [All widgets](README.md)

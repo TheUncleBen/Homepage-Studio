@@ -3,9 +3,12 @@ import { useTranslation } from "next-i18next/pages";
 import Block from "components/services/widget/block";
 import Container from "components/services/widget/container";
 import useWidgetAPI from "utils/proxy/use-widget-api";
+import { useUncappedFields } from "utils/widget-fields";
 
 export default function Component({ service }) {
   const { t } = useTranslation();
+  // Studio: no four-value limit inside a Studio card.
+  const limit = useUncappedFields() ? Infinity : 4;
   const { widget } = service;
 
   let { data: spoolData, error: spoolError } = useWidgetAPI(widget, "spools");
@@ -41,8 +44,8 @@ export default function Component({ service }) {
     spoolData = spoolData.filter((spool) => widget.spoolIds.includes(spool.id));
   }
 
-  if (spoolData.length > 4) {
-    spoolData = spoolData.slice(0, 4);
+  if (spoolData.length > limit) {
+    spoolData = spoolData.slice(0, limit);
   }
 
   return (

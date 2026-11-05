@@ -1,5 +1,7 @@
 # Unraid
 
+NAS. CPU, Memory Percent, Memory Available, Memory Used, Notifications, Array Free and 15 more.
+
 Integration · type `unraid` · [Homepage documentation](https://gethomepage.dev/widgets/services/unraid/)
 
 [All widgets](README.md)
@@ -33,7 +35,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Pool2 | `pool2` | Text | Example: `pool2name`. |
 | Pool3 | `pool3` | Text | Example: `pool3name`. |
 | Pool4 | `pool4` | Text | Example: `pool4name`. |
-| Visible fields | `fields` | List | Choices: `cpu`, `memoryPercent`, `memoryAvailable`, `memoryUsed`, `notifications`, `arrayFree`, `arrayUsedSpace`, `arrayUsedPercent`, `status`, `pool1UsedSpace`, `pool1FreeSpace`, `pool1UsedPercent`, `pool2UsedSpace`, `pool2FreeSpace`, `pool2UsedPercent`, `pool3UsedSpace`, `pool3FreeSpace`, `pool3UsedPercent`, `pool4UsedSpace`, `pool4FreeSpace`, `pool4UsedPercent`. The widget shows them in the order you list them, up to 4. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `cpu`, `memoryPercent`, `memoryAvailable`, `memoryUsed`, `notifications`, `arrayFree`, `arrayUsedSpace`, `arrayUsedPercent`, `status`, `pool1UsedSpace`, `pool1FreeSpace`, `pool1UsedPercent`, `pool2UsedSpace`, `pool2FreeSpace`, `pool2UsedPercent`, `pool3UsedSpace`, `pool3FreeSpace`, `pool3UsedPercent`, `pool4UsedSpace`, `pool4FreeSpace`, `pool4UsedPercent`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_unraid_key` | `HOMEPAGE_FILE_UNRAID_KEY: /run/secrets/homepage_unraid_key` | `{{HOMEPAGE_FILE_UNRAID_KEY}}` |
+
+For a second Unraid with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

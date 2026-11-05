@@ -1,5 +1,7 @@
 # Scrutiny
 
+Disk health. Passed, Failed, Unknown.
+
 Integration · type `scrutiny` · [Homepage documentation](https://gethomepage.dev/widgets/services/scrutiny/)
 
 [All widgets](README.md)
@@ -15,7 +17,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://scrutiny.host.or.ip`. |
-| Visible fields | `fields` | List | Choices: `passed`, `failed`, `unknown`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `passed`, `failed`, `unknown`. Leave unset for its usual fields. |
 
 ## Examples
 

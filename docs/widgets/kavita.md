@@ -1,5 +1,7 @@
 # Kavita
 
+Comics and books server. Series, Files.
+
 Integration · type `kavita` · [Homepage documentation](https://gethomepage.dev/widgets/services/kavita/)
 
 [All widgets](README.md)
@@ -20,7 +22,18 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Username | `username` | Text | Example: `username`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `seriesCount`, `totalFiles`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `seriesCount`, `totalFiles`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_kavita_password` | `HOMEPAGE_FILE_KAVITA_PASSWORD: /run/secrets/homepage_kavita_password` | `{{HOMEPAGE_FILE_KAVITA_PASSWORD}}` |
+| API key | `homepage_kavita_key` | `HOMEPAGE_FILE_KAVITA_KEY: /run/secrets/homepage_kavita_key` | `{{HOMEPAGE_FILE_KAVITA_KEY}}` |
+
+For a second Kavita with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

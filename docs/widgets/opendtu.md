@@ -1,5 +1,7 @@
 # OpenDTU
 
+Solar inverter monitoring. Today, Power %, Power, Limit.
+
 Integration · type `opendtu` · [Homepage documentation](https://gethomepage.dev/widgets/services/opendtu/)
 
 [All widgets](README.md)
@@ -15,7 +17,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://opendtu.host.or.ip`. |
-| Visible fields | `fields` | List | Choices: `yieldDay`, `relativePower`, `absolutePower`, `limit`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `yieldDay`, `relativePower`, `absolutePower`, `limit`. Leave unset for its usual fields. |
 
 ## Examples
 

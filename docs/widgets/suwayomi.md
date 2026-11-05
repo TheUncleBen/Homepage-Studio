@@ -1,5 +1,7 @@
 # Suwayomi
 
+Manga server. Downloaded, read and unread chapters.
+
 Integration · type `suwayomi` · [Homepage documentation](https://gethomepage.dev/widgets/services/suwayomi/)
 
 [All widgets](README.md)
@@ -20,7 +22,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Username | `username` | Text | Example: `username`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Category | `category` | Number | Example: `0`. |
-| Visible fields | `fields` | List | Choices: `download`, `nondownload`, `read`, `unread`, `downloadedread`, `downloadedunread`, `nondownloadedread`, `nondownloadedunread`. The widget shows them in the order you list them, up to 4. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `download`, `nondownload`, `read`, `unread`, `downloadedread`, `downloadedunread`, `nondownloadedread`, `nondownloadedunread`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_suwayomi_password` | `HOMEPAGE_FILE_SUWAYOMI_PASSWORD: /run/secrets/homepage_suwayomi_password` | `{{HOMEPAGE_FILE_SUWAYOMI_PASSWORD}}` |
+
+For a second Suwayomi with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

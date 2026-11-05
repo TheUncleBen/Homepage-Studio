@@ -1,5 +1,7 @@
 # Homebridge
 
+Smart home bridge. Updates, Child Bridges.
+
 Integration · type `homebridge` · [Homepage documentation](https://gethomepage.dev/widgets/services/homebridge/)
 
 [All widgets](README.md)
@@ -19,7 +21,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Service URL | `url` | Text | Example: `http://homebridge.host.or.ip:port`. |
 | Username | `username` | Text | Example: `username`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `updates`, `child_bridges`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `updates`, `child_bridges`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_homebridge_password` | `HOMEPAGE_FILE_HOMEBRIDGE_PASSWORD: /run/secrets/homepage_homebridge_password` | `{{HOMEPAGE_FILE_HOMEBRIDGE_PASSWORD}}` |
+
+For a second Homebridge with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

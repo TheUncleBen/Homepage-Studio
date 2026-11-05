@@ -1,5 +1,7 @@
 # Jellyseerr
 
+Media requests. Pending, Approved, Available, Completed, Processing, Open Issues.
+
 Integration · type `jellyseerr` · [Homepage documentation](https://gethomepage.dev/widgets/services/)
 
 [All widgets](README.md)

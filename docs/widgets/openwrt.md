@@ -1,5 +1,7 @@
 # OpenWrt
 
+Router. Status, Transmitted, Received, Uptime, CPU Load Avg (5m).
+
 Integration · type `openwrt` · [Homepage documentation](https://gethomepage.dev/widgets/services/openwrt/)
 
 [All widgets](README.md)
@@ -63,6 +65,16 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Username | `username` | Text | Example: `homepage`. |
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Interface Name | `interfaceName` | Text | Example: `eth0`. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_openwrt_password` | `HOMEPAGE_FILE_OPENWRT_PASSWORD: /run/secrets/homepage_openwrt_password` | `{{HOMEPAGE_FILE_OPENWRT_PASSWORD}}` |
+
+For a second OpenWrt with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

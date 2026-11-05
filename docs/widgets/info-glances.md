@@ -1,5 +1,7 @@
 # Glances
 
+CPU, memory, disks and more from a Glances server.
+
 Information widget · type `glances` · [Homepage documentation](https://gethomepage.dev/widgets/info/glances/)
 
 [All widgets](README.md)
@@ -32,6 +34,16 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Disk Units | `diskUnits` | Text | Example: `bytes`. |
 | Expanded | `expanded` | On/off | Example: `true`. |
 | Label | `label` | Text | Example: `MyMachine`. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| Password | `homepage_glances_password` | `HOMEPAGE_FILE_GLANCES_PASSWORD: /run/secrets/homepage_glances_password` | `{{HOMEPAGE_FILE_GLANCES_PASSWORD}}` |
+
+For a second Glances with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

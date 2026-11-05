@@ -1,5 +1,7 @@
 # Resources
 
+CPU, memory, disk and more where Studio runs.
+
 Information widget · type `resources` · [Homepage documentation](https://gethomepage.dev/widgets/info/resources/)
 
 [All widgets](README.md)

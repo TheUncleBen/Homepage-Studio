@@ -1,5 +1,7 @@
 # Spoolman
 
+3D printer filament. The filament left on each spool.
+
 Integration · type `spoolman` · [Homepage documentation](https://gethomepage.dev/widgets/services/spoolman/)
 
 [All widgets](README.md)

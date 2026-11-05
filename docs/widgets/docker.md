@@ -1,5 +1,7 @@
 # Docker
 
+Docker container. CPU, MEM, RX, TX.
+
 Integration · type `docker` · [Homepage documentation](https://gethomepage.dev/widgets/services/)
 
 [All widgets](README.md)

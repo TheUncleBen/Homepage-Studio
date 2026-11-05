@@ -548,6 +548,7 @@ export default function ContentEditor({
               docs={selectedEntry?.docs}
               guide={selectedEntry?.guide}
               setupNotes={selectedEntry?.setupNotes}
+              secrets={selectedEntry?.secrets}
               name={selectedEntry?.name}
               connections={kind === "serviceWidget" || kind === "informationWidget"}
               testable={kind === "serviceWidget" && (source?.type || selectedEntry?.type || true)}

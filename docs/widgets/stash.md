@@ -1,5 +1,7 @@
 # Stash
 
+Media organiser. Scenes, Scenes Played, Total Plays, Time Watched, Scenes Size, Scenes Duration and 8 more.
+
 Integration · type `stash` · [Homepage documentation](https://gethomepage.dev/widgets/services/stash/)
 
 [All widgets](README.md)
@@ -20,7 +22,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://stash.host.or.ip`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
-| Visible fields | `fields` | List | Choices: `scenes`, `scenesPlayed`, `playCount`, `playDuration`, `sceneSize`, `sceneDuration`, `images`, `imageSize`, `galleries`, `performers`, `studios`, `movies`, `tags`, `oCount`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `scenes`, `scenesPlayed`, `playCount`, `playDuration`, `sceneSize`, `sceneDuration`, `images`, `imageSize`, `galleries`, `performers`, `studios`, `movies`, `tags`, `oCount`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_stash_key` | `HOMEPAGE_FILE_STASH_KEY: /run/secrets/homepage_stash_key` | `{{HOMEPAGE_FILE_STASH_KEY}}` |
+
+For a second Stash with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 

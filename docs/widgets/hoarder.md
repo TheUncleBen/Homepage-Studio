@@ -1,5 +1,7 @@
 # Hoarder
 
+Bookmark manager. Bookmarks, Favorites, Archived, Highlights, Lists, Tags.
+
 Integration · type `hoarder` · [Homepage documentation](https://gethomepage.dev/widgets/services/)
 
 [All widgets](README.md)

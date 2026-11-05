@@ -1,5 +1,7 @@
 # Prometheus
 
+Monitoring. Targets Up, Targets Down, Total Targets.
+
 Integration · type `prometheus` · [Homepage documentation](https://gethomepage.dev/widgets/services/prometheus/)
 
 [All widgets](README.md)
@@ -15,7 +17,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Setting | YAML key | Type | Notes |
 | --- | --- | --- | --- |
 | Service URL | `url` | Text | Example: `http://prometheushost:port`. |
-| Visible fields | `fields` | List | Choices: `targets_up`, `targets_down`, `targets_total`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `targets_up`, `targets_down`, `targets_total`. Leave unset for its usual fields. |
 
 ## Examples
 

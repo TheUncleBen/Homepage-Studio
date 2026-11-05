@@ -588,31 +588,33 @@ Use the file form with a Docker secret for API keys and passwords: a value
 written straight into a widget stays in the snapshot history after you change
 it ([OPERATIONS.md](OPERATIONS.md#snapshots-and-secrets)).
 
-The names are yours, so the stack doesn't have them. To add one, for example
-a Proxmox token:
+The stack doesn't have them until you add them. Each widget's setup guide (in
+its dialog) and its page in [widgets/](widgets/README.md) give the exact names
+to use for each secret it takes. For example, Proxmox's token secret, which
+goes in its **Password** setting:
 
 1. Create the secret (Portainer **Secrets → Add secret**, or
-   `read -rs S && printf %s "$S" | docker secret create homepage_proxmox_token - ; unset S`).
+   `read -rs S && printf %s "$S" | docker secret create homepage_proxmox_password - ; unset S`).
 2. In the stack editor, add it next to the other secrets, both at the top level
    and on the service, and point a variable at it:
 
    ```yaml
    secrets:
      # ...the three Studio secrets...
-     homepage_proxmox_token:
+     homepage_proxmox_password:
        external: true
    services:
      studio:
        secrets:
          # ...the three Studio secrets...
-         - homepage_proxmox_token
+         - homepage_proxmox_password
        environment:
          # ...
-         HOMEPAGE_FILE_PROXMOX_TOKEN: /run/secrets/homepage_proxmox_token
+         HOMEPAGE_FILE_PROXMOX_PASSWORD: /run/secrets/homepage_proxmox_password
    ```
 
-3. Update the stack, then use `{{HOMEPAGE_FILE_PROXMOX_TOKEN}}` in the
-   widget's settings.
+3. Update the stack, then enter `{{HOMEPAGE_FILE_PROXMOX_PASSWORD}}` as the
+   widget's **Password**.
 
 Keep your additions when you paste a new bundle's stack at an update. One
 container serves every dashboard, so these values are available to all of

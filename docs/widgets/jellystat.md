@@ -1,5 +1,7 @@
 # Jellystat
 
+Jellyfin statistics. Songs, Movies, Episodes, Other.
+
 Integration · type `jellystat` · [Homepage documentation](https://gethomepage.dev/widgets/services/jellystat/)
 
 [All widgets](README.md)
@@ -19,7 +21,17 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Service URL | `url` | Text | Example: `http://jellystat.host.or.ip`. |
 | API key | `key` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Days | `days` | Number | Example: `30`. |
-| Visible fields | `fields` | List | Choices: `songs`, `movies`, `episodes`, `other`. The widget shows them in the order you list them. Leave unset for its usual fields. |
+| Visible fields | `fields` | List | Choices: `songs`, `movies`, `episodes`, `other`. Leave unset for its usual fields. |
+
+## Keeping its secrets out of the files
+
+Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets)) with exactly these names:
+
+| Setting | Docker secret | Environment variable | Enter in the setting |
+| --- | --- | --- | --- |
+| API key | `homepage_jellystat_key` | `HOMEPAGE_FILE_JELLYSTAT_KEY: /run/secrets/homepage_jellystat_key` | `{{HOMEPAGE_FILE_JELLYSTAT_KEY}}` |
+
+For a second Jellystat with different credentials, add a suffix such as `_2` to each name.
 
 ## Examples
 
