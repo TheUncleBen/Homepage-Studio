@@ -19,6 +19,7 @@ import { useBoardFocusOrder } from "./focus-order";
 import {
   addPage,
   clampRect,
+  columnsOfPage,
   firstPageId,
   freePageName,
   gapOf,
@@ -2646,8 +2647,21 @@ export default function StudioBoard({
                   startDeleting={Boolean(modal.deleting)}
                   pageId={currentPage}
                   wholeBoard={wholeBoard}
-                  renderPreview={(panel, override) => (
-                    <CardPreview panel={panel} data={renderedNativeData} override={override} />
+                  renderPreview={(panel, override, extra) => (
+                    <CardPreview
+                      panel={panel}
+                      data={renderedNativeData}
+                      override={override}
+                      // The desktop grid the widget sits on, as wide as it is
+                      // shown when editing on a desktop screen.
+                      grid={{
+                        width: layoutSize === "desktop" ? width : 1200,
+                        gap,
+                        columns: columnsOfPage(pages.find((item) => item.id === currentPage)),
+                      }}
+                    >
+                      {extra}
+                    </CardPreview>
                   )}
                   onSaved={savedContent}
                   onCancel={closeModal}

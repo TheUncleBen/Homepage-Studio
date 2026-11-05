@@ -3671,8 +3671,9 @@ svg.studio-chart-gauge {
 }
 /* The widget dialog shows a live preview beside its settings on wide
    screens (sticky under the dialog's header) and above them on narrow ones. */
+/* Board 24: the widget at its real size on top, its sections below. */
 .studio-dialog:has(.studio-widget-layout) {
-  width: min(1040px, calc(100vw - 32px));
+  width: min(820px, calc(100vw - 32px));
 }
 .studio-widget-layout {
   display: grid;
@@ -3686,6 +3687,38 @@ svg.studio-chart-gauge {
   display: grid;
   gap: 8px;
   align-content: start;
+}
+.studio-preview-resize {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--studio-accent) 18%, transparent);
+  color: var(--studio-accent);
+  cursor: nwse-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+.studio-preview-resize:focus-visible {
+  outline: 2px solid var(--studio-accent);
+  outline-offset: 2px;
+}
+.studio-preview-size {
+  margin: 0;
+  color: var(--studio-muted);
+  font-size: 13px;
+  text-align: center;
+}
+.studio-preview-size strong {
+  color: var(--studio-text);
+  font-variant-numeric: tabular-nums;
 }
 .studio-look-preview-label {
   color: var(--studio-muted);
@@ -3702,20 +3735,7 @@ svg.studio-chart-gauge {
   overflow: hidden;
   pointer-events: none;
 }
-@media (min-width: 900px) {
-  .studio-widget-layout {
-    grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
-    gap: 28px;
-    align-items: start;
-  }
-  .studio-look-preview {
-    position: sticky;
-    top: 100px;
-  }
-  .studio-card-preview.studio-panel {
-    justify-self: stretch;
-  }
-}
+
 .studio-value-list {
   display: grid;
   margin: 0;

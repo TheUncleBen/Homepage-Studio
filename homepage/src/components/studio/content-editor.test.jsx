@@ -311,6 +311,58 @@ describe("widget dialog sections", () => {
     expect(screen.getByLabelText("Name")).toBeVisible();
   });
 
+  it("resizes from the preview's corner, never below the smallest size, and saves it", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ revision: "r2", board }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ContentEditor
+        state={{
+          revision: "r1",
+          services: [],
+          groups: [],
+          bookmarks: [{ id: "bm-1", name: "Docs", group: "Links", config: { href: "https://docs.example.com/a" } }],
+        }}
+        catalog={{ service: [], info: [] }}
+        panel={board.panels[0]}
+        wholeBoard={board}
+        renderPreview={(panel, override, extra) => (
+          <section className="studio-card-preview">
+            <output data-testid="rect">{JSON.stringify(panel.rect)}</output>
+            {extra}
+          </section>
+        )}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+        onReload={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Desktop size/)).toHaveTextContent(
+      "6 × 2 Desktop size. Drag the corner to change it. Smallest: 5 × 2.",
+    );
+    const corner = screen.getByRole("button", { name: /^Resize/ });
+    fireEvent.keyDown(corner, { key: "ArrowLeft" });
+    fireEvent.keyDown(corner, { key: "ArrowLeft" });
+    expect(JSON.parse(screen.getByTestId("rect").textContent)).toMatchObject({ w: 5, h: 2 });
+    fireEvent.keyDown(corner, { key: "ArrowRight" });
+    fireEvent.keyDown(corner, { key: "ArrowRight" });
+    fireEvent.keyDown(corner, { key: "ArrowRight" });
+    fireEvent.keyDown(corner, { key: "ArrowDown" });
+    expect(corner).toHaveAccessibleName(/8 columns wide, 3 rows tall/);
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/studio/api/board");
+    expect(JSON.parse(init.body).board.panels[0].rect).toEqual({ x: 0, y: 0, w: 8, h: 3 });
+    vi.unstubAllGlobals();
+  });
+
   it("keeps Duplicate and Delete under Management", () => {
     renderBookmark();
     expect(screen.queryByRole("button", { name: "Duplicate" })).toBeNull();

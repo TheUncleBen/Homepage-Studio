@@ -80,14 +80,16 @@ export function useCardPresentation(panel, data, onEdit, onFullView) {
 }
 
 // A card on its own, outside the board: the widget dialog's live preview.
-export function CardPreview({ panel, data, override, renderNative: RenderNative = NativePanel }) {
+export function CardPreview({ panel, data, override, grid = {}, children, renderNative: RenderNative = NativePanel }) {
   const { card, attributes, colourStyle, backdrop } = useCardPresentation(panel, data, undefined);
-  // Drawn at the widget's own size on a typical 1200 px wide board.
+  // Drawn at the widget's own size on the board's own grid (board 24): its
+  // width, spacing and columns, or a typical 1200 px wide board.
   const rect = panel.rect || { w: 6, h: 4 };
-  const column = (1200 - (COLUMNS - 1) * GAP) / COLUMNS;
+  const { width = 1200, gap = GAP, columns = COLUMNS } = grid;
+  const column = (width - (columns - 1) * gap) / columns;
   const size = {
-    width: `min(100%, ${Math.round(rect.w * column + (rect.w - 1) * GAP)}px)`,
-    height: Math.min(rect.h * ROW_HEIGHT + (rect.h - 1) * GAP, 280),
+    width: `min(100%, ${Math.round(rect.w * column + (rect.w - 1) * gap)}px)`,
+    height: Math.min(rect.h * ROW_HEIGHT + (rect.h - 1) * gap, 520),
   };
   return (
     <section
@@ -105,6 +107,7 @@ export function CardPreview({ panel, data, override, renderNative: RenderNative 
           </CardLookContext.Provider>
         </div>
       </div>
+      {children}
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
 import useSWR from "swr";
 
 import { studioRequest } from "./api.mjs";
@@ -7,7 +7,17 @@ import { resolvedBehaviour, resolvedLook, widgetFields } from "./card-look";
 import ConfigForm, { LINK_FIELDS, SERVICE_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
-import { moveToPage, pageOf, pagesOf } from "./geometry.mjs";
+import {
+  gridColumns,
+  mergePage,
+  moveToPage,
+  pageBoard,
+  pageOf,
+  pagesOf,
+  resizeUnit,
+  ROW_HEIGHT,
+  unitMinimum,
+} from "./geometry.mjs";
 import Guide from "./guide";
 import { loadIndex } from "./icon-chooser";
 import { builtInIconUrl } from "./icon-source.mjs";
@@ -27,6 +37,59 @@ export function customApiMappingsMissing(type, config) {
   if (mappings === undefined || mappings === null || mappings === "") return true;
   if (Array.isArray(mappings)) return mappings.length === 0;
   return typeof mappings === "object" && Object.keys(mappings).length === 0;
+}
+
+// The preview's corner: drag it, or use the arrow keys on it, to change the
+// widget's size in grid steps, never below its smallest size.
+function ResizeCorner({ rect, minimum, columns, onChange, describedBy }) {
+  const clamp = (w, h) => ({
+    w: Math.max(Math.min(minimum.w, columns), Math.min(columns, w)),
+    h: Math.max(minimum.h, Math.min(200, h)),
+  });
+  const start = (event) => {
+    const card = event.currentTarget.closest(".studio-card-preview");
+    if (!card) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    // One grid step in pixels, read from the card as drawn.
+    const box = card.getBoundingClientRect();
+    const stepX = box.width / rect.w || 40;
+    const stepY = box.height / rect.h || ROW_HEIGHT;
+    const from = { x: event.clientX, y: event.clientY, ...rect };
+    const move = (moveEvent) => {
+      const next = clamp(
+        from.w + Math.round((moveEvent.clientX - from.x) / stepX),
+        from.h + Math.round((moveEvent.clientY - from.y) / stepY),
+      );
+      onChange((current) => (current.w === next.w && current.h === next.h ? current : { ...current, ...next }));
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  };
+  const key = (event) => {
+    const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    onChange((current) => ({ ...current, ...clamp(current.w + step[0], current.h + step[1]) }));
+  };
+  return (
+    <button
+      type="button"
+      className="studio-preview-resize"
+      aria-label={`Resize: ${rect.w} columns wide, ${rect.h} rows tall. Arrow keys change it.`}
+      aria-describedby={describedBy}
+      onPointerDown={start}
+      onKeyDown={key}
+    >
+      <StudioIcon name="resize" size={14} />
+    </button>
+  );
 }
 
 // The host of an address, for a section's summary ("pfsense.home.arpa").
@@ -276,6 +339,11 @@ export default function ContentEditor({
   const [behaviour, setBehaviour] = useState(boardPanel?.behaviour);
   const [page, setPage] = useState(initialPage);
   const [savedLooks, setSavedLooks] = useState(wholeBoard?.looks || []);
+  // Its desktop size, changed by dragging the preview's corner (board 24). A
+  // widget in a stack takes the stack's size, so it has none of its own here.
+  const initialRect = boardPanel && !stacked ? boardPanel.rect : null;
+  const [rect, setRect] = useState(initialRect);
+  const rectChanged = Boolean(initialRect) && (rect.w !== initialRect.w || rect.h !== initialRect.h);
   // The formats of this widget's numbers (from Studio's collector), so Show
   // as offers only the charts its data supports.
   const { data: chartProbe } = useSWR(
@@ -288,6 +356,7 @@ export default function ContentEditor({
     (JSON.stringify(look ?? null) !== JSON.stringify(boardPanel.look ?? null) ||
       JSON.stringify(behaviour ?? null) !== JSON.stringify(boardPanel.behaviour ?? null) ||
       page !== initialPage ||
+      rectChanged ||
       JSON.stringify(savedLooks) !== JSON.stringify(wholeBoard.looks || []));
   const nextBoard = () => {
     let next = {
@@ -299,6 +368,12 @@ export default function ContentEditor({
         return { ...rest, ...(look ? { look } : {}), ...(behaviour ? { behaviour } : {}) };
       }),
     };
+    // Only the resized widget moves, to the nearest free space if it no
+    // longer fits where it is; the others stay put.
+    if (rectChanged) {
+      const resized = resizeUnit(pageBoard(next, initialPage), boardPanel.id, { ...initialRect, ...rect });
+      next = mergePage(next, resized);
+    }
     if (page !== initialPage) next = moveToPage(next, boardPanel.id, page);
     return next;
   };
@@ -325,6 +400,7 @@ export default function ContentEditor({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(null);
   const [deleting, setDeleting] = useState(startDeleting);
+  const sizeNoteId = useId();
   // One section open at a time (board 24). A new item opens on its settings;
   // an existing one opens with everything summarised.
   const [openSection, setOpenSection] = useState(startDeleting ? "manage" : panel ? null : "settings");
@@ -578,6 +654,7 @@ export default function ContentEditor({
             {renderPreview(
               {
                 ...boardPanel,
+                ...(rect ? { rect } : {}),
                 look,
                 behaviour,
                 title: kind === "service" || kind === "bookmark" ? name || boardPanel.title : boardPanel.title,
@@ -586,7 +663,26 @@ export default function ContentEditor({
               kind === "service" || kind === "bookmark"
                 ? { name: name || boardPanel.title, href: draft.href, description: draft.description, icon: draft.icon }
                 : null,
+              rect && (
+                <ResizeCorner
+                  rect={rect}
+                  minimum={unitMinimum(wholeBoard, boardPanel.id)}
+                  columns={gridColumns(pageBoard(wholeBoard, initialPage))}
+                  onChange={setRect}
+                  describedBy={sizeNoteId}
+                />
+              ),
             )}
+            {rect && (
+              <p className="studio-preview-size" id={sizeNoteId}>
+                <strong>
+                  {rect.w} × {rect.h}
+                </strong>{" "}
+                Desktop size. Drag the corner to change it. Smallest: {unitMinimum(wholeBoard, boardPanel.id).w} ×{" "}
+                {unitMinimum(wholeBoard, boardPanel.id).h}.
+              </p>
+            )}
+            {stacked && <p className="studio-preview-size">In a stack, it takes the stack&apos;s size.</p>}
           </aside>
         )}
         <div className="studio-widget-settings">
