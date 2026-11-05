@@ -107,14 +107,25 @@ A new dashboard is empty. In the editor it shows a short note, *A clean
 slate*, and an **Add your first widget** button. To split a dashboard into
 sections, add pages (below).
 
-The board is a 24-column grid of 36 px rows. In a narrower window (or a
-tablet) it shows the same layout on 16 columns, and on a phone on 8, keeping
-the order you see from left to right and top to bottom. On 16 columns every
-panel is half or full width: up to half the desktop width becomes half, wider
-becomes full width. Two halves share a line, so a row of three becomes two and
-then one, and each line is filled. On a phone every tile takes the full width,
-one under the other. There is one layout, not one per screen size: a move you
-make on a phone or in a narrow window is a move on the desktop too.
+The board is a grid of 36 px rows: 24 columns on a desktop, 16 on a tablet
+and 8 on a phone. Each size has its own layout, made from the desktop one:
+
+- Until you move or resize a widget on a tablet or phone, that size follows
+  desktop, in desktop's reading order. On a tablet a widget up to half the
+  desktop width takes half the width and a wider one the full width; on a
+  phone small widgets pair up at half width and the rest take the full width.
+- Once you move or resize a widget on that size, the size keeps your
+  arrangement, position and size, for every widget on it. Desktop never moves
+  because of a tablet or phone change.
+- A widget is still one widget with one set of settings on every size. Its
+  position and size belong to the layout, not to the widget.
+
+The editing bar's **Desktop**, **Tablet** and **Phone** switch shows the board
+at that size's real width, with small pictures of the other sizes beside it
+(select one to switch to it). Under the bar a tablet or phone says whether it
+*Follows desktop until you move or resize a widget here* or is *your
+arrangement*, with **Follow desktop again** to go back to following desktop.
+A widget added later goes at the end of a size you arranged.
 
 ### Pages
 
@@ -122,22 +133,29 @@ A dashboard can have up to 20 pages, shown as tabs under the top bar. Each
 widget and stack belongs to one page. In the editor, **Add page** adds one,
 and a page's **⋯** menu renames, reorders, duplicates (with copies of every
 widget on it) or deletes it. Keys <kbd>1</kbd> to <kbd>9</kbd> go to a page,
-and <kbd>[</kbd> and <kbd>]</kbd> to the previous or next one. **Dashboard
+and <kbd>[</kbd> and <kbd>]</kbd> to the previous or next one.
+
+A page's **⋯** menu also chooses its grid: **Even grid, 24 columns** or
+**Centred grid, 25 columns**, which has a middle column so a widget can sit
+exactly in the centre. While you drag, a centre line shows and widgets snap
+to it, and a widget's menu has **Centre in row**. **Dashboard
 settings → Widget defaults** says whether the dashboard opens on its first
 page or the one you last looked at.
 
 ## Adding content
 
-In the editor, **Widgets** opens *Add to your dashboard*. Search, or pick a category:
+In the editor, **Widgets** opens *Add to your dashboard*. Search, or pick a tab:
 
-| Category | What you get |
+| Tab | What you get |
 | --- | --- |
-| **Integrations** | One native service widget (Sonarr, Proxmox, AdGuard, ...), placed on its own |
+| **All** | Everything below, in one list |
+| **Integrations** | One native service widget (Sonarr, Proxmox, AdGuard, ...), each with a line on what the app is and the values it shows |
 | **Information** | An information widget: date and time, greeting, weather, search, resources, stocks and the rest of Homepage's list |
-| **Services** | A service tile: a link to an app, with Homepage's status and statistics |
-| **Bookmarks** | A compact link |
+| **Links** | A service tile (a link to an app, with Homepage's status check) or a bookmark (a compact link) |
+| **Saved** | Your [saved widgets](#saved-widgets), for administrators |
 
-Pick one, fill in its options, and save. The form lists what the native
+Pick one, fill in its options, and save. **Back** in the dialog returns to
+the list with your search and tab as they were. The form lists what the native
 widget accepts, with an info button on any setting that needs explaining and
 **Setting up …** underneath: what the service needs, from Homepage's
 documentation. The [widget reference](widgets/README.md) has the same for
@@ -146,6 +164,11 @@ first free spot on the board, and the save makes a snapshot you can go back to.
 
 Studio's own copies of the [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons)
 logos ship with it, so built-in logos show without internet access.
+
+Every widget is its own entry. Adding the same integration twice makes two
+independent widgets (*pfSense*, *pfSense 2*), and **Duplicate** makes an
+independent copy; there is no group or service to choose, and a widget's
+name, link and status check are edited with it.
 
 Information widgets are titled by their native name, numbered when you have
 more than one of a kind in configuration order: *Date & Time*, *Date & Time 2*.
@@ -160,8 +183,8 @@ hold, right-click or drag there only does what the widget itself does.
 ### Touch
 
 - So that controls don't cover what your widgets show, a widget shows its
-  checkbox, **move handle**, **edit** button and **resize corner** only after
-  you tap it. Tapping another widget moves them there; tapping empty space
+  select box (top left), **move handle** and **edit** button (top right) and
+  **resize corner** only after you tap it. Tapping another widget moves them there; tapping empty space
   hides them.
 - **Hold** a widget to open its menu (Edit, Duplicate, look, Move to page,
   Delete and more).
@@ -175,9 +198,10 @@ puts the panel back.
 
 ### Mouse and keyboard
 
-- A widget shows its checkbox, **move handle**, **edit** button and **resize
-  corner** while the pointer is on it, while it has keyboard focus, or while
-  it's selected. Drag the move handle or the corner. **Right-click** a widget
+- A widget shows its select box (top left), **move handle** and **edit**
+  button (top right) and **resize corner** while the pointer is on it, while
+  it has keyboard focus, or while it's selected. A selected widget has an
+  accent edge and a filled box. Drag the move handle or the corner. **Right-click** a widget
   for its menu. Each stack has the same checkbox (**Select stack**).
 - <kbd>Shift</kbd>-click or <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-click widgets, drag a
   box on empty space, or press <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>A</kbd> to
@@ -194,27 +218,32 @@ puts the panel back.
   a keyboard).
 
 Panels snap to the grid and can't overlap. Content has a minimum size, so a
-panel won't shrink below what its widget needs.
+panel won't shrink below what its widget needs. Resizing moves only the
+widget you resize: if it no longer fits where it is, it moves to the nearest
+free space and the others stay put. When a widget has more values than fit,
+the last ones fold away and the card says **+N more**; make it bigger to see
+them. Values never scroll inside a card.
 
-### Saving or cancelling
+### Saving, undo and redo
 
 The editing bar along the top holds **Widgets** (add one), **Tidy up**,
-**Undo** and **Redo** on the left, and **Save**, **Cancel** and **Done** on the
-right, with **Unsaved changes** beside them while there are any. On a phone the
-left-hand buttons show icons only.
+**Undo**, **Redo** and the size switch on the left, and **Done** on the right.
+On a phone the left-hand buttons show icons only.
 
-- **Save** (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd>) saves and keeps you
-  in the editor.
-- **Done** saves and goes back to the Dashboards page.
-- **Cancel** goes back to the Dashboards page. If you have moves, sizes or stacks that aren't
-  saved, it first asks **Discard unsaved changes?** with **Keep editing**
-  (selected, and what <kbd>Escape</kbd> does) and **Discard changes**. With
-  nothing unsaved it goes straight away.
+- Every move, resize, page change and look change **saves by itself** a
+  moment later. Beside **Done** the bar says *Saving…*, *Saved*, or *Not saved
+  yet, retrying* while Studio can't be reached; your changes stay in the tab
+  and save when it can.
+- **Undo** and **Redo** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd>,
+  <kbd>Ctrl</kbd> + <kbd>Y</kbd> or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> +
+  <kbd>Shift</kbd> + <kbd>Z</kbd>) step back and forward through everything
+  done since you opened the editor, widget changes and deletes included.
+- Deleting one widget happens at once, with **Undo** in the message.
+- **Done** waits for the last save and goes back to the Dashboards page.
 
-If someone else saved the same dashboard while you were arranging it, the save
-is refused rather than overwriting their change. Your arrangement stays on
-screen; reloading the current configuration discards it, so you'd repeat your
-moves after the reload.
+If someone else changes the same dashboard while you're arranging it, both
+changes are kept: a widget they removed drops out of your arrangement and one
+they added keeps its place, or moves to free space.
 
 ## Stacks and slideshows
 
@@ -300,13 +329,30 @@ used after a manual change.
 
 ## Changing what a panel shows
 
-In the editor, a panel's **edit** button opens it with two tabs:
+In the editor, a panel's **edit** button opens its dialog. The widget is drawn
+at the top at its real desktop size, on the board's own grid; drag its
+corner (or focus the corner and use the arrow keys) to change that size,
+never below the smallest the widget needs. A widget in a stack keeps the
+stack's size. Under the widget, its **Name** stays at the top and the rest is
+in sections, one open at a time, each with a short summary when closed:
 
-- **Options**: the connection (address, key, version), the fields it shows,
-  and the common native options. **Visible fields** starts with one switch,
-  **Use the widget's default fields**, turned on. Turn it off to pick which of
-  the widget's fields to show and set their order; turning it back on clears
-  your picks. **Version**, on widgets
+| Section | What it holds |
+| --- | --- |
+| **Connection** (**Settings** or **Details** for widgets without one) | The settings below. It says *Needs a fix* when one is wrong |
+| **Values and charts** | Which values show, in what order, and how ([How a widget looks](#how-a-widget-looks)) |
+| **Look** | Background, colour, edge, corners, header and [saved looks](#saved-looks) |
+| **Status and behaviour** (**Link** while adding) | The link, the status check, refresh, what a click does and whether it shows on phones |
+| **Page** | The page it's on |
+| **Management** | **Duplicate**, **Save as a saved widget** and **Delete** |
+| **Setting up …** | What the service needs, from Homepage's documentation, with each secret's exact Docker secret name, variable and `{{HOMEPAGE_FILE_...}}` reference and **Copy** buttons |
+
+The settings have two tabs:
+
+- **Options**: the connection (address, key, version) and the common native
+  options. Once a widget has shown its values, which ones it shows is
+  chosen in **Values and charts**; before that (while adding one), **Values it
+  includes** starts with one switch, **Its usual set**, turned on. Turn it off
+  to pick the widget's fields and their order. **Version**, on widgets
   that speak to more than one release of their app, is a choice between the
   releases Homepage documents, such as *Before 2025.8.0* and *2025.8.0 or
   later*; leaving it as it is keeps Homepage's default.
@@ -323,7 +369,7 @@ line 12, column 3.* when a save is refused. The message never repeats the text
 of the line, so a secret on that line doesn't end up on screen or in a log. A
 draft with a mistake stays open for you to fix; the saved file isn't touched.
 
-**Delete** in the same dialog asks *Delete ...?* with **Keep it** (selected)
+**Delete**, under **Management**, asks *Delete ...?* with **Keep it** (selected)
 and **Delete permanently**. On a phone the question scrolls into view.
 
 ### Saved connections and Test connection
@@ -343,7 +389,7 @@ address's certificate isn't trusted by Studio.*
 
 ### How a widget looks
 
-The widget dialog shows a live preview beside its settings. **Look** sets its
+The widget at the top of the dialog is a live preview. **Look** sets its
 background, colour, edge, corners, header and size of the hero number;
 **Status** chooses the check (web address, ping or off) and how it shows;
 **Behaviour** sets refresh, what a click does and whether it shows on phones.
@@ -355,8 +401,14 @@ didn't choose otherwise.
 an integration, shows a bar for each status check (about one a minute, the
 last hour) and the share of checks that were up over a range you choose.
 
-**Show** lists the values the widget showed last. Pick the hero, hide what you
-don't need, rename a value or change how its number reads. **Show as** draws
+**Values and charts** lists every value the integration provides, including
+ones it isn't showing yet, in your order. Each value is **Hero**, **Below** or
+**Hidden** (with a hero), **Shown** or **Hidden**, or on a chart **Chart**,
+**Number** (beside the chart) or **Hidden**. Showing, hiding or reordering a
+value keeps the widget's own `fields` list in step, so the YAML always says
+what the card shows. A pie or donut never uses a total as a slice. You can
+also rename a value or change how its number reads. Inside a Studio card
+Homepage's limit of four values doesn't apply. **Show as** draws
 the numbers as **Numbers**, a **Table**, a **Line**, **Area** or **Bar**
 chart, a **Donut**, a **Pie** or a **Gauge**, offering only the ones the
 widget's numbers suit. Charts have a **Time range** and a colour per line.
@@ -371,6 +423,32 @@ history**, 30 by default). A new chart says *Collecting numbers* until it has
 some. Select a line, area or bar chart to open it full size, with other time ranges
 and the exact values under your pointer. While editing, the widget's menu has
 **Open full view** (<kbd>Space</kbd>).
+
+### Saved looks
+
+**Look** lists saved looks under a button that names the look in use (or
+*None picked*); choose one to apply it. With more than four there is a search.
+**Save this look…** asks for a name and **Who can use it**: **Just me** (you,
+on every dashboard you edit) or **This dashboard** (everyone who edits it).
+**Manage saved looks** renames, **Update**s (to this widget's look) or deletes
+them. After an update, if other widgets on the dashboard use that look,
+Studio asks whether to update them too (**Leave them** or **Update them**).
+
+### Saved widgets
+
+**Management → Save as a saved widget** keeps a widget's configuration to
+place again: its type, settings, values, look, link, status check and any
+saved connection it uses. Never its size or place, which belong to each
+layout. **Who can use it** is **Just me**, **This dashboard** or **Everyone**
+(the whole Studio). Saving and placing saved widgets is for administrators,
+because a widget's settings can hold keys.
+
+Saved widgets are listed under **Saved** in *Add to your dashboard*, with their
+type and who can use them; choosing one adds it as a new, independent
+widget, bringing the saved connections it uses. **Manage saved widgets**
+there renames or deletes them. Their settings and keys stay on the server;
+the browser only gets their names and types. A dashboard's own saved widgets
+are copied when it is duplicated, and travel with its export.
 
 ## Configuration files
 
@@ -453,6 +531,13 @@ Administrators manage dashboards from the **Dashboards** page.
 | **⋯ → Who can open it** | Opens **Administration → Dashboard access** |
 | **⋯ → Archive** | Takes it off line after you confirm. Its files and snapshots are kept and its address stays reserved |
 | **Restore** (under *Archived*) | Brings an archived dashboard back as it was |
+| **Delete** (under *Archived*) | Deletes it for good, with its files, snapshots and sharing, once you type its name. Its address becomes free |
+
+An archived dashboard is deleted automatically 30 days after it was archived.
+Under *Archived*, administrators choose **7 days**, **30 days**, **90 days** or
+**Never**; each archived row says when it will go (*Archived 2 Nov · deleted
+automatically on 2 Dec*) or that it's kept until you delete it. Studio checks
+once an hour.
 
 - An address is one path segment of 1 to 64 lowercase letters, numbers and
   inner hyphens: `https://homepage.example.test/family`. A few names used by

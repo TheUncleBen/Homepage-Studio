@@ -134,9 +134,12 @@ the state root, others in `dashboards/<id>/`):
 | Image library | `images/` and `images/images.json` | Logos (PNG, JPEG, WebP or SVG, up to 256 KiB each) and backgrounds (up to 3 MiB each); at most 200 images and 60 MiB per library. SVG goes through the same checks as dashboard logos (`server/dashboard-logo.mjs`). An image in use asks before it is deleted. |
 | Saved connections | `studio-connections.json` (mode 0600) | Up to 100 named service addresses with an optional key, username and password. See *Saved connections* below. |
 | Chart history | `history/<hash>.json` | One file per widget shown as a chart; see *Chart history*. Removed when the widget leaves the board. |
+| Saved widgets | `studio-library.json` (mode 0600) | Up to 100 widgets saved for *This dashboard*; see *Saved widgets* below. This dashboard's saved looks stay in the board. |
 
-Each signed-in person has `people/<user id>/` under the state root: images and
-connections saved *Just me*, and their preferences. It is removed with the
+Each signed-in person has `people/<user id>/` under the state root: images,
+connections, saved widgets and up to 30 saved looks kept *Just me*
+(`studio-library.json`), and their preferences. Widgets saved for *Everyone*
+are in `studio-shared-library.json` in the state root. It is removed with the
 account. Using a personal image or connection on a dashboard copies it into
 that dashboard, so a dashboard never depends on an account.
 
@@ -156,6 +159,22 @@ Backups**, `node server/backups.mjs`) copy the state volume, so they contain
 the keys in plain text too, as does any copy of the volume: keep backups as
 safe as the keys themselves. A dashboard's export lists each connection's name
 and address but never its keys; importing it asks for the keys again.
+
+### Saved widgets
+
+A saved widget is a widget's configuration only: its kind and type, its
+settings, name, link and status check, look and behaviour. Never its size or
+place, which belong to each dashboard's layout for each size. The server reads
+it from the widget on the board, so keys typed into a widget never pass
+through the browser, and the API gives a browser only a saved widget's name
+and type. One saved for *Just me* or *Everyone* also carries the saved
+connections it uses, keys included, because those are kept per dashboard;
+placing it on another dashboard copies them there (a connection with the same
+name already there is refused rather than replaced). Saved widgets have the
+same plain-text storage as saved connections. Saving, listing and placing
+them is administrator-only; anyone who may arrange a dashboard can keep saved
+looks *Just me*. A dashboard's export carries its saved widgets without any
+connection keys.
 
 ### Test connection
 

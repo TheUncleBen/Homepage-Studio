@@ -183,3 +183,6 @@ image needs its own scan.
   `no-new-privileges`, which `docker stack deploy` does not support. A read-only
   root filesystem is not yet qualified.
 - Studio sign-in decides access, enforced in the controller with default deny; see [architecture](docs/ARCHITECTURE.md#address-and-trust-model) and [AUTHENTICATION.md](docs/AUTHENTICATION.md).
+- Deleting an archived dashboard, by hand or after its retention time, removes
+  its files, snapshots, saved widgets and sharing for good. Only a
+  whole-deployment backup taken before then can bring it back.
