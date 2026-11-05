@@ -63,6 +63,7 @@ COPY homepage/src/utils/config/yaml-parser.mjs ./homepage/src/utils/config/yaml-
 COPY homepage/src/components/studio/appearance.mjs ./homepage/src/components/studio/appearance.mjs
 COPY homepage/src/components/studio/look.mjs ./homepage/src/components/studio/look.mjs
 COPY homepage/src/components/studio/geometry.mjs ./homepage/src/components/studio/geometry.mjs
+COPY homepage/src/components/studio/layouts.mjs ./homepage/src/components/studio/layouts.mjs
 COPY homepage/src/components/studio/backgrounds.mjs ./homepage/src/components/studio/backgrounds.mjs
 COPY homepage/src/components/studio/languages.mjs ./homepage/src/components/studio/languages.mjs
 COPY homepage/src/components/studio/playback.mjs ./homepage/src/components/studio/playback.mjs

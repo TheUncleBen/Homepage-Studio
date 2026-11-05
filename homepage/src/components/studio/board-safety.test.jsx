@@ -312,7 +312,9 @@ describe("Native board save and draft safety", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument();
   });
-  it("moves a projected mobile row upward from the keyboard while retaining the native input", async () => {
+  // Owner decision, 4 Nov 2026: the phone has its own layout, so arrow keys
+  // move a widget one cell on it, as on desktop, and desktop is untouched.
+  it("moves a widget on the phone layout from the keyboard while retaining the native input", async () => {
     const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(354);
     try {
       await mountBoard();
@@ -322,7 +324,7 @@ describe("Native board save and draft safety", () => {
         screen.getByRole("button", { name: "Move Search. Use arrow keys; Shift and arrow keys resize." }),
         { key: "ArrowUp" },
       );
-      expect(input.closest("section").style.top).toBe("0px");
+      expect(input.closest("section").style.top).toBe("240px");
       expect(screen.getByLabelText("Native state search")).toBe(input);
       expect(screen.getByText("Saving…", { exact: true })).toBeInTheDocument();
     } finally {
@@ -413,7 +415,9 @@ describe("Native board save and draft safety", () => {
     await waitFor(() => expect(write).toHaveBeenCalledTimes(2));
     expect(write.mock.calls[1][1].revision).toBe("after");
     expect(write.mock.calls[1][1].board.panels[0].rect.y).toBeGreaterThan(body.board.panels[0].rect.y);
-    await act(async () => gates[1].resolve({ ...initialState, board: write.mock.calls[1][1].board, revision: "after-2" }));
+    await act(async () =>
+      gates[1].resolve({ ...initialState, board: write.mock.calls[1][1].board, revision: "after-2" }),
+    );
     await waitFor(() => expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument());
     expect(native.closest("section").style.cssText).toBe(latest);
     expect(screen.getByLabelText("Native state clock")).toBe(native);

@@ -4744,3 +4744,75 @@ svg.studio-chart-gauge {
   min-width: 0;
   padding: 4px 6px;
 }
+
+/* ---- A layout for each size (board 22) --------------------------------- */
+.studio-segmented > button[aria-pressed="true"] {
+  background: var(--studio-surface);
+  box-shadow: 0 1px 4px #0003;
+  font-weight: 600;
+}
+.studio-size-switch > button {
+  min-width: 0;
+}
+.studio-size-status {
+  margin: -4px 0 12px;
+  color: var(--studio-muted);
+  font-size: 13px;
+}
+.studio-size-previews {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: fixed;
+  right: 24px;
+  top: 160px;
+  z-index: 20;
+}
+@media (max-width: 1279px) {
+  .studio-size-previews {
+    display: none;
+  }
+}
+.studio-size-preview {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--studio-line);
+  border-radius: 12px;
+  background: var(--studio-surface);
+  color: var(--studio-text);
+  text-align: left;
+}
+.studio-size-preview:hover {
+  border-color: var(--studio-accent-line);
+}
+.studio-size-preview-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--studio-muted);
+}
+.studio-size-preview-canvas {
+  position: relative;
+  overflow: hidden;
+}
+.studio-size-preview-unit {
+  position: absolute;
+  overflow: hidden;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--studio-accent) 16%, var(--studio-surface));
+  font-size: 9px;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Centred grid (board 23): the middle line while a widget moves. */
+.studio-centre-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--studio-accent);
+  pointer-events: none;
+  z-index: 5;
+}

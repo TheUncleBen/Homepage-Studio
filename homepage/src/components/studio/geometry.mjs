@@ -1,6 +1,13 @@
 // 24 columns of 36 px rows (owner-approved board 18): steps half as big as
 // before, so a card can fit its content exactly.
 export const COLUMNS = 24;
+// A page with a centred grid has 25, so there is a true middle column
+// (owner-approved board 23, 4 Nov 2026).
+export const CENTRED_COLUMNS = 25;
+export const columnsOfPage = (page) => (page?.grid === "centred" ? CENTRED_COLUMNS : COLUMNS);
+// The columns of the grid a board view is laid out on: a page's own grid on
+// desktop, or a tablet or phone layout's.
+export const gridColumns = (board) => board?.gridColumns ?? COLUMNS;
 export const ROW_HEIGHT = 36;
 export const GAP = 12;
 // Dashboard Appearance › Spacing: the space between widgets, in pixels.
@@ -43,12 +50,15 @@ export function unitMinimum(board, id) {
   };
 }
 
-function fitMinimum(rect, minimum) {
-  return clampRect({
-    ...rect,
-    w: Math.max(rect.w, minimum.w),
-    h: Math.max(rect.h, minimum.h),
-  });
+function fitMinimum(rect, minimum, columns = COLUMNS) {
+  return clampRect(
+    {
+      ...rect,
+      w: Math.max(rect.w, Math.min(columns, minimum.w)),
+      h: Math.max(rect.h, minimum.h),
+    },
+    columns,
+  );
 }
 
 export function clampRect(rect = {}, columns = COLUMNS) {
@@ -155,14 +165,15 @@ export function moveUnit(board, id, rect) {
   const units = unitsForBoard(board);
   const moved = units.find((unit) => unit.id === id);
   if (!moved) return board;
-  moved.rect = fitMinimum(clampRect(rect), unitMinimum(board, id));
+  const columns = gridColumns(board);
+  moved.rect = fitMinimum(clampRect(rect, columns), unitMinimum(board, id), columns);
   // The manipulated unit has priority. Push intersecting neighbors downward deterministically.
   const placed = [moved];
   units
     .filter((unit) => unit.id !== id)
     .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id))
     .forEach((unit) => {
-      let candidate = clampRect(unit.rect);
+      let candidate = clampRect(unit.rect, columns);
       let collisions = placed.filter((other) => intersects(candidate, other.rect));
       while (collisions.length) {
         candidate = {
@@ -177,144 +188,128 @@ export function moveUnit(board, id, rect) {
   return applyRectangles(board, rectangles);
 }
 
-export function moveProjectedUnit(board, id, delta, projection) {
+// Resizing changes only the widget being resized (owner-approved board 21,
+// 4 Nov 2026): when its new size overlaps another widget it moves to the
+// nearest free space that fits; the others never move.
+export function resizeUnit(board, id, rect) {
   const units = unitsForBoard(board);
-  const moved = units.find((unit) => unit.id === id);
-  if (!moved) return board;
-  const destination = { ...moved.rect, x: moved.rect.x + delta.x, y: moved.rect.y + delta.y };
-  if (projection.columns === COLUMNS) return moveUnit(board, id, destination);
-  const ordered = [...projection.units].sort(
-    (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
-  );
-  const from = ordered.findIndex((unit) => unit.id === id);
-  if (from < 0) return board;
-  const start = ordered[from].rect;
-  const target = { x: start.x + start.w / 2 + (delta.x * projection.columns) / COLUMNS, y: start.y + delta.y };
-  const distance = (unit) => Math.hypot(target.x - unit.rect.x - unit.rect.w / 2, target.y - unit.rect.y);
-  const nearest = ordered.reduce((a, b) => (distance(a) <= distance(b) ? a : b));
-  const to = ordered.indexOf(nearest);
-  // A sideways drag reorders only within its projected row: at 8 columns a
-  // wrapped row no longer sits at its canonical x, so moving onto a neighbour
-  // swaps reading order instead of shifting the canonical rect.
-  if (
-    from === to ||
-    (!delta.y && nearest.rect.y !== start.y) ||
-    Math.abs(target.y - nearest.rect.y) > nearest.rect.h / 2
-  )
-    return moveUnit(board, id, destination);
-
-  // A narrow layout can project several desktop columns into successive rows.
-  // Reuse the crossed units' canonical slots so moving upward still changes the
-  // shared layout, even when every original unit already has canonical y = 0.
-  const canonical = new Map(units.map((unit) => [unit.id, unit]));
-  const slots = ordered.map((unit) => canonical.get(unit.id).rect);
-  const reordered = [...ordered];
-  reordered.splice(to, 0, ...reordered.splice(from, 1));
-  const placed = [];
-  reordered.forEach((unit, index) => {
-    const original = canonical.get(unit.id);
-    const slot = slots[index];
-    let rect = fitMinimum({ ...original.rect, x: slot.x, y: slot.y }, unitMinimum(board, unit.id));
-    let collisions = placed.filter((other) => intersects(rect, other.rect));
-    while (collisions.length) {
-      rect = { ...rect, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
-      collisions = placed.filter((other) => intersects(rect, other.rect));
+  const resized = units.find((unit) => unit.id === id);
+  if (!resized) return board;
+  const columns = gridColumns(board);
+  const wanted = fitMinimum(clampRect(rect, columns), unitMinimum(board, id), columns);
+  const others = units.filter((unit) => unit.id !== id).map((unit) => unit.rect);
+  const fits = (candidate) => !others.some((other) => intersects(candidate, other));
+  let placed = fits(wanted) ? wanted : null;
+  if (!placed) {
+    const bottom = Math.max(0, ...others.map((other) => other.y + other.h));
+    let best = null;
+    for (let y = 0; y <= bottom; y += 1) {
+      for (let x = 0; x + wanted.w <= columns; x += 1) {
+        const candidate = { ...wanted, x, y };
+        if (!fits(candidate)) continue;
+        const distance = Math.hypot(x - wanted.x, (y - wanted.y) * 2);
+        if (!best || distance < best.distance) best = { rect: candidate, distance };
+      }
     }
-    placed.push({ ...original, rect });
-  });
-  const candidate = applyRectangles(board, new Map(placed.map((unit) => [unit.id, unit.rect])));
-  const visible = projectColumns(candidate, projection.columns).units.sort(
-    (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
-  );
-  if (visible.every((unit, index) => unit.id === reordered[index].id)) return candidate;
-
-  // Different widths can push an earlier slot below an untouched later slot.
-  // A narrow projection shows units in canonical reading order (see
-  // projectColumns), so repair by keeping each unit's canonical top-left after
-  // the previous unit's; settling only moves a unit further down.
-  placed.length = 0;
-  reordered.forEach((unit, index) => {
-    const original = canonical.get(unit.id);
-    const slot = slots[index];
-    let rect = fitMinimum({ ...original.rect, x: slot.x, y: slot.y }, unitMinimum(board, unit.id));
-    const prior = placed.at(-1)?.rect;
-    if (prior && !readsBefore(prior, rect)) rect = { ...rect, y: prior.y + (rect.x <= prior.x ? 1 : 0) };
-    let collisions = placed.filter((other) => intersects(rect, other.rect));
-    while (collisions.length) {
-      rect = { ...rect, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
-      collisions = placed.filter((other) => intersects(rect, other.rect));
-    }
-    placed.push({ ...original, rect });
-  });
-  return applyRectangles(board, new Map(placed.map((unit) => [unit.id, unit.rect])));
+    placed = best?.rect ?? { ...wanted, x: 0, y: bottom };
+  }
+  return applyRectangles(board, new Map([[id, placed]]));
 }
 
-// Project both canonical edges with the same rounding rule so units that share
-// a canonical edge share a projected edge. Rounding x and w independently
-// staggered 8-column rows and pushed adjacent tiles down.
-function projectEdge(edge, columns) {
-  return Math.round((edge * columns) / COLUMNS);
+// Project both edges with the same rounding rule so units that share an edge
+// share a projected edge. Rounding x and w independently staggered rows.
+function projectEdge(edge, columns, from) {
+  return Math.round((edge * columns) / from);
 }
 
 // On tablets panels snap to halves: a panel up to half the desktop width is
 // half the tablet width, a wider one is full width. Rows therefore fill the
 // board two-up instead of leaving a narrow strip, and a desktop row of three
-// becomes two, then one (see projectColumns). On phones every unit is full width.
+// becomes two, then one (see tabletLayout).
 const HALF = TABLET_COLUMNS / 2;
-function projectHalves(rect) {
-  if (rect.w > COLUMNS / 2) return { ...rect, x: 0, w: 2 * HALF };
-  const left = Math.min(HALF, Math.round(projectEdge(rect.x, TABLET_COLUMNS) / HALF) * HALF);
+function projectHalves(rect, from) {
+  if (rect.w * 2 > from) return { ...rect, x: 0, w: 2 * HALF };
+  const left = Math.min(HALF, Math.round(projectEdge(rect.x, TABLET_COLUMNS, from) / HALF) * HALF);
   return { ...rect, x: left, w: HALF };
 }
 
-function projectRect(rect, columns) {
-  if (columns === COLUMNS) return rect;
-  if (columns === TABLET_COLUMNS) return projectHalves(rect);
-  return clampRect({ ...rect, x: 0, w: columns }, columns);
-}
+const byReadingOrder = (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id);
 
-// Narrow projections reflow in reading order (left to right, then top to
-// bottom). Units are taken in canonical reading order. Each keeps its projected
-// column and canonical row when that spot is free and still reads after the
-// unit placed before it, so tiles that fit side by side stay side by side on
-// shared edges. Otherwise it wraps: it takes the first free spot, scanning
-// rows from the previous unit's row and each row from the left, that reads
-// after the previous unit. On tablets a row of three third-width tiles becomes
-// two then one; on phones every unit is full width, so each one simply
-// follows the last. The desktop board is shown as stored.
-function projectColumns(board, columns) {
-  const units = unitsForBoard(board).sort(
-    (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
-  );
+// Tablet: units reflow in reading order (left to right, then top to
+// bottom). Each keeps its half and its desktop row when that spot is free
+// and still reads after the unit placed before it, so tiles that fit side by
+// side stay side by side. Otherwise it wraps to the first free spot after
+// the previous unit.
+function tabletLayout(board) {
+  const from = gridColumns(board);
+  const columns = TABLET_COLUMNS;
   const placed = [];
   const free = (rect) => !placed.some((other) => intersects(rect, other.rect));
-  units.forEach((unit) => {
-    const raw = fitMinimum(clampRect(unit.rect), unitMinimum(board, unit.id));
-    let rect = projectRect(raw, columns);
-    const previous = placed.at(-1)?.rect;
-    if (columns < COLUMNS && previous && (!free(rect) || readsBefore(rect, previous))) {
-      wrap: for (let y = previous.y; ; y += 1) {
-        for (let x = y === previous.y ? previous.x + 1 : 0; x + rect.w <= columns; x += 1) {
-          if (free({ ...rect, x, y })) {
-            rect = { ...rect, x, y };
-            break wrap;
+  unitsForBoard(board)
+    .sort(byReadingOrder)
+    .forEach((unit) => {
+      const raw = fitMinimum(clampRect(unit.rect, from), unitMinimum(board, unit.id), from);
+      let rect = clampRect(projectHalves(raw, from), columns);
+      const previous = placed.at(-1)?.rect;
+      if (previous && (!free(rect) || readsBefore(rect, previous))) {
+        wrap: for (let y = previous.y; ; y += 1) {
+          for (let x = y === previous.y ? previous.x + 1 : 0; x + rect.w <= columns; x += 1) {
+            if (free({ ...rect, x, y })) {
+              rect = { ...rect, x, y };
+              break wrap;
+            }
           }
         }
       }
-    }
-    // The canonical desktop board is disjoint; push any stray overlap down.
-    {
       let collisions = placed.filter((other) => intersects(rect, other.rect));
       while (collisions.length) {
-        rect = {
-          ...rect,
-          y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)),
-        };
+        rect = { ...rect, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
         collisions = placed.filter((other) => intersects(rect, other.rect));
       }
+      placed.push({ ...unit, rect });
+    });
+  return placed;
+}
+
+// Phone (owner-approved board 22): widgets keep their desktop reading order
+// on two columns. One up to a quarter of the desktop width takes half the
+// phone width, so small widgets sit side by side; wider ones take the full
+// width. A half-width widget with no small neighbour to pair with takes the
+// full width instead of leaving a gap, and two side by side share a height.
+export const isSmallOnPhone = (rect, from = COLUMNS) => rect.w * 4 <= from;
+function phoneLayout(board) {
+  const from = gridColumns(board);
+  const half = PHONE_COLUMNS / 2;
+  const units = unitsForBoard(board)
+    .sort(byReadingOrder)
+    .map((unit) => ({ unit, rect: fitMinimum(clampRect(unit.rect, from), unitMinimum(board, unit.id), from) }));
+  const placed = [];
+  let y = 0;
+  for (let index = 0; index < units.length; index += 1) {
+    const { unit, rect } = units[index];
+    const next = units[index + 1];
+    if (isSmallOnPhone(rect, from) && next && isSmallOnPhone(next.rect, from)) {
+      const h = Math.max(rect.h, next.rect.h);
+      placed.push({ ...unit, rect: { x: 0, y, w: half, h } });
+      placed.push({ ...next.unit, rect: { x: half, y, w: half, h } });
+      y += h;
+      index += 1;
+      continue;
     }
-    placed.push({ ...unit, rect });
-  });
+    placed.push({ ...unit, rect: { x: 0, y, w: PHONE_COLUMNS, h: rect.h } });
+    y += rect.h;
+  }
+  return placed;
+}
+
+export function generatedUnits(board, columns) {
+  if (columns === TABLET_COLUMNS) return tabletLayout(board);
+  if (columns === PHONE_COLUMNS) return phoneLayout(board);
+  return unitsForBoard(board);
+}
+
+function projectColumns(board, columns) {
+  const placed = generatedUnits(board, columns);
   return {
     columns,
     units: placed,
@@ -323,7 +318,7 @@ function projectColumns(board, columns) {
 }
 
 export function projectBoard(board, width) {
-  return projectColumns(board, width < PHONE_WIDTH ? PHONE_COLUMNS : width < 940 ? TABLET_COLUMNS : COLUMNS);
+  return projectColumns(board, width < PHONE_WIDTH ? PHONE_COLUMNS : width < 940 ? TABLET_COLUMNS : gridColumns(board));
 }
 
 export function pixelRect(rect, width, columns = COLUMNS, gap = GAP) {
@@ -341,11 +336,14 @@ export function stackBoard(board, panelIds, id) {
   const panels = board.panels.filter((panel) => panelIds.includes(panel.id) && !existingMembers.has(panel.id));
   if (panels.length < 2) return board;
   const origin = panels.reduce((a, b) => (a.rect.y < b.rect.y ? a : b));
-  const rect = clampRect({
-    ...origin.rect,
-    w: Math.max(...panels.map((panel) => panel.rect.w)),
-    h: Math.max(...panels.map((panel) => panel.rect.h)),
-  });
+  const rect = clampRect(
+    {
+      ...origin.rect,
+      w: Math.max(...panels.map((panel) => panel.rect.w)),
+      h: Math.max(...panels.map((panel) => panel.rect.h)),
+    },
+    gridColumns(board),
+  );
   return moveUnit(
     {
       ...board,
@@ -396,6 +394,7 @@ export function pageBoard(board, pageId = firstPageId(board)) {
   return {
     ...board,
     pageId,
+    gridColumns: columnsOfPage(board?.pages?.find((page) => page.id === pageId)),
     panels: board.panels.filter(onPage),
     stacks: board.stacks.filter(onPage),
   };
@@ -411,7 +410,7 @@ export function mergePage(board, view) {
     ...view.stacks.map((stack) => ({ ...stack, pageId })),
   ];
   const next = { ...board, panels, stacks };
-  delete next.pageId;
+  for (const key of ["pageId", "gridColumns", "layoutSize", "desktopColumns"]) delete next[key];
   return next;
 }
 

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import useSWR from "swr";
 
 import { endEditSession, newEditSession, studioRequest } from "./api.mjs";
-import { rebaseBoard } from "./rebase.mjs";
 import AppearanceOnlyEditor from "./appearance-only-editor";
 import { PageBackgroundEditor } from "./background-picker";
 import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm, widgetCount } from "./bulk-bar";
@@ -20,24 +19,21 @@ import { useBoardFocusOrder } from "./focus-order";
 import {
   addPage,
   clampRect,
-  COLUMNS,
   firstPageId,
   freePageName,
   gapOf,
+  gridColumns,
   MAX_PAGES,
-  mergePage,
   movePage,
-  moveProjectedUnit,
   moveToPage,
   moveUnit,
   pageBoard,
   pageFromHash,
   pageHash,
   panelMinimum,
-  PHONE_WIDTH,
   pixelRect,
-  projectBoard,
   removePage,
+  resizeUnit,
   ROW_HEIGHT,
   snapGuides,
   stackBoard,
@@ -47,14 +43,27 @@ import {
   updatePage,
 } from "./geometry.mjs";
 import StudioIcon from "./icons";
+import {
+  centreInRow,
+  followDesktop,
+  followsDesktop,
+  mergeSizeView,
+  setPageGrid,
+  SIZE_WIDTH,
+  sizeForWidth,
+  sizeProjection,
+  sizeView,
+} from "./layouts.mjs";
 import { CHART_SHOWS, needsHistory, readLook, statusColours } from "./look.mjs";
 import Menu from "./menu";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
 import PanelHost, { CardPreview, useCardPresentation } from "./panel-host";
 import { useReducedMotion } from "./preferences";
+import { rebaseBoard } from "./rebase.mjs";
 import StudioSearch from "./search";
 import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
+import { SizePreview, SizeStatus, SizeSwitch } from "./size-switch";
 import StackEditor, { PositionEditor } from "./stack-editor";
 import StackShell from "./stack-shell";
 import StudioTopBar, { DASHBOARDS_PAGE } from "./top-bar";
@@ -373,6 +382,16 @@ export default function StudioBoard({
   const [lastMatchedNative, setLastMatchedNative] = useState(null);
   const [active, setActive] = useState({});
   const [width, setWidth] = useState(1200);
+  // The editor's size switch (board 22): null shows the screen's own size.
+  const [editSize, setEditSize] = useState(null);
+  // Whether the screen is wide enough to show the switch (a desktop screen).
+  const [screenWidth, setScreenWidth] = useState(() => (typeof window === "undefined" ? 1280 : window.innerWidth));
+  useEffect(() => {
+    const measure = () => setScreenWidth(window.innerWidth);
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+  const sizeSwitchShown = sizeForWidth(screenWidth) === "desktop";
   const [moving, setMoving] = useState(null);
   const [stackTarget, setStackTarget] = useState(null);
   const [stackDrags, setStackDrags] = useState({});
@@ -475,7 +494,13 @@ export default function StudioBoard({
     (remembered && pages.some((page) => page.id === remembered) ? remembered : firstPageId(wholeBoard));
   // Everything below works on the current page; only its widgets mount, so
   // widgets on other pages don't poll their services.
-  const board = useMemo(() => pageBoard(wholeBoard, currentPage), [wholeBoard, currentPage]);
+  // The size being shown: the screen's own, or in the editor the one picked
+  // in its size switch. A tablet or phone view carries that size's layout.
+  const layoutSize = editing && editSize ? editSize : sizeForWidth(width);
+  const board = useMemo(
+    () => sizeView(pageBoard(wholeBoard, currentPage), layoutSize),
+    [wholeBoard, currentPage, layoutSize],
+  );
   // The page's own background, or the dashboard's (Appearance).
   const cardTheme = useCardTheme();
   const dashboardPageBackground = readLook({ background: settings?.studioTheme?.pageBackground }).background;
@@ -513,8 +538,8 @@ export default function StudioBoard({
   // On a phone, the live dashboard leaves out widgets set to hide on phones.
   // The editor keeps them so they can still be arranged.
   const projection = useMemo(
-    () => projectBoard(!editing && width < PHONE_WIDTH ? withoutPhoneHidden(board, settings) : board, width),
-    [board, width, editing, settings],
+    () => sizeProjection(!editing && layoutSize === "phone" ? withoutPhoneHidden(board, settings) : board, layoutSize),
+    [board, layoutSize, editing, settings],
   );
   const gap = gapOf(settings);
   const geometry = useMemo(
@@ -528,6 +553,15 @@ export default function StudioBoard({
     [projection],
   );
   useBoardFocusOrder(canvas, readingOrder);
+  // Names for the small pictures of the other sizes.
+  const unitTitles = useMemo(
+    () =>
+      new Map([
+        ...board.panels.map((panel) => [panel.id, panel.title]),
+        ...board.stacks.map((stack) => [stack.id, "Stack"]),
+      ]),
+    [board],
+  );
   const visibleIds = null;
 
   useEffect(() => {
@@ -624,7 +658,7 @@ export default function StudioBoard({
   const changeBoard = useCallback(
     (nextView, source, options) => {
       if (nextView === boardRef.current) return !nativeRefreshLock.current;
-      return commitWhole(mergePage(wholeRef.current, nextView), source, options);
+      return commitWhole(mergeSizeView(wholeRef.current, nextView), source, options);
     },
     [commitWhole],
   );
@@ -861,18 +895,19 @@ export default function StudioBoard({
     // Successful commits explicitly bypass the unsaved-draft dismissal guard.
     if (!details.stepped) dismissEditor();
     setSelection([]);
-    if (!details.stepped && !details.quiet) setNotice(
-      [
-        details.importNote,
-        details.customJsChanged
-          ? "Changes saved. Reload once to apply custom JavaScript."
-          : details.importNote
-            ? ""
-            : "Changes saved",
-      ]
-        .filter(Boolean)
-        .join(" "),
-    );
+    if (!details.stepped && !details.quiet)
+      setNotice(
+        [
+          details.importNote,
+          details.customJsChanged
+            ? "Changes saved. Reload once to apply custom JavaScript."
+            : details.importNote
+              ? ""
+              : "Changes saved",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
     if (details.customJsChanged) setReloadRequired(true);
     await refreshNativeContent();
   };
@@ -918,10 +953,12 @@ export default function StudioBoard({
   };
   const createStack = () => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
-    const next = stackBoard(board, selection, uuid());
-    if (next !== board) {
+    // A stack is made on the desktop layout; tablet and phone place it.
+    const desktop = pageBoard(wholeRef.current, currentPage);
+    const next = stackBoard(desktop, selection, uuid());
+    if (next !== desktop) {
       const stack = next.stacks.at(-1);
-      const members = board.panels.filter((panel) => stack.panelIds.includes(panel.id));
+      const members = desktop.panels.filter((panel) => stack.panelIds.includes(panel.id));
       if (members.some((panel) => panel.rect.w !== stack.rect.w || panel.rect.h !== stack.rect.h)) {
         setModal({
           type: "stack",
@@ -937,7 +974,7 @@ export default function StudioBoard({
       }
       changeBoard(next);
       setSelection([]);
-      setNotice("Stack created. Save the arrangement when ready.");
+      setNotice("Stack created.");
     }
   };
 
@@ -953,7 +990,7 @@ export default function StudioBoard({
     if (!unit) return;
     const element = event.currentTarget;
     element?.setPointerCapture?.(event.pointerId);
-    let initialProjection = projectBoard(initial, width);
+    let initialProjection = sizeProjection(initial, layoutSize);
     let column = (width + gap) / initialProjection.columns;
     // Dragging onto another page's tab: drop to send the widget to the end of
     // that page, or hold for a moment to open the page and place it exactly.
@@ -986,17 +1023,17 @@ export default function StudioBoard({
       pageDwell = setTimeout(() => {
         // Open the page under the pointer and carry the widget onto it.
         const moved = moveToPage(wholeRef.current, id, next);
-        initial = pageBoard(moved, next);
-        initialProjection = projectBoard(initial, width);
+        initial = sizeView(pageBoard(moved, next), layoutSize);
+        initialProjection = sizeProjection(initial, layoutSize);
         column = (width + gap) / initialProjection.columns;
         unit = unitsForBoard(initial).find((item) => item.id === id);
         const bounds = canvas.current.getBoundingClientRect();
-        const cellX = Math.floor(((point.x - bounds.left) / column) * (COLUMNS / initialProjection.columns));
+        const cellX = Math.floor((point.x - bounds.left) / column);
         const cellY = Math.max(0, Math.floor((point.y - bounds.top) / (ROW_HEIGHT + gap)));
         initial = moveUnit(initial, id, { ...unit.rect, x: Math.max(0, cellX), y: cellY });
         unit = unitsForBoard(initial).find((item) => item.id === id);
-        initialProjection = projectBoard(initial, width);
-        commitWhole(mergePage(moved, initial), undefined, { record: false, pageId: next });
+        initialProjection = sizeProjection(initial, layoutSize);
+        commitWhole(mergeSizeView(moved, initial), undefined, { record: false, pageId: next });
         latest = initial;
         lastCell = { dx: 0, dy: 0 };
         start.x = point.x;
@@ -1018,18 +1055,22 @@ export default function StudioBoard({
         });
         if (pageTarget) return;
       }
-      const dx = Math.round((((moveEvent.clientX - start.x) / column) * COLUMNS) / initialProjection.columns);
+      const dx = Math.round((moveEvent.clientX - start.x) / column);
       const dy = Math.round((moveEvent.clientY - start.y) / (ROW_HEIGHT + gap));
-      const rect = clampRect(
+      let rect = clampRect(
         mode === "resize"
           ? { ...unit.rect, w: unit.rect.w + dx, h: unit.rect.h + dy }
           : { ...unit.rect, x: unit.rect.x + dx, y: unit.rect.y + dy },
+        initialProjection.columns,
       );
+      // On a centred grid a widget near the middle snaps onto the centre line.
+      const columns = initialProjection.columns;
+      if (mode === "move" && columns % 2 === 1 && (columns - rect.w) % 2 === 0) {
+        const middle = (columns - rect.w) / 2;
+        if (Math.abs(rect.x - middle) <= 1) rect = { ...rect, x: middle };
+      }
       if (!lastCell || lastCell.dx !== dx || lastCell.dy !== dy) {
-        latest =
-          mode === "move"
-            ? moveProjectedUnit(initial, id, { x: dx, y: dy }, initialProjection)
-            : moveUnit(initial, id, rect);
+        latest = mode === "move" ? moveUnit(initial, id, rect) : resizeUnit(initial, id, rect);
         lastCell = { dx, dy };
         changeBoard(latest, undefined, { record: false });
       }
@@ -1110,7 +1151,8 @@ export default function StudioBoard({
             undefined,
             quiet,
           );
-        } else changeBoard(stackBoard(initial, [target.id, id], uuid()), undefined, quiet);
+        } else
+          changeBoard(stackBoard(pageBoard(initialWhole, initial.pageId), [target.id, id], uuid()), undefined, quiet);
         setSelection([]);
       } else changeBoard(latest, undefined, quiet);
       // One drag is one step to undo: it autosaves once, when it ends.
@@ -1172,49 +1214,8 @@ export default function StudioBoard({
           ? "h"
           : "y";
     const amount = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
-    if (key === "y" && projection.columns < COLUMNS) {
-      const projected = projection.units.find((item) => item.id === id);
-      const neighbor = projection.units
-        .filter(
-          (item) =>
-            item.id !== id &&
-            Math.sign(item.rect.y - projected.rect.y) === amount &&
-            item.rect.x < projected.rect.x + projected.rect.w &&
-            item.rect.x + item.rect.w > projected.rect.x,
-        )
-        .sort((a, b) => Math.abs(a.rect.y - projected.rect.y) - Math.abs(b.rect.y - projected.rect.y))[0];
-      const canonical = neighbor && unitsForBoard(board).find((item) => item.id === neighbor.id);
-      if (neighbor && (projected.rect.y !== unit.rect.y || neighbor.rect.y !== canonical.rect.y)) {
-        changeBoard(moveProjectedUnit(board, id, { x: 0, y: neighbor.rect.y - projected.rect.y }, projection));
-        return;
-      }
-    }
-    if (key === "x" && projection.columns < COLUMNS) {
-      // A narrow layout shows units in reading order, so Left and Right move
-      // one reading position, like a sideways drag, instead of shifting the
-      // desktop column (which can wrap the unit somewhere unexpected).
-      const ordered = [...projection.units].sort(
-        (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
-      );
-      const index = ordered.findIndex((item) => item.id === id);
-      const projected = ordered[index];
-      const neighbor = ordered[index + amount];
-      if (projected && neighbor) {
-        changeBoard(
-          moveProjectedUnit(
-            board,
-            id,
-            {
-              x: ((neighbor.rect.x - projected.rect.x) * COLUMNS) / projection.columns,
-              y: neighbor.rect.y - projected.rect.y,
-            },
-            projection,
-          ),
-        );
-      }
-      if (projected) return;
-    }
-    changeBoard(moveUnit(board, id, { ...unit.rect, [key]: unit.rect[key] + amount }));
+    const next = { ...unit.rect, [key]: unit.rect[key] + amount };
+    changeBoard(key === "w" || key === "h" ? resizeUnit(board, id, next) : moveUnit(board, id, next));
   };
   // People who can't arrange this dashboard are sent back from the editor and
   // settings pages. The settings page opens this dashboard's settings once
@@ -1337,6 +1338,10 @@ export default function StudioBoard({
     },
     icon: (page) => setModal({ type: "pageIcon", page }),
     background: (page) => setModal({ type: "pageBackground", page }),
+    grid: (page, grid) => {
+      if (commitWhole(setPageGrid(wholeRef.current, page.id, grid)))
+        showToast(grid === "centred" ? "Centred grid: 25 columns" : "Even grid: 24 columns", true);
+    },
     // Copies every widget on the page as real widgets (administrators only),
     // saved at once like any content change.
     duplicate: isAdmin
@@ -1666,7 +1671,24 @@ export default function StudioBoard({
       keepFocus: true,
       onSelect: () => setUnitMenu({ ...menu, pages: true }),
     };
-    if (stack) return [{ id: "edit", icon: "edit", label: "Edit stack", onSelect: () => editStack(stack) }, moveItem];
+    // Centred grid (board 23): the middle of its row, on desktop.
+    const centreItem = layoutSize === "desktop" &&
+      gridColumns(boardRef.current) % 2 === 1 && {
+        id: "centre",
+        icon: "grid",
+        label: "Centre in row",
+        onSelect: () => {
+          const next = centreInRow(boardRef.current, id);
+          if (!next) showToast("Its row has no free space in the middle.", false);
+          else if (next !== boardRef.current) changeBoard(next);
+        },
+      };
+    if (stack)
+      return [
+        { id: "edit", icon: "edit", label: "Edit stack", onSelect: () => editStack(stack) },
+        centreItem,
+        moveItem,
+      ];
     if (!panel) return [];
     const discovered = Boolean(panel.nativeLocator?.discovered);
     const canChange = isAdmin && !discovered;
@@ -1724,6 +1746,7 @@ export default function StudioBoard({
         shortcut: "R",
         onSelect: () => refreshNow([panel.id]),
       },
+      centreItem,
       moveItem,
       href && {
         id: "open",
@@ -1981,6 +2004,13 @@ export default function StudioBoard({
             <StudioIcon name="grid" size={16} />
             <span className="studio-edit-bar-label">Tidy up</span>
           </button>
+          {sizeSwitchShown && (
+            <SizeSwitch
+              size={layoutSize}
+              disabled={moving !== null}
+              onChange={(next) => setEditSize(next === "desktop" ? null : next)}
+            />
+          )}
           <button
             type="button"
             className="studio-icon-button"
@@ -2116,6 +2146,32 @@ export default function StudioBoard({
           </button>
         </div>
       )}
+      {editing && (
+        <SizeStatus
+          size={layoutSize}
+          follows={followsDesktop(wholeBoard, layoutSize)}
+          disabled={controlsDisabled}
+          onFollow={() => {
+            if (commitWhole(followDesktop(wholeRef.current, layoutSize)))
+              showToast(`The ${layoutSize} layout follows desktop again`, true);
+          }}
+        />
+      )}
+      {editing && sizeSwitchShown && editSize && (
+        <div className="studio-size-previews" aria-label="Other sizes">
+          {["desktop", "tablet", "phone"]
+            .filter((size) => size !== layoutSize)
+            .map((size) => (
+              <SizePreview
+                key={size}
+                view={pageBoard(wholeBoard, currentPage)}
+                size={size}
+                titles={unitTitles}
+                onChoose={() => setEditSize(size === "desktop" ? null : size)}
+              />
+            ))}
+        </div>
+      )}
       <div className="studio-status-message" role="status">
         {notice}
         {(refreshWarning || (envelope && nativeContentStale && !draftSourceChanged)) && (
@@ -2155,11 +2211,15 @@ export default function StudioBoard({
         }}
         onPointerDown={editing ? startMarquee : undefined}
         style={{
+          ...(editing && editSize ? { maxWidth: SIZE_WIDTH[editSize], marginInline: "auto" } : {}),
           height: board.panels.length ? projection.rows * (ROW_HEIGHT + gap) + 32 : 480,
           "--studio-grid-column": `${(width + gap) / projection.columns}px`,
           "--studio-grid-row": `${ROW_HEIGHT + gap}px`,
         }}
       >
+        {moving && projection.columns % 2 === 1 && (
+          <div className="studio-centre-guide" aria-hidden="true" style={{ left: width / 2 }} />
+        )}
         {moving &&
           snapGuides(geometry, moving).map((line) => (
             <div

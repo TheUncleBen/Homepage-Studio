@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { parseDocument, isMap, isSeq, isScalar } from 'yaml';
 import { MAX_PANELS, stableValue, reconcileIdentities, identityRecords, validateIdentityRecords, boardSources, reconcileBoard, validateStoredBoard, validateBoardChange, mergeBoardChange, nextPosition } from './board.mjs';
+import { columnsOfPage } from '../homepage/src/components/studio/geometry.mjs';
 import { validateDiscoveryManifest, validateStoredDiscoveredSources, validateHiddenDiscoveredIds, mergeDiscoveredSources } from './discovery.mjs';
 import { readNativeIndexingPolicy } from './indexing-policy.mjs';
 
@@ -1252,10 +1253,11 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       ...board.panels.filter((panel) => panel.pageId === pageId && !stacked.has(panel.id)).map((panel) => panel.rect),
       ...extra.filter((unit) => unit.pageId === pageId).map((unit) => unit.rect),
     ];
+    const columnsOn = (pageId) => columnsOfPage(board.pages.find((page) => page.id === pageId));
     const added = [];
     const stacks = [];
     for (const stack of board.stacks.filter((item) => item.panelIds.every((id) => idMap.has(id)))) {
-      const rect = nextPosition({ w: stack.rect.w, h: stack.rect.h }, occupied(stack.pageId, added));
+      const rect = nextPosition({ w: stack.rect.w, h: stack.rect.h }, occupied(stack.pageId, added), columnsOn(stack.pageId));
       const copy = { ...stack, id: `stack-${randomUUID()}`, rect, panelIds: stack.panelIds.map((id) => idMap.get(id)) };
       stacks.push(copy);
       added.push(copy);
@@ -1264,7 +1266,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const clones = board.panels.filter((panel) => idMap.has(panel.id)).map((panel) => {
       const id = idMap.get(panel.id);
       const owner = stacks.find((stack) => stack.panelIds.includes(id));
-      const rect = owner ? { ...owner.rect } : nextPosition({ w: panel.rect.w, h: panel.rect.h }, occupied(panel.pageId, added));
+      const rect = owner ? { ...owner.rect } : nextPosition({ w: panel.rect.w, h: panel.rect.h }, occupied(panel.pageId, added), columnsOn(panel.pageId));
       const clone = { ...panel, id, rect, pageId: owner ? owner.pageId : panel.pageId };
       if (!inStack.has(id)) added.push(clone);
       return clone;

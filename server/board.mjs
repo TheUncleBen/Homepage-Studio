@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { LookError, validateBehaviour, validateLook } from '../homepage/src/components/studio/look.mjs';
-import { panelMinimum } from '../homepage/src/components/studio/geometry.mjs';
+import { columnsOfPage, panelMinimum, PHONE_COLUMNS, TABLET_COLUMNS } from '../homepage/src/components/studio/geometry.mjs';
+import { arrivalRect } from '../homepage/src/components/studio/layouts.mjs';
 
 const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const digest = (v) => createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0, 24);
@@ -73,11 +74,29 @@ export function validateIdentityRecords(value, label) {
   return value;
 }
 
-export function rect(value, label = 'Panel') {
+export function rect(value, label = 'Panel', columns = BOARD_COLUMNS) {
   if (!object(value)) fail(`${label} requires grid position and dimensions.`);
   const { x, y, w, h } = value;
-  if (![x, y, w, h].every(Number.isSafeInteger) || x < 0 || y < 0 || w < 1 || h < 1 || w > BOARD_COLUMNS || x + w > BOARD_COLUMNS || y > 200000 || h > 2000) fail(`${label} has an invalid grid rectangle.`);
+  if (![x, y, w, h].every(Number.isSafeInteger) || x < 0 || y < 0 || w < 1 || h < 1 || w > columns || x + w > columns || y > 200000 || h > 2000) fail(`${label} has an invalid grid rectangle.`);
   return { x, y, w, h };
+}
+
+// A layout for each size (owner decision, 4 Nov 2026): tablet and phone
+// follow desktop until someone arranges them; then board.layouts[size] keeps
+// that size's rectangle for each unit (a widget not in a stack, or a stack).
+export const LAYOUT_COLUMNS = Object.freeze({ tablet: TABLET_COLUMNS, phone: PHONE_COLUMNS });
+function validateLayouts(value, unitIds) {
+  if (value == null) return undefined;
+  if (!object(value) || Object.keys(value).some((size) => !Object.hasOwn(LAYOUT_COLUMNS, size))) fail('The layouts for each size are not valid.');
+  const out = {};
+  for (const [size, units] of Object.entries(value)) {
+    if (!object(units)) fail('The layouts for each size are not valid.');
+    const kept = {};
+    // A unit that no longer exists is dropped; one without a place is placed.
+    for (const [id, area] of Object.entries(units)) if (unitIds.has(id)) kept[id] = rect(area, `The ${size} layout`, LAYOUT_COLUMNS[size]);
+    out[size] = kept;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 export function playback(value = {}) {
@@ -130,6 +149,10 @@ export function validatePages(value) {
     if (names.has(name.toLocaleLowerCase())) fail(`Two pages are called “${name}”. Page names must differ.`);
     names.add(name.toLocaleLowerCase());
     const out = { id: page.id, name };
+    if (page.grid !== undefined) {
+      if (page.grid !== 'even' && page.grid !== 'centred') fail('A page grid is even or centred.');
+      if (page.grid === 'centred') out.grid = 'centred';
+    }
     if (page.icon !== undefined) {
       if (typeof page.icon !== 'string' || !ICON.test(page.icon)) fail('A page icon is not valid.');
       out.icon = page.icon;
@@ -150,6 +173,7 @@ export function validateStoredBoard(value) {
   if (value.panels.length > MAX_PANELS || value.stacks.length > MAX_PANELS) fail('The dashboard contains too many panels.', 'CONFIG_SIZE_LIMIT');
   const pages = validatePages(value.pages);
   const pageIds = new Set(pages.map((page) => page.id));
+  const columnsOf = new Map(pages.map((page) => [page.id, columnsOfPage(page)]));
   const pageOf = (unit) => {
     if (unit.pageId === undefined) return pages[0].id;
     if (!pageIds.has(unit.pageId)) fail('A widget is on a page that does not exist.');
@@ -160,7 +184,8 @@ export function validateStoredBoard(value) {
     if (!object(p) || !idOK(p.id) || ids.has(p.id) || !kinds.has(p.kind)) fail('Panel identity is invalid or duplicated.');
     ids.add(p.id);
     const { look, behaviour } = lookOf(p, p.title ? `“${String(p.title).slice(0, 80)}”` : 'A widget');
-    const panel = { ...p, rect: rect(p.rect), pageId: pageOf(p) };
+    const pageId = pageOf(p);
+    const panel = { ...p, rect: rect(p.rect, 'Panel', columnsOf.get(pageId)), pageId };
     delete panel.look; delete panel.behaviour;
     if (look) panel.look = look;
     if (behaviour) panel.behaviour = behaviour;
@@ -175,17 +200,61 @@ export function validateStoredBoard(value) {
       if (!ids.has(id) || children.has(id)) fail('A stack contains a missing, repeated or already stacked panel.');
       children.add(id);
     }
-    return { id: s.id, panelIds: [...s.panelIds], rect: rect(s.rect, 'Stack'), pageId: pageOf(s), playback: playback(s.playback) };
+    const pageId = pageOf(s);
+    return { id: s.id, panelIds: [...s.panelIds], rect: rect(s.rect, 'Stack', columnsOf.get(pageId)), pageId, playback: playback(s.playback) };
   });
   // A stacked panel lives on its stack's page.
   for (const stack of stacks) for (const id of stack.panelIds) panels.find((p) => p.id === id).pageId = stack.pageId;
   const looks = validateSavedLooks(value.looks);
-  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages, panels, stacks, ...(looks.length ? { looks } : {}) };
+  const layouts = validateLayouts(value.layouts, unitIdsOf(panels, stacks));
+  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages, panels, stacks, ...(layouts ? { layouts } : {}), ...(looks.length ? { looks } : {}) };
+}
+
+function unitIdsOf(panels, stacks) {
+  const stacked = new Set(stacks.flatMap((s) => s.panelIds));
+  return new Set([...stacks.map((s) => s.id), ...panels.filter((p) => !stacked.has(p.id)).map((p) => p.id)]);
+}
+
+// Places every unit a stored size layout has no place for at the end of its
+// page on that size, so a widget added anywhere is on every size.
+function completeLayouts(board) {
+  if (!board.layouts) return board;
+  const stacked = new Set(board.stacks.flatMap((s) => s.panelIds));
+  const units = [...board.stacks, ...board.panels.filter((p) => !stacked.has(p.id))];
+  const columnsOf = new Map(board.pages.map((page) => [page.id, columnsOfPage(page)]));
+  const ids = new Set(units.map((unit) => unit.id));
+  const layouts = {};
+  for (const [size, stored] of Object.entries(board.layouts)) {
+    const placed = Object.fromEntries(Object.entries(stored).filter(([id]) => ids.has(id)));
+    const bottom = new Map();
+    for (const unit of units) if (placed[unit.id]) bottom.set(unit.pageId, Math.max(bottom.get(unit.pageId) ?? 0, placed[unit.id].y + placed[unit.id].h));
+    for (const unit of [...units].sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)) {
+      if (placed[unit.id]) continue;
+      const area = arrivalRect(unit.rect, size, columnsOf.get(unit.pageId));
+      const y = bottom.get(unit.pageId) ?? 0;
+      placed[unit.id] = { x: 0, y, w: area.w, h: area.h };
+      bottom.set(unit.pageId, y + area.h);
+    }
+    layouts[size] = placed;
+  }
+  return { ...board, layouts };
+}
+
+function layoutOverlaps(board) {
+  if (!board.layouts) return;
+  const stacked = new Set(board.stacks.flatMap((s) => s.panelIds));
+  const pageOfUnit = new Map([...board.stacks, ...board.panels.filter((p) => !stacked.has(p.id))].map((unit) => [unit.id, unit.pageId]));
+  for (const [size, stored] of Object.entries(board.layouts)) {
+    const entries = Object.entries(stored);
+    for (let i = 0; i < entries.length; i++) for (let j = i + 1; j < entries.length; j++) {
+      if (pageOfUnit.get(entries[i][0]) === pageOfUnit.get(entries[j][0]) && intersects(entries[i][1], entries[j][1])) fail(`Widgets overlap on the ${size} layout. Move the selected widget to a free grid position.`);
+    }
+  }
 }
 
 export function intersects(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
 
-function placementIndex(occupied) {
+function placementIndex(occupied, columns = BOARD_COLUMNS) {
   // Validated rectangles occupy at most 12 columns. Sparse row masks avoid an
   // allocation proportional to a distant persisted y coordinate per panel.
   const rows = new Map(), cursors = new Map();
@@ -202,18 +271,18 @@ function placementIndex(occupied) {
     return false;
   }
   function next(size) {
-    const w = Math.min(BOARD_COLUMNS, Math.max(1, size.w)), h = Math.max(1, size.h);
+    const w = Math.min(columns, Math.max(1, size.w)), h = Math.max(1, size.h);
     const key = `${w}:${h}`, cursor = cursors.get(key) ?? { x: 0, y: 0 };
     // Occupancy only grows during reconciliation. Positions rejected by an
     // earlier search of this size cannot become free, so retain its cursor.
     // Sliding column counts keep even a 1,000-row rectangle search bounded by
     // rows visited instead of rescanning its entire height at every position.
-    const counts = new Array(BOARD_COLUMNS).fill(0);
+    const counts = new Array(columns).fill(0);
     let blocked = 0;
     function adjustRow(y, delta) {
       const mask = rows.get(y) ?? 0;
       if (!mask) return;
-      for (let column = 0; column < BOARD_COLUMNS; column++) {
+      for (let column = 0; column < columns; column++) {
         const bit = 1 << column;
         if (!(mask & bit)) continue;
         counts[column] += delta;
@@ -224,7 +293,7 @@ function placementIndex(occupied) {
     for (let y = cursor.y; y < cursor.y + h; y++) adjustRow(y, 1);
     const widthMask = (1 << w) - 1;
     for (let y = cursor.y; y <= bottom; y++) {
-      for (let x = y === cursor.y ? cursor.x : 0; x <= BOARD_COLUMNS - w; x++) {
+      for (let x = y === cursor.y ? cursor.x : 0; x <= columns - w; x++) {
         if (!(blocked & (widthMask << x))) {
           cursors.set(key, { x, y });
           return { x, y, w, h };
@@ -238,7 +307,7 @@ function placementIndex(occupied) {
   return { add, overlaps, next };
 }
 
-export function nextPosition(size, occupied) { return placementIndex(occupied).next(size); }
+export function nextPosition(size, occupied, columns = BOARD_COLUMNS) { return placementIndex(occupied, columns).next(size); }
 
 // Native information widget display names, as listed in the shipped catalog.
 const INFO_WIDGET_NAMES = {
@@ -337,7 +406,7 @@ export function reconcileBoard(sources, previous, { pageId } = {}) {
     if (old?.look) panel.look = old.look;
     if (old?.behaviour) panel.behaviour = old.behaviour;
     if (!position) {
-      placement ??= placementIndex(occupied);
+      placement ??= placementIndex(occupied, columnsOfPage(pages.find((page) => page.id === target)));
       position = placement.next(newPanelSize(source));
       if (!stacked.has(source.id)) placement.add(position);
     }
@@ -351,9 +420,9 @@ export function reconcileBoard(sources, previous, { pageId } = {}) {
     const panel = panels.find((p) => p.id === survivors[0]);
     panel.pageId = old.pageId;
     const others = [...stacks.filter((s) => s.pageId === old.pageId).map((s) => s.rect), ...panels.filter((p) => p.id !== panel.id && !stacked.has(p.id) && p.pageId === old.pageId).map((p) => p.rect)];
-    panel.rect = others.some((r) => intersects(old.rect, r)) ? nextPosition(old.rect, others) : { ...old.rect };
+    panel.rect = others.some((r) => intersects(old.rect, r)) ? nextPosition(old.rect, others, columnsOfPage(pages.find((page) => page.id === old.pageId))) : { ...old.rect };
   }
-  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages, panels, stacks, ...(previous.looks ? { looks: previous.looks } : {}) };
+  return completeLayouts({ version: BOARD_VERSION, columns: BOARD_COLUMNS, pages, panels, stacks, ...(previous.layouts ? { layouts: previous.layouts } : {}), ...(previous.looks ? { looks: previous.looks } : {}) });
 }
 
 // An editor's arrangement, merged with content that changed underneath it
@@ -395,5 +464,7 @@ export function validateBoardChange(input, sources) {
   const stacked = new Set(value.stacks.flatMap((s) => s.panelIds));
   const units = [...value.stacks.map((s) => ({ id: s.id, rect: s.rect, pageId: s.pageId })), ...panels.filter((p) => !stacked.has(p.id)).map((p) => ({ id: p.id, rect: p.rect, pageId: p.pageId }))];
   for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) if (units[i].pageId === units[j].pageId && intersects(units[i].rect, units[j].rect)) fail('Dashboard panels overlap. Move the selected panel to a free grid position.');
-  return { version: BOARD_VERSION, columns: BOARD_COLUMNS, pages: value.pages, panels, stacks: value.stacks, ...(value.looks ? { looks: value.looks } : {}) };
+  const board = completeLayouts({ version: BOARD_VERSION, columns: BOARD_COLUMNS, pages: value.pages, panels, stacks: value.stacks, ...(value.layouts ? { layouts: value.layouts } : {}), ...(value.looks ? { looks: value.looks } : {}) });
+  layoutOverlaps(board);
+  return board;
 }

@@ -61,6 +61,16 @@ export function rebaseBoard(base, mine, theirs) {
   const pages = same(mine.pages, base.pages) ? theirs.pages : mine.pages;
   const next = { ...theirs, pages, panels, stacks: stacks.filter((stack) => kept.has(stack.id)) };
   if (!same(mine.looks, base.looks)) next.looks = mine.looks;
+  // A tablet or phone layout this draft arranged (or let follow desktop
+  // again) wins for that size; the server places anything new on it.
+  for (const size of ["tablet", "phone"]) {
+    if (same(mine.layouts?.[size], base.layouts?.[size])) continue;
+    const layouts = { ...next.layouts };
+    if (mine.layouts?.[size]) layouts[size] = mine.layouts[size];
+    else delete layouts[size];
+    if (Object.keys(layouts).length) next.layouts = layouts;
+    else delete next.layouts;
+  }
   return next;
 }
 
