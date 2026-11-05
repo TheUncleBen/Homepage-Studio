@@ -352,8 +352,26 @@ export default function PanelHost({
         }}
       >
         {backdrop}
-        {/* The card draws its own logo and name. While editing, a small bar
-            on top holds selection, move and edit. */}
+        {/* The card draws its own logo and name. While editing (board 21),
+            the select box sits in its top-left corner and Move and Edit at
+            the top right, in place of the response time, shown on hover,
+            tap, focus or selection. */}
+        {!stack && editing && (
+          // The label enlarges the touch target around the checkbox.
+          <label className="studio-select-target studio-select-corner">
+            <input
+              type="checkbox"
+              className="studio-select-input"
+              aria-label={`Select ${panel.title}`}
+              checked={Boolean(selected)}
+              disabled={busy}
+              onChange={() => onSelect(panel.id)}
+            />
+            <span className="studio-select-box" aria-hidden="true">
+              <StudioIcon name="check" size={13} />
+            </span>
+          </label>
+        )}
         {!stack && editing && (
           <header
             className="studio-panel-header"
@@ -368,18 +386,6 @@ export default function PanelHost({
               onLongPress?.(panel.id, { clientX: event.clientX, clientY: event.clientY });
             }}
           >
-            {editing && (
-              // The label enlarges the touch target around the native checkbox.
-              <label className="studio-select-target">
-                <input
-                  type="checkbox"
-                  aria-label={`Select ${panel.title}`}
-                  checked={Boolean(selected)}
-                  disabled={busy}
-                  onChange={() => onSelect(panel.id)}
-                />
-              </label>
-            )}
             <span className="studio-panel-title studio-sr-only">
               <small>{panel.group || (panel.kind === "informationWidget" ? "Information" : "Dashboard")}</small>
               <strong>{panel.title}</strong>

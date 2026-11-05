@@ -621,10 +621,10 @@ body {
 .studio-edit-mode .studio-panel {
   border-color: var(--studio-accent-line);
 }
+/* Selected (board 21): an accent edge on the card and a filled box. */
 .studio-panel.studio-selected {
   outline: 2px solid var(--studio-accent);
-  outline-offset: 3px;
-  box-shadow: 0 0 0 7px color-mix(in srgb, var(--studio-accent) 10%, transparent);
+  outline-offset: -1px;
 }
 .studio-panel.studio-moving {
   z-index: 8;
@@ -3595,36 +3595,98 @@ svg.studio-chart-gauge {
   font-size: 12px;
 }
 
-/* While editing, the card keeps its own header; Studio's controls float on top. */
+/* While editing (board 21), the card keeps its own header. Its controls sit
+   inside it: the select box in the top-left corner, Move and Edit at the
+   top right in place of the response time, shown on hover, tap, keyboard
+   focus or selection, so a resting card looks exactly like the live one. */
 .studio-edit-mode .studio-panel:not(.studio-stacked-panel) > .studio-panel-slide > .studio-panel-header {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 10px;
+  right: 10px;
   z-index: 3;
   min-height: 0;
-  padding: 3px;
-  gap: 2px;
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--studio-surface) 88%, transparent);
-  border: 1px solid var(--studio-line);
-  backdrop-filter: blur(6px);
+  padding: 0;
+  gap: 4px;
 }
 .studio-edit-mode .studio-panel-header .studio-icon-button {
   width: 30px;
   height: 30px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card-text, var(--studio-text)) 12%, transparent);
+  color: var(--card-text, var(--studio-text));
 }
-/* With a mouse, the controls show on the card under the pointer, the one
-   with keyboard focus and the selected ones, so they don't cover what the
-   other cards show. */
+.studio-edit-mode .studio-panel-header .studio-icon-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--card-text, var(--studio-text)) 20%, transparent);
+}
+.studio-select-target.studio-select-corner {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+}
+.studio-select-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.studio-select-box {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid color-mix(in srgb, var(--card-text, var(--studio-text)) 50%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--card-fill, var(--studio-surface)) 85%, transparent);
+  color: transparent;
+  pointer-events: none;
+}
+.studio-select-input:checked + .studio-select-box {
+  border-color: var(--studio-accent-solid, var(--studio-accent));
+  background: var(--studio-accent-solid, var(--studio-accent));
+  color: var(--studio-accent-contrast, #1a1b1d);
+}
+.studio-select-input:focus-visible + .studio-select-box {
+  outline: 2px solid var(--studio-accent);
+  outline-offset: 2px;
+}
+/* The controls take the place of the response time and make room beside
+   the logo while they show. */
+.studio-edit-mode .studio-panel:is(:focus-within, .studio-selected, .studio-tools-shown) .studio-card-tags {
+  visibility: hidden;
+}
+.studio-edit-mode
+  .studio-panel:not(.studio-stacked-panel):is(:focus-within, .studio-selected, .studio-tools-shown)
+  .studio-card-identity {
+  padding-left: 30px;
+}
+.studio-edit-mode .studio-panel:not(.studio-stacked-panel) .studio-card-identity {
+  transition: padding 120ms ease;
+}
 @media (hover: hover) {
-  .studio-edit-mode .studio-panel:not(.studio-stacked-panel) > .studio-panel-slide > .studio-panel-header {
-    transition: opacity 120ms ease;
+  .studio-edit-mode .studio-panel:hover .studio-card-tags {
+    visibility: hidden;
+  }
+  .studio-edit-mode .studio-panel:not(.studio-stacked-panel):hover .studio-card-identity {
+    padding-left: 30px;
   }
   .studio-edit-mode
     .studio-panel:not(.studio-stacked-panel):not(:hover):not(:focus-within):not(.studio-selected)
     > .studio-panel-slide
-    > :is(.studio-panel-header, .studio-resize-handle) {
+    > :is(.studio-panel-header, .studio-resize-handle, .studio-select-corner) {
     opacity: 0;
+  }
+  .studio-edit-mode
+    .studio-panel:not(.studio-stacked-panel)
+    > .studio-panel-slide
+    > :is(.studio-panel-header, .studio-select-corner) {
+    transition: opacity 120ms ease;
   }
   /* The resize corner sits in the card's very corner, small, so it covers as
      little of the widget (a search box's button, say) as it can. */
@@ -3644,9 +3706,14 @@ svg.studio-chart-gauge {
   .studio-edit-mode
     .studio-panel:not(.studio-stacked-panel):not(.studio-tools-shown):not(:focus-within):not(.studio-selected)
     > .studio-panel-slide
-    > :is(.studio-panel-header, .studio-resize-handle) {
+    > :is(.studio-panel-header, .studio-resize-handle, .studio-select-corner) {
     opacity: 0;
     pointer-events: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-edit-mode .studio-panel:not(.studio-stacked-panel) .studio-card-identity {
+    transition: none;
   }
 }
 
@@ -4840,7 +4907,13 @@ svg.studio-chart-gauge {
   .studio-edit-mode .studio-panel:not(.studio-stacked-panel) > .studio-panel-slide > .studio-panel-header {
     top: 4px;
     right: 4px;
-    padding: 2px;
+  }
+  .studio-select-target.studio-select-corner {
+    top: 0;
+    left: 0;
+    width: 44px;
+    height: 44px;
+    margin: 0;
   }
   .studio-edit-mode .studio-panel-header .studio-icon-button {
     width: 44px;
