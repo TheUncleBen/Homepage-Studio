@@ -310,7 +310,7 @@ describe("Native board save and draft safety", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Apply to arrangement", exact: true }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByText("Unsaved changes", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument();
   });
   it("moves a projected mobile row upward from the keyboard while retaining the native input", async () => {
     const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(354);
@@ -324,7 +324,7 @@ describe("Native board save and draft safety", () => {
       );
       expect(input.closest("section").style.top).toBe("0px");
       expect(screen.getByLabelText("Native state search")).toBe(input);
-      expect(screen.getByText("Unsaved changes", { exact: true })).toBeInTheDocument();
+      expect(screen.getByText("Saving…", { exact: true })).toBeInTheDocument();
     } finally {
       width.mockRestore();
     }
@@ -349,7 +349,7 @@ describe("Native board save and draft safety", () => {
           Object.assign(pointerEvent(eventType, 364), { pointerId: eventType === "pointerdown" ? 2 : 1 }),
         );
       });
-      expect(screen.queryByText("Unsaved changes", { exact: true })).not.toBeInTheDocument();
+      expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument();
       expect(screen.getByLabelText("Native state clock").closest("section").style.top).toBe("0px");
     },
   );
@@ -389,49 +389,65 @@ describe("Native board save and draft safety", () => {
     expect(writer).not.toHaveBeenCalled();
   });
 
-  it("freezes arrangement controls throughout the write and retains native input identity", async () => {
-    const gate = deferred();
-    const write = vi.fn(() => gate.promise);
+  it("saves each change by itself, keeps controls usable while it saves, and saves a change made meanwhile next", async () => {
+    const gates = [deferred(), deferred()];
+    const write = vi.fn(() => gates[write.mock.calls.length - 1].promise);
     await mountBoard({ write });
     const native = screen.getByLabelText("Native state clock");
     fireEvent.change(native, { target: { value: "working state" } });
     const handle = screen.getByRole("button", { name: /^Move Clock\./ });
     fireEvent.keyDown(handle, { key: "ArrowDown" });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Clock" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Search" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.queryByRole("button", { name: "Save", exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel", exact: true })).not.toBeInTheDocument();
     await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
-    const submitted = write.mock.calls[0][1].board;
-    const position = native.closest("section").style.cssText;
-    expect(handle).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Stack" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Size" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "Select Clock" })).toBeDisabled();
+    const [path, body] = write.mock.calls[0];
+    expect(path).toBe("/studio/api/board");
+    // Every page of the dashboard, never only the page in view.
+    expect(body.board.panels.map((panel) => panel.id)).toEqual(["clock", "search"]);
+    expect(body.board.pageId).toBeUndefined();
+    expect(body.revision).toBe("before");
+    expect(handle).toBeEnabled();
     fireEvent.keyDown(handle, { key: "ArrowDown" });
-    fireEvent.click(screen.getByRole("button", { name: "Stack" }));
-    expect(native.closest("section").style.cssText).toBe(position);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    await act(async () => gate.resolve({ ...initialState, board: submitted, revision: "after" }));
-    await waitFor(() => expect(screen.getByText("Arrangement saved")).toBeInTheDocument());
-    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+    const latest = native.closest("section").style.cssText;
+    await act(async () => gates[0].resolve({ ...initialState, board: body.board, revision: "after" }));
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(2));
+    expect(write.mock.calls[1][1].revision).toBe("after");
+    expect(write.mock.calls[1][1].board.panels[0].rect.y).toBeGreaterThan(body.board.panels[0].rect.y);
+    await act(async () => gates[1].resolve({ ...initialState, board: write.mock.calls[1][1].board, revision: "after-2" }));
+    await waitFor(() => expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument());
+    expect(native.closest("section").style.cssText).toBe(latest);
     expect(screen.getByLabelText("Native state clock")).toBe(native);
     expect(native).toHaveValue("working state");
-    expect(handle).toBeEnabled();
-    expect(write).toHaveBeenCalledTimes(1);
   });
 
-  it("retains an arrangement draft and re-enables controls when the write fails", async () => {
-    const gate = deferred();
-    await mountBoard({ write: vi.fn(() => gate.promise) });
-    const handle = screen.getByRole("button", { name: /^Move Clock\./ });
-    fireEvent.keyDown(handle, { key: "ArrowDown" });
-    const position = screen.getByLabelText("Native state clock").closest("section").style.cssText;
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await act(async () => gate.reject(new Error("Fixture writer unavailable")));
-    expect(await screen.findByText("Fixture writer unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    expect(handle).toBeEnabled();
-    expect(screen.getByLabelText("Native state clock").closest("section").style.cssText).toBe(position);
+  it("keeps an arrangement that couldn't be saved in the tab, says so, and saves it when it can", async () => {
+    let fail = true;
+    const write = vi.fn(async (_, body) => {
+      if (fail) throw new TypeError("Failed to fetch");
+      return { ...initialState, board: body.board, revision: "after" };
+    });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { onLeave } = await mountBoard({ write });
+      const handle = screen.getByRole("button", { name: /^Move Clock\./ });
+      fireEvent.keyDown(handle, { key: "ArrowDown" });
+      const position = screen.getByLabelText("Native state clock").closest("section").style.cssText;
+      await act(async () => vi.advanceTimersByTimeAsync(500));
+      expect(await screen.findByText("Not saved yet, retrying")).toBeInTheDocument();
+      expect(handle).toBeEnabled();
+      expect(screen.getByLabelText("Native state clock").closest("section").style.cssText).toBe(position);
+      const leaving = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(leaving);
+      expect(leaving.defaultPrevented, "closing the tab warns while changes are unsaved").toBe(true);
+      fail = false;
+      await act(async () => vi.advanceTimersByTimeAsync(2100));
+      await waitFor(() => expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument());
+      expect(write.mock.calls.length).toBeGreaterThanOrEqual(2);
+      fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
+      await waitFor(() => expect(onLeave).toHaveBeenCalledTimes(1));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("fetches the native catalog only for content editors, once per page, and retries after a failure", async () => {
@@ -493,41 +509,24 @@ describe("Native board save and draft safety", () => {
     }
   });
 
-  it("confirms before edit-mode Cancel discards an arrangement draft, then goes back to the Dashboards page", async () => {
-    const { writer, onLeave } = await mountBoard();
-    const native = screen.getByLabelText("Native state clock");
-    const section = () => screen.getByLabelText("Native state clock").closest("section");
-    const original = section().style.top;
+  it("Done waits for a change still saving, then goes back to the Dashboards page", async () => {
+    const gate = deferred();
+    const write = vi.fn(() => gate.promise);
+    const { onLeave } = await mountBoard({ write });
     fireEvent.keyDown(screen.getByRole("button", { name: /^Move Clock\./ }), { key: "ArrowDown" });
-    const moved = section().style.top;
-    expect(moved).not.toBe(original);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("Discard unsaved changes?");
-    expect(screen.getByRole("button", { name: "Keep editing" })).toHaveFocus();
-    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    expect(section().style.top).toBe(moved);
-
-    fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
     expect(onLeave).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(onLeave).toHaveBeenCalledTimes(1);
-    expect(section().style.top).toBe(original);
-    expect(screen.getByLabelText("Native state clock")).toBe(native);
-    expect(writer).not.toHaveBeenCalled();
-    const leaving = new Event("beforeunload", { cancelable: true });
-    window.dispatchEvent(leaving);
-    expect(leaving.defaultPrevented).toBe(false);
+    await act(async () => gate.resolve({ ...initialState, board: write.mock.calls[0][1].board, revision: "after" }));
+    await waitFor(() => expect(onLeave).toHaveBeenCalledTimes(1));
+    expect(write).toHaveBeenCalledTimes(1);
   });
 
-  it("Cancel without changes goes straight back to the Dashboards page", async () => {
-    const { onLeave } = await mountBoard();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(onLeave).toHaveBeenCalledTimes(1);
+  it("Done without changes goes straight back to the Dashboards page", async () => {
+    const { onLeave, writer } = await mountBoard();
+    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
+    await waitFor(() => expect(onLeave).toHaveBeenCalledTimes(1));
+    expect(writer).not.toHaveBeenCalled();
   });
 
   it("names a staged but unimported backup in the discard prompt and keeps its text inert", async () => {
@@ -603,10 +602,9 @@ describe("Native board save and draft safety", () => {
     expect(checkbox).not.toBeChecked();
     expect(shell).not.toHaveClass("studio-selected");
     expect(screen.queryByRole("button", { name: "Size" })).toBeNull();
-    // Leaving the editor discards the unsaved stack on the way back.
-    fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
-    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    expect(onLeave).toHaveBeenCalledTimes(1);
+    // The stack saved by itself; Done leaves.
+    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
+    await waitFor(() => expect(onLeave).toHaveBeenCalledTimes(1));
   });
 
   // This complete modal workflow has a local jsdom CPU budget; application
@@ -716,7 +714,7 @@ describe("Native board save and draft safety", () => {
     fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
     fireEvent.click(screen.getByRole("button", { name: "Apply to arrangement" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    expect(screen.getByText("Saving…", { exact: true })).toBeInTheDocument();
   });
 
   it("reloads a conflicting snapshot from the mounted board without repeating the restore", async () => {
@@ -832,40 +830,32 @@ describe("Native board save and draft safety", () => {
     },
   );
 
-  it("pins an arrangement draft to its original native revision when both poll results advance", async () => {
+  it("saves an arrangement made while another change landed, on the newest revision, without a conflict", async () => {
     const fixture = sameTypeChange();
     const refresh = vi.fn().mockResolvedValue(fixture.newNative);
+    // The server answers with its merged board: the content change kept.
+    const write = vi.fn(async () => ({ ...fixture.updated, revision: "after" }));
     const { publishNative, pollBoard, setBackend, writer } = await mountBoard({
       ...fixture,
       refresh,
+      write,
     });
     fireEvent.keyDown(screen.getByRole("button", { name: /^Move Search\./ }), {
       key: "ArrowDown",
     });
     const survivor = screen.getByTestId("native-value-search");
-    const position = survivor.closest("section").style.cssText;
     setBackend(fixture.updated);
     await act(async () => pollBoard());
     act(() => publishNative(fixture.newNative));
-    expect(screen.getByText("Another change was saved")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
-    expect(survivor.closest("section").style.cssText).toBe(position);
-    expect(survivor).toHaveTextContent("SECOND widget");
-    expect(survivor).not.toBeVisible();
-    const unload = new Event("beforeunload", { cancelable: true });
-    window.dispatchEvent(unload);
-    expect(unload.defaultPrevented).toBe(true);
-    expect(writer).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Reload current configuration" }));
-    await waitFor(() => expect(survivor).toBeVisible());
     expect(screen.queryByText("Another change was saved")).not.toBeInTheDocument();
-    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("native-value-clock")).not.toBeInTheDocument();
+    await waitFor(() => expect(writer).toHaveBeenCalledTimes(1));
+    // The server merges the content change in; this tab sends its moves.
+    expect(writer.mock.calls[0][1].revision).toBe("deleted-first");
+    await waitFor(() => expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument());
     expect(survivor).toHaveTextContent("SECOND widget");
-    expect(writer).not.toHaveBeenCalled();
   });
 
-  it("preserves a position dialog draft's original revision when it is applied after an external native change", async () => {
+  it("applies a position dialog draft after an external change and saves it on the newest revision", async () => {
     const { publishNative, pollBoard, setBackend, writer } = await mountBoard();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Clock" }));
     fireEvent.click(screen.getByRole("button", { name: "Size" }));
@@ -883,33 +873,40 @@ describe("Native board save and draft safety", () => {
     act(() => publishNative({ configurationRevision: CONFIG_B }));
     fireEvent.click(screen.getByRole("button", { name: "Apply to arrangement" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByText("Another change was saved")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(screen.getByLabelText("Native state clock").closest("section")).toHaveStyle({ top: "240px" });
-    expect(writer).not.toHaveBeenCalled();
+    await waitFor(() => expect(writer).toHaveBeenCalledTimes(1));
+    expect(writer.mock.calls[0][1].revision).toBe("external-native-change");
   });
 
-  it("keeps native content live after a layout-only poll but saves the draft against its original writer revision", async () => {
+  it("when another tab saved first, keeps this tab's moves and the other tab's, then saves", async () => {
     const conflict = Object.assign(new Error("Fixture layout changed"), {
       status: 409,
+      details: { code: "REVISION_CONFLICT" },
     });
-    const write = vi.fn().mockRejectedValue(conflict);
-    const { setBackend, pollBoard } = await mountBoard({ write });
+    const write = vi
+      .fn()
+      .mockRejectedValueOnce(conflict)
+      .mockImplementation(async (_, body) => ({ ...initialState, board: body.board, revision: "merged" }));
+    const { setBackend } = await mountBoard({ write });
     fireEvent.keyDown(screen.getByRole("button", { name: /^Move Clock\./ }), {
       key: "ArrowDown",
     });
     const native = screen.getByLabelText("Native state clock");
     const position = native.closest("section").style.cssText;
-    setBackend({ ...initialState, revision: "external-layout-change" });
-    await act(async () => pollBoard());
-    expect(native).toBeVisible();
-    expect(native.closest(".studio-native-content")).not.toHaveAttribute("inert");
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText("Another change was saved");
-    expect(write).toHaveBeenCalledTimes(1);
+    // The other tab moved Search meanwhile.
+    const theirs = structuredClone(initialState);
+    theirs.revision = "external-layout-change";
+    theirs.board.panels[1].rect = { x: 16, y: 0, w: 8, h: 6 };
+    setBackend(theirs);
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(2));
     expect(write.mock.calls[0][1].revision).toBe("before");
+    expect(write.mock.calls[1][1].revision).toBe("external-layout-change");
+    const sent = write.mock.calls[1][1].board.panels;
+    expect(sent.find((panel) => panel.id === "search").rect.x).toBe(16);
+    expect(sent.find((panel) => panel.id === "clock").rect.y).toBeGreaterThan(0);
+    expect(native).toBeVisible();
     expect(native.closest("section").style.cssText).toBe(position);
-    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument());
   });
 
   it.each([null, undefined])(

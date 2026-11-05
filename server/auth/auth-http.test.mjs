@@ -809,3 +809,28 @@ test('each person keeps their own images and preferences; using an image copies 
   assert.equal((await post('/studio/auth/admin/delete', { id: member.invited.id }, { cookie: admin.cookie })).status, 200);
   await assert.rejects(fs.stat(folder), { code: 'ENOENT' });
 });
+
+test('administration events record the address they came from, and Activity names a proxy Studio does not trust', async t => {
+  const context = await setup(t);
+  const { cookie } = await createAdmin(context);
+  const forwarded = { 'x-forwarded-for': '198.51.100.7' };
+  // Studio isn't told to trust 127.0.0.1 here, so it is the untrusted proxy.
+  const invited = await context.post('/studio/auth/admin/invite', { username: 'addressed' }, { cookie, headers: forwarded });
+  assert.equal(invited.status, 200, invited.text);
+  const { events } = (await context.request('/studio/auth/admin/audit', { cookie })).json;
+  assert.equal(events.find(event => event.type === 'user-invited').ip, '127.0.0.1');
+  const overview = (await context.request('/studio/auth/admin/overview', { cookie })).json;
+  assert.deepEqual(overview.proxy, { trustedConfigured: false, untrusted: '127.0.0.1' });
+});
+
+test('with the proxy trusted, events record the visitor address and no proxy warning shows', async t => {
+  const context = await setup(t, { trustedProxies: '127.0.0.1/32' });
+  const { cookie } = await createAdmin(context);
+  const forwarded = { 'x-forwarded-for': '198.51.100.7' };
+  const invited = await context.post('/studio/auth/admin/invite', { username: 'addressed' }, { cookie, headers: forwarded });
+  assert.equal(invited.status, 200, invited.text);
+  const { events } = (await context.request('/studio/auth/admin/audit', { cookie, headers: forwarded })).json;
+  assert.equal(events.find(event => event.type === 'user-invited').ip, '198.51.100.7');
+  const overview = (await context.request('/studio/auth/admin/overview', { cookie, headers: forwarded })).json;
+  assert.deepEqual(overview.proxy, { trustedConfigured: true, untrusted: null });
+});

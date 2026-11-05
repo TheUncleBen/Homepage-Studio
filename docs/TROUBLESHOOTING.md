@@ -44,7 +44,8 @@ Then find the symptom below. What the health endpoints mean is in
 | Passkey prompt fails with a security error | The browser's address isn't exactly `STUDIO_PUBLIC_ORIGIN`. Passkeys are bound to that host name |
 | Single sign-on says it can't reach the provider | Studio couldn't load `<issuer>/.well-known/openid-configuration`. Check `STUDIO_OIDC_ISSUER` (for example, with Authentik: `https://<authentik>/application/o/<slug>/`) and that the container can reach it |
 | Nobody can sign in at all | Use [command-line recovery](AUTHENTICATION.md#lost-access-command-line-recovery) |
-| Sign-in throttling or the activity log shows only the proxy's address | Set `STUDIO_TRUSTED_PROXIES` to the shared network's subnet ([REVERSE-PROXY.md](REVERSE-PROXY.md#how-the-proxy-reaches-studio)) |
+| Sign-in throttling or the activity log shows only the proxy's address | Set `STUDIO_TRUSTED_PROXIES` to the shared network's subnet. **Administration → Activity** names the untrusted proxy's address ([REVERSE-PROXY.md](REVERSE-PROXY.md#how-the-proxy-reaches-studio)) |
+| The activity log shows the same internal address (such as `10.0.0.2`) for everyone | The proxy's ports go through Swarm's ingress mesh. Publish them in host mode ([REVERSE-PROXY.md](REVERSE-PROXY.md#how-the-proxy-reaches-studio)) |
 
 ## The page doesn't load
 

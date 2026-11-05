@@ -81,7 +81,11 @@
 
   // Busy state for a button while a request runs, so a double click can't
   // send twice.
+  // The button whose work ran last: a change refused only for a fresh
+  // confirmation runs it again once the person has confirmed.
+  let lastBusy = null;
   async function busy(button, label, work) {
+    lastBusy = button;
     const original = [...button.childNodes];
     button.disabled = true;
     if (label) button.textContent = label;
@@ -833,16 +837,29 @@
   // The buttons that end a dialog, kept in view while it scrolls.
   const dialogActions = (...buttons) => h('div', { class: 'actions dialog-actions' }, ...buttons);
 
-  // Errors that need fresh confirmation offer a direct way to it.
+  // A change that needs a fresh confirmation asks at that moment (owner
+  // report, 4 Nov 2026: no standing banner). Confirming opens in a new tab so
+  // nothing typed here is lost; when that tab says it's done, the change runs
+  // again by itself.
+  const REAUTH_CHANNEL = 'studio-reauth';
   function failure(box, error) {
-    if (error?.code === 'REAUTH_REQUIRED') {
-      box.className = 'notice warn with-action'; box.setAttribute('role', 'alert');
-      put(box, h('span', { text: 'Confirm it’s you before making this change.' }), h('a', { class: 'pill', href: reauthLink(), text: 'Confirm' }));
-    } else say(box, error?.message ?? 'Something went wrong.');
-  }
-  function freshBanner(fresh) {
-    if (fresh) return null;
-    return h('div', { class: 'notice warn with-action', role: 'status' }, h('span', { text: 'Security changes need a recent confirmation.' }), h('a', { class: 'pill', href: reauthLink(), text: 'Confirm it’s you' }));
+    if (error?.code !== 'REAUTH_REQUIRED') return say(box, error?.message ?? 'Something went wrong.');
+    const retry = lastBusy;
+    box.className = 'notice warn with-action'; box.setAttribute('role', 'alert');
+    const confirm = h('button', { type: 'button', class: 'pill', text: 'Confirm it’s you' });
+    put(box, h('span', { text: 'You signed in a while ago. Confirm it’s you, then this change finishes by itself.' }), confirm);
+    let channel = null;
+    confirm.addEventListener('click', () => {
+      window.open(reauthLink('/studio/account?confirmed=1'), '_blank', 'noopener');
+      if (channel || typeof BroadcastChannel === 'undefined') return;
+      channel = new BroadcastChannel(REAUTH_CHANNEL);
+      channel.onmessage = event => {
+        if (event.data !== 'confirmed') return;
+        channel.close();
+        if (retry?.isConnected && !retry.disabled) { say(box, '', 'ok'); retry.click(); }
+        else say(box, 'Confirmed. Try the change again.', 'ok');
+      };
+    });
   }
   function openDialog(title, build) {
     const dialog = h('dialog', { 'aria-label': title });
@@ -877,7 +894,12 @@
     const languages = Array.isArray(preferenceData.languages) ? preferenceData.languages : [];
     const message = notice();
     if (params.has('linked')) say(message, `Your ${view.oidc?.name ?? 'single sign-on'} account is linked.`, 'ok');
-    if (params.has('confirmed')) say(message, 'Confirmed. You can close this tab and go back to your change.', 'ok');
+    if (params.has('confirmed')) {
+      say(message, 'Confirmed. You can close this tab; your change finishes in the other one.', 'ok');
+      // Tell the tab that asked, then close this one when the browser allows.
+      if (typeof BroadcastChannel !== 'undefined') { const channel = new BroadcastChannel(REAUTH_CHANNEL); channel.postMessage('confirmed'); channel.close(); }
+      setTimeout(() => window.close(), 1200);
+    }
     if (params.get('error')) say(message, ERRORS[params.get('error')] ?? "That didn't complete. Try again.");
     if (params.get('link') === 'confirm' && !view.pendingLink) say(message, 'That link request expired. Start again below.');
     if (params.has('linked') || params.has('error') || params.has('recovered') || params.has('confirmed') || params.has('link')) history.replaceState(null, '', location.pathname);
@@ -893,7 +915,6 @@
       ];
       if (view.pendingLink) parts.push(linkConfirmSection(view.pendingLink));
       if (view.recovery) parts.push(h('div', { class: 'notice warn', text: 'You signed in with a command-line recovery link. This session ends when you close the browser. Add a passkey or authenticator app now if you lost yours.' }));
-      if (local) parts.push(freshBanner(view.fresh));
       parts.push(profileSection(user), defaultDashboardSection(user), preferencesSection());
       if (local) parts.push(securitySection(user, factors), passkeySection(factors));
       if (view.oidc) parts.push(linkSection(user));
@@ -1841,13 +1862,16 @@
     }
 
     // Activity
+    const SYSTEM_EVENTS = new Set(['admin-seeded', 'email-failed', 'provider-logout']);
     async function loadActivity(holder) {
       try {
         const { events } = await api('admin/audit');
         const describe = event => {
           const who = event.userId ? userName(event.userId) : event.username ? event.username : '';
           const by = event.by && event.by !== event.userId ? `by ${userName(event.by)}` : '';
-          return [who, by, event.method, event.step, event.reason, event.ip].filter(Boolean).join(' · ');
+          // Events Studio or the sign-in provider record by themselves have no visitor address.
+          const from = event.ip || (SYSTEM_EVENTS.has(event.type) || event.by === 'deployment' ? 'Studio itself' : '');
+          return [who, by, event.method, event.step, event.reason, from].filter(Boolean).join(' · ');
         };
         const title = type => { const text = type.replace(/-/g, ' '); return text.charAt(0).toUpperCase() + text.slice(1); };
         const sorted = events.slice().sort((a, b) => String(b.at).localeCompare(String(a.at)));
@@ -1859,12 +1883,20 @@
     function activityTab() {
       const holder = h('div', {}, h('p', { class: 'empty-row', text: 'Loading…' }));
       loadActivity(holder);
-      return group({ title: 'Activity', info: 'The latest 500 sign-in and administration events. They are also written to the container log for tools such as fail2ban or CrowdSec.' }, holder);
+      // A proxy Studio doesn't trust makes every address its own address.
+      const untrusted = view.proxy?.untrusted;
+      const proxyNote = untrusted ? h('div', { class: 'notice warn', role: 'status' },
+        h('p', { text: `Requests reach Studio through a proxy at ${untrusted} that it doesn't trust, so Activity shows that address instead of each visitor's.` }),
+        h('p', { text: view.proxy.trustedConfigured
+          ? `Add ${untrusted}, or the subnet of the Docker network your proxy and Studio share, to STUDIO_TRUSTED_PROXIES, then redeploy.`
+          : `Set STUDIO_TRUSTED_PROXIES to the subnet of the Docker network your proxy and Studio share (or to ${untrusted}), then redeploy.` }),
+        h('p', { class: 'muted', text: 'If the proxy itself only sees Docker addresses, publish its ports in host mode. The deployment guide covers both.' })) : null;
+      return group({ title: 'Activity', info: 'The latest 500 sign-in and administration events. They are also written to the container log for tools such as fail2ban or CrowdSec.' }, proxyNote, holder);
     }
 
     drawTabs();
     drawPanel();
-    put(layout, tabList, h('div', { class: 'admin-content' }, back, sectionTitle, freshBanner(view.fresh), message, panel));
+    put(layout, tabList, h('div', { class: 'admin-content' }, back, sectionTitle, message, panel));
     render(...pageChrome('/studio/admin', me, pageTitle, layout));
   }
 

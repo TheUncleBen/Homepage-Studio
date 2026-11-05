@@ -108,7 +108,7 @@ describe("Widget menu while editing", () => {
       "Paste lookCtrl Alt V",
       "Use this look on every datetime widget",
       "Move to page…",
-      "Delete…Del",
+      "DeleteDel",
     ]);
     // Nothing copied yet, so there is nothing to paste.
     expect(within(menu).getByRole("menuitem", { name: /Paste look/ })).toBeDisabled();
@@ -120,9 +120,10 @@ describe("Widget menu while editing", () => {
     expect(await screen.findByText("Look copied")).toBeInTheDocument();
     fireEvent.click(within(await menuFor("weather")).getByRole("menuitem", { name: /Paste look/ }));
     expect(await screen.findByText("Look pasted")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(writes).toHaveLength(1));
-    const saved = writes[0].body.board.panels.find((item) => item.id === "weather");
+    // Saved by itself (autosave).
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument());
+    const saved = writes.at(-1).body.board.panels.find((item) => item.id === "weather");
     expect(saved.look).toEqual({ corners: "round", edge: "shadow" });
     // The copy is kept for pasting on other dashboards.
     expect(JSON.parse(localStorage.getItem("studio-look-clipboard"))).toEqual({ corners: "round", edge: "shadow" });
@@ -132,9 +133,10 @@ describe("Widget menu while editing", () => {
     const { writes } = await mount({ mode: "edit" });
     fireEvent.click(within(await menuFor("clock")).getByRole("menuitem", { name: /every datetime widget/ }));
     expect(await screen.findByText("Look used on 2 datetime widgets")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(writes).toHaveLength(1));
-    const looks = Object.fromEntries(writes[0].body.board.panels.map((item) => [item.id, item.look]));
+    // Saved by itself (autosave).
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument());
+    const looks = Object.fromEntries(writes.at(-1).body.board.panels.map((item) => [item.id, item.look]));
     expect(looks).toEqual({
       clock: { corners: "round", edge: "shadow" },
       weather: { corners: "round", edge: "shadow" },
@@ -208,9 +210,10 @@ describe("Several widgets at once", () => {
     fireEvent.click(within(dialog).getByRole("radio", { name: "Square" }));
     fireEvent.click(apply);
     expect(await screen.findByText("Changed 2 widgets")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(writes).toHaveLength(1));
-    const looks = Object.fromEntries(writes[0].body.board.panels.map((item) => [item.id, item.look]));
+    // Saved by itself (autosave).
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument());
+    const looks = Object.fromEntries(writes.at(-1).body.board.panels.map((item) => [item.id, item.look]));
     // Only the changed setting is applied; each keeps its own edge.
     expect(looks.clock).toEqual({ corners: "square", edge: "shadow" });
     expect(looks.weather).toEqual({ corners: "square" });
@@ -237,9 +240,10 @@ describe("Tidy up", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tidy up" }));
     expect(await screen.findByText("Tidied up")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tidy up" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(writes).toHaveLength(1));
-    expect(writes[0].body.board.panels.find((item) => item.id === "weather").rect.y).toBe(0);
+    // Saved by itself (autosave).
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText("Saved", { exact: true })).toBeInTheDocument());
+    expect(writes.at(-1).body.board.panels.find((item) => item.id === "weather").rect.y).toBe(0);
   });
 });
 
@@ -254,6 +258,7 @@ describe("Newly discovered widgets", () => {
     expect(select.value).toBe("home");
     fireEvent.click(within(note).getByRole("button", { name: "Put it there" }));
     await waitFor(() => expect(screen.queryByRole("group", { name: "Newly discovered widgets" })).toBeNull());
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0));
     const saved = writes.at(-1).body.board;
     expect(saved.panels.find((item) => item.id === "plex").pageId).toBe("home");
   });
@@ -280,5 +285,18 @@ describe("Widget controls on touch screens", () => {
     // A tap on empty space hides them again.
     tap(document.querySelector(".studio-canvas"));
     expect(section("weather").classList.contains("studio-tools-shown")).toBe(false);
+  });
+});
+
+describe("Deleting one widget", () => {
+  it("deletes at once without a dialog and offers Undo", async () => {
+    const { writes } = await mount({ mode: "edit" });
+    fireEvent.click(within(await menuFor("weather")).getByRole("menuitem", { name: /^Delete/ }));
+    await waitFor(() => expect(writes.some((write) => write.path === "/studio/api/widgets-delete")).toBe(true));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(writes.find((write) => write.path === "/studio/api/widgets-delete").body.ids).toEqual(["weather"]);
+    const toast = (await screen.findByText("weather deleted")).closest(".studio-toast");
+    expect(await within(toast).findByRole("button", { name: "Undo" })).toBeEnabled();
+    expect(screen.getByRole("toolbar", { name: "Editing" }).querySelector("[aria-label='Undo']")).toBeEnabled();
   });
 });
