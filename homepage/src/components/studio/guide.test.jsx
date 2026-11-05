@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import Guide from "./guide";
 
@@ -17,13 +17,18 @@ describe("setup guide", () => {
       },
     ];
     const { container } = render(<Guide secrets={secrets} name="pfSense" />);
-    expect(screen.getByRole("heading", { name: "Keeping the password out of the files" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Keep the password out of the files" })).toBeInTheDocument();
     expect(screen.getByText("homepage_pfsense_password")).toBeInTheDocument();
-    expect(container.querySelector("pre").textContent).toBe(
-      "HOMEPAGE_FILE_PFSENSE_PASSWORD: /run/secrets/homepage_pfsense_password",
-    );
+    expect(
+      screen.getByText("HOMEPAGE_FILE_PFSENSE_PASSWORD: /run/secrets/homepage_pfsense_password"),
+    ).toBeInTheDocument();
     expect(screen.getByText("{{HOMEPAGE_FILE_PFSENSE_PASSWORD}}")).toBeInTheDocument();
     expect(screen.getByText(/For a second pfSense/)).toBeInTheDocument();
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.assign(navigator, { clipboard: { writeText } });
+    fireEvent.click(screen.getByRole("button", { name: "Copy secret name homepage_pfsense_password" }));
+    expect(writeText).toHaveBeenCalledWith("homepage_pfsense_password");
+    expect(container.querySelectorAll(".studio-guide-copy")).toHaveLength(3);
   });
 
   it("shows no secret steps for a widget without secrets", () => {

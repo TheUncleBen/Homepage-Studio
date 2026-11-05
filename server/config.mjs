@@ -860,6 +860,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     return response(await readCurrent());
   }
 
+  const WIDGET_SERVICE_KEYS = new Set(['name', 'href', 'icon', 'description', 'siteMonitor', 'ping']);
   async function mutateServiceInner(change) {
     const current = await readCurrent();
     checkRevision(change.revision, current);
@@ -876,7 +877,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       const name = named(change.name ?? existing?.name, 'Service name');
       const groupPath = resolveGroup(change.group, current.groups, existing?.groupPath ?? ['Services']);
       if (current.services.some((entry) => entry.id !== existing?.id && entry.name === name && stable(entry.groupPath) === stable(groupPath))) {
-        fail('A service with that name already exists in this group.', 'DUPLICATE_SERVICE');
+        fail(`Another link is already called “${name}”. Use a different name.`, 'DUPLICATE_SERVICE');
       }
       const patch = change.config ?? {};
       if (!object(patch)) fail('Service config must be a mapping.');
@@ -985,9 +986,14 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const parsed = current.parsed.servicesYaml, { doc } = parsed;
     const byService = new Map(current.services.map((entry) => [entry.id, current.serviceWidgets.filter((widget) => widget.serviceId === entry.id).map(({ id }) => ({ id }))]));
     if (change.action === 'add' && !service && object(change.newService)) {
-      const name = named(change.newService.name, 'Service name');
+      // Every widget is self-contained (owner rule, 4 Nov 2026): it gets its
+      // own entry in the one group Studio keeps (Q2: no group to choose). The
+      // same integration can be added again; a repeated name gets a number.
       const groupPath = resolveGroup(change.newService.group, current.groups, ['Services']);
-      if (current.services.some((entry) => entry.name === name && stable(entry.groupPath) === stable(groupPath))) fail('A service with that name already exists in this group.', 'DUPLICATE_SERVICE');
+      const taken = new Set(current.services.filter((entry) => stable(entry.groupPath) === stable(groupPath)).map((entry) => entry.name));
+      const wanted = named(change.newService.name, 'Widget name');
+      let name = wanted;
+      for (let index = 2; taken.has(name); index++) name = `${wanted} ${index}`;
       const id = `studio-widget-parent-${randomUUID()}`;
       ensureGroup(doc, groupPath).add(doc.createNode({ [name]: { id } }));
       service = serviceEntries(yamlDocument(parsed.text(), 'services.yaml').data).services.find((entry) => entry.id === id);
@@ -1000,6 +1006,24 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     if (!isMap(options)) fail('This service uses an unsupported YAML alias. Edit its YAML directly.');
     // Pin a formerly name-derived service ID before changing its widget context.
     options.set('id', service.id);
+    // The widget's name, link and status check are its service's (the card
+    // shows them), so the widget dialog changes them in the same save.
+    if (change.action !== 'delete' && change.service !== undefined) {
+      if (!object(change.service) || Object.keys(change.service).some((key) => !WIDGET_SERVICE_KEYS.has(key))) fail('Only the widget\'s name, link, icon, description and status check can change with it.');
+      const { name: rename, ...servicePatch } = change.service;
+      if (Object.values(servicePatch).some((value) => value !== null && (typeof value !== 'string' || value.length > 4096))) fail('A widget\'s link, icon, description and status address are text.');
+      if (Object.keys(servicePatch).length) {
+        const next = patchMap(doc, options, servicePatch, parsed);
+        validateServiceConfig(Object.fromEntries(Object.entries({ ...service.config, ...servicePatch }).filter(([, value]) => value !== null)), 'Widget');
+        entry.set(service.name, next);
+        options = entry.get(service.name, true);
+      }
+      if (rename !== undefined && rename !== service.name) {
+        const name = named(rename, 'Widget name');
+        if (current.services.some((other) => other.id !== service.id && other.name === name && stable(other.groupPath) === stable(service.groupPath))) fail(`Another widget is already called “${name}”. Use a different name.`, 'DUPLICATE_SERVICE');
+        renamePair(entry.items[0], name);
+      }
+    }
     const identities = byService.get(service.id);
     if (change.action === 'delete') {
       if (existing.sourceKey === 'widget') options.delete('widget');

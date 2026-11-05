@@ -41,6 +41,7 @@ Store each as a Docker secret ([DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docke
 | Setting | Docker secret | Environment variable | Enter in the setting |
 | --- | --- | --- | --- |
 | Password | `homepage_pfsense_password` | `HOMEPAGE_FILE_PFSENSE_PASSWORD: /run/secrets/homepage_pfsense_password` | `{{HOMEPAGE_FILE_PFSENSE_PASSWORD}}` |
+| API key (v2), as the X-API-Key header | `homepage_pfsense_api_key` | `HOMEPAGE_FILE_PFSENSE_API_KEY: /run/secrets/homepage_pfsense_api_key` | `{{HOMEPAGE_FILE_PFSENSE_API_KEY}}` |
 
 For a second pfSense with different credentials, add a suffix such as `_2` to each name.
 

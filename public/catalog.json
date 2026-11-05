@@ -10442,6 +10442,13 @@
           "variable": "HOMEPAGE_FILE_PFSENSE_PASSWORD",
           "secret": "homepage_pfsense_password",
           "reference": "{{HOMEPAGE_FILE_PFSENSE_PASSWORD}}"
+        },
+        {
+          "key": "headers.X-API-Key",
+          "label": "API key (v2), as the X-API-Key header",
+          "variable": "HOMEPAGE_FILE_PFSENSE_API_KEY",
+          "secret": "homepage_pfsense_api_key",
+          "reference": "{{HOMEPAGE_FILE_PFSENSE_API_KEY}}"
         }
       ]
     },

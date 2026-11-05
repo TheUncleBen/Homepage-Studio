@@ -28,6 +28,15 @@ export function customApiMappingsMissing(type, config) {
   return typeof mappings === "object" && Object.keys(mappings).length === 0;
 }
 
+// What a widget's card takes from the entry it lives in: its link and
+// status check (its name is the entry's name).
+const WIDGET_SERVICE_KEYS = ["href", "siteMonitor", "ping"];
+function widgetService(config = {}) {
+  return Object.fromEntries(
+    WIDGET_SERVICE_KEYS.map((key) => [key, typeof config[key] === "string" ? config[key] : ""]),
+  );
+}
+
 // What "Duplicate" opens: the add editor, filled with this item's saved
 // settings and named "<name> copy". Used by the editor's Duplicate button and
 // the widget menu on the board.
@@ -47,10 +56,11 @@ export function duplicateEntry(panel, state, catalog) {
     type: source.type || kind,
     name: entry?.name || LABEL[kind],
     defaults: copy,
+    // A copy is its own widget (owner rule, 4 Nov 2026): its own entry, with
+    // the same link and status check.
     seed: {
       name: `${source.name || parent?.name || entry?.name || "Widget"} copy`,
-      group: source.group || parent?.group || "Dashboard",
-      serviceId: source.serviceId,
+      ...(parent ? { service: widgetService(parent.config) } : {}),
     },
   };
 }
@@ -238,7 +248,6 @@ export default function ContentEditor({
   entry,
   onSaved,
   onCancel,
-  onParent,
   onReload,
   onDuplicate,
   pageId,
@@ -288,12 +297,19 @@ export default function ContentEditor({
     entry || (kind === "serviceWidget" ? catalog.service : catalog.info)?.find((item) => item.type === source?.type);
   const initial = source?.config || selectedEntry?.defaults || {};
   const [draft, setDraft] = useState(() => structuredClone(initial));
-  const initialName = source?.name || entry?.seed?.name || (kind === "serviceWidget" ? selectedEntry?.name || "" : "");
-  const initialGroup = source?.group || entry?.seed?.group || parent?.group || "Dashboard";
-  const initialServiceId = source?.serviceId || entry?.seed?.serviceId || "new";
+  // Every widget is self-contained (owner rule and Q2, 4 Nov 2026): no group
+  // and no service to pick. A widget's name, link and status check are those
+  // of its own entry in services.yaml, edited here with it.
+  const initialName =
+    kind === "serviceWidget"
+      ? parent?.name || entry?.seed?.name || selectedEntry?.name || ""
+      : source?.name || entry?.seed?.name || "";
   const [name, setName] = useState(initialName);
-  const [group, setGroup] = useState(initialGroup);
-  const [serviceId, setServiceId] = useState(initialServiceId);
+  const [initialService] = useState(() =>
+    kind === "serviceWidget" ? (entry?.seed?.service ?? widgetService(parent?.config)) : null,
+  );
+  const [service, setService] = useState(initialService);
+  const serviceChanged = Boolean(service) && JSON.stringify(service) !== JSON.stringify(initialService);
   const [valid, setValid] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(null);
@@ -319,12 +335,7 @@ export default function ContentEditor({
     }
   }, [deleting]);
   useEditorDraft(
-    !valid ||
-      name !== initialName ||
-      group !== initialGroup ||
-      serviceId !== initialServiceId ||
-      editorDraftChanged(initial, draft) ||
-      lookChanged,
+    !valid || name !== initialName || serviceChanged || editorDraftChanged(initial, draft) || lookChanged,
     pending,
   );
   if (panel && !source)
@@ -374,34 +385,37 @@ export default function ContentEditor({
         savedLooks,
         onSavedLooks: setSavedLooks,
         statusAddress:
-          kind === "service"
+          kind === "serviceWidget"
             ? {
-                web: typeof draft.siteMonitor === "string" ? draft.siteMonitor : "",
-                ping: typeof draft.ping === "string" ? draft.ping : "",
-                href: typeof draft.href === "string" ? draft.href : "",
-                onChange: (check, value) => {
-                  const key = check === "ping" ? "ping" : "siteMonitor";
-                  const next = { ...draft };
-                  if (value) next[key] = value;
-                  else delete next[key];
-                  setDraft(next);
-                },
+                web: service.siteMonitor,
+                ping: service.ping,
+                href: service.href,
+                onChange: (check, value) =>
+                  setService({ ...service, [check === "ping" ? "ping" : "siteMonitor"]: value || "" }),
               }
-            : undefined,
+            : kind === "service"
+              ? {
+                  web: typeof draft.siteMonitor === "string" ? draft.siteMonitor : "",
+                  ping: typeof draft.ping === "string" ? draft.ping : "",
+                  href: typeof draft.href === "string" ? draft.href : "",
+                  onChange: (check, value) => {
+                    const key = check === "ping" ? "ping" : "siteMonitor";
+                    const next = { ...draft };
+                    if (value) next[key] = value;
+                    else delete next[key];
+                    setDraft(next);
+                  },
+                }
+              : undefined,
       }
     : null;
-  const changedGroup = source?.group === group ? source?.groupPath || group : group;
   const submit = async (action = source ? "update" : "add") => {
     if (pending) return;
     setError(null);
     setPending(true);
     try {
       const contentChanged =
-        action !== "update" ||
-        name !== initialName ||
-        group !== initialGroup ||
-        serviceId !== initialServiceId ||
-        editorDraftChanged(initial, draft);
+        action !== "update" || name !== initialName || serviceChanged || editorDraftChanged(initial, draft);
       // A look-only change saves the arrangement; with content it travels
       // along so both commit together.
       if (!contentChanged && lookChanged) {
@@ -417,14 +431,15 @@ export default function ContentEditor({
       // New content lands on the page being edited.
       if (pageId && !source) body.pageId = pageId;
       if (lookChanged && action === "update") body.board = nextBoard();
-      if (kind === "service" || kind === "bookmark") {
-        body.name = name;
-        body.group = changedGroup;
-      }
+      if (kind === "service" || kind === "bookmark") body.name = name;
       if (kind === "informationWidget" || kind === "serviceWidget") body.type = source?.type || entry.type;
-      if (kind === "serviceWidget" && !source) {
-        if (serviceId === "new") body.newService = { name, group };
-        else body.serviceId = serviceId;
+      if (kind === "serviceWidget") {
+        if (!source) body.newService = { name };
+        const patch = {};
+        if (source && name !== initialName) patch.name = name;
+        for (const key of WIDGET_SERVICE_KEYS)
+          if (service[key] !== (source ? initialService[key] : "")) patch[key] = service[key] || null;
+        if (Object.keys(patch).length) body.service = patch;
       }
       const result = await studioRequest(`/studio/api/${ENDPOINT[kind]}`, body);
       await onSaved(result);
@@ -434,9 +449,8 @@ export default function ContentEditor({
       setPending(false);
     }
   };
-  const requiresName =
-    kind === "service" || kind === "bookmark" || (kind === "serviceWidget" && !source && serviceId === "new");
-  const disabled = !valid || pending || (requiresName && (!name.trim() || !group.trim()));
+  const requiresName = kind === "service" || kind === "bookmark" || kind === "serviceWidget";
+  const disabled = !valid || pending || (requiresName && !name.trim());
   return (
     <form
       onSubmit={(event) => {
@@ -467,75 +481,35 @@ export default function ContentEditor({
         <div className="studio-widget-settings">
           <ErrorMessage error={error} onReload={onReload} />
           <fieldset disabled={pending} style={editorFieldsetStyle}>
-            {((kind === "serviceWidget" && !source) || requiresName) && (
+            {requiresName && (
               <Group>
-                {kind === "serviceWidget" && !source && (
+                <Row label="Name" htmlFor="studio-source-name">
+                  <input
+                    id="studio-source-name"
+                    autoFocus
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    required
+                    maxLength={200}
+                    placeholder="Required"
+                  />
+                </Row>
+                {kind === "serviceWidget" && (
                   <Row
-                    label="Service"
-                    htmlFor="studio-service-context"
-                    info="An integration lives in a service tile. Add it to one you have, or to a new tile that shows only this widget."
+                    label="Link"
+                    htmlFor="studio-widget-link"
+                    info="Where the card's name takes you, and where On click opens."
                   >
-                    <select
-                      id="studio-service-context"
-                      value={serviceId}
-                      onChange={(event) => setServiceId(event.target.value)}
-                    >
-                      <option value="new">New service</option>
-                      {state.services?.map((service) => (
-                        <option key={service.id} value={service.id}>
-                          {service.group} / {service.name}
-                        </option>
-                      ))}
-                    </select>
+                    <input
+                      id="studio-widget-link"
+                      type="url"
+                      inputMode="url"
+                      value={service.href}
+                      onChange={(event) => setService({ ...service, href: event.target.value })}
+                      placeholder="https://"
+                    />
                   </Row>
                 )}
-                {requiresName && (
-                  <>
-                    <Row label="Name" htmlFor="studio-source-name">
-                      <input
-                        id="studio-source-name"
-                        autoFocus
-                        value={name}
-                        onChange={(event) => setName(event.target.value)}
-                        required
-                        maxLength={200}
-                        placeholder="Required"
-                      />
-                    </Row>
-                    <Row label="Group" htmlFor="studio-source-group">
-                      <input
-                        id="studio-source-group"
-                        list="studio-groups"
-                        value={group}
-                        onChange={(event) => setGroup(event.target.value)}
-                        required
-                        placeholder="Required"
-                      />
-                      <datalist id="studio-groups">
-                        {[
-                          ...new Set([
-                            ...(state.groups || []).map((item) => item.label || item.name),
-                            ...(state.bookmarks || []).map((item) => item.group),
-                          ]),
-                        ].map((item) => (
-                          <option value={item} key={item} />
-                        ))}
-                      </datalist>
-                    </Row>
-                  </>
-                )}
-              </Group>
-            )}
-            {parent && (
-              <Group>
-                <ActionRow
-                  icon="link"
-                  detail={`${parent.group} / ${parent.name}`}
-                  disabled={pending}
-                  onClick={() => onParent(parent)}
-                >
-                  Service
-                </ActionRow>
               </Group>
             )}
             {boardPanel && <LookEditor part="top" {...lookProps} />}

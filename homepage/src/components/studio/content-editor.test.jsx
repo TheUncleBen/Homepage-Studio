@@ -20,7 +20,6 @@ function renderEditor(entry, catalog = { service: [entry], info: [] }) {
       entry={entry}
       onSaved={vi.fn()}
       onCancel={vi.fn()}
-      onParent={vi.fn()}
       onReload={vi.fn()}
       onDuplicate={vi.fn()}
     />,
@@ -147,8 +146,7 @@ describe("widget look in the widget dialog", () => {
         )}
         onSaved={onSaved}
         onCancel={vi.fn()}
-        onParent={vi.fn()}
-        onReload={vi.fn()}
+          onReload={vi.fn()}
         onDuplicate={vi.fn()}
       />,
     );
@@ -213,6 +211,33 @@ describe("widget look in the widget dialog", () => {
     expect(screen.queryByText("Open target")).toBeNull();
     expect(screen.queryByText("More options")).toBeNull();
     expect(screen.getByRole("radiogroup", { name: "On click" })).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+});
+
+// Owner rule and Q2, 4 Nov 2026: every widget is self-contained. There is no
+// group and no service to choose; the widget's name and link are its own.
+describe("a self-contained widget", () => {
+  it("adds a widget with only its name: no Group, no Service picker", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ revision: "r2" }), { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderEditor(customApi);
+    expect(screen.queryByLabelText("Group")).toBeNull();
+    expect(screen.queryByLabelText("Service")).toBeNull();
+    expect(screen.getByLabelText("Name")).toHaveValue("Custom API");
+    fireEvent.change(screen.getByLabelText("Link"), { target: { value: "https://api.example.test" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add/ }));
+    const post = () => fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    await vi.waitFor(() => expect(post()).toBeTruthy());
+    expect(String(post()[0])).toContain("/studio/api/service-widget");
+    const body = JSON.parse(post()[1].body);
+    expect(body.newService).toEqual({ name: "Custom API" });
+    expect(body.service).toEqual({ href: "https://api.example.test" });
+    expect(body).not.toHaveProperty("serviceId");
+    expect(body).not.toHaveProperty("group");
     vi.unstubAllGlobals();
   });
 });

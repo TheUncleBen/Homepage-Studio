@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 
 import StudioIcon from "./icons";
 
@@ -100,45 +100,55 @@ function Block({ block }) {
   }
 }
 
+function CopyValue({ label, value }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="studio-guide-copy">
+      <span className="studio-guide-copy-label">{label}</span>
+      <code>{value}</code>
+      <button
+        type="button"
+        className="studio-text-button"
+        aria-label={`Copy ${label.toLowerCase()} ${value}`}
+        onClick={() =>
+          navigator.clipboard?.writeText(value).then(
+            () => setCopied(true),
+            () => setCopied(false),
+          )
+        }
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
 // Each secret the widget takes, with the exact names to use for it as a
-// Docker secret (docs/DEPLOY.md, "Widget API keys as Docker secrets").
+// Docker secret (board 25; docs/DEPLOY.md, "Widget API keys as Docker
+// secrets").
 export function SecretSteps({ secrets, name }) {
   return (
     <div className="studio-guide-secrets">
-      <h4>Keeping {secrets.length > 1 ? "its secrets" : `the ${secrets[0].label.toLowerCase()}`} out of the files</h4>
+      <h4>Keep {secrets.length > 1 ? "its secrets" : `the ${secrets[0].label.toLowerCase()}`} out of the files</h4>
       <p>
-        A value typed into the settings stays in the snapshot history. Store it as a Docker secret instead and the
-        settings only name it:
+        A value typed into the settings stays in the snapshot history. Store it as a Docker secret instead, so the
+        settings only name it.
       </p>
-      <ol>
-        <li>
-          Create a Docker secret named{" "}
-          {secrets.map((entry, index) => (
-            <Fragment key={entry.key}>
-              {index > 0 && (index === secrets.length - 1 ? " and " : ", ")}
-              <code>{entry.secret}</code>
-            </Fragment>
-          ))}{" "}
-          holding the {secrets.length > 1 ? "values" : "value"}.
-        </li>
-        <li>
-          In the stack, add {secrets.length > 1 ? "each" : "it"} to Studio&apos;s secrets and add to its environment:
-          <pre>{secrets.map((entry) => `${entry.variable}: /run/secrets/${entry.secret}`).join("\n")}</pre>
-        </li>
-        <li>
-          Update the stack, then enter{" "}
-          {secrets.map((entry, index) => (
-            <Fragment key={entry.key}>
-              {index > 0 && "; "}
-              <code>{entry.reference}</code> as {entry.label}
-            </Fragment>
-          ))}
-          .
-        </li>
-      </ol>
+      {secrets.map((entry) => (
+        <div key={entry.key} className="studio-guide-secret">
+          {secrets.length > 1 && <h5>{entry.label}</h5>}
+          <CopyValue label="Secret name" value={entry.secret} />
+          <CopyValue label="Stack variable" value={`${entry.variable}: /run/secrets/${entry.secret}`} />
+          <CopyValue
+            label={`In ${entry.key.includes(".") ? "the YAML" : `the ${entry.label} field`}`}
+            value={entry.reference}
+          />
+        </div>
+      ))}
       <p>
-        For a second {name || "widget"} with different credentials, add a suffix to each name, such as{" "}
-        <code>{`${secrets[0].secret}_2`}</code> and <code>{`${secrets[0].variable}_2`}</code>.
+        Add the secret to the stack&apos;s secrets on both levels (the top of the stack and Studio&apos;s service), add
+        the variable to Studio&apos;s environment, update the stack, then enter the last line. For a second{" "}
+        {name || "widget"} with different credentials, add a suffix such as <code>_2</code> to each name.
       </p>
     </div>
   );

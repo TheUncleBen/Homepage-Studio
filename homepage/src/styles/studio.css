@@ -4816,3 +4816,30 @@ svg.studio-chart-gauge {
   pointer-events: none;
   z-index: 5;
 }
+/* Setup guide: exact secret names to copy (board 25). */
+.studio-guide-secret {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+}
+.studio-guide-copy {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.studio-guide-copy > code {
+  overflow-wrap: anywhere;
+}
+.studio-guide-copy-label {
+  color: var(--studio-muted);
+  font-size: 12px;
+}
+@media (max-width: 560px) {
+  .studio-guide-copy {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .studio-guide-copy-label {
+    grid-column: 1 / -1;
+  }
+}

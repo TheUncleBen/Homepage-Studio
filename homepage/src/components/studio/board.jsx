@@ -2653,18 +2653,6 @@ export default function StudioBoard({
                   onCancel={closeModal}
                   onReload={reloadEditor}
                   onDuplicate={(entry) => requestEditorAction(() => setModal({ type: "content", entry }))}
-                  onParent={(parent) =>
-                    requestEditorAction(() =>
-                      setModal({
-                        type: "content",
-                        panel: {
-                          id: parent.id,
-                          kind: "service",
-                          title: parent.name,
-                        },
-                      }),
-                    )
-                  }
                 />
               ) : modal.type === "appearance" ? (
                 <AppearanceOnlyEditor

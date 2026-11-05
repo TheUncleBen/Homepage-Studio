@@ -141,10 +141,17 @@ export function secretNames(type, key) {
   return { variable, secret: variable.replace(/^HOMEPAGE_FILE_/, 'homepage_').toLowerCase(), reference: `{{${variable}}}` };
 }
 
+// Secrets a widget's documentation sends somewhere other than a secret
+// setting (reviewed): pfSense's v2 API key goes in a request header.
+const EXTRA_SECRETS = {
+  pfsense: [{ key: 'headers.X-API-Key', label: 'API key (v2), as the X-API-Key header', name: 'api_key' }],
+};
+
 export function describeSecrets(byType) {
   for (const kind of ['service', 'info']) {
     for (const item of byType[kind].values()) {
       const secrets = item.fields.filter(field => field.sensitive).map(field => ({ key: field.key, label: field.label, ...secretNames(item.type, field.key) }));
+      if (kind === 'service') for (const extra of EXTRA_SECRETS[item.type] || []) secrets.push({ key: extra.key, label: extra.label, ...secretNames(item.type, extra.name) });
       if (secrets.length) item.secrets = secrets;
     }
   }

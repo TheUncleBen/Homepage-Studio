@@ -196,11 +196,14 @@ test('every widget has its own description of what it is and what it shows', () 
 });
 
 test('every secret setting names its exact Docker secret, variable and reference', () => {
-  assert.deepEqual(widget('pfsense', 'service', shipped).secrets, [{ key: 'password', label: 'Password', variable: 'HOMEPAGE_FILE_PFSENSE_PASSWORD', secret: 'homepage_pfsense_password', reference: '{{HOMEPAGE_FILE_PFSENSE_PASSWORD}}' }]);
+  assert.deepEqual(widget('pfsense', 'service', shipped).secrets, [
+    { key: 'password', label: 'Password', variable: 'HOMEPAGE_FILE_PFSENSE_PASSWORD', secret: 'homepage_pfsense_password', reference: '{{HOMEPAGE_FILE_PFSENSE_PASSWORD}}' },
+    { key: 'headers.X-API-Key', label: 'API key (v2), as the X-API-Key header', variable: 'HOMEPAGE_FILE_PFSENSE_API_KEY', secret: 'homepage_pfsense_api_key', reference: '{{HOMEPAGE_FILE_PFSENSE_API_KEY}}' },
+  ]);
   assert.equal(widget('unifi_drive', 'service', shipped).secrets[0].variable, 'HOMEPAGE_FILE_UNIFI_DRIVE_PASSWORD');
   for (const kind of ['service', 'info']) for (const item of shipped[kind]) {
     const sensitive = item.fields.filter(field => field.sensitive).map(field => field.key);
-    assert.deepEqual((item.secrets || []).map(entry => entry.key), sensitive, item.type);
+    assert.deepEqual((item.secrets || []).map(entry => entry.key).filter(key => !key.includes('.')), sensitive, item.type);
     for (const entry of item.secrets || []) {
       assert.match(entry.variable, /^HOMEPAGE_FILE_[A-Z0-9_]+$/);
       assert.equal(entry.reference, `{{${entry.variable}}}`);

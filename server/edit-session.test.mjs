@@ -107,3 +107,24 @@ test('undo is refused once something else changed the dashboard, and never cross
   await assert.rejects(store.undo({ revision: current.revision, editSession: 'session:mine' }), { code: 'UNDO_UNAVAILABLE' });
   assert.ok((await store.load()).services.some((entry) => entry.name === 'Elsewhere'));
 });
+
+// Owner rule, 4 Nov 2026: every widget is self-contained (no group or
+// service to choose; Q2), and the same integration can be added again.
+test('adding the same integration twice makes two independent widgets, and a widget renames and links itself', async (t) => {
+  const { store } = await fixture(t);
+  const add = (current) => store.mutateServiceWidget({ revision: current.revision, action: 'add', type: 'pfsense', newService: { name: 'pfSense' }, config: { url: 'https://fw.example.test' } });
+  let current = await add(await store.load());
+  current = await add(current);
+  const titles = current.board.panels.map((panel) => panel.title).sort();
+  assert.deepEqual(titles, ['pfSense', 'pfSense 2']);
+  const second = current.board.panels.find((panel) => panel.title === 'pfSense 2');
+  const widget = (await store.load()).serviceWidgets.find((entry) => entry.id === second.id);
+  current = await store.mutateServiceWidget({ revision: current.revision, action: 'update', id: widget.id, config: {}, service: { name: 'Backup firewall', href: 'https://fw2.example.test', siteMonitor: 'https://fw2.example.test' } });
+  const renamed = current.board.panels.find((panel) => panel.id === second.id);
+  assert.equal(renamed.title, 'Backup firewall');
+  const parent = (await store.load()).services.find((entry) => entry.name === 'Backup firewall');
+  assert.equal(parent.config.href, 'https://fw2.example.test');
+  assert.equal(parent.config.siteMonitor, 'https://fw2.example.test');
+  await assert.rejects(store.mutateServiceWidget({ revision: current.revision, action: 'update', id: widget.id, config: {}, service: { name: 'pfSense' } }), /already called “pfSense”/);
+  await assert.rejects(store.mutateServiceWidget({ revision: current.revision, action: 'update', id: widget.id, config: {}, service: { widgets: [] } }), /Only the widget's name/);
+});
