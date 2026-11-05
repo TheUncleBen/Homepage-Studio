@@ -5259,7 +5259,9 @@ svg.studio-chart-gauge {
   display: none;
 }
 .studio-values-more {
-  grid-column: 1 / -1;
+  /* The last column of the first row with room: beside the values that stay
+     when there is space, on its own row only when there isn't. */
+  grid-column: auto / -1;
   align-self: flex-end;
   justify-self: end;
   color: var(--card-muted-text);

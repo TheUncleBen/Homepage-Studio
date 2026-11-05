@@ -24,7 +24,9 @@ in older entries below are history only.
 - **Even or centred grid** per page (24 or 25 columns), with a centre line,
   snap and **Centre in row**.
 - **Resizing moves only that widget**, to the nearest free space if it no
-  longer fits.
+  longer fits. An integration card can shrink to a small square (3 × 3,
+  was 6 × 4); its values fold, and **+N more** sits beside the values that
+  stay when there's room.
 - **The editor saves as you go.** The bar has **Done** only and says
   *Saving…*, *Saved* or *Not saved yet, retrying*. **Undo** and **Redo** step
   through the whole editing session on the server, deletes included, and a

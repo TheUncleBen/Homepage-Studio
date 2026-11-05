@@ -340,3 +340,14 @@ describe("spacing", () => {
     expect(pixelRect({ x: 0, y: 1, w: 2, h: 2 }, 234, 24, 6)).toEqual({ left: 0, top: 42, width: 14, height: 78 });
   });
 });
+
+describe("widget minimums", () => {
+  it("lets an integration card shrink to a small square, because its values fold instead of scrolling", () => {
+    expect(panelMinimum({ kind: "serviceWidget", nativeLocator: { type: "pfsense" } })).toEqual({ w: 3, h: 3 });
+  });
+
+  it("keeps a larger minimum for widgets that draw their own content", () => {
+    expect(panelMinimum({ kind: "serviceWidget", nativeLocator: { type: "calendar" } })).toEqual({ w: 12, h: 9 });
+    expect(panelMinimum({ kind: "serviceWidget", nativeLocator: { type: "iframe" } })).toEqual({ w: 8, h: 9 });
+  });
+});

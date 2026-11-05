@@ -21,9 +21,11 @@ export const TABLET_COLUMNS = 16;
 export const PHONE_COLUMNS = 8;
 export const PHONE_WIDTH = 560;
 
-// Grid minima protect readable content space; overflowing native internals remain
-// scrollable, never scaled down. These are content-class limits, not a claim
-// that every service integration has identical layout needs.
+// Grid minima protect readable content space. An integration card's values
+// reflow into as many columns as fit and fold the rest behind "+N more", so its
+// minimum is the room for its header and one value (a small square, 3 x 3);
+// widgets that draw their own content (calendar, embedded page, camera,
+// Glances' charts) keep a larger one because they scroll instead of folding.
 export function panelMinimum(panel) {
   if (panel.kind === "service" || panel.kind === "bookmark") return { w: 5, h: 2 };
   if (panel.kind === "informationWidget") {
@@ -35,7 +37,7 @@ export function panelMinimum(panel) {
     if (panel.nativeLocator?.type === "calendar") return { w: 12, h: 9 };
     if (["iframe", "mjpeg"].includes(panel.nativeLocator?.type)) return { w: 8, h: 9 };
     if (panel.nativeLocator?.type === "glances") return { w: 8, h: 7 };
-    return { w: 6, h: 4 };
+    return { w: 3, h: 3 };
   }
   return { w: 1, h: 1 };
 }

@@ -222,7 +222,9 @@ puts the panel back.
   a keyboard).
 
 Panels snap to the grid and can't overlap. Content has a minimum size, so a
-panel won't shrink below what its widget needs. Resizing moves only the
+panel won't shrink below what its widget needs: 3 × 3 for an integration card
+(its name and one value), more for widgets that draw their own content such
+as a calendar or an embedded page. Resizing moves only the
 widget you resize: if it no longer fits where it is, it moves to the nearest
 free space and the others stay put. When a widget has more values than fit,
 the last ones fold away and the card says **+N more**; make it bigger to see
