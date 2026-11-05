@@ -854,3 +854,18 @@ test('with the proxy trusted, events record the visitor address and no proxy war
   const overview = (await context.request('/studio/auth/admin/overview', { cookie, headers: forwarded })).json;
   assert.deepEqual(overview.proxy, { trustedConfigured: true, untrusted: null });
 });
+
+test('deleting an archived dashboard for good and changing how long archives are kept need a recent sign-in', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const context = await setup(t);
+  const { request, post } = context;
+  const admin = await createAdmin(context);
+  t.mock.timers.tick(30 * 60000);
+  const { revision } = (await request('/studio/api/dashboards', { cookie: admin.cookie })).json;
+  for (const change of [{ action: 'retention', days: 7 }, { action: 'delete', id: '00000000-0000-4000-8000-000000000000', confirmName: 'Gone' }]) {
+    const stale = await post('/studio/api/dashboards', { revision, ...change }, { cookie: admin.cookie });
+    assert.equal(stale.status, 401, stale.text);
+    assert.equal(stale.json.code, 'REAUTH_REQUIRED');
+  }
+  assert.equal((await request('/studio/api/dashboards', { cookie: admin.cookie })).json.revision, revision, 'nothing changed');
+});
