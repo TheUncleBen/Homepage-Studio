@@ -386,9 +386,12 @@ export default function StudioBoard({
   // The editor's size switch (board 22): null shows the screen's own size.
   const [editSize, setEditSize] = useState(null);
   // Whether the screen is wide enough to show the switch (a desktop screen).
-  const [screenWidth, setScreenWidth] = useState(() => (typeof window === "undefined" ? 1280 : window.innerWidth));
+  // Measured after the first render, so the server's page and the browser's
+  // first render agree (React hydration).
+  const [screenWidth, setScreenWidth] = useState(1280);
   useEffect(() => {
     const measure = () => setScreenWidth(window.innerWidth);
+    measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, []);
@@ -896,13 +899,15 @@ export default function StudioBoard({
     // Successful commits explicitly bypass the unsaved-draft dismissal guard.
     if (!details.stepped) dismissEditor();
     setSelection([]);
+    // In the editor the bar's Saved says a plain save happened; only what
+    // needs more is noted there.
     if (!details.stepped && !details.quiet)
       setNotice(
         [
           details.importNote,
           details.customJsChanged
             ? "Changes saved. Reload once to apply custom JavaScript."
-            : details.importNote
+            : details.importNote || editorPage
               ? ""
               : "Changes saved",
         ]

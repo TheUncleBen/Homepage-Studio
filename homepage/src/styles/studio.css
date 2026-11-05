@@ -2053,6 +2053,8 @@ body {
   gap: 8px;
   margin: 0 0 22px;
 }
+/* Beats the dialog's own h3 margins. */
+.studio-dialog .studio-section-heading,
 .studio-section-heading {
   margin: 0;
   font: inherit;
@@ -3137,6 +3139,13 @@ body {
   gap: 8px 18px;
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, var(--card-text) 14%, transparent);
+}
+/* A word value stays whole on one line; the full text is its tooltip. */
+.studio-value-below .studio-value-number,
+.studio-value-quiet .studio-value-number {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .studio-value-below .studio-value-number {
   font-size: 15px;

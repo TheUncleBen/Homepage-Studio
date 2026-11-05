@@ -1056,7 +1056,15 @@ export default function ContentEditor({
                 </Section>
               )}
               {source && (
-                <Section title="Management" detail="Duplicate or delete" {...sectionProps("manage")}>
+                <Section
+                  title="Management"
+                  detail={
+                    (kind === "serviceWidget" || kind === "informationWidget") && boardPanel
+                      ? "Duplicate, save or delete"
+                      : "Duplicate or delete"
+                  }
+                  {...sectionProps("manage")}
+                >
                   <Group className="studio-item-actions">
                     <ActionRow
                       icon="copy"

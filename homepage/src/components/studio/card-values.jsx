@@ -17,25 +17,33 @@ const keyOf = (child, index) => {
 // says how many are left. Measured against the card's content box, again
 // whenever it changes size.
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
-function useFold(count) {
+// `least`: how many values always stay (none under a hero, which stays).
+function useFold(count, least = 1) {
   const ref = useRef(null);
   const [shown, setShown] = useState(count);
   const [epoch, setEpoch] = useState(0);
   useIsoLayoutEffect(() => setShown(count), [count, epoch]);
   useIsoLayoutEffect(() => {
-    if (shown !== count) return;
     const list = ref.current;
     const clip = list?.closest(".studio-native-content");
     if (!list || !clip) return;
     const limit = clip.getBoundingClientRect().bottom - (parseFloat(getComputedStyle(clip).paddingBottom) || 0);
-    const bottoms = [...list.children]
-      .filter((item) => item.classList.contains("studio-fold-item"))
-      .map((item) => (item.firstElementChild || item).getBoundingClientRect().bottom);
-    if (!bottoms.length || bottoms.every((bottom) => bottom <= limit + 0.5)) return;
-    // Room for the "+N more" line under the values that stay.
-    const room = limit - 20;
-    setShown(Math.max(1, bottoms.filter((bottom) => bottom <= room + 0.5).length));
-  }, [shown, count, epoch]);
+    const fits = (element) => !element || element.getBoundingClientRect().bottom <= limit + 0.5;
+    const items = [...list.children].filter((item) => item.classList.contains("studio-fold-item"));
+    if (shown === count) {
+      const bottoms = items.map((item) => (item.firstElementChild || item).getBoundingClientRect().bottom);
+      if (!bottoms.length || bottoms.every((bottom) => bottom <= limit + 0.5)) return;
+      // Room for the "+N more" line under the values that stay.
+      const room = limit - 20;
+      setShown(Math.max(least, bottoms.filter((bottom) => bottom <= room + 0.5).length));
+      return;
+    }
+    // Folded: the values left can reflow (a narrower row, a wrapped line), so
+    // check the last one and the "+N more" line really fit; else fold one more.
+    const last = items[shown - 1];
+    if (shown > least && (!fits(last?.firstElementChild || last) || !fits(list.querySelector(".studio-values-more"))))
+      setShown(shown - 1);
+  }, [shown, count, epoch, least]);
   useEffect(() => {
     const clip = ref.current?.closest(".studio-native-content");
     if (!clip || typeof ResizeObserver === "undefined") return undefined;
@@ -54,7 +62,7 @@ function useFold(count) {
 }
 
 function Folded({ className, items, slot, arranged }) {
-  const { ref, shown } = useFold(items.length);
+  const { ref, shown } = useFold(items.length, slot === "below" ? 0 : 1);
   const hidden = items.length - shown;
   return (
     <div ref={ref} className={className}>

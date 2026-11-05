@@ -66,6 +66,7 @@ export default function Block({ value, highlightValue, label, field }) {
             applyToValueOnly && "studio-value-highlighted",
             "service-block-value",
           )}
+          title={typeof shown === "string" || typeof shown === "number" ? String(shown) : undefined}
         >
           {number}
           {unit && <span className="studio-value-unit">{unit}</span>}
