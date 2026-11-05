@@ -222,7 +222,9 @@ panel won't shrink below what its widget needs. Resizing moves only the
 widget you resize: if it no longer fits where it is, it moves to the nearest
 free space and the others stay put. When a widget has more values than fit,
 the last ones fold away and the card says **+N more**; make it bigger to see
-them. Values never scroll inside a card.
+them. Values never scroll inside a card. A widget that draws its own content,
+such as an embedded page or a calendar, has no values to fold: it shows in
+full and scrolls inside its card.
 
 ### Saving, undo and redo
 

@@ -302,6 +302,24 @@ function phoneLayout(board) {
   return placed;
 }
 
+// The desktop board as shown: as stored, except that no widget shows smaller
+// than what it needs (a board written by hand or by an older editor can
+// store less). Anything that would then overlap moves down, in reading order.
+export function fittedUnits(board) {
+  const columns = gridColumns(board);
+  const placed = [];
+  for (const unit of unitsForBoard(board).sort(byReadingOrder)) {
+    let rect = fitMinimum(clampRect(unit.rect, columns), unitMinimum(board, unit.id), columns);
+    let collisions = placed.filter((other) => intersects(rect, other.rect));
+    while (collisions.length) {
+      rect = { ...rect, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
+      collisions = placed.filter((other) => intersects(rect, other.rect));
+    }
+    placed.push({ ...unit, rect });
+  }
+  return placed;
+}
+
 export function generatedUnits(board, columns) {
   if (columns === TABLET_COLUMNS) return tabletLayout(board);
   if (columns === PHONE_COLUMNS) return phoneLayout(board);

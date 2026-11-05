@@ -96,7 +96,8 @@ function validateLayouts(value, unitIds) {
     const kept = {};
     // A unit that no longer exists is dropped; one without a place is placed.
     for (const [id, area] of Object.entries(units)) if (unitIds.has(id)) kept[id] = rect(area, `The ${size} layout`, LAYOUT_COLUMNS[size]);
-    out[size] = kept;
+    // A size with nothing left on it follows desktop again.
+    if (Object.keys(kept).length) out[size] = kept;
   }
   return Object.keys(out).length ? out : undefined;
 }
@@ -228,6 +229,8 @@ function completeLayouts(board) {
   const layouts = {};
   for (const [size, stored] of Object.entries(board.layouts)) {
     const placed = Object.fromEntries(Object.entries(stored).filter(([id]) => ids.has(id)));
+    // Every unit it arranged is gone: that size follows desktop again.
+    if (!Object.keys(placed).length) continue;
     const bottom = new Map();
     for (const unit of units) if (placed[unit.id]) bottom.set(unit.pageId, Math.max(bottom.get(unit.pageId) ?? 0, placed[unit.id].y + placed[unit.id].h));
     for (const unit of [...units].sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)) {
@@ -245,6 +248,10 @@ function completeLayouts(board) {
       bottom.set(unit.pageId, Math.max(bottom.get(unit.pageId) ?? 0, position.y + position.h));
     }
     layouts[size] = placed;
+  }
+  if (!Object.keys(layouts).length) {
+    const { layouts: _dropped, ...rest } = board;
+    return rest;
   }
   return { ...board, layouts };
 }

@@ -40,7 +40,9 @@ in older entries below are history only.
   order, as Hero/Below, Shown, or Chart/Number, or Hidden. It keeps the
   widget's `fields` in step with what the card shows. Homepage's four-value
   limit no longer applies inside Studio cards; values that don't fit fold
-  away behind **+N more** instead of scrolling.
+  away behind **+N more** instead of scrolling. Widgets that draw their own
+  content, such as an embedded page or a calendar, are not folded and scroll
+  as before.
 - **Saved looks** in one list with a search, saved **Just me** or for **This
   dashboard**, and **Manage saved looks** to rename, update (optionally on
   every widget using it) or delete.

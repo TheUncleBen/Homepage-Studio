@@ -152,3 +152,18 @@ test("a widget added under a layout arranged at the last row goes into a free ga
   current = await addLink(store, current, "Third");
   assert.equal(Object.keys(current.board.layouts.phone).length, 3);
 });
+
+test("a size whose arranged widgets are all deleted follows desktop again", async (t) => {
+  const store = await fixture(t);
+  let current = await addLink(store, await store.load(), "First");
+  const [first] = current.board.panels;
+  current = await store.saveBoard({
+    revision: current.revision,
+    board: { ...current.board, layouts: { phone: { [first.id]: { x: 0, y: 2, w: 8, h: 2 } } } },
+  });
+  assert.ok(current.board.layouts.phone);
+  current = await store.deletePanels({ revision: current.revision, ids: [first.id] });
+  assert.equal(current.board.layouts, undefined, "no empty phone layout is kept");
+  current = await addLink(store, current, "Second");
+  assert.equal(current.board.layouts, undefined, "a new widget follows desktop on the phone");
+});

@@ -5177,3 +5177,11 @@ svg.studio-chart-gauge {
 .studio-native-content:has(.studio-values) {
   overflow: hidden;
 }
+/* A widget's own content (embedded page, calendar, list) keeps Homepage's
+   flow and scrolls inside the card. */
+.studio-card-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}

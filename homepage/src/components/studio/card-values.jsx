@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { CardChart, Trend } from "./card-chart";
 import { ValueSlotContext } from "./card-look";
@@ -102,6 +102,9 @@ export default function CardValues({ card, items: children }) {
   const fieldsKey = JSON.stringify(
     items.filter((item) => item.block).map((item) => [item.key, item.child.props.label]),
   );
+  // A widget that draws its own content (an embedded page, a calendar, a
+  // list) has no values to arrange or fold: it shows as it is and scrolls.
+  const content = !items.some((item) => item.block);
   const report = card.reportFields;
   useEffect(() => {
     if (report) report(JSON.parse(fieldsKey).map(([field, label]) => ({ field, label })));
@@ -123,6 +126,14 @@ export default function CardValues({ card, items: children }) {
     return left === right ? 0 : left - right;
   });
   const visible = ordered.filter((item) => arranged.get(item.key)?.slot !== "hidden");
+  if (content)
+    return (
+      <div className="studio-card-content">
+        {items.map((item, index) => (
+          <Fragment key={index}>{item.child}</Fragment>
+        ))}
+      </div>
+    );
   const show = card.show || "numbers";
   if (show === "table" || (show === "numbers" && card.layout === "quiet")) {
     return (

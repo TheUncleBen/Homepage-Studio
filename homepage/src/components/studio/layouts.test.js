@@ -33,6 +33,30 @@ const disjoint = (units) =>
   units.forEach((a, index) => units.slice(index + 1).forEach((b) => expect(intersects(a.rect, b.rect)).toBe(false)));
 
 describe("a layout for each size", () => {
+  it("shows a desktop widget stored below its minimum at the minimum, moving what it would cover down", () => {
+    const view = pageBoard(
+      {
+        ...board(),
+        panels: [
+          {
+            id: "g",
+            pageId: "home",
+            kind: "serviceWidget",
+            nativeLocator: { type: "glances" },
+            rect: { x: 0, y: 0, w: 4, h: 4 },
+          },
+          { id: "n", pageId: "home", rect: { x: 4, y: 0, w: 4, h: 4 } },
+        ],
+      },
+      "home",
+    );
+    const shown = rects(sizeProjection(view, "desktop"));
+    expect(shown.g).toEqual({ x: 0, y: 0, w: 8, h: 7 });
+    expect(shown.n).toEqual({ x: 4, y: 7, w: 4, h: 4 });
+    // What is stored is unchanged.
+    expect(unitsForBoard(view).find((unit) => unit.id === "g").rect).toEqual({ x: 0, y: 0, w: 4, h: 4 });
+  });
+
   it("picks the size from the screen width", () => {
     expect(sizeForWidth(390)).toBe("phone");
     expect(sizeForWidth(820)).toBe("tablet");

@@ -1,4 +1,4 @@
-import { DASHBOARDS, expect, finishArrangement, openEditor, openSettings, saveFiles, seedServicePanels, studioApi, test } from '../helpers/dashboard.mjs';
+import { DASHBOARDS, expect, expectSaved, finishArrangement, openEditor, openSettings, saveFiles, seedServicePanels, studioApi, test } from '../helpers/dashboard.mjs';
 import { downloadText, fileText, NATIVE_FILES, openFiles, playback, seedNative } from '../helpers/engineering.mjs';
 
 test('guided settings and nine-file import/export preserve drafts, literal options and one validated transaction', async ({ page, request }) => {
@@ -93,7 +93,7 @@ test('guided settings and nine-file import/export preserve drafts, literal optio
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 });
 
-test('concurrent file and arrangement saves retain the local draft until explicit reload', async ({ page, request }) => {
+test('a concurrent file save keeps the local draft until explicit reload, and an arrangement autosave keeps the other change', async ({ page, request }) => {
   await seedServicePanels(request, [{ name: 'Conflict fixture', rect: { x: 0, y: 0, w: 4, h: 3 } }]);
   let dialog = await openFiles(page);
   const draft = `${await (await fileText(dialog, 'services.yaml')).inputValue()}\n# Unsaved local draft\n`;
@@ -111,17 +111,24 @@ test('concurrent file and arrangement saves retain the local draft until explici
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.waitForURL(`**${DASHBOARDS}`);
 
+  // The editor saves as you go. A change saved elsewhere since the editor
+  // opened is kept: the arrangement is applied on top of it, not refused.
   await openEditor(page);
+  const externalAgain = await saveFiles(request, { settingsYaml: 'title: A second concurrent change\n' });
   await page.getByRole('button', { name: /^Move Conflict fixture\. Use arrow keys/ }).press('ArrowDown');
   const tile = page.locator('[data-panel-kind="service"][aria-label="Conflict fixture"]');
   await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(48); // One row: 36 px plus the 12 px gap.
-  const externalAgain = await saveFiles(request, { settingsYaml: 'title: A second concurrent change\n' });
-  await page.getByRole('button', { name: 'Done', exact: true }).click();
-  await expect(page.locator('.studio-error[role="alert"]')).toContainText('Another change was saved');
-  await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(48);
-  expect((await studioApi(request, '/dashboard/studio/api/board')).revision).toBe(externalAgain.revision);
-  await page.getByRole('button', { name: 'Reload current configuration', exact: true }).click();
-  await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(0);
+  await expect.poll(async () => (await studioApi(request, '/dashboard/studio/api/state')).revision).not.toBe(externalAgain.revision);
+  await expectSaved(page);
+  const merged = await studioApi(request, '/dashboard/studio/api/state');
+  expect(merged.settingsYaml).toBe(externalAgain.settingsYaml);
+  expect(merged.board.panels.find(panel => panel.title === 'Conflict fixture').rect).toMatchObject({ x: 0, y: 1 });
+  await expect(page.locator('.studio-error[role="alert"]')).toHaveCount(0);
+  // The other change also changed what the widgets show: the editor waits
+  // for matching widget data, which Refresh widgets fetches.
+  const refresh = page.getByRole('button', { name: 'Refresh widgets', exact: true });
+  if (await refresh.count()) await refresh.click();
+  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
   await finishArrangement(page);
 });
 

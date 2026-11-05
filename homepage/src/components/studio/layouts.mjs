@@ -3,6 +3,7 @@ import {
   COLUMNS,
   columnsOfPage,
   firstPageId,
+  fittedUnits,
   generatedUnits,
   gridColumns,
   intersects,
@@ -76,7 +77,8 @@ export function sizeUnits(view, size) {
 }
 
 export function sizeProjection(view, size) {
-  const units = sizeUnits(view, size);
+  // Shown on desktop, every widget gets at least the room it needs.
+  const units = size === "desktop" ? fittedUnits(view) : sizeUnits(view, size);
   return {
     size,
     columns: columnsForSize(view, size),
