@@ -2448,6 +2448,11 @@ export default function StudioBoard({
         <StudioDialog
           title={modalTitles[modal.type]}
           onClose={closeModal}
+          onBack={
+            modal.type === "content" && modal.back
+              ? () => requestEditorAction(() => setModal({ type: "picker", initial: modal.back }))
+              : undefined
+          }
           wide={modal.type === "files" || modal.type === "picker" || modal.type === "settings"}
           busy={editorGuard.pending}
         >
@@ -2636,7 +2641,20 @@ export default function StudioBoard({
                       setEditorError(err);
                     }
                   }}
-                  onChoose={(entry) => setModal({ type: "content", entry })}
+                  initial={modal.initial}
+                  // Choosing one opens its dialog with Back to this list, the
+                  // search kept (board 26).
+                  onChoose={(entry, back) => setModal({ type: "content", entry, back })}
+                  onPlace={async (entry) =>
+                    savedContent(
+                      await studioRequest("/studio/api/library/use", {
+                        scope: entry.scope,
+                        id: entry.id,
+                        revision: editorData.state.revision,
+                        pageId: currentPage,
+                      }),
+                    )
+                  }
                 />
               ) : modal.type === "content" ? (
                 <ContentEditor

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
+import { SWRConfig } from "swr";
 import { describe, expect, it, vi } from "vitest";
 
 import ContentEditor, { ContentPicker, customApiMappingsMissing } from "./content-editor";
@@ -476,6 +477,135 @@ describe("a saved look updated from the widget dialog", () => {
     const body = JSON.parse(fetchMock.mock.calls.find(([, options]) => options?.method === "POST")[1].body);
     expect(body.board.looks).toEqual([{ id: "n", name: "Night", look: { corners: "round" } }]);
     expect(body.board.panels.find((item) => item.id === "bm-2").look).toEqual({ corners: "round" });
+    vi.unstubAllGlobals();
+  });
+});
+
+// Board 26: Links and Saved tabs, the search kept for Back, and saved widgets
+// placed as new widgets.
+describe("adding a widget", () => {
+  const catalog = {
+    info: [{ type: "datetime", name: "Date & Time" }],
+    service: [{ type: "pfsense", name: "pfSense", description: "Firewall. WAN status and IP." }],
+  };
+  const json = (value) =>
+    new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
+
+  it("keeps links together, passes the search on for Back and restores it", () => {
+    const onChoose = vi.fn();
+    const { unmount } = render(
+      <ContentPicker catalog={catalog} state={{ hiddenDiscoveredIds: [] }} onChoose={onChoose} onRestore={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Links", exact: true }));
+    expect(screen.getAllByRole("button", { name: /^(Service tile|Bookmark)/ })).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "All", exact: true }));
+    fireEvent.change(screen.getByLabelText("Find a tile or widget"), { target: { value: "pf" } });
+    fireEvent.click(screen.getByRole("button", { name: /^pfSense/ }));
+    expect(onChoose).toHaveBeenCalledWith(expect.objectContaining({ type: "pfsense" }), {
+      query: "pf",
+      category: "all",
+    });
+    unmount();
+    render(
+      <ContentPicker
+        catalog={catalog}
+        state={{ hiddenDiscoveredIds: [] }}
+        initial={{ query: "pf", category: "serviceWidget" }}
+        onChoose={onChoose}
+        onRestore={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("Find a tile or widget")).toHaveValue("pf");
+    expect(screen.getByRole("button", { name: "Integrations" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("lists saved widgets by name, type and who can use them, and places one", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        json({
+          scopes: ["dashboard", "everyone"],
+          looks: [],
+          widgets: [
+            {
+              id: "a1",
+              kind: "widget",
+              name: "Edge firewall",
+              scope: "everyone",
+              widgetKind: "serviceWidget",
+              type: "pfsense",
+            },
+          ],
+        }),
+      ),
+    );
+    const onPlace = vi.fn(async () => {});
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <ContentPicker
+          catalog={catalog}
+          state={{ hiddenDiscoveredIds: [] }}
+          onChoose={vi.fn()}
+          onRestore={vi.fn()}
+          onPlace={onPlace}
+        />
+      </SWRConfig>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Saved" }));
+    const entry = await screen.findByRole("button", { name: /^Edge firewall/ });
+    expect(entry).toHaveTextContent("pfSense · Everyone");
+    fireEvent.click(entry);
+    await vi.waitFor(() =>
+      expect(onPlace).toHaveBeenCalledWith(expect.objectContaining({ id: "a1", scope: "everyone" })),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("saves a widget as a saved widget from Management, for the chosen people", async () => {
+    const fetchMock = vi.fn(async (url, init) =>
+      init?.method === "POST"
+        ? json({ entry: { id: "b2", name: "Clock", scope: "everyone" } })
+        : json({ scopes: ["dashboard", "everyone"], looks: [], widgets: [] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const board = {
+      version: 3,
+      columns: 24,
+      pages: [{ id: "home", name: "Home" }],
+      panels: [
+        { id: "info-1", kind: "informationWidget", title: "Clock", pageId: "home", rect: { x: 0, y: 0, w: 6, h: 2 } },
+      ],
+      stacks: [],
+    };
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <ContentEditor
+          state={{
+            revision: "r1",
+            services: [],
+            groups: [],
+            bookmarks: [],
+            infoWidgets: [{ id: "info-1", type: "datetime", config: {} }],
+          }}
+          catalog={catalog}
+          panel={{ ...board.panels[0], nativeLocator: { index: 0, type: "datetime" } }}
+          wholeBoard={board}
+          renderPreview={() => null}
+          onSaved={vi.fn()}
+          onCancel={vi.fn()}
+          onReload={vi.fn()}
+          onDuplicate={vi.fn()}
+        />
+      </SWRConfig>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Management/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save as a saved widget" }));
+    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Clock" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Everyone" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText(/Saved as “Clock” for everyone/);
+    const body = JSON.parse(fetchMock.mock.calls.find(([, init]) => init?.method === "POST")[1].body);
+    expect(body).toEqual({ action: "add", kind: "widget", scope: "everyone", name: "Clock", panelId: "info-1" });
     vi.unstubAllGlobals();
   });
 });

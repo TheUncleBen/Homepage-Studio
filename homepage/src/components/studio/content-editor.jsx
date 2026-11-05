@@ -22,10 +22,10 @@ import Guide from "./guide";
 import { loadIndex } from "./icon-chooser";
 import { builtInIconUrl } from "./icon-source.mjs";
 import StudioIcon from "./icons";
-import { useLibrary } from "./library";
+import { SCOPE_LABEL, useLibrary } from "./library";
 import LookEditor, { lookOnly, lookSections, lookSummaries, sameLook, valuesPartShown } from "./look-editor";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
-import { ActionRow, Group, Row, Section } from "./ui";
+import { ActionRow, Group, Row, Section, Segmented } from "./ui";
 
 import { SettingsContext } from "utils/contexts/settings";
 
@@ -90,6 +90,79 @@ function ResizeCorner({ rect, minimum, columns, onChange, describedBy }) {
     >
       <StudioIcon name="resize" size={14} />
     </button>
+  );
+}
+
+// Save as a saved widget (board 26): its configuration, look and the saved
+// connections it uses, never its size or place, for Just me, This dashboard
+// or Everyone. The server reads the widget as last saved, so its keys never
+// pass through the browser.
+function SaveAsWidget({ library, defaultName, panelId, changed, onDone }) {
+  const [name, setName] = useState(defaultName);
+  const [scope, setScope] = useState(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState(null);
+  const [saved, setSaved] = useState(null);
+  const id = useId();
+  const scopes = library.scopes;
+  const chosen = scope ?? (scopes.includes("dashboard") ? "dashboard" : scopes[0]);
+  if (!library.loaded) return <p className="studio-muted">Loading…</p>;
+  if (saved)
+    return (
+      <p className="studio-callout" role="status">
+        Saved as “{saved}” for {SCOPE_LABEL[chosen].toLowerCase()}. Find it under Add › Saved.{" "}
+        <button type="button" className="studio-text-button" onClick={onDone}>
+          Done
+        </button>
+      </p>
+    );
+  return (
+    <div className="studio-save-as">
+      <ErrorMessage error={error} />
+      <Row label="Name" htmlFor={id}>
+        <input id={id} maxLength={60} value={name} onChange={(event) => setName(event.target.value)} />
+      </Row>
+      <Row
+        label="Who can use it"
+        info="Just me: only you, on any dashboard you edit. This dashboard: anyone who adds widgets here. Everyone: administrators, on every dashboard."
+      >
+        <Segmented
+          label="Who can use it"
+          value={chosen}
+          onChange={setScope}
+          options={scopes.map((item) => [item, SCOPE_LABEL[item]])}
+        />
+      </Row>
+      <p className="studio-note">
+        It keeps the settings, values, look, link, status check and any saved connection it uses, but not its size or
+        place.
+        {changed && " It is saved as it was last saved: save your changes first to include them."}
+      </p>
+      <div className="studio-inline-actions">
+        <button type="button" className="studio-button studio-quiet" onClick={onDone}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="studio-button studio-primary"
+          disabled={pending || !name.trim()}
+          onClick={async () => {
+            setPending(true);
+            setError(null);
+            try {
+              await library.change({ action: "add", kind: "widget", scope: chosen, name: name.trim(), panelId });
+              setSaved(name.trim());
+            } catch (err) {
+              setError(err);
+            } finally {
+              setPending(false);
+            }
+          }}
+        >
+          {pending ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -159,11 +232,157 @@ const LABEL = {
   bookmark: "Bookmark",
 };
 
-export function ContentPicker({ catalog, state, onChoose, onRestore }) {
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("all");
+// Saved widgets in the picker's Saved tab (board 26): place one as a new,
+// independent widget on this page; rename or delete them in one place.
+function SavedWidgets({ library, query, catalog, onPlace, busy }) {
+  const [managing, setManaging] = useState(false);
+  const [renaming, setRenaming] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [error, setError] = useState(null);
+  const names = new Map([...(catalog.service || []), ...(catalog.info || [])].map((item) => [item.type, item.name]));
+  const needle = query.trim().toLowerCase();
+  const shown = library.widgets.filter((entry) =>
+    `${entry.name} ${entry.type} ${names.get(entry.type) || ""}`.toLowerCase().includes(needle),
+  );
+  const run = async (operation) => {
+    setError(null);
+    try {
+      await operation();
+    } catch (err) {
+      setError(err);
+    }
+  };
+  if (!library.loaded && !library.error) return <p className="studio-muted">Loading saved widgets…</p>;
+  if (library.error) return <ErrorMessage error={library.error} />;
+  if (!library.widgets.length)
+    return (
+      <p className="studio-empty-note">
+        No saved widgets yet. To save one, open a widget and choose Save as a saved widget under Management.
+      </p>
+    );
+  return (
+    <>
+      <ErrorMessage error={error} />
+      <div className="studio-saved-widgets-head">
+        <button type="button" className="studio-text-button" onClick={() => setManaging((value) => !value)}>
+          {managing ? "Done" : "Manage saved widgets"}
+        </button>
+      </div>
+      <div className="studio-catalog">
+        {shown.map((entry) => {
+          const key = `${entry.scope}:${entry.id}`;
+          const detail = `${names.get(entry.type) || entry.type} · ${SCOPE_LABEL[entry.scope]}`;
+          if (!managing)
+            return (
+              <button
+                key={key}
+                type="button"
+                className="studio-catalog-item"
+                disabled={busy}
+                onClick={() => run(() => onPlace(entry))}
+              >
+                <span className="studio-catalog-icon">
+                  <StudioIcon name="layout" size={20} />
+                </span>
+                <span>
+                  <strong>{entry.name}</strong>
+                  <small>{detail}</small>
+                </span>
+                <StudioIcon name="plus" size={15} />
+              </button>
+            );
+          return (
+            <div key={key} className="studio-catalog-item studio-saved-widget-row">
+              {renaming?.key === key ? (
+                <span className="studio-saved-look-name-edit">
+                  <input
+                    aria-label={`New name for ${entry.name}`}
+                    maxLength={60}
+                    value={renaming.name}
+                    autoFocus
+                    onChange={(event) => setRenaming({ ...renaming, name: event.target.value })}
+                  />
+                  <button type="button" className="studio-button studio-quiet" onClick={() => setRenaming(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="studio-button studio-primary"
+                    disabled={!renaming.name.trim()}
+                    onClick={() =>
+                      run(async () => {
+                        await library.change({
+                          action: "rename",
+                          kind: "widget",
+                          scope: entry.scope,
+                          id: entry.id,
+                          name: renaming.name.trim(),
+                        });
+                        setRenaming(null);
+                      })
+                    }
+                  >
+                    Save
+                  </button>
+                </span>
+              ) : deleting === key ? (
+                <span className="studio-saved-look-name-edit" role="alert">
+                  <span>Delete “{entry.name}”? Widgets placed from it stay.</span>
+                  <button type="button" className="studio-button studio-quiet" onClick={() => setDeleting(null)}>
+                    Keep it
+                  </button>
+                  <button
+                    type="button"
+                    className="studio-button studio-danger"
+                    onClick={() =>
+                      run(async () => {
+                        await library.change({ action: "delete", kind: "widget", scope: entry.scope, id: entry.id });
+                        setDeleting(null);
+                      })
+                    }
+                  >
+                    Delete
+                  </button>
+                </span>
+              ) : (
+                <>
+                  <span>
+                    <strong>{entry.name}</strong>
+                    <small>{detail}</small>
+                  </span>
+                  <button
+                    type="button"
+                    className="studio-button studio-quiet"
+                    onClick={() => setRenaming({ key, name: entry.name })}
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    className="studio-icon-button"
+                    aria-label={`Delete saved widget ${entry.name}`}
+                    onClick={() => setDeleting(key)}
+                  >
+                    <StudioIcon name="trash" size={16} />
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {!shown.length && <p className="studio-muted">No saved widgets match that search.</p>}
+    </>
+  );
+}
+
+export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, initial }) {
+  const [query, setQuery] = useState(initial?.query ?? "");
+  const [category, setCategory] = useState(initial?.category ?? "all");
   const [restoring, setRestoring] = useState(null);
-  useEditorDraft(false, Boolean(restoring));
+  const [placing, setPlacing] = useState(false);
+  const library = useLibrary(Boolean(onPlace));
+  useEditorDraft(false, Boolean(restoring) || placing);
   const entries = [
     {
       kind: "service",
@@ -217,9 +436,13 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
     const name = keys.map((key) => logos.get(key)).find(Boolean);
     return name ? builtInIconUrl(name) : null;
   };
+  const inCategory = (entry) =>
+    category === "all" ||
+    entry.kind === category ||
+    (category === "links" && (entry.kind === "service" || entry.kind === "bookmark"));
   const visible = entries.filter(
     (entry) =>
-      (category === "all" || entry.kind === category) &&
+      inCategory(entry) &&
       `${entry.name} ${entry.type} ${entry.description || ""}`.toLowerCase().includes(query.toLowerCase()),
   );
   return (
@@ -241,8 +464,8 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
               ["all", "All"],
               ["serviceWidget", "Integrations"],
               ["informationWidget", "Information"],
-              ["service", "Services"],
-              ["bookmark", "Bookmarks"],
+              ["links", "Links"],
+              ...(onPlace ? [["saved", "Saved"]] : []),
             ].map(([key, label]) => (
               <button
                 key={key}
@@ -286,12 +509,28 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
               </div>
             </details>
           )}
-          <div className="studio-catalog">
+          {category === "saved" && (
+            <SavedWidgets
+              library={library}
+              query={query}
+              catalog={catalog}
+              busy={placing}
+              onPlace={async (entry) => {
+                setPlacing(true);
+                try {
+                  await onPlace(entry);
+                } finally {
+                  setPlacing(false);
+                }
+              }}
+            />
+          )}
+          <div className="studio-catalog" hidden={category === "saved"}>
             {visible.map((entry) => (
               <button
                 key={`${entry.kind}:${entry.type}`}
                 className="studio-catalog-item"
-                onClick={() => onChoose(entry)}
+                onClick={() => onChoose(entry, { query, category })}
               >
                 <span className="studio-catalog-icon">
                   {logoOf(entry) ? (
@@ -309,7 +548,9 @@ export function ContentPicker({ catalog, state, onChoose, onRestore }) {
               </button>
             ))}
           </div>
-          {!visible.length && <p className="studio-muted">No native widgets match that search.</p>}
+          {category !== "saved" && !visible.length && (
+            <p className="studio-muted">No native widgets match that search.</p>
+          )}
         </fieldset>
       </div>
     </>
@@ -411,13 +652,14 @@ export default function ContentEditor({
   const [error, setError] = useState(null);
   const [deleting, setDeleting] = useState(startDeleting);
   const sizeNoteId = useId();
+  const [savingAs, setSavingAs] = useState(false);
   // One section open at a time (board 24). A new item opens on its settings;
   // an existing one opens with everything summarised.
   const [openSection, setOpenSection] = useState(startDeleting ? "manage" : panel ? null : "settings");
-  // Just me looks are read once the Look section is first opened.
-  const [lookOpened, setLookOpened] = useState(false);
-  if (openSection === "look" && !lookOpened) setLookOpened(true);
-  const library = useLibrary(Boolean(boardPanel) && lookOpened);
+  // Saved looks and widgets are read once Look or Management first opens.
+  const [libraryWanted, setLibraryWanted] = useState(false);
+  if ((openSection === "look" || openSection === "manage") && !libraryWanted) setLibraryWanted(true);
+  const library = useLibrary(Boolean(boardPanel) && libraryWanted);
   const sectionProps = (id) => ({
     open: openSection === id,
     onToggle: () => setOpenSection((current) => (current === id ? null : id)),
@@ -827,6 +1069,16 @@ export default function ContentEditor({
                     >
                       Duplicate
                     </ActionRow>
+                    {(kind === "serviceWidget" || kind === "informationWidget") && boardPanel && (
+                      <ActionRow
+                        icon="tag"
+                        disabled={pending}
+                        aria-expanded={savingAs}
+                        onClick={() => setSavingAs((value) => !value)}
+                      >
+                        Save as a saved widget
+                      </ActionRow>
+                    )}
                     <ActionRow
                       ref={deleteButton}
                       icon="trash"
@@ -838,6 +1090,17 @@ export default function ContentEditor({
                       Delete
                     </ActionRow>
                   </Group>
+                  {savingAs && (
+                    <SaveAsWidget
+                      library={library}
+                      defaultName={name || panel?.title || ""}
+                      panelId={boardPanel.id}
+                      changed={
+                        name !== initialName || serviceChanged || editorDraftChanged(initial, draft) || lookChanged
+                      }
+                      onDone={() => setSavingAs(false)}
+                    />
+                  )}
                   {deleting && (
                     <div ref={deleteConfirm} className="studio-delete-confirm" role="alert">
                       <strong>Delete {panel?.title || "this item"}?</strong>

@@ -997,6 +997,20 @@ body {
 .studio-dialog-header::before {
   content: "";
 }
+.studio-dialog-header-back::before {
+  display: none;
+}
+.studio-back-chevron {
+  transform: rotate(180deg);
+}
+.studio-saved-widgets-head {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 8px;
+}
+.studio-saved-widget-row {
+  cursor: default;
+}
 .studio-dialog-header h2 {
   font-size: 22px;
   font-weight: 600;
@@ -5051,4 +5065,15 @@ svg.studio-chart-gauge {
   font-size: 18px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+}
+/* Save as a saved widget, under Management. */
+.studio-save-as {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 0 0;
+}
+.studio-save-as .studio-row {
+  border-radius: 12px;
+  background: var(--studio-raised);
 }

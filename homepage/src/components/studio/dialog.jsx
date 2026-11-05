@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 
 import StudioIcon from "./icons";
 
-export default function StudioDialog({ title, eyebrow, children, onClose, wide = false, busy = false }) {
+export default function StudioDialog({ title, eyebrow, children, onClose, onBack, wide = false, busy = false }) {
   const ref = useRef(null);
   const close = useRef(onClose);
   const pendingFocus = useRef(null);
@@ -52,7 +52,12 @@ export default function StudioDialog({ title, eyebrow, children, onClose, wide =
         }
       }}
     >
-      <header className="studio-dialog-header">
+      <header className={`studio-dialog-header${onBack ? " studio-dialog-header-back" : ""}`}>
+        {onBack && (
+          <button className="studio-icon-button" aria-label="Back" disabled={busy} onClick={onBack}>
+            <StudioIcon name="chevron" className="studio-back-chevron" />
+          </button>
+        )}
         <div>
           {eyebrow && <p className="studio-eyebrow">{eyebrow}</p>}
           <h2 id="studio-dialog-title">{title}</h2>
