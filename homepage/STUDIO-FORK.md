@@ -9,10 +9,10 @@ directory. There is no separately updated public Homepage container.
 ## Provenance and license
 
 The upstream baseline is [gethomepage/homepage](https://github.com/gethomepage/homepage)
-v2.6.0, commit
-[`51cc1684f9f34a7877ed462b8f94c9cc687b4dde`](https://github.com/gethomepage/homepage/tree/51cc1684f9f34a7877ed462b8f94c9cc687b4dde).
-`../upstream.lock.json` retains its exact archive hash, original dependency input
-hashes and pinned build toolchain. `LICENSE` retains Homepage's GPL terms.
+v2.7.0, commit
+[`2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f`](https://github.com/gethomepage/homepage/tree/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f).
+`../upstream.lock.json` records it with its dependency input hashes, the earlier
+v2.6.0 baseline it was merged onto, and the pinned build toolchain. `LICENSE` retains Homepage's GPL terms.
 Original Studio additions use the root AGPL-3.0-or-later license; root
 `third-party/` retains attribution, prior grants and source notices. Upstream
 names, copyright notices and relevant dependency licenses remain intact.
@@ -66,7 +66,7 @@ authority for the source that is built and distributed.
 ## Divergence from upstream
 
 The fork's divergence from the baseline is the Git difference between upstream
-commit `51cc1684f9f34a7877ed462b8f94c9cc687b4dde` and this directory; it is
+commit `2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f` and this directory; it is
 not recorded in a separate manifest. The earlier overlay manifests
 (`studio-overlay.json`, `studio-source.json`) described a generated overlay
 applied to a downloaded upstream archive. Nothing read them once the fork

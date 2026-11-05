@@ -1,14 +1,14 @@
 import Block from "components/services/widget/block";
 import Container from "components/services/widget/container";
 import useWidgetAPI from "utils/proxy/use-widget-api";
-import withWidgetFields from "utils/widget-fields";
+import { useWidgetFields } from "utils/widget-fields";
 
 const DOCKER_FIELDS = ["running", "stopped", "total"];
 const KUBERNETES_FIELDS = ["applications", "services", "namespaces"];
 
 export default function Component({ service: configuredService }) {
   const defaultFields = configuredService.widget.kubernetes ? KUBERNETES_FIELDS : DOCKER_FIELDS;
-  const service = withWidgetFields(configuredService, defaultFields);
+  const service = useWidgetFields(configuredService, defaultFields);
   const { widget } = service;
 
   const { data: containersCount, error: containersError } = useWidgetAPI(

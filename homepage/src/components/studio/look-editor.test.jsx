@@ -38,6 +38,11 @@ function renderEditor(props = {}) {
 
 const radio = (group, name) => within(screen.getByRole("radiogroup", { name: group })).getByRole("radio", { name });
 
+// Where a value shows: a segmented control (board 27).
+const where = (label) => screen.getByRole("radiogroup", { name: `Where ${label} shows` });
+const whereIs = (label) => within(where(label)).getByRole("radio", { checked: true }).textContent;
+const putIt = (label, text) => fireEvent.click(within(where(label)).getByRole("radio", { name: text }));
+
 describe("widget dialog look (Rule 1: only what can apply)", () => {
   it("shows integration sections and hides colour rows until a fill needs them", () => {
     renderEditor();
@@ -138,7 +143,7 @@ describe("arranging values", () => {
 
   it("moves the hero when another value becomes the hero", () => {
     const { onLook } = renderEditor({ look: { values: [{ field: "users", slot: "hero" }] } });
-    fireEvent.change(screen.getByLabelText("Where Logins shows"), { target: { value: "hero" } });
+    putIt("Logins", "Hero");
     expect(onLook).toHaveBeenLastCalledWith({
       values: [{ field: "users" }, { field: "failed" }, { field: "logins", slot: "hero" }],
     });
@@ -219,9 +224,12 @@ describe("uploaded backgrounds", () => {
 });
 
 describe("saved looks", () => {
-  it("is offered only when there is a look to save or one to pick", () => {
+  it("is always shown where looks can be saved; saving waits for a changed look", () => {
     renderEditor({ look: {}, savedLooks: [], onSavedLooks: vi.fn() });
-    expect(screen.queryByText("Saved looks")).toBeNull();
+    expect(screen.getByText("Saved looks")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "None picked" }));
+    expect(screen.getByText(/No saved looks yet/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save this look…" })).toBeDisabled();
   });
 
   it("names this widget's look without its values, and applies a saved look keeping them", () => {
@@ -232,7 +240,9 @@ describe("saved looks", () => {
       savedLooks: [{ id: "n", name: "Night", look: { edge: "none" } }],
       onSavedLooks,
     });
-    fireEvent.click(screen.getByRole("button", { name: "+ Save this look" }));
+    const toggle = screen.getByRole("button", { name: "None picked" });
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Save this look…" }));
     const input = screen.getByRole("textbox", { name: "Name for this look" });
     fireEvent.change(input, { target: { value: "night" } });
     expect(screen.getByText("That name is taken.")).toBeInTheDocument();
@@ -244,8 +254,63 @@ describe("saved looks", () => {
     ]);
     fireEvent.click(screen.getByRole("button", { name: "Night" }));
     expect(onLook).toHaveBeenCalledWith({ edge: "none", values });
-    fireEvent.click(screen.getByRole("button", { name: "Forget saved look Night" }));
-    expect(onSavedLooks).toHaveBeenLastCalledWith([]);
+  });
+
+  it("searches, and manages saved looks in one place: rename, update, delete", async () => {
+    const onSavedLooks = vi.fn();
+    const change = vi.fn(async () => ({}));
+    const onUpdateLookUsers = vi.fn();
+    const saved = ["Night", "Day", "Hexagon", "Quiet blue"].map((name, index) => ({
+      id: `l${index}`,
+      name,
+      look: { edge: index % 2 ? "line" : "none" },
+    }));
+    renderEditor({
+      look: { fill: "tint" },
+      savedLooks: saved,
+      onSavedLooks,
+      personalLooks: {
+        available: true,
+        looks: [{ id: "m1", name: "Mine", scope: "me", look: { corners: "round" } }],
+        change,
+      },
+      lookUsage: () => 2,
+      onUpdateLookUsers,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "None picked" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search saved looks" }), { target: { value: "hex" } });
+    expect(
+      within(screen.getByRole("list", { name: "Saved looks" }))
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["HexagonThis dashboard"]);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search saved looks" }), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Manage saved looks" }));
+    const manage = screen.getByRole("list", { name: "Manage saved looks" });
+    fireEvent.click(within(manage).getAllByRole("button", { name: "Rename" })[0]);
+    fireEvent.change(screen.getByRole("textbox", { name: "New name for Night" }), { target: { value: "Midnight" } });
+    fireEvent.click(within(manage).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSavedLooks).toHaveBeenLastCalledWith(
+        expect.arrayContaining([expect.objectContaining({ id: "l0", name: "Midnight" })]),
+      ),
+    );
+    // Update makes it this widget's look, and asks about the widgets using it.
+    fireEvent.click(within(manage).getAllByRole("button", { name: "Update" })[1]);
+    await waitFor(() =>
+      expect(onSavedLooks).toHaveBeenLastCalledWith(
+        expect.arrayContaining([{ id: "l1", name: "Day", look: { fill: "tint" } }]),
+      ),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "2 other widgets on this dashboard use “Day”. Update them too?",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Update them" }));
+    expect(onUpdateLookUsers).toHaveBeenCalledWith({ edge: "line" }, { fill: "tint" });
+    // A Just me look is changed on the account at once.
+    fireEvent.click(screen.getByRole("button", { name: "Delete saved look Mine" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(change).toHaveBeenCalledWith({ action: "delete", kind: "look", scope: "me", id: "m1" }));
   });
 });
 
@@ -359,9 +424,9 @@ describe("Status history on a service tile", () => {
 
   it("names the line drawn as the hero, and hands the hero on when it moves below", () => {
     const { onLook } = renderEditor({ look: { show: "numbers", layout: "hero" } });
-    expect(screen.getByRole("combobox", { name: "Where Users shows" }).value).toBe("hero");
-    expect(screen.getByRole("combobox", { name: "Where Failed shows" }).value).toBe("below");
-    fireEvent.change(screen.getByRole("combobox", { name: "Where Users shows" }), { target: { value: "below" } });
+    expect(whereIs("Users")).toBe("Hero");
+    expect(whereIs("Failed")).toBe("Below");
+    putIt("Users", "Below");
     expect(onLook.mock.calls.at(-1)[0].values).toEqual([
       { field: "users" },
       { field: "failed", slot: "hero" },
@@ -381,7 +446,7 @@ describe("Status history on a service tile", () => {
     const value = screen.getByRole("combobox", { name: "Value" });
     expect(value.value).toBe("failed");
     expect([...value.options].map((option) => option.value)).toEqual(["failed", "logins"]);
-    expect(screen.queryByRole("combobox", { name: "Where Users shows" })).toBe(null);
+    expect(screen.queryByRole("radiogroup", { name: "Where Users shows" })).toBe(null);
     fireEvent.change(value, { target: { value: "logins" } });
     expect(onLook.mock.calls.at(-1)[0].values).toEqual([
       { field: "users" },
@@ -399,5 +464,55 @@ describe("Status history on a service tile", () => {
     expect(screen.queryByRole("radiogroup", { name: "Time range" })).toBe(null);
     expect(screen.getByRole("radiogroup", { name: "Uptime over" })).toBeTruthy();
     expect(screen.getByRole("radiogroup", { name: "Style" })).toBeTruthy();
+  });
+});
+
+// Board 27 (approved 4 Nov 2026): every value the integration provides is
+// listed, in your order, as a number, in the chart, or hidden; the widget's
+// own fields list follows, so the YAML says what the card shows.
+describe("one Values list for every value", () => {
+  const pfsense = ["load", "memory", "temp", "wanStatus"].map((key) => ({
+    field: `pfsense.${key}`,
+    label: `pfsense.${key}`,
+  }));
+  const native = (fieldsList, onChange = vi.fn()) => ({
+    choices: ["load", "memory", "temp", "wanStatus", "wanIP", "disk"],
+    prefix: "pfsense",
+    fields: fieldsList,
+    onChange,
+  });
+
+  it("lists values the widget isn't drawing yet as hidden, and showing one adds it to the fields list", () => {
+    const onChange = vi.fn();
+    renderEditor({ fields: pfsense, nativeValues: native(undefined, onChange) });
+    expect(whereIs("pfsense.wanIP")).toBe("Hidden");
+    expect(whereIs("pfsense.disk")).toBe("Hidden");
+    putIt("pfsense.wanIP", /^(Below|Shown)$/);
+    expect(onChange).toHaveBeenCalledWith(["load", "memory", "temp", "wanStatus", "wanIP"]);
+  });
+
+  it("hiding a value removes it from the fields list, and moving one reorders it", () => {
+    const onChange = vi.fn();
+    renderEditor({ fields: pfsense, nativeValues: native(["load", "memory", "temp", "wanStatus"], onChange) });
+    putIt("pfsense.temp", "Hidden");
+    expect(onChange).toHaveBeenLastCalledWith(["load", "memory", "wanStatus"]);
+    fireEvent.click(screen.getByRole("button", { name: "Move pfsense.memory up" }));
+    expect(onChange).toHaveBeenLastCalledWith(["memory", "load", "temp", "wanStatus"]);
+  });
+
+  it("leaves the usual set alone when only a name changes", () => {
+    const onChange = vi.fn();
+    renderEditor({ fields: pfsense, nativeValues: native(undefined, onChange) });
+    fireEvent.change(screen.getByLabelText("Name shown for pfsense.load"), { target: { value: "CPU" } });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("on a chart, each value goes in the chart, beside it as a number, or nowhere", () => {
+    renderEditor({ fields: pfsense, look: { show: "line" } });
+    expect(
+      within(where("pfsense.load"))
+        .getAllByRole("radio")
+        .map((radio) => radio.textContent),
+    ).toEqual(["Chart", "Number", "Hidden"]);
   });
 });

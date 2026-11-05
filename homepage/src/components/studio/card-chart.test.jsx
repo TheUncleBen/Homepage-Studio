@@ -158,3 +158,40 @@ describe("status history", () => {
     expect(document.querySelector(".studio-chart-parts .studio-chart-legend")).toBeTruthy();
   });
 });
+
+// Board 27: a pie of running and stopped with the total beside it.
+describe("values beside a chart", () => {
+  const portainer = {
+    fields: [
+      { field: "portainer.running", label: "portainer.running", format: "plain" },
+      { field: "portainer.stopped", label: "portainer.stopped", format: "plain" },
+      { field: "portainer.total", label: "portainer.total", format: "plain" },
+    ],
+    points: [[1000, 31, 92, 123]],
+    latest: { at: 1000, values: { "portainer.running": 31, "portainer.stopped": 92, "portainer.total": 123 } },
+  };
+
+  it("never makes a total a slice of a pie; it stands beside the chart", () => {
+    const { container } = render(<CardChart card={{ show: "pie", chartRange: "24h", history: portainer }} />);
+    const legend = container.querySelector(".studio-chart-legend");
+    expect(legend.textContent).toContain("portainer.running");
+    expect(legend.textContent).not.toContain("portainer.total");
+    expect(container.querySelector(".studio-chart-numbers").textContent).toContain("portainer.total");
+    expect(container.querySelector(".studio-chart-numbers").textContent).toContain("123");
+  });
+
+  it("a value set to Number is left out of a line chart and shown beside it", () => {
+    const card = {
+      show: "line",
+      chartRange: "24h",
+      history: portainer,
+      values: [{ field: "portainer.stopped", slot: "number" }],
+    };
+    expect(chartSeries(portainer, card, (label) => label).map((entry) => entry.field.field)).toEqual([
+      "portainer.running",
+      "portainer.total",
+    ]);
+    const { container } = render(<CardChart card={card} />);
+    expect(container.querySelector(".studio-chart-numbers").textContent).toContain("92");
+  });
+});

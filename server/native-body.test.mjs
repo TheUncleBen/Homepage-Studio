@@ -23,9 +23,9 @@ const server = http.createServer(async (req, res) => {
   for await (const chunk of req) chunks.push(chunk);
   res.setHeader('content-type', 'application/json');
   if (req.url === '/api/studio/health') {
-    return res.end(JSON.stringify({ protocolVersion: 1, upstreamCommit: '51cc1684f9f34a7877ed462b8f94c9cc687b4dde', buildRevision: process.env.STUDIO_BUILD_REVISION, dashboardId: process.env.STUDIO_DASHBOARD_ID, dashboardBasePath: process.env.STUDIO_DASHBOARD_BASE_PATH, rendererInstance: process.env.STUDIO_RENDERER_INSTANCE }));
+    return res.end(JSON.stringify({ protocolVersion: 1, upstreamCommit: '2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f', buildRevision: process.env.STUDIO_BUILD_REVISION, dashboardId: process.env.STUDIO_DASHBOARD_ID, dashboardBasePath: process.env.STUDIO_DASHBOARD_BASE_PATH, rendererInstance: process.env.STUDIO_RENDERER_INSTANCE }));
   }
-  if (req.url === '/api/studio/sources') return res.end(JSON.stringify({ protocolVersion: 1, upstreamCommit: '51cc1684f9f34a7877ed462b8f94c9cc687b4dde', sources: [], warnings: [] }));
+  if (req.url === '/api/studio/sources') return res.end(JSON.stringify({ protocolVersion: 1, upstreamCommit: '2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f', sources: [], warnings: [] }));
   res.end(JSON.stringify({ id: process.env.STUDIO_DASHBOARD_ID, url: req.url, body: Buffer.concat(chunks).toString('utf8'), length: req.headers['content-length'] ?? null, expect: req.headers.expect ?? null }));
 });
 server.listen(Number(process.env.PORT), process.env.HOSTNAME);

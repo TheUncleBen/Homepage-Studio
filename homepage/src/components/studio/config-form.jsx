@@ -491,7 +491,6 @@ function VisibleFields({ field, value, onChange }) {
         title: group.label || group.context || group.name || `Set ${index + 1}`,
         choices: group.choices || group.fields || [],
       }));
-  const full = field.maxItems && selected.length >= field.maxItems;
   const set = (next) => onChange(field.key, next.length ? next : undefined);
   const move = (choice, step) => {
     const next = [...selected];
@@ -533,7 +532,6 @@ function VisibleFields({ field, value, onChange }) {
         <Switch
           label={humanize(choice)}
           checked={on}
-          disabled={!on && Boolean(full)}
           onChange={(next) => set(next ? [...selected, choice] : selected.filter((entry) => entry !== choice))}
         />
       </div>
@@ -549,16 +547,8 @@ function VisibleFields({ field, value, onChange }) {
       // Not "Visible fields": Show (below) arranges and hides values; this
       // is the widget's own list of which values it includes.
       title="Values it includes"
-      aside={
-        selected.length
-          ? field.maxItems
-            ? `${selected.length} of ${field.maxItems}`
-            : `${selected.length} shown`
-          : undefined
-      }
-      info={`The widget's own choice of values. It uses its usual set until you turn that off and pick values, in order. Show, further down, arranges and hides what it includes.${
-        field.maxItems ? ` It can show up to ${field.maxItems}.` : ""
-      }${contexts.length > 1 ? " Each set belongs to a different mode of the widget; choose from one set." : ""}`}
+      aside={selected.length ? `${selected.length} shown` : undefined}
+      info={`The widget's own choice of values. It uses its usual set until you turn that off and pick values, in order. Show, further down, arranges and hides what it includes.${contexts.length > 1 ? " Each set belongs to a different mode of the widget; choose from one set." : ""}`}
       className="studio-visible-fields"
     >
       <Row label="Its usual set">
@@ -594,12 +584,15 @@ export default function ConfigForm({
   docs,
   guide,
   setupNotes,
+  secrets,
   name,
   testable = false,
   grouped = true,
   title,
   info,
   connections = false,
+  // Inside the widget dialog's Connection section, which already names it.
+  sectioned = false,
 }) {
   const [tab, setTab] = useState("fields");
   // Whether a saved connection fills the address and key (connections.jsx).
@@ -700,7 +693,7 @@ export default function ConfigForm({
       {tab === "fields" ? (
         <>
           {connection.length > 0 && (
-            <Group title="Connection">
+            <Group title={sectioned ? undefined : "Connection"}>
               {offersSaved && (
                 <ConnectionChooser
                   value={value}
@@ -771,9 +764,9 @@ export default function ConfigForm({
           )}
         </Group>
       )}
-      {(guide?.length > 0 || setupNotes?.length > 0 || docs) && (
+      {(guide?.length > 0 || setupNotes?.length > 0 || secrets?.length > 0 || docs) && (
         <Disclosure title={name ? `Setting up ${name}` : "Setup guide"} icon="book">
-          <Guide blocks={guide} notes={setupNotes} docs={docs} />
+          <Guide blocks={guide} notes={setupNotes} secrets={secrets} name={name} docs={docs} />
         </Disclosure>
       )}
     </div>

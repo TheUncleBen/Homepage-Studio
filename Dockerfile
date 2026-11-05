@@ -35,7 +35,7 @@ LABEL org.opencontainers.image.title="Homepage Studio" \
       org.opencontainers.image.source="https://github.com/TheUncleBen/Homepage-Studio" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later" \
       org.opencontainers.image.revision="${STUDIO_BUILD_REVISION}" \
-      io.homepage-studio.upstream="51cc1684f9f34a7877ed462b8f94c9cc687b4dde"
+      io.homepage-studio.upstream="2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f"
 WORKDIR /app
 # Refresh the inherited Perl runtime as well: the pinned Node base predates
 # Debian's Bookworm perl-base security update (5.36.0-7+deb12u4).
@@ -63,6 +63,7 @@ COPY homepage/src/utils/config/yaml-parser.mjs ./homepage/src/utils/config/yaml-
 COPY homepage/src/components/studio/appearance.mjs ./homepage/src/components/studio/appearance.mjs
 COPY homepage/src/components/studio/look.mjs ./homepage/src/components/studio/look.mjs
 COPY homepage/src/components/studio/geometry.mjs ./homepage/src/components/studio/geometry.mjs
+COPY homepage/src/components/studio/layouts.mjs ./homepage/src/components/studio/layouts.mjs
 COPY homepage/src/components/studio/backgrounds.mjs ./homepage/src/components/studio/backgrounds.mjs
 COPY homepage/src/components/studio/languages.mjs ./homepage/src/components/studio/languages.mjs
 COPY homepage/src/components/studio/playback.mjs ./homepage/src/components/studio/playback.mjs

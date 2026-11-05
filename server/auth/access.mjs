@@ -79,9 +79,14 @@ const VIEW_GET = new Set(['/studio/api/board', '/studio/api/access', '/studio/ca
 // Anyone who can open a dashboard keeps their own preferences.
 const VIEW_POST = new Set(['/studio/api/preferences']);
 // /studio/api/history/probe: the formats of a widget's numbers, for the look's Show as choice.
-const ARRANGE_POST = new Set(['/studio/api/history/probe', '/studio/api/board', '/studio/api/discovery-visibility', '/studio/api/appearance', '/studio/api/logo', '/studio/api/images', '/studio/api/images/delete', '/studio/api/my-images', '/studio/api/my-images/delete', '/studio/api/my-images/use']);
+// /studio/api/undo and /redo: a person's own editing steps (keyed to their sign-in and role).
+const ARRANGE_POST = new Set(['/studio/api/history/probe', '/studio/api/board', '/studio/api/undo', '/studio/api/redo', '/studio/api/discovery-visibility', '/studio/api/appearance', '/studio/api/logo', '/studio/api/images', '/studio/api/images/delete', '/studio/api/my-images', '/studio/api/my-images/delete', '/studio/api/my-images/use', '/studio/api/library', '/studio/api/library/use']);
 // The editor and settings pages are opened from the Dashboards page.
-const ARRANGE_GET = new Set(['/studio/api/appearance', '/studio/api/images', '/studio/api/my-images', '/studio/edit', '/studio/settings']);
+// /studio/api/library: saved looks for anyone who arranges; saving widgets
+// inside it is checked for administrators (server/index.mjs handleLibrary).
+// /studio/api/library/use: anyone who arranges places a saved widget (owner
+// decision, 5 Nov 2026); its settings and keys stay on the server.
+const ARRANGE_GET = new Set(['/studio/api/appearance', '/studio/api/images', '/studio/api/my-images', '/studio/api/library', '/studio/edit', '/studio/settings']);
 // Admin operations that also need a recent sign-in.
 const STEP_UP = new Set(['POST /studio/api/save', 'POST /studio/api/import', 'POST /studio/api/restore', 'GET /studio/api/export']);
 

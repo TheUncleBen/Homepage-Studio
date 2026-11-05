@@ -3,14 +3,14 @@ import { useTranslation } from "next-i18next/pages";
 import Block from "components/services/widget/block";
 import Container from "components/services/widget/container";
 import useWidgetAPI from "utils/proxy/use-widget-api";
-import withWidgetFields from "utils/widget-fields";
+import { useWidgetFields } from "utils/widget-fields";
 
 const DEFAULT_FIELDS = ["address", "last_seen", "expires"];
 
 export default function Component({ service: configuredService }) {
   const { t } = useTranslation();
 
-  const service = withWidgetFields(configuredService, DEFAULT_FIELDS);
+  const service = useWidgetFields(configuredService, DEFAULT_FIELDS);
   const { widget } = service;
 
   const { data: tailscaleData, error: tailscaleError } = useWidgetAPI(widget, "device");

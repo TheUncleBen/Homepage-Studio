@@ -381,10 +381,13 @@ test('HTTP state, native service and info-widget mutations, stale revisions, bac
   assert.equal(result.status, 200);
   assert.equal(result.json.infoWidgets[0].type, 'datetime');
   const board = structuredClone(result.json.board);
-  board.panels.find((panel) => panel.id === tile.id).rect = { x: 1, y: 30, w: 5, h: 4 };
+  // The service carries a widget, so its widget's card is its only card.
+  const card = board.panels.find((panel) => panel.nativeLocator?.serviceId === tile.id);
+  assert.ok(!board.panels.some((panel) => panel.id === tile.id));
+  card.rect = { x: 1, y: 30, w: 5, h: 4 };
   result = await post('/studio/api/save', { revision: result.json.revision, board });
   assert.equal(result.status, 200);
-  assert.deepEqual(result.json.board.panels.find((panel) => panel.id === tile.id).rect, { x: 1, y: 30, w: 5, h: 4 });
+  assert.deepEqual(result.json.board.panels.find((panel) => panel.id === card.id).rect, { x: 1, y: 30, w: 5, h: 4 });
   const invalid = await post('/studio/api/save', { revision: result.json.revision, servicesYaml: '- broken: [unterminated' });
   assert.equal(invalid.status, 422);
   assert.equal(invalid.json.code, 'INVALID_YAML');
@@ -685,7 +688,7 @@ test('structured configuration writes and restore complete while an explicit dis
   } finally { hold = false; released.resolve(); await refresh; }
 });
 
-test('both complete-board save routes await fresh membership and reject an omitted discovery arrival', async t => {
+test('both complete-board save routes await fresh membership; raw saves reject an omitted discovery arrival and the editor keeps it', async t => {
   const source = number => {
     const id = `discovered-service-${String(number).padStart(24, '0')}`;
     return { id, kind: 'service', title: `Discovered ${number}`, group: 'Lab', nativeLocator: { discovered: true, discoveryId: id, serviceId: id, groupPath: ['Lab'], name: `Discovered ${number}`, origin: 'docker' } };
@@ -694,7 +697,7 @@ test('both complete-board save routes await fresh membership and reject an omitt
   const { request, post, store } = await setup(t, options);
   const before = (await request('/studio/api/state')).json;
   options.nativeDiscoveredSources = [source(1), source(2)];
-  for (const endpoint of ['board', 'save']) {
+  for (const endpoint of ['save', 'board']) {
     const entered = Promise.withResolvers(), released = Promise.withResolvers();
     options.beforeNativeDiscovery = async () => { entered.resolve(); await released.promise; };
     let settled = false;
@@ -704,9 +707,14 @@ test('both complete-board save routes await fresh membership and reject an omitt
       assert.equal(settled, false, 'The board cannot commit before its source membership refresh.');
     } finally { released.resolve(); }
     const result = await pending;
-    assert.equal(result.status, 422, result.text);
-    assert.equal((await store.load()).revision, before.revision);
-    assert.equal((await store.listBackups()).length, 0);
+    if (endpoint === 'save') {
+      assert.equal(result.status, 422, result.text);
+      assert.equal((await store.load()).revision, before.revision);
+      assert.equal((await store.listBackups()).length, 0);
+    } else {
+      assert.equal(result.status, 200, result.text);
+      assert.ok(result.json.board.panels.some(panel => panel.id === source(2).id));
+    }
   }
 });
 
@@ -800,7 +808,9 @@ test('each editor endpoint records its own fixed snapshot action code and never 
   const board = structuredClone(state.board);
   board.panels[0].rect = { ...board.panels[0].rect, x: board.panels[0].rect.x + 1 };
   state = await expectAction('/studio/api/board', { board }, 'arrangement-saved');
-  state = await expectAction('/studio/api/service', { action: 'delete', id: service.id }, 'service-deleted');
+  // Removing the widget removed its service too (one card), so delete another.
+  state = await expectAction('/studio/api/service', { action: 'add', name: 'Printer', group: 'Lab', config: { href: 'https://printer.example.test' } }, 'service-added');
+  state = await expectAction('/studio/api/service', { action: 'delete', id: state.services.find((entry) => entry.name === 'Printer').id }, 'service-deleted');
   state = await expectAction('/studio/api/restore', { backupId: recorded[0] }, 'snapshot-restored');
   const archive = (await request('/studio/api/export')).json;
   await expectAction('/studio/api/import', { archive }, 'dashboard-imported');
@@ -813,4 +823,25 @@ test('each editor endpoint records its own fixed snapshot action code and never 
   }
   const listed = JSON.stringify((await request('/studio/api/backups')).json);
   assert.ok(!listed.includes('Free text') && !listed.includes('arbitrary text'));
+});
+
+test('undo reaches only the steps of the editing session that made them', async (t) => {
+  const { request, post } = await setup(t);
+  const before = (await request('/studio/api/state')).json;
+  const added = await post('/studio/api/service', { revision: before.revision, action: 'add', name: 'Router', group: 'Lab', config: { href: 'https://router.example.test' }, editSession: 'editor-one' });
+  assert.equal(added.status, 200, added.text);
+  const other = await post('/studio/api/undo', { revision: added.json.revision, editSession: 'editor-two' });
+  assert.equal(other.status, 409);
+  assert.equal(other.json.code, 'NOTHING_TO_UNDO');
+  // A malformed id is never a session (and never reaches the store as text).
+  const malformed = await post('/studio/api/undo', { revision: added.json.revision, editSession: 'x' });
+  assert.equal(malformed.status, 409);
+  const undone = await post('/studio/api/undo', { revision: added.json.revision, editSession: 'editor-one' });
+  assert.equal(undone.status, 200, undone.text);
+  assert.equal(undone.json.revision, before.revision);
+  assert.equal(undone.json.canRedo, true);
+  assert.ok(!Object.hasOwn(undone.json, 'servicesYaml'), 'Undo answers with the board only.');
+  const redone = await post('/studio/api/redo', { revision: undone.json.revision, editSession: 'editor-one' });
+  assert.equal(redone.status, 200, redone.text);
+  assert.equal(redone.json.revision, added.json.revision);
 });

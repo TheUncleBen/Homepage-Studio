@@ -32,13 +32,26 @@ const twoPages = {
 async function mount({ board = twoPages, mode = "live" } = {}) {
   let state = { revision: "r1", configurationRevision: CONFIG, board: structuredClone(board) };
   const writes = [];
+  // A small stand-in for the server's editing session: undo and redo step
+  // back through the saved states.
+  const past = [];
+  const future = [];
   const fetch = vi.fn(async (path, options) => {
     let value;
     if (options?.method === "POST") {
       const body = JSON.parse(options.body);
       writes.push({ path, body });
-      state = { ...state, revision: `r${writes.length + 1}`, ...(body.board ? { board: body.board } : {}) };
-      value = state;
+      if (path.endsWith("/studio/api/undo") || path.endsWith("/studio/api/redo")) {
+        const [from, to] = path.endsWith("/undo") ? [past, future] : [future, past];
+        to.push(state);
+        state = from.pop();
+        value = { ...state, canUndo: past.length > 0, canRedo: future.length > 0 };
+      } else {
+        past.push(state);
+        future.length = 0;
+        state = { ...state, revision: `r${writes.length + 1}`, ...(body.board ? { board: body.board } : {}) };
+        value = state;
+      }
     } else if (path === "/studio/api/access") value = { authEnabled: false, level: "admin", user: null };
     else value = state;
     return { ok: true, status: 200, json: async () => value };
@@ -117,13 +130,29 @@ describe("Pages on a dashboard", () => {
     const nav = screen.getByRole("navigation", { name: "Pages" });
     await within(nav).findByRole("button", { name: "Network" });
     expect(screen.getByText("Nothing here yet")).toBeInTheDocument();
-    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
-    await within(nav).findByRole("button", { name: "New page" });
-    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true, shiftKey: true });
-    await within(nav).findByRole("button", { name: "Network" });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    // Saved by itself, every page with it.
     await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0].path).toBe("/studio/api/board");
     expect(writes[0].body.board.pages.map((page) => page.name)).toEqual(["Overview", "Network", "Media"]);
+    expect(writes[0].body.editSession).toMatch(/^[a-f0-9]{36}$/);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled());
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
+    await waitFor(() => expect(within(nav).queryByRole("button", { name: "Network" })).toBeNull());
+    expect(writes[1].path).toBe("/studio/api/undo");
+    expect(writes[1].body.editSession).toBe(writes[0].body.editSession);
+    fireEvent.keyDown(document.body, { key: "y", ctrlKey: true });
+    await within(nav).findByRole("button", { name: "Network" });
+    expect(writes[2].path).toBe("/studio/api/redo");
+  });
+
+  it("Ctrl+Z with nothing to undo does nothing: no request, no conflict banner", async () => {
+    const { writes } = await mount({ mode: "edit" });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: "y", ctrlKey: true });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(writes).toHaveLength(0);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("Esc while naming a new page takes it back; Enter keeps it as New page", async () => {
@@ -161,7 +190,6 @@ describe("Pages on a dashboard", () => {
     await screen.findByTestId("native-plex");
     expect(screen.getByTestId("native-clock")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Pages" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0].body.board.pages).toEqual([{ id: "home", name: "Overview" }]);
     expect(writes[0].body.board.panels.every((item) => item.pageId === "home")).toBe(true);
@@ -177,6 +205,7 @@ describe("Duplicate page", () => {
     expect(writes.find((write) => write.path === "/studio/api/page-duplicate").body).toEqual({
       revision: "r1",
       pageId: "home",
+      editSession: expect.stringMatching(/^[a-f0-9]{36}$/),
     });
   });
 });

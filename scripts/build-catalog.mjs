@@ -4,9 +4,10 @@ import { createHash } from 'node:crypto';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
+import { describeCatalog, describeSecrets } from './catalog-descriptions.mjs';
 
-export const HOMEPAGE_VERSION = '2.6.0';
-export const SOURCE_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
+export const HOMEPAGE_VERSION = '2.7.0';
+export const SOURCE_COMMIT = '2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f';
 const SOURCE_BASE = `https://github.com/gethomepage/homepage/blob/${SOURCE_COMMIT}/`;
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const registryTypes = text => [...text.matchAll(/^\s+([a-z0-9_]+):\s*dynamic\(/gm)].map(match => match[1]);
@@ -267,7 +268,6 @@ function applyReviewedCorrections(byType) {
       choices,
       exampleValue: null,
       description: 'Optional ordered list of visible native fields. Leave unset for the native default.',
-      ...(['backrest', 'dockhand', 'suwayomi', 'unraid'].includes(type) ? { maxItems: 4 } : {}),
       ...(type === 'evcc' ? { source: `${SOURCE_BASE}src/widgets/evcc/component.jsx` } : {}),
     });
   }
@@ -348,8 +348,9 @@ export async function buildCatalog(sourceDirectory) {
     const item = byType.service.get(doc.types[0]);
     const field = defineField(item, 'fields', ['array'], { exampleValue: null, source: doc.docs, description: 'Optional ordered list of visible native fields. Leave unset for the native default.' });
     if (options.length === 1 && options[0].unconditional) {
+      // Homepage's "up to 4" is not recorded: Studio cards show every chosen
+      // value (owner request, 4 Nov 2026).
       field.choices = options[0].choices;
-      if (options[0].maxItems) field.maxItems = Number(options[0].maxItems);
     } else {
       field.optionGroups = options.map(({ context, choices }) => ({ context, choices }));
       field.description = 'Allowed fields depend on the native mode or version. Review the contextual lists in the documentation; keep their order. Leave unset for the native default.';
@@ -377,6 +378,8 @@ export async function buildCatalog(sourceDirectory) {
   // Product names as their makers write them (upstream page titles vary).
   const NAMES = { adguard: 'AdGuard Home', pihole: 'Pi-hole', truenas: 'TrueNAS', opnsense: 'OPNsense', gitlab: 'GitLab', mikrotik: 'MikroTik', seerr: 'Seerr', unifi: 'UniFi Controller', unifi_console: 'UniFi Controller', healthchecks: 'Healthchecks', weatherapi: 'WeatherAPI', openwrt: 'OpenWrt', nzbget: 'NZBGet', calibreweb: 'Calibre-Web', coinmarketcap: 'CoinMarketCap', crowdsec: 'CrowdSec', pyload: 'pyLoad' };
   for (const kind of ['service', 'info']) for (const [type, name] of Object.entries(NAMES)) if (byType[kind].has(type)) byType[kind].get(type).name = name;
+  await describeCatalog(source, byType, serviceRegistry);
+  describeSecrets(byType);
 
   return {
     homepageVersion: HOMEPAGE_VERSION,

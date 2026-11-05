@@ -1,5 +1,5 @@
 import {
-  addBookmark, addInformation, chooseContent, DASHBOARDS, expect, finishArrangement,
+  addBookmark, addInformation, chooseContent, expect, expectSaved, finishArrangement,
   mouseDrag, openEditor, origin, panelPixels, seedServicePanels, setPanelSize, stackSelected,
   studioApi, test, touchSession,
 } from '../helpers/dashboard.mjs';
@@ -47,10 +47,12 @@ test.describe('touch direct manipulation', () => {
 
   test('vertical scrolling on the live dashboard never arranges; in the editor a finger on the move handle moves and deliberately stacks a panel', async ({ page, request }) => {
     await seedServicePanels(request, [
-      { name: 'Touch source', rect: { x: 0, y: 0, w: 5, h: 3 } },
-      { name: 'Touch target', rect: { x: 0, y: 3, w: 5, h: 3 } },
-      // Far enough down that the phone page scrolls.
-      { name: 'Scroll fixture', rect: { x: 0, y: 20, w: 5, h: 3 } },
+      // Wide enough that the phone shows them one above the other.
+      { name: 'Touch source', rect: { x: 0, y: 0, w: 12, h: 3 } },
+      { name: 'Touch target', rect: { x: 0, y: 3, w: 12, h: 3 } },
+      // Tall enough that the phone page scrolls: phones close up the gaps
+      // between rows, so distance down the desktop page is not enough.
+      { name: 'Scroll fixture', rect: { x: 0, y: 6, w: 5, h: 24 } },
     ]);
     await page.goto('/dashboard');
     const source = servicePanel(page, 'Touch source');
@@ -88,16 +90,15 @@ test.describe('touch direct manipulation', () => {
       await touch.move(point, { x: point.x, y: point.y + 100 });
       await touch.end();
       await expect.poll(async () => (await panelPixels(source)).top).toBeGreaterThan(before.top + 50);
-      // A dirty arrangement asks before Cancel discards it, then returns to
-      // the Dashboards page with nothing saved.
-      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-      await expect(page.getByRole('dialog')).toContainText('Discard unsaved changes?');
-      await expect(page.getByRole('dialog').getByRole('button', { name: 'Keep editing', exact: true })).toBeFocused();
-      await page.getByRole('dialog').getByRole('button', { name: 'Discard changes', exact: true }).click();
-      await page.waitForURL(`**${DASHBOARDS}`);
+      // The move saves on its own; Undo puts the panel back and saves that too.
+      await expectSaved(page);
+      await page.getByRole('button', { name: 'Undo', exact: true }).click();
+      await expect.poll(() => panelPixels(source)).toEqual(before);
+      await expectSaved(page);
       expect((await studioApi(request, '/dashboard/studio/api/board')).board.stacks).toHaveLength(0);
 
-      await openEditor(page);
+      await page.reload();
+      await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
       await expect.poll(() => panelPixels(source)).toEqual(before);
       await source.tap();
       point = await center(handle);
@@ -138,7 +139,8 @@ test.describe('touch on panel bodies', () => {
       search.rect = { x: 0, y: 0, w: 4, h: 3 };
       hold.rect = { x: 0, y: 4, w: 4, h: 3 };
       board.panels.find(panel => panel.title === 'Link fixture').rect = { x: 0, y: 8, w: 4, h: 3 };
-      board.panels.find(panel => panel.title === 'Tall page marker').rect = { x: 0, y: 30, w: 4, h: 3 };
+      // Tall, so the phone page scrolls: phones close up gaps between rows.
+      board.panels.find(panel => panel.title === 'Tall page marker').rect = { x: 0, y: 12, w: 24, h: 24 };
       board.stacks = [{ id: 'body-stack', panelIds: [swipe.id, search.id], rect: { x: 0, y: 0, w: 4, h: 4 }, playback: playback() }];
     });
     await page.goto('/dashboard');
@@ -212,37 +214,27 @@ test.describe('touch on panel bodies', () => {
   });
 });
 
-test.describe('phone delete confirmation', () => {
+test.describe('phone delete', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test('Delete brings its confirmation into view with focus on Keep it, which returns focus to Delete', async ({ page, request }) => {
+  test('Delete under Management closes the dialog and deletes at once; Undo brings the widget back', async ({ page, request }) => {
     await seedServicePanels(request, [{ name: 'Delete fixture', rect: { x: 0, y: 0, w: 5, h: 3 } }]);
     await openEditor(page);
     // On a touch screen a widget shows its controls once tapped.
     await servicePanel(page, 'Delete fixture').tap();
     await page.getByRole('button', { name: 'Edit Delete fixture', exact: true }).click();
     const dialog = page.getByRole('dialog');
-    const remove = dialog.getByRole('button', { name: 'Delete', exact: true });
-    await remove.click();
-    const keep = dialog.getByRole('button', { name: 'Keep it', exact: true });
-    await expect(keep).toBeFocused();
-    await expect(keep).toBeInViewport();
-    await expect(dialog.getByRole('button', { name: 'Delete permanently', exact: true })).toBeInViewport();
-    // In view is not enough: the sticky dialog footer must not cover the question.
-    const uncovered = locator => locator.evaluate(element => {
-      const box = element.getBoundingClientRect();
-      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-      return Boolean(hit && element.contains(hit));
-    });
-    await expect.poll(() => uncovered(keep)).toBe(true);
-    expect(await uncovered(dialog.getByRole('button', { name: 'Delete permanently', exact: true }))).toBe(true);
-    const confirm = await dialog.locator('.studio-delete-confirm').boundingBox();
-    expect(confirm.y + confirm.height).toBeLessThanOrEqual((await dialog.locator('.studio-dialog-footer').boundingBox()).y);
-    await keep.click();
-    await expect(dialog.getByText('Delete Delete fixture?')).toHaveCount(0);
-    await expect(remove).toBeFocused();
-    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-    expect((await studioApi(request, '/dashboard/studio/api/board')).board.panels).toHaveLength(1);
+    // Delete sits with Duplicate under the folded Management section, and
+    // behaves as the card menu's Delete does (board 23).
+    await dialog.getByRole('button', { name: /^Management/ }).click();
+    await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(servicePanel(page, 'Delete fixture')).toHaveCount(0);
+    await expect(page.getByText('Delete fixture deleted', { exact: true })).toBeVisible();
+    expect((await studioApi(request, '/dashboard/studio/api/board')).board.panels).toHaveLength(0);
+    await page.getByRole('button', { name: 'Undo', exact: true }).first().click();
+    await expect(servicePanel(page, 'Delete fixture')).toHaveCount(1);
+    await expect.poll(async () => (await studioApi(request, '/dashboard/studio/api/board')).board.panels).toHaveLength(1);
   });
 });
 
@@ -263,10 +255,14 @@ test.describe('selection checkbox target size', () => {
         const bounds = await target.boundingBox();
         expect(bounds.width).toBeGreaterThanOrEqual(minimum);
         expect(bounds.height).toBeGreaterThanOrEqual(minimum);
-        // A press near the target's corner, outside the drawn checkbox, still selects.
-        const box = await checkbox.boundingBox();
-        const x = bounds.x + 2;
-        const y = bounds.y + 2;
+        // A press near the target's corner, outside the drawn box, still
+        // selects. The invisible input fills the target; the box is drawn.
+        const box = await target.locator('.studio-select-box').boundingBox();
+        // Inset a little, clear of the card's rounded corner, and still
+        // outside the drawn box (which is centred in the target).
+        const inset = use.hasTouch ? 6 : 2;
+        const x = bounds.x + inset;
+        const y = bounds.y + inset;
         expect(x < box.x || y < box.y).toBe(true);
         if (use.hasTouch) await page.touchscreen.tap(x, y);
         else await page.mouse.click(x, y);
@@ -301,8 +297,8 @@ test.describe('selection checkbox target size', () => {
         else await checkbox.click();
         await expect(checkbox).not.toBeChecked();
         await expect(shell).not.toHaveClass(/\bstudio-selected\b/);
-        // Selection never rearranged anything.
-        await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
+        // Selection never rearranged anything: there is nothing to undo.
+        await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
         // The target does not change the stack header's height.
         const header = shell.locator('.studio-stack-header');
         const height = (await header.boundingBox()).height;
@@ -389,7 +385,6 @@ test('the native Custom API widget renders an actual private proxy response', as
   await openEditor(page);
   const dialog = await chooseContent(page, 'Custom API', 'Integrations');
   await dialog.getByLabel('Name', { exact: true }).fill('Native API fixture');
-  await dialog.getByLabel('Group', { exact: true }).fill('Fixtures');
   await dialog.getByRole('radio', { name: 'YAML', exact: true }).click();
   const fixtureUrl = process.env.STUDIO_BROWSER_WIDGET_FIXTURE_URL || 'http://studio:3000/studio/config-ready';
   await dialog.getByRole('textbox', { name: 'Item configuration YAML' }).fill([

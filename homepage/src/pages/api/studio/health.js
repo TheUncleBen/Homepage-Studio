@@ -1,7 +1,7 @@
 import { dashboardContext } from "components/studio/dashboard-path.mjs";
 import { withAuth } from "utils/auth";
 
-export const UPSTREAM_COMMIT = "51cc1684f9f34a7877ed462b8f94c9cc687b4dde";
+export const UPSTREAM_COMMIT = "2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f";
 
 function handler(req, res) {
   if (req.method !== "GET" && req.method !== "HEAD") {

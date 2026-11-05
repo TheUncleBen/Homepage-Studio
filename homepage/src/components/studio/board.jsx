@@ -2,7 +2,7 @@ import Head from "next/head";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import useSWR from "swr";
 
-import { studioRequest } from "./api.mjs";
+import { endEditSession, newEditSession, studioRequest } from "./api.mjs";
 import AppearanceOnlyEditor from "./appearance-only-editor";
 import { PageBackgroundEditor } from "./background-picker";
 import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm, widgetCount } from "./bulk-bar";
@@ -19,24 +19,22 @@ import { useBoardFocusOrder } from "./focus-order";
 import {
   addPage,
   clampRect,
-  COLUMNS,
+  columnsOfPage,
   firstPageId,
   freePageName,
   gapOf,
+  gridColumns,
   MAX_PAGES,
-  mergePage,
   movePage,
-  moveProjectedUnit,
   moveToPage,
   moveUnit,
   pageBoard,
   pageFromHash,
   pageHash,
   panelMinimum,
-  PHONE_WIDTH,
   pixelRect,
-  projectBoard,
   removePage,
+  resizeUnit,
   ROW_HEIGHT,
   snapGuides,
   stackBoard,
@@ -46,14 +44,27 @@ import {
   updatePage,
 } from "./geometry.mjs";
 import StudioIcon from "./icons";
+import {
+  centreInRow,
+  followDesktop,
+  followsDesktop,
+  mergeSizeView,
+  setPageGrid,
+  SIZE_WIDTH,
+  sizeForWidth,
+  sizeProjection,
+  sizeView,
+} from "./layouts.mjs";
 import { CHART_SHOWS, needsHistory, readLook, statusColours } from "./look.mjs";
 import Menu from "./menu";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
 import PanelHost, { CardPreview, useCardPresentation } from "./panel-host";
 import { useReducedMotion } from "./preferences";
+import { rebaseBoard } from "./rebase.mjs";
 import StudioSearch from "./search";
 import SettingsEditor, { FilesEditor, SnapshotEditor } from "./settings-editor";
+import { SizePreview, SizeStatus, SizeSwitch } from "./size-switch";
 import StackEditor, { PositionEditor } from "./stack-editor";
 import StackShell from "./stack-shell";
 import StudioTopBar, { DASHBOARDS_PAGE } from "./top-bar";
@@ -61,7 +72,8 @@ import { ImagesEditor } from "./uploaded-images";
 
 const HOME_PAGES = [{ id: "home", name: "Home" }];
 const EMPTY = { version: 3, columns: 24, pages: HOME_PAGES, panels: [], stacks: [] };
-const HISTORY_LIMIT = 100;
+// A moment after the last change, so a burst of keys saves once.
+const AUTOSAVE_DELAY = 400;
 // The page on show lives in the address (#media). pushState doesn't fire an
 // event, so changes made here notify the subscribers themselves.
 const hashListeners = new Set();
@@ -260,6 +272,31 @@ export function withoutPhoneHidden(board, settings) {
   };
 }
 
+// What the editing bar says about saving (board 21): quiet when saved.
+function SaveStatus({ state, pending }) {
+  const text =
+    state === "retrying"
+      ? "Not saved yet, retrying"
+      : state === "failed"
+        ? "Not saved"
+        : state === "saving" || pending
+          ? "Saving…"
+          : "Saved";
+  return (
+    <span
+      className={`studio-muted studio-edit-bar-note${state === "retrying" || state === "failed" ? " studio-save-problem" : ""}`}
+      role="status"
+      title={
+        state === "retrying"
+          ? "Studio couldn't be reached. Your changes stay in this tab and save when it can; Done waits for them."
+          : undefined
+      }
+    >
+      {text}
+    </span>
+  );
+}
+
 export default function StudioBoard({
   dashboard = { id: "default", basePath: "" },
   nativeData,
@@ -315,6 +352,9 @@ export default function StudioBoard({
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
   const [reloadRequired, setReloadRequired] = useState(false);
+  // Editing saves as you go (owner decision, 4 Nov 2026). Undo and Redo step
+  // through this editing session on the server, content changes included.
+  const [saveState, setSaveState] = useState("saved");
   const [historyCounts, setHistoryCounts] = useState({ past: 0, future: 0 });
   const [toast, setToast] = useState(null);
   const [dropPage, setDropPage] = useState(null);
@@ -343,18 +383,34 @@ export default function StudioBoard({
   const [lastMatchedNative, setLastMatchedNative] = useState(null);
   const [active, setActive] = useState({});
   const [width, setWidth] = useState(1200);
+  // The editor's size switch (board 22): null shows the screen's own size.
+  const [editSize, setEditSize] = useState(null);
+  // Whether the screen is wide enough to show the switch (a desktop screen).
+  // Measured after the first render, so the server's page and the browser's
+  // first render agree (React hydration).
+  const [screenWidth, setScreenWidth] = useState(1280);
+  useEffect(() => {
+    const measure = () => setScreenWidth(window.innerWidth);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+  const sizeSwitchShown = sizeForWidth(screenWidth) === "desktop";
   const [moving, setMoving] = useState(null);
   const [stackTarget, setStackTarget] = useState(null);
   const [stackDrags, setStackDrags] = useState({});
   const canvas = useRef(null);
   const boardRef = useRef(null);
   const wholeRef = useRef(null);
-  // Undo and redo cover every arrangement change made on the editor page.
+  // Undo and redo cover every change of this editing session, kept by the
+  // server. Here only whether each is available: the server answers that
+  // after an undo or redo, and any other saved change makes undo available.
   const history = useRef({ past: [], future: [] });
   const setHistory = useCallback((next) => {
     history.current = next;
     setHistoryCounts({ past: next.past.length, future: next.future.length });
   }, []);
+  const changeSaved = useCallback(() => setHistory({ past: [true], future: [] }), [setHistory]);
   // Set once the person has finished on the editor or settings page, so the
   // unsaved-changes guard doesn't stop the way back to the Dashboards page.
   const leaving = useRef(false);
@@ -369,12 +425,29 @@ export default function StudioBoard({
   const generation = useRef(0);
   const controllers = useRef(new Map());
   const saveInFlight = useRef(false);
+  // Set the moment an arrangement change is made, cleared once it is saved.
+  const draftPending = useRef(false);
   const nativeRefreshLock = useRef(true);
   const editorGuardRef = useRef(editorGuard);
   const discardFocus = useRef(null);
   const keepEditing = useRef(null);
-  const keepArrangement = useRef(null);
   const reducedMotion = useReducedMotion();
+  // Read by saves that outlive a render.
+  const latestEnvelope = useRef(envelope);
+  const draftSourceRef = useRef(draftSource);
+  useLayoutEffect(() => {
+    latestEnvelope.current = envelope;
+  }, [envelope]);
+  useLayoutEffect(() => {
+    draftSourceRef.current = draftSource;
+  }, [draftSource]);
+  // One editing session per visit to the editor page: Undo reaches back to
+  // where this visit started, never further.
+  useEffect(() => {
+    if (!editing) return undefined;
+    const id = newEditSession();
+    return () => endEditSession(id);
+  }, [editing]);
   const sourceBoard = draft || envelope?.board || EMPTY;
   const sourceRevision = draft ? draftSource?.configurationRevision : envelope?.configurationRevision;
   const nativePairMatches =
@@ -425,7 +498,13 @@ export default function StudioBoard({
     (remembered && pages.some((page) => page.id === remembered) ? remembered : firstPageId(wholeBoard));
   // Everything below works on the current page; only its widgets mount, so
   // widgets on other pages don't poll their services.
-  const board = useMemo(() => pageBoard(wholeBoard, currentPage), [wholeBoard, currentPage]);
+  // The size being shown: the screen's own, or in the editor the one picked
+  // in its size switch. A tablet or phone view carries that size's layout.
+  const layoutSize = editing && editSize ? editSize : sizeForWidth(width);
+  const board = useMemo(
+    () => sizeView(pageBoard(wholeBoard, currentPage), layoutSize),
+    [wholeBoard, currentPage, layoutSize],
+  );
   // The page's own background, or the dashboard's (Appearance).
   const cardTheme = useCardTheme();
   const dashboardPageBackground = readLook({ background: settings?.studioTheme?.pageBackground }).background;
@@ -434,13 +513,9 @@ export default function StudioBoard({
   const nativeUnavailable = !envelope || nativeContentStale;
   const controlsDisabled = saving || nativeUnavailable || accessLoading;
   const interactionBlocked = Boolean(modal) || controlsDisabled;
-  const sourceConflict = draftSourceChanged
-    ? {
-        status: 409,
-        message:
-          "Native configuration changed while you were arranging this dashboard. Your arrangement draft is still here; reload the current configuration before saving it.",
-      }
-    : null;
+  // Content that changed under an arrangement is merged when it saves
+  // (owner report, 4 Nov 2026: Save must never dead-end), so it is no
+  // conflict to report.
   const dirty = Boolean(draft && !equal(draft, envelope?.board));
   useLayoutEffect(() => {
     boardRef.current = board;
@@ -467,8 +542,8 @@ export default function StudioBoard({
   // On a phone, the live dashboard leaves out widgets set to hide on phones.
   // The editor keeps them so they can still be arranged.
   const projection = useMemo(
-    () => projectBoard(!editing && width < PHONE_WIDTH ? withoutPhoneHidden(board, settings) : board, width),
-    [board, width, editing, settings],
+    () => sizeProjection(!editing && layoutSize === "phone" ? withoutPhoneHidden(board, settings) : board, layoutSize),
+    [board, layoutSize, editing, settings],
   );
   const gap = gapOf(settings);
   const geometry = useMemo(
@@ -482,6 +557,15 @@ export default function StudioBoard({
     [projection],
   );
   useBoardFocusOrder(canvas, readingOrder);
+  // Names for the small pictures of the other sizes.
+  const unitTitles = useMemo(
+    () =>
+      new Map([
+        ...board.panels.map((panel) => [panel.id, panel.title]),
+        ...board.stacks.map((stack) => [stack.id, "Stack"]),
+      ]),
+    [board],
+  );
   const visibleIds = null;
 
   useEffect(() => {
@@ -520,11 +604,6 @@ export default function StudioBoard({
     );
   }, []);
   useEffect(() => {
-    // The dialog's showModal focuses its first control (Close); move focus to
-    // the safe choice once the dialog is open, like the editor-draft prompt.
-    if (modal?.type === "discardArrangement") keepArrangement.current?.focus();
-  }, [modal?.type]);
-  useEffect(() => {
     if (discardAction) keepEditing.current?.focus();
     else {
       discardFocus.current?.focus?.();
@@ -544,13 +623,11 @@ export default function StudioBoard({
   // Commits a whole board (all pages) as the arrangement draft. `record`
   // false is for the many steps of one drag; the drag records once.
   const commitWhole = useCallback(
-    (next, source, { record = true, pageId } = {}) => {
-      if (saveInFlight.current || nativeRefreshLock.current) return false;
+    (next, source, { pageId } = {}) => {
+      // An autosave in flight never blocks the next change: it saves next.
+      if (nativeRefreshLock.current) return false;
       const previous = wholeRef.current;
       if (next === previous) return true;
-      if (record && previous) {
-        setHistory({ past: [...history.current.past, previous].slice(-HISTORY_LIMIT), future: [] });
-      }
       // Pointer cancellation may arrive before React commits the queued draft.
       // Keep the next gesture event aligned with the last submitted board.
       wholeRef.current = next;
@@ -561,6 +638,8 @@ export default function StudioBoard({
       // undo can bring back or take away pages.
       if (pageFromHash(next, window.location.hash) !== shown && (window.location.hash || shown !== firstPageId(next)))
         writeHash(pageHash(next, shown), true);
+      // The base is the saved board this draft started from: a save that
+      // meets someone else's change keeps theirs where this draft didn't move.
       setDraftSource(
         (current) =>
           current ||
@@ -568,30 +647,25 @@ export default function StudioBoard({
             revision: envelope?.revision,
             configurationRevision: envelope?.configurationRevision,
             data: nativeData,
+            board: envelope?.board,
           },
       );
+      draftPending.current = true;
       setDraft(next);
       setError(null);
       setNotice("");
       return true;
     },
-    [envelope?.revision, envelope?.configurationRevision, nativeData, setHistory],
+    [envelope?.revision, envelope?.configurationRevision, envelope?.board, nativeData],
   );
   // Changes made on the current page's view merge back into the whole board.
   const changeBoard = useCallback(
     (nextView, source, options) => {
-      if (nextView === boardRef.current) return !(saveInFlight.current || nativeRefreshLock.current);
-      return commitWhole(mergePage(wholeRef.current, nextView), source, options);
+      if (nextView === boardRef.current) return !nativeRefreshLock.current;
+      return commitWhole(mergeSizeView(wholeRef.current, nextView), source, options);
     },
     [commitWhole],
   );
-  const cancelEditing = () => {
-    setHistory({ past: [], future: [] });
-    setDraft(null);
-    setDraftSource(null);
-    setSelection([]);
-    setError(null);
-  };
 
   const select = (id) => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
@@ -617,34 +691,115 @@ export default function StudioBoard({
     else requestEditorAction(dismissEditor);
   };
 
-  const saveArrangement = async (finish = false) => {
-    if (saveInFlight.current || nativeRefreshLock.current) return false;
-    if (!dirty) {
-      if (finish) setSelection([]);
-      return true;
-    }
-    saveInFlight.current = true;
-    setSaving(true);
-    setError(null);
-    try {
-      const saved = await studioRequest("/studio/api/board", {
-        revision: draftSource?.revision,
-        board,
-      });
-      await mutate(saved, { revalidate: false });
-      setDraft(null);
-      setDraftSource(null);
-      setNotice("Arrangement saved");
-      if (finish) setSelection([]);
-      return true;
-    } catch (err) {
-      setError(err);
-      return false;
-    } finally {
-      saveInFlight.current = false;
-      setSaving(false);
-    }
-  };
+  // Saves the arrangement as it stands (every page). Changes made while it
+  // saves are kept and saved next. Someone else's save in between is merged:
+  // what this draft moved stays moved, the rest follows theirs.
+  const pendingSave = useRef(null);
+  const retryTimer = useRef(null);
+  const retryDelay = useRef(2000);
+  const retrySave = useRef(null);
+  const saveArrangement = useCallback(() => {
+    if (pendingSave.current) return pendingSave.current;
+    const run = async () => {
+      for (let attempt = 0; ; attempt += 1) {
+        const whole = wholeRef.current;
+        const base = latestEnvelope.current;
+        if (!draftPending.current || !whole || equal(whole, base?.board)) {
+          draftPending.current = false;
+          setDraft(null);
+          setDraftSource(null);
+          setSaveState("saved");
+          return true;
+        }
+        setSaveState("saving");
+        try {
+          const saved = await studioRequest("/studio/api/board", { revision: base?.revision, board: whole });
+          await mutate(saved, { revalidate: false });
+          latestEnvelope.current = saved;
+          retryDelay.current = 2000;
+          changeSaved();
+          if (wholeRef.current === whole) {
+            draftPending.current = false;
+            setDraft(null);
+            setDraftSource(null);
+            setSaveState("saved");
+            return true;
+          }
+          // Changed while saving: the newer board saves next, on this base.
+          setDraftSource({
+            revision: saved.revision,
+            configurationRevision: saved.configurationRevision,
+            data: draftSourceRef.current?.data,
+            board: saved.board,
+          });
+        } catch (err) {
+          if (err?.status === 409 && err.details?.code === "REVISION_CONFLICT" && attempt < 3) {
+            // Someone else saved: take theirs, keep what this draft changed.
+            const theirs = await mutate();
+            if (theirs?.board) {
+              const merged = rebaseBoard(draftSourceRef.current?.board, wholeRef.current, theirs.board);
+              latestEnvelope.current = theirs;
+              wholeRef.current = merged;
+              setDraft(merged);
+              setDraftSource({
+                revision: theirs.revision,
+                configurationRevision: theirs.configurationRevision,
+                data: draftSourceRef.current?.data,
+                board: theirs.board,
+              });
+              continue;
+            }
+          }
+          // Unreachable or busy: the changes stay in this tab and save when it can.
+          if (!err?.status || err.status >= 500 || err.status === 408 || err.status === 429) {
+            setSaveState("retrying");
+            clearTimeout(retryTimer.current);
+            retryTimer.current = setTimeout(() => {
+              retryTimer.current = null;
+              retrySave.current?.();
+            }, retryDelay.current);
+            retryDelay.current = Math.min(retryDelay.current * 2, 30000);
+            return false;
+          }
+          setSaveState("failed");
+          setError(err);
+          return false;
+        }
+      }
+    };
+    const promise = run().finally(() => {
+      pendingSave.current = null;
+    });
+    pendingSave.current = promise;
+    return promise;
+  }, [mutate, changeSaved]);
+  useLayoutEffect(() => {
+    retrySave.current = saveArrangement;
+  }, [saveArrangement]);
+  const savePending = () => Boolean(pendingSave.current || draftPending.current || retryTimer.current);
+  // Everything pending saved, before anything that saves content or leaves.
+  const flushArrangement = useCallback(async () => {
+    clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = null;
+    if (pendingSave.current) await pendingSave.current;
+    return saveArrangement();
+  }, [saveArrangement]);
+  // Autosave: a moment after the last change, never in the middle of a drag.
+  const autosaveTimer = useRef(null);
+  useEffect(() => {
+    if (!editing || !draft) return undefined;
+    const schedule = () => {
+      autosaveTimer.current = setTimeout(() => {
+        autosaveTimer.current = null;
+        if (operation.current) schedule();
+        else saveArrangement();
+      }, AUTOSAVE_DELAY);
+    };
+    clearTimeout(autosaveTimer.current);
+    schedule();
+    return () => clearTimeout(autosaveTimer.current);
+  }, [editing, draft, saveArrangement]);
+  useEffect(() => () => clearTimeout(retryTimer.current), []);
 
   const loadCatalog = () => {
     if (!catalogRequest.current) {
@@ -659,6 +814,13 @@ export default function StudioBoard({
   const loadEditorData = async (type) => {
     if (type === "picker" || type === "content") loadCatalog();
     if (type === "appearance") return { appearance: await studioRequest("/studio/api/appearance") };
+    // Arrangers place saved widgets from the board alone; the files stay
+    // with administrators.
+    if (type === "saved") {
+      loadCatalog();
+      const [state, catalog] = await Promise.all([studioRequest("/studio/api/board"), catalogRequest.current]);
+      return { state, catalog };
+    }
     const [state, catalog, backups, appearance] = await Promise.all([
       studioRequest("/studio/api/state"),
       type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
@@ -670,10 +832,8 @@ export default function StudioBoard({
   };
   const openEditor = async (type, detail = {}, reload = false) => {
     if (saveInFlight.current || (!reload && nativeRefreshLock.current)) return;
-    if (dirty) {
-      setError(new Error("Save or cancel the current arrangement before editing native configuration."));
-      return;
-    }
+    // Anything still saving lands first, so the editor starts from it.
+    if (savePending() && !(await flushArrangement())) return;
     const token = ++generation.current;
     setModal({ type, ...detail });
     setEditorError(null);
@@ -711,7 +871,9 @@ export default function StudioBoard({
       setRefreshing(false);
     }
   };
+  // A committed change from anywhere (a dialog, a bulk action, undo).
   const savedContent = async (state, details = {}) => {
+    if (!details.stepped) changeSaved();
     nativeRefreshLock.current = true;
     setNativeSnapshot({
       board: wholeRef.current,
@@ -737,34 +899,38 @@ export default function StudioBoard({
     } catch {
       // The transaction is committed. The paired refresh below retries reads.
     }
+    // The arrangement now is exactly what was committed.
+    draftPending.current = false;
+    setDraft(null);
+    setDraftSource(null);
     // Successful commits explicitly bypass the unsaved-draft dismissal guard.
-    dismissEditor();
+    if (!details.stepped) dismissEditor();
     setSelection([]);
-    setNotice(
-      [
-        details.importNote,
-        details.customJsChanged
-          ? "Changes saved. Reload once to apply custom JavaScript."
-          : details.importNote
-            ? ""
-            : "Changes saved",
-      ]
-        .filter(Boolean)
-        .join(" "),
-    );
+    // In the editor the bar's Saved says a plain save happened; only what
+    // needs more is noted there.
+    if (!details.stepped && !details.quiet)
+      setNotice(
+        [
+          details.importNote,
+          details.customJsChanged
+            ? "Changes saved. Reload once to apply custom JavaScript."
+            : details.importNote || editorPage
+              ? ""
+              : "Changes saved",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
     if (details.customJsChanged) setReloadRequired(true);
     await refreshNativeContent();
   };
   const reloadEditor = () => {
     if (modal) openEditor(modal.type, { panel: modal.panel, entry: modal.entry }, true);
   };
-  const editPanel = (panel) => {
+  const editPanel = async (panel) => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
     if (panel.nativeLocator?.discovered) {
-      if (dirty) {
-        setError(new Error("Save or cancel the current arrangement before changing discovered panel visibility."));
-        return;
-      }
+      if (!(await flushArrangement())) return;
       setModal({ type: "discovery", panel });
       setEditorData(null);
     } else if (isAdmin) openEditor("content", { panel });
@@ -800,10 +966,12 @@ export default function StudioBoard({
   };
   const createStack = () => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
-    const next = stackBoard(board, selection, uuid());
-    if (next !== board) {
+    // A stack is made on the desktop layout; tablet and phone place it.
+    const desktop = pageBoard(wholeRef.current, currentPage);
+    const next = stackBoard(desktop, selection, uuid());
+    if (next !== desktop) {
       const stack = next.stacks.at(-1);
-      const members = board.panels.filter((panel) => stack.panelIds.includes(panel.id));
+      const members = desktop.panels.filter((panel) => stack.panelIds.includes(panel.id));
       if (members.some((panel) => panel.rect.w !== stack.rect.w || panel.rect.h !== stack.rect.h)) {
         setModal({
           type: "stack",
@@ -819,7 +987,7 @@ export default function StudioBoard({
       }
       changeBoard(next);
       setSelection([]);
-      setNotice("Stack created. Save the arrangement when ready.");
+      setNotice("Stack created.");
     }
   };
 
@@ -835,7 +1003,7 @@ export default function StudioBoard({
     if (!unit) return;
     const element = event.currentTarget;
     element?.setPointerCapture?.(event.pointerId);
-    let initialProjection = projectBoard(initial, width);
+    let initialProjection = sizeProjection(initial, layoutSize);
     let column = (width + gap) / initialProjection.columns;
     // Dragging onto another page's tab: drop to send the widget to the end of
     // that page, or hold for a moment to open the page and place it exactly.
@@ -868,17 +1036,17 @@ export default function StudioBoard({
       pageDwell = setTimeout(() => {
         // Open the page under the pointer and carry the widget onto it.
         const moved = moveToPage(wholeRef.current, id, next);
-        initial = pageBoard(moved, next);
-        initialProjection = projectBoard(initial, width);
+        initial = sizeView(pageBoard(moved, next), layoutSize);
+        initialProjection = sizeProjection(initial, layoutSize);
         column = (width + gap) / initialProjection.columns;
         unit = unitsForBoard(initial).find((item) => item.id === id);
         const bounds = canvas.current.getBoundingClientRect();
-        const cellX = Math.floor(((point.x - bounds.left) / column) * (COLUMNS / initialProjection.columns));
+        const cellX = Math.floor((point.x - bounds.left) / column);
         const cellY = Math.max(0, Math.floor((point.y - bounds.top) / (ROW_HEIGHT + gap)));
         initial = moveUnit(initial, id, { ...unit.rect, x: Math.max(0, cellX), y: cellY });
         unit = unitsForBoard(initial).find((item) => item.id === id);
-        initialProjection = projectBoard(initial, width);
-        commitWhole(mergePage(moved, initial), undefined, { record: false, pageId: next });
+        initialProjection = sizeProjection(initial, layoutSize);
+        commitWhole(mergeSizeView(moved, initial), undefined, { record: false, pageId: next });
         latest = initial;
         lastCell = { dx: 0, dy: 0 };
         start.x = point.x;
@@ -900,18 +1068,22 @@ export default function StudioBoard({
         });
         if (pageTarget) return;
       }
-      const dx = Math.round((((moveEvent.clientX - start.x) / column) * COLUMNS) / initialProjection.columns);
+      const dx = Math.round((moveEvent.clientX - start.x) / column);
       const dy = Math.round((moveEvent.clientY - start.y) / (ROW_HEIGHT + gap));
-      const rect = clampRect(
+      let rect = clampRect(
         mode === "resize"
           ? { ...unit.rect, w: unit.rect.w + dx, h: unit.rect.h + dy }
           : { ...unit.rect, x: unit.rect.x + dx, y: unit.rect.y + dy },
+        initialProjection.columns,
       );
+      // On a centred grid a widget near the middle snaps onto the centre line.
+      const columns = initialProjection.columns;
+      if (mode === "move" && columns % 2 === 1 && (columns - rect.w) % 2 === 0) {
+        const middle = (columns - rect.w) / 2;
+        if (Math.abs(rect.x - middle) <= 1) rect = { ...rect, x: middle };
+      }
       if (!lastCell || lastCell.dx !== dx || lastCell.dy !== dy) {
-        latest =
-          mode === "move"
-            ? moveProjectedUnit(initial, id, { x: dx, y: dy }, initialProjection)
-            : moveUnit(initial, id, rect);
+        latest = mode === "move" ? moveUnit(initial, id, rect) : resizeUnit(initial, id, rect);
         lastCell = { dx, dy };
         changeBoard(latest, undefined, { record: false });
       }
@@ -992,13 +1164,11 @@ export default function StudioBoard({
             undefined,
             quiet,
           );
-        } else changeBoard(stackBoard(initial, [target.id, id], uuid()), undefined, quiet);
+        } else
+          changeBoard(stackBoard(pageBoard(initialWhole, initial.pageId), [target.id, id], uuid()), undefined, quiet);
         setSelection([]);
       } else changeBoard(latest, undefined, quiet);
-      // One drag is one step to undo.
-      if (initialWhole && wholeRef.current !== initialWhole && !equal(wholeRef.current, initialWhole)) {
-        setHistory({ past: [...history.current.past, initialWhole].slice(-HISTORY_LIMIT), future: [] });
-      }
+      // One drag is one step to undo: it autosaves once, when it ends.
       operation.current = null;
       setMoving(null);
       setStackTarget(null);
@@ -1057,49 +1227,8 @@ export default function StudioBoard({
           ? "h"
           : "y";
     const amount = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
-    if (key === "y" && projection.columns < COLUMNS) {
-      const projected = projection.units.find((item) => item.id === id);
-      const neighbor = projection.units
-        .filter(
-          (item) =>
-            item.id !== id &&
-            Math.sign(item.rect.y - projected.rect.y) === amount &&
-            item.rect.x < projected.rect.x + projected.rect.w &&
-            item.rect.x + item.rect.w > projected.rect.x,
-        )
-        .sort((a, b) => Math.abs(a.rect.y - projected.rect.y) - Math.abs(b.rect.y - projected.rect.y))[0];
-      const canonical = neighbor && unitsForBoard(board).find((item) => item.id === neighbor.id);
-      if (neighbor && (projected.rect.y !== unit.rect.y || neighbor.rect.y !== canonical.rect.y)) {
-        changeBoard(moveProjectedUnit(board, id, { x: 0, y: neighbor.rect.y - projected.rect.y }, projection));
-        return;
-      }
-    }
-    if (key === "x" && projection.columns < COLUMNS) {
-      // A narrow layout shows units in reading order, so Left and Right move
-      // one reading position, like a sideways drag, instead of shifting the
-      // desktop column (which can wrap the unit somewhere unexpected).
-      const ordered = [...projection.units].sort(
-        (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x || a.id.localeCompare(b.id),
-      );
-      const index = ordered.findIndex((item) => item.id === id);
-      const projected = ordered[index];
-      const neighbor = ordered[index + amount];
-      if (projected && neighbor) {
-        changeBoard(
-          moveProjectedUnit(
-            board,
-            id,
-            {
-              x: ((neighbor.rect.x - projected.rect.x) * COLUMNS) / projection.columns,
-              y: neighbor.rect.y - projected.rect.y,
-            },
-            projection,
-          ),
-        );
-      }
-      if (projected) return;
-    }
-    changeBoard(moveUnit(board, id, { ...unit.rect, [key]: unit.rect[key] + amount }));
+    const next = { ...unit.rect, [key]: unit.rect[key] + amount };
+    changeBoard(key === "w" || key === "h" ? resizeUnit(board, id, next) : moveUnit(board, id, next));
   };
   // People who can't arrange this dashboard are sent back from the editor and
   // settings pages. The settings page opens this dashboard's settings once
@@ -1136,8 +1265,15 @@ export default function StudioBoard({
     if (modal) settingsShown.current = true;
     else if (settingsShown.current) leave();
   }, [settingsPage, modal, leave]);
+  // Done waits for anything still saving, then leaves.
   const finishEditing = async () => {
-    if (await saveArrangement(true)) leave();
+    setSaving(true);
+    const saved = await flushArrangement();
+    setSaving(false);
+    if (saved) {
+      setSelection([]);
+      leave();
+    }
   };
   // ---- Pages ----------------------------------------------------------
   // The current page follows the address (#media), so links open a page and
@@ -1178,26 +1314,36 @@ export default function StudioBoard({
     return () => clearTimeout(timer);
   }, [toast]);
   // Plain functions: the key handler below re-subscribes each render.
-  const undo = () => {
-    const { past, future } = history.current;
-    if (!past.length || !wholeRef.current) return;
-    const previous = past.at(-1);
-    setHistory({ past: past.slice(0, -1), future: [wholeRef.current, ...future] });
-    if (commitWhole(previous, undefined, { record: false })) {
+  // Undo and redo go through the server: first anything pending saves (so it
+  // is a step), then the step goes back and the board shows the result.
+  const stepping = useRef(false);
+  const stepHistory = async (direction) => {
+    if (stepping.current || nativeRefreshLock.current) return;
+    // Nothing to step (the button is greyed): a shortcut does nothing either.
+    // A change still waiting to save becomes a step once it saves.
+    const steps = direction === "undo" ? history.current.past : history.current.future;
+    if (!steps.length && !(direction === "undo" && draftPending.current)) return;
+    stepping.current = true;
+    try {
+      if (!(await flushArrangement())) return;
+      const state = await studioRequest(`/studio/api/${direction}`, { revision: latestEnvelope.current?.revision });
+      setHistory({ past: state.canUndo ? [true] : [], future: state.canRedo ? [true] : [] });
       setSelection([]);
-      showToast("Undone");
+      await savedContent(state, { stepped: true });
+      showToast(direction === "undo" ? "Undone" : "Redone");
+    } catch (err) {
+      // No step to take is not a conflict: say so quietly, never with the
+      // red "another change was saved" banner.
+      if (err?.details?.code === "NOTHING_TO_UNDO" || err?.details?.code === "UNDO_UNAVAILABLE") {
+        setHistory({ past: [], future: [] });
+        if (err.details.code === "UNDO_UNAVAILABLE") showToast(err.message);
+      } else setError(err);
+    } finally {
+      stepping.current = false;
     }
   };
-  const redo = () => {
-    const { past, future } = history.current;
-    if (!future.length || !wholeRef.current) return;
-    const [next, ...rest] = future;
-    setHistory({ past: [...past, wholeRef.current], future: rest });
-    if (commitWhole(next, undefined, { record: false })) {
-      setSelection([]);
-      showToast("Redone");
-    }
-  };
+  const undo = () => stepHistory("undo");
+  const redo = () => stepHistory("redo");
   const pageActions = {
     canAdd: pages.length < MAX_PAGES,
     add: () => {
@@ -1212,20 +1358,21 @@ export default function StudioBoard({
     },
     icon: (page) => setModal({ type: "pageIcon", page }),
     background: (page) => setModal({ type: "pageBackground", page }),
+    grid: (page, grid) => {
+      if (commitWhole(setPageGrid(wholeRef.current, page.id, grid)))
+        showToast(grid === "centred" ? "Centred grid: 25 columns" : "Even grid: 24 columns", true);
+    },
     // Copies every widget on the page as real widgets (administrators only),
     // saved at once like any content change.
     duplicate: isAdmin
       ? async (page) => {
-          if (dirty) {
-            setError(new Error("Save or cancel the current arrangement before duplicating a page."));
-            return;
-          }
+          if (!(await flushArrangement())) return;
           try {
             const state = await studioRequest("/studio/api/page-duplicate", {
-              revision: envelope.revision,
+              revision: latestEnvelope.current.revision,
               pageId: page.id,
             });
-            setHistory({ past: [], future: [] });
+            changeSaved();
             await savedContent(state);
             showPage(state.pageId);
             showToast(
@@ -1290,20 +1437,8 @@ export default function StudioBoard({
       const pageId = stack ? stack.pageId : next.panels.find((panel) => panel.id === id)?.pageId;
       if (pageId !== target) next = moveToPage(next, unitId, target);
     }
-    // With other unsaved changes this joins them; Save keeps everything.
-    if (dirty) {
-      if (commitWhole(next)) setDiscoveredHandled(envelope.revision);
-      return;
-    }
-    setError(null);
-    try {
-      await mutate(await studioRequest("/studio/api/board", { revision: envelope.revision, board: next }), {
-        revalidate: false,
-      });
-      setDiscoveredHandled(envelope.revision);
-    } catch (err) {
-      setError(err);
-    }
+    // Saved like any other move.
+    if (commitWhole(next)) setDiscoveredHandled(envelope.revision);
   };
   const moveUnitsToPage = (ids, target) => {
     let next = wholeRef.current;
@@ -1406,15 +1541,12 @@ export default function StudioBoard({
   // Duplicate and delete change the configuration files, so they save at once.
   const bulkContent = {
     save: async (path) => {
-      if (dirty) {
-        setError(new Error("Save or cancel the current arrangement first."));
-        return null;
-      }
+      if (!(await flushArrangement())) return null;
       const state = await studioRequest(path, {
-        revision: envelope.revision,
+        revision: latestEnvelope.current.revision,
         ids: selectedPanels().map((panel) => panel.id),
       });
-      setHistory({ past: [], future: [] });
+      changeSaved();
       await savedContent(state);
       return state;
     },
@@ -1508,7 +1640,22 @@ export default function StudioBoard({
     };
     if (commitWhole(next)) showToast(message, true);
   };
-  const deletePanel = (panel) => openEditor("content", { panel, deleting: true });
+  // One widget is deleted at once, with Undo right there (board 21); the
+  // whole entry goes, since its card was its only card. Several still ask.
+  const deletePanel = async (panel) => {
+    if (!isAdmin || nativeRefreshLock.current) return;
+    if (savePending() && !(await flushArrangement())) return;
+    try {
+      const state = await studioRequest("/studio/api/widgets-delete", {
+        revision: latestEnvelope.current.revision,
+        ids: [panel.id],
+      });
+      await savedContent(state, { quiet: true });
+      showToast(`${panel.title} ${panel.nativeLocator?.discovered ? "hidden" : "deleted"}`, true);
+    } catch (err) {
+      setError(err);
+    }
+  };
   // Asks the integrations behind these widgets for fresh numbers now.
   const refreshNow = (ids, page = false) => {
     const count = refreshCards(ids);
@@ -1544,7 +1691,24 @@ export default function StudioBoard({
       keepFocus: true,
       onSelect: () => setUnitMenu({ ...menu, pages: true }),
     };
-    if (stack) return [{ id: "edit", icon: "edit", label: "Edit stack", onSelect: () => editStack(stack) }, moveItem];
+    // Centred grid (board 23): the middle of its row, on desktop.
+    const centreItem = layoutSize === "desktop" &&
+      gridColumns(boardRef.current) % 2 === 1 && {
+        id: "centre",
+        icon: "grid",
+        label: "Centre in row",
+        onSelect: () => {
+          const next = centreInRow(boardRef.current, id);
+          if (!next) showToast("Its row has no free space in the middle.", false);
+          else if (next !== boardRef.current) changeBoard(next);
+        },
+      };
+    if (stack)
+      return [
+        { id: "edit", icon: "edit", label: "Edit stack", onSelect: () => editStack(stack) },
+        centreItem,
+        moveItem,
+      ];
     if (!panel) return [];
     const discovered = Boolean(panel.nativeLocator?.discovered);
     const canChange = isAdmin && !discovered;
@@ -1602,6 +1766,7 @@ export default function StudioBoard({
         shortcut: "R",
         onSelect: () => refreshNow([panel.id]),
       },
+      centreItem,
       moveItem,
       href && {
         id: "open",
@@ -1613,7 +1778,7 @@ export default function StudioBoard({
       canChange && {
         id: "delete",
         icon: "trash",
-        label: "Delete…",
+        label: "Delete",
         shortcut: "Del",
         danger: true,
         onSelect: () => deletePanel(panel),
@@ -1683,7 +1848,7 @@ export default function StudioBoard({
       // Save and keep editing.
       if (editing && command && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        if (dirty && !controlsDisabled) saveArrangement(false);
+        if (!controlsDisabled) flushArrangement();
         return;
       }
       if (editing && command && !event.altKey && event.key.toLowerCase() === "y") {
@@ -1760,6 +1925,7 @@ export default function StudioBoard({
   const selectedCount = selection.length ? selectedPanels().length : 0;
   const modalTitles = {
     picker: "Add to your dashboard",
+    saved: "Add a saved widget",
     content: modal?.panel ? `Edit ${modal.panel.title}` : modal?.entry?.name || "Configure content",
     settings: "Dashboard settings",
     appearance: "Appearance",
@@ -1770,7 +1936,6 @@ export default function StudioBoard({
     stack: "Edit widget stack",
     position: "Position & size",
     discovery: modal?.panel?.title || "Discovered content",
-    discardArrangement: "Discard arrangement?",
     deletePage: modal?.page ? `Delete “${modal.page.name}”?` : "Delete page?",
     pageIcon: modal?.page ? `${modal.page.name}: icon` : "Page icon",
     pageBackground: modal?.page ? `${modal.page.name}: background` : "Page background",
@@ -1820,8 +1985,8 @@ export default function StudioBoard({
       </StudioTopBar>
       <ErrorMessage
         arrangement
-        error={error || sourceConflict || loadError}
-        heading={!error && !sourceConflict && loadError ? "The dashboard could not refresh" : undefined}
+        error={error || loadError}
+        heading={!error && loadError ? "The dashboard could not refresh" : undefined}
         onReload={
           saving
             ? undefined
@@ -1838,15 +2003,17 @@ export default function StudioBoard({
       {editing && (
         <div className="studio-board-toolbar studio-edit-bar" role="toolbar" aria-label="Editing">
           <span className="studio-editing-pill">Editing</span>
-          {isAdmin && (
+          {canArrange && (
             <button
               className="studio-button studio-quiet"
               disabled={controlsDisabled}
-              aria-label="Widgets"
-              onClick={() => openEditor("picker")}
+              aria-label={isAdmin ? "Widgets" : "Saved widgets"}
+              onClick={() => openEditor(isAdmin ? "picker" : "saved")}
             >
               <StudioIcon name="plus" size={16} />
-              <span className="studio-edit-bar-label">Widgets</span>
+              <span className="studio-edit-bar-label studio-edit-bar-label-kept">
+                {isAdmin ? "Widgets" : "Saved widgets"}
+              </span>
             </button>
           )}
           <button
@@ -1860,6 +2027,13 @@ export default function StudioBoard({
             <StudioIcon name="grid" size={16} />
             <span className="studio-edit-bar-label">Tidy up</span>
           </button>
+          {sizeSwitchShown && (
+            <SizeSwitch
+              size={layoutSize}
+              disabled={moving !== null}
+              onChange={(next) => setEditSize(next === "desktop" ? null : next)}
+            />
+          )}
           <button
             type="button"
             className="studio-icon-button"
@@ -1883,9 +2057,7 @@ export default function StudioBoard({
             <StudioIcon name="redo" size={17} />
           </button>
           <span className="studio-toolbar-spacer" />
-          <span className="studio-muted studio-edit-bar-note" role="status">
-            {dirty ? "Unsaved changes" : ""}
-          </span>
+          <SaveStatus state={saveState} pending={dirty} />
           <button
             type="button"
             className="studio-icon-button studio-shortcuts-button"
@@ -1896,32 +2068,8 @@ export default function StudioBoard({
           >
             <StudioIcon name="keyboard" size={17} />
           </button>
-          {/* Save keeps editing; Done saves and leaves. One primary button.
-              The three stay together: on a narrow phone they move to a
-              second line as one group rather than off the screen. */}
+          {/* Everything saves as you go; Done waits for the last save and leaves. */}
           <span className="studio-edit-bar-actions">
-            {dirty && (
-              <button
-                className="studio-button studio-quiet"
-                disabled={controlsDisabled}
-                title="Save and keep editing (Ctrl / ⌘ S)"
-                onClick={() => saveArrangement(false)}
-              >
-                Save
-              </button>
-            )}
-            <button
-              className="studio-button studio-quiet"
-              disabled={saving}
-              onClick={() => {
-                // An unsaved arrangement uses the same explicit discard
-                // confirmation as editor drafts.
-                if (dirty) setModal({ type: "discardArrangement" });
-                else leave();
-              }}
-            >
-              Cancel
-            </button>
             <button className="studio-button studio-primary" disabled={controlsDisabled} onClick={finishEditing}>
               <StudioIcon name="check" size={16} />
               {saving ? "Saving…" : "Done"}
@@ -2021,6 +2169,32 @@ export default function StudioBoard({
           </button>
         </div>
       )}
+      {editing && (
+        <SizeStatus
+          size={layoutSize}
+          follows={followsDesktop(wholeBoard, layoutSize)}
+          disabled={controlsDisabled}
+          onFollow={() => {
+            if (commitWhole(followDesktop(wholeRef.current, layoutSize)))
+              showToast(`The ${layoutSize} layout follows desktop again`, true);
+          }}
+        />
+      )}
+      {editing && sizeSwitchShown && editSize && (
+        <div className="studio-size-previews" aria-label="Other sizes">
+          {["desktop", "tablet", "phone"]
+            .filter((size) => size !== layoutSize)
+            .map((size) => (
+              <SizePreview
+                key={size}
+                view={pageBoard(wholeBoard, currentPage)}
+                size={size}
+                titles={unitTitles}
+                onChoose={() => setEditSize(size === "desktop" ? null : size)}
+              />
+            ))}
+        </div>
+      )}
       <div className="studio-status-message" role="status">
         {notice}
         {(refreshWarning || (envelope && nativeContentStale && !draftSourceChanged)) && (
@@ -2060,11 +2234,15 @@ export default function StudioBoard({
         }}
         onPointerDown={editing ? startMarquee : undefined}
         style={{
+          ...(editing && editSize ? { maxWidth: SIZE_WIDTH[editSize], marginInline: "auto" } : {}),
           height: board.panels.length ? projection.rows * (ROW_HEIGHT + gap) + 32 : 480,
           "--studio-grid-column": `${(width + gap) / projection.columns}px`,
           "--studio-grid-row": `${ROW_HEIGHT + gap}px`,
         }}
       >
+        {moving && projection.columns % 2 === 1 && (
+          <div className="studio-centre-guide" aria-hidden="true" style={{ left: width / 2 }} />
+        )}
         {moving &&
           snapGuides(geometry, moving).map((line) => (
             <div
@@ -2292,6 +2470,11 @@ export default function StudioBoard({
         <StudioDialog
           title={modalTitles[modal.type]}
           onClose={closeModal}
+          onBack={
+            modal.type === "content" && modal.back
+              ? () => requestEditorAction(() => setModal({ type: "picker", initial: modal.back }))
+              : undefined
+          }
           wide={modal.type === "files" || modal.type === "picker" || modal.type === "settings"}
           busy={editorGuard.pending}
         >
@@ -2329,36 +2512,7 @@ export default function StudioBoard({
               </div>
             )}
             <div hidden={Boolean(discardAction)} inert={Boolean(discardAction)}>
-              {modal.type === "discardArrangement" ? (
-                <div className="studio-dialog-body">
-                  <h3>Discard unsaved changes?</h3>
-                  <p className="studio-note">
-                    This arrangement has moves, sizes or stacks that have not been saved. Keep editing to preserve them,
-                    or discard them to leave edit mode.
-                  </p>
-                  <div className="studio-inline-actions">
-                    <button
-                      ref={keepArrangement}
-                      type="button"
-                      className="studio-button studio-primary"
-                      onClick={dismissEditor}
-                    >
-                      Keep editing
-                    </button>
-                    <button
-                      type="button"
-                      className="studio-button studio-quiet"
-                      onClick={() => {
-                        dismissEditor();
-                        cancelEditing();
-                        if (editorPage) leave();
-                      }}
-                    >
-                      Discard changes
-                    </button>
-                  </div>
-                </div>
-              ) : modal.type === "deletePage" ? (
+              {modal.type === "deletePage" ? (
                 <DeletePageDialog
                   page={modal.page}
                   pages={pages}
@@ -2367,14 +2521,15 @@ export default function StudioBoard({
                     stacks: pageBoard(wholeBoard, modal.page.id).stacks.length,
                   }}
                   canDeleteWidgets={isAdmin}
-                  deleteBlocked={dirty}
+                  deleteBlocked={false}
                   onMove={(target) => deletePage(modal.page, target)}
                   onDeleteAll={async () => {
+                    if (!(await flushArrangement())) return;
                     const state = await studioRequest("/studio/api/page-delete", {
-                      revision: envelope.revision,
+                      revision: latestEnvelope.current.revision,
                       pageId: modal.page.id,
                     });
-                    setHistory({ past: [], future: [] });
+                    changeSaved();
                     showPage(state.board.pages[0].id, { replace: true });
                     await savedContent(state);
                     showToast(`Deleted “${modal.page.name}” and its widgets`);
@@ -2490,8 +2645,9 @@ export default function StudioBoard({
                 <div className="studio-dialog-body studio-loading" role="status">
                   Loading local configuration…
                 </div>
-              ) : modal.type === "picker" ? (
+              ) : modal.type === "picker" || modal.type === "saved" ? (
                 <ContentPicker
+                  savedOnly={modal.type === "saved"}
                   catalog={editorData.catalog}
                   state={editorData.state}
                   onRestore={async (id) => {
@@ -2508,7 +2664,20 @@ export default function StudioBoard({
                       setEditorError(err);
                     }
                   }}
-                  onChoose={(entry) => setModal({ type: "content", entry })}
+                  initial={modal.initial}
+                  // Choosing one opens its dialog with Back to this list, the
+                  // search kept (board 26).
+                  onChoose={(entry, back) => setModal({ type: "content", entry, back })}
+                  onPlace={async (entry) =>
+                    savedContent(
+                      await studioRequest("/studio/api/library/use", {
+                        scope: entry.scope,
+                        id: entry.id,
+                        revision: editorData.state.revision,
+                        pageId: currentPage,
+                      }),
+                    )
+                  }
                 />
               ) : modal.type === "content" ? (
                 <ContentEditor
@@ -2519,24 +2688,33 @@ export default function StudioBoard({
                   startDeleting={Boolean(modal.deleting)}
                   pageId={currentPage}
                   wholeBoard={wholeBoard}
-                  renderPreview={(panel, override) => (
-                    <CardPreview panel={panel} data={renderedNativeData} override={override} />
+                  renderPreview={(panel, override, extra) => (
+                    <CardPreview
+                      panel={panel}
+                      data={renderedNativeData}
+                      override={override}
+                      // The desktop grid the widget sits on, as wide as it is
+                      // shown when editing on a desktop screen.
+                      grid={{
+                        width: layoutSize === "desktop" ? width : 1200,
+                        gap,
+                        columns: columnsOfPage(pages.find((item) => item.id === currentPage)),
+                      }}
+                    >
+                      {extra}
+                    </CardPreview>
                   )}
                   onSaved={savedContent}
                   onCancel={closeModal}
                   onReload={reloadEditor}
                   onDuplicate={(entry) => requestEditorAction(() => setModal({ type: "content", entry }))}
-                  onParent={(parent) =>
-                    requestEditorAction(() =>
-                      setModal({
-                        type: "content",
-                        panel: {
-                          id: parent.id,
-                          kind: "service",
-                          title: parent.name,
-                        },
-                      }),
-                    )
+                  onDelete={
+                    isAdmin
+                      ? (panel) => {
+                          closeModal();
+                          deletePanel(panel);
+                        }
+                      : undefined
                   }
                 />
               ) : modal.type === "appearance" ? (

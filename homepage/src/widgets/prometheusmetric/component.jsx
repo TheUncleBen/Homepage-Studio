@@ -3,6 +3,7 @@ import { useTranslation } from "next-i18next/pages";
 import Block from "components/services/widget/block";
 import Container from "components/services/widget/container";
 import useWidgetAPI from "utils/proxy/use-widget-api";
+import { useUncappedFields } from "utils/widget-fields";
 
 function formatValue(t, metric, rawValue) {
   if (!metric?.format) return rawValue;
@@ -49,12 +50,15 @@ function formatValue(t, metric, rawValue) {
 
 export default function Component({ service }) {
   const { t } = useTranslation();
+  // Studio: no four-value limit inside a Studio card.
+  const limit = useUncappedFields() ? Infinity : 4;
 
   const { widget } = service;
 
-  const { metrics = [], refreshInterval = 10000 } = widget;
+  const { metrics: allMetrics = [], refreshInterval = 10000 } = widget;
+  const metrics = allMetrics.slice(0, limit);
 
-  const metricResults = metrics.slice(0, 4).map((metric) => {
+  const metricResults = metrics.map((metric) => {
     // disable the rule that hooks should not be called from a callback,
     // because we don't need a strong guarantee of hook execution order here.
     // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -75,7 +79,7 @@ export default function Component({ service }) {
   if (!prometheusmetricData) {
     return (
       <Container service={service}>
-        {metrics.slice(0, 4).map((item) => (
+        {metrics.map((item) => (
           <Block label={item.label} key={item.label} />
         ))}
       </Container>

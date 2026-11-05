@@ -80,14 +80,16 @@ export function useCardPresentation(panel, data, onEdit, onFullView) {
 }
 
 // A card on its own, outside the board: the widget dialog's live preview.
-export function CardPreview({ panel, data, override, renderNative: RenderNative = NativePanel }) {
+export function CardPreview({ panel, data, override, grid = {}, children, renderNative: RenderNative = NativePanel }) {
   const { card, attributes, colourStyle, backdrop } = useCardPresentation(panel, data, undefined);
-  // Drawn at the widget's own size on a typical 1200 px wide board.
+  // Drawn at the widget's own size on the board's own grid (board 24): its
+  // width, spacing and columns, or a typical 1200 px wide board.
   const rect = panel.rect || { w: 6, h: 4 };
-  const column = (1200 - (COLUMNS - 1) * GAP) / COLUMNS;
+  const { width = 1200, gap = GAP, columns = COLUMNS } = grid;
+  const column = (width - (columns - 1) * gap) / columns;
   const size = {
-    width: `min(100%, ${Math.round(rect.w * column + (rect.w - 1) * GAP)}px)`,
-    height: Math.min(rect.h * ROW_HEIGHT + (rect.h - 1) * GAP, 280),
+    width: `min(100%, ${Math.round(rect.w * column + (rect.w - 1) * gap)}px)`,
+    height: Math.min(rect.h * ROW_HEIGHT + (rect.h - 1) * gap, 520),
   };
   return (
     <section
@@ -105,6 +107,7 @@ export function CardPreview({ panel, data, override, renderNative: RenderNative 
           </CardLookContext.Provider>
         </div>
       </div>
+      {children}
     </section>
   );
 }
@@ -349,8 +352,26 @@ export default function PanelHost({
         }}
       >
         {backdrop}
-        {/* The card draws its own logo and name. While editing, a small bar
-            on top holds selection, move and edit. */}
+        {/* The card draws its own logo and name. While editing (board 21),
+            the select box sits in its top-left corner and Move and Edit at
+            the top right, in place of the response time, shown on hover,
+            tap, focus or selection. */}
+        {!stack && editing && (
+          // The label enlarges the touch target around the checkbox.
+          <label className="studio-select-target studio-select-corner">
+            <input
+              type="checkbox"
+              className="studio-select-input"
+              aria-label={`Select ${panel.title}`}
+              checked={Boolean(selected)}
+              disabled={busy}
+              onChange={() => onSelect(panel.id)}
+            />
+            <span className="studio-select-box" aria-hidden="true">
+              <StudioIcon name="check" size={13} />
+            </span>
+          </label>
+        )}
         {!stack && editing && (
           <header
             className="studio-panel-header"
@@ -365,18 +386,6 @@ export default function PanelHost({
               onLongPress?.(panel.id, { clientX: event.clientX, clientY: event.clientY });
             }}
           >
-            {editing && (
-              // The label enlarges the touch target around the native checkbox.
-              <label className="studio-select-target">
-                <input
-                  type="checkbox"
-                  aria-label={`Select ${panel.title}`}
-                  checked={Boolean(selected)}
-                  disabled={busy}
-                  onChange={() => onSelect(panel.id)}
-                />
-              </label>
-            )}
             <span className="studio-panel-title studio-sr-only">
               <small>{panel.group || (panel.kind === "informationWidget" ? "Information" : "Dashboard")}</small>
               <strong>{panel.title}</strong>

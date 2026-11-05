@@ -96,7 +96,7 @@ test('invalid archive paths, missing files, malformed state and conflicting boar
     state=>state.board.panels[1].id=state.board.panels[0].id,
     state=>state.board.panels.pop(),
     state=>state.board.version=99,
-    state=>state.board.panels[1].rect=state.board.panels[0].rect,
+    state=>state.board.panels.at(-1).rect=state.board.panels[0].rect,
   ]){value=structuredClone(source.archive);const state=JSON.parse(value.files['state.json']);mutate(state);value.files['state.json']=JSON.stringify(state);cases.push(value);}
   for(const archive of cases){
     await assert.rejects(target.store.importArchive({revision:before.revision,archive}));

@@ -8,7 +8,43 @@ export class StudioRequestError extends Error {
 
 const CATALOG_PATH = "/studio/catalog.json";
 
+// The editing session (owner decision, 4 Nov 2026: autosave with Undo and
+// Redo). While the editor is open every change it sends names the session,
+// so the server can step back through exactly these changes.
+const EDIT_PATHS = new Set([
+  "/studio/api/board",
+  "/studio/api/save",
+  "/studio/api/service",
+  "/studio/api/info-widget",
+  "/studio/api/service-widget",
+  "/studio/api/bookmark",
+  "/studio/api/settings",
+  "/studio/api/page-delete",
+  "/studio/api/page-duplicate",
+  "/studio/api/widgets-delete",
+  "/studio/api/widgets-duplicate",
+  "/studio/api/discovery-visibility",
+  "/studio/api/library/use",
+  "/studio/api/undo",
+  "/studio/api/redo",
+]);
+let editSession = null;
+export function newEditSession() {
+  const bytes = new Uint8Array(18);
+  globalThis.crypto.getRandomValues(bytes);
+  editSession = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return editSession;
+}
+export function endEditSession(id) {
+  if (id === undefined || id === editSession) editSession = null;
+}
+export function currentEditSession() {
+  return editSession;
+}
+
 export function studioRequest(path, body) {
+  if (editSession && body && typeof body === "object" && !Array.isArray(body) && EDIT_PATHS.has(path))
+    body = { ...body, editSession };
   return request(path, body, true);
 }
 

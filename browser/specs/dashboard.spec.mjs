@@ -57,9 +57,12 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await expect(tile.getByRole('link').first()).toHaveAttribute('href', 'https://example.test/');
   await page.getByRole('button', { name: 'Edit Browser fixture tile', exact: true }).click();
   dialog = page.getByRole('dialog');
+  // An existing widget's dialog opens with its sections folded.
+  await dialog.getByRole('button', { name: /^Details/ }).click();
   await dialog.getByRole('textbox', { name: 'Description', exact: true }).fill('Edited through the real dashboard');
   // example.test never answers, and a down tile shows why in place of its
   // description, so the check is turned off to show the edited text.
+  await dialog.getByRole('button', { name: /^Status and behaviour/ }).click();
   await dialog.getByRole('radiogroup', { name: 'Check by', exact: true }).getByRole('radio', { name: 'Off', exact: true }).click();
   await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(tile).toContainText('Edited through the real dashboard');
@@ -175,8 +178,8 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await openEditor(page);
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
   await page.getByRole('button', { name: 'Configure Browser fixture tile', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /^Management/ }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Delete permanently', exact: true }).click();
   await expect(tile).toHaveCount(0);
   await expect(stack(page)).toHaveCount(0);
   await expect(greeting).toContainText('Browser fixture greeting');

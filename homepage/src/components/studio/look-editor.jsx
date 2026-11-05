@@ -43,74 +43,305 @@ function MixedNote({ value }) {
 
 const newLookId = () =>
   globalThis.crypto?.randomUUID?.() || `look-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const lookOnly = (look = {}) => {
+export const lookOnly = (look = {}) => {
   const { values: _values, ...rest } = look;
   return rest;
 };
-const sameLook = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+export const sameLook = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
 
-// Named looks to reuse on other widgets: pick one to apply it, or save this
-// widget's look under a name. Only shown when there is something to pick or
-// something to save.
-function SavedLooks({ saved = [], look, onApply, onChange }) {
+const SCOPE_NAMES = { me: "Just me", dashboard: "This dashboard" };
+
+// Saved looks (board 24, owner request C2): a searchable list to apply one,
+// save this widget's look under a name (Just me or This dashboard), and one
+// place to rename, update or delete them. This dashboard's looks are saved
+// with the dashboard; Just me looks are kept on the account at once.
+// Updating one asks whether widgets that use it should change too.
+function SavedLooks({ saved = [], look, onApply, onChange, personal, usage, onUpdateUsers }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [naming, setNaming] = useState(null);
+  const [managing, setManaging] = useState(false);
+  const [renaming, setRenaming] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [asking, setAsking] = useState(null);
+  const [error, setError] = useState(null);
+  const panelId = useId();
   const current = lookOnly(look);
+  const mine = personal?.available ? personal.looks || [] : [];
+  const all = [...saved.map((entry) => ({ ...entry, scope: "dashboard" })), ...mine];
+  const scopes = [...(onChange ? ["dashboard"] : []), ...(personal?.available ? ["me"] : [])];
   const canSave =
-    Boolean(onChange) && Object.keys(current).length > 0 && !saved.some((entry) => sameLook(entry.look, current));
-  if (!saved.length && !canSave) return null;
-  const name = (naming ?? "").trim();
-  const taken = saved.some((entry) => entry.name.toLocaleLowerCase() === name.toLocaleLowerCase());
-  const save = () => {
-    if (!name || taken || name.length > 40) return;
-    const id = newLookId();
-    onChange([...saved, { id, name, look: current }]);
-    setNaming(null);
+    scopes.length > 0 && Object.keys(current).length > 0 && !all.some((entry) => sameLook(entry.look, current));
+  // Always shown where looks can be saved, so the section's summary holds
+  // and the feature can be found before the first one is saved.
+  if (!all.length && !scopes.length) return null;
+  const chosen = all.find((entry) => sameLook(entry.look, current));
+  const needle = query.trim().toLocaleLowerCase();
+  const shown = needle ? all.filter((entry) => entry.name.toLocaleLowerCase().includes(needle)) : all;
+  const taken = (name, scope, except) =>
+    all.some(
+      (entry) =>
+        entry.scope === scope &&
+        entry.id !== except &&
+        entry.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase(),
+    );
+  const run = async (operation) => {
+    setError(null);
+    try {
+      await operation();
+      return true;
+    } catch (err) {
+      setError(err?.message || "That didn't save. Try again.");
+      return false;
+    }
   };
+  const save = () =>
+    run(async () => {
+      const name = naming.name.trim();
+      if (!name || name.length > 40 || taken(name, naming.scope)) return;
+      if (naming.scope === "dashboard") onChange([...saved, { id: newLookId(), name, look: current }]);
+      else await personal.change({ action: "add", kind: "look", scope: "me", name, look: current });
+      setNaming(null);
+    });
+  const rename = (entry) =>
+    run(async () => {
+      const name = renaming.name.trim();
+      if (!name || name.length > 40 || taken(name, entry.scope, entry.id)) return;
+      if (entry.scope === "dashboard") onChange(saved.map((item) => (item.id === entry.id ? { ...item, name } : item)));
+      else await personal.change({ action: "rename", kind: "look", scope: "me", id: entry.id, name });
+      setRenaming(null);
+    });
+  const update = (entry) =>
+    run(async () => {
+      if (entry.scope === "dashboard")
+        onChange(saved.map((item) => (item.id === entry.id ? { ...item, look: current } : item)));
+      else await personal.change({ action: "update", kind: "look", scope: "me", id: entry.id, look: current });
+      const count = usage ? usage(entry.look) : 0;
+      if (count > 0 && onUpdateUsers) setAsking({ entry, from: entry.look, to: current, count });
+    });
+  const remove = (entry) =>
+    run(async () => {
+      if (entry.scope === "dashboard") onChange(saved.filter((item) => item.id !== entry.id));
+      else await personal.change({ action: "delete", kind: "look", scope: "me", id: entry.id });
+      setDeleting(null);
+    });
+  const scopeOf = (entry) => (scopes.length > 1 || entry.scope === "me" ? SCOPE_NAMES[entry.scope] : null);
   return (
     <Row
       label="Saved looks"
       stacked
-      info="Name this look to reuse it on other widgets. Picking one replaces the look, not the widget's values."
+      info="Pick a saved look to use it on this widget; it replaces the look, not the widget's values. Save this widget's look to reuse it on others."
     >
       <div className="studio-saved-looks">
-        {saved.map((entry) => (
-          <span key={entry.id} className="studio-saved-look">
-            <button
-              type="button"
-              className="studio-chip"
-              aria-pressed={sameLook(entry.look, current)}
-              onClick={() => onApply(entry.look)}
-            >
-              {entry.name}
-            </button>
-            {onChange && (
-              <button
-                type="button"
-                className="studio-chip-remove"
-                aria-label={`Forget saved look ${entry.name}`}
-                title="Forget this saved look"
-                onClick={() => onChange(saved.filter((item) => item.id !== entry.id))}
-              >
-                ×
-              </button>
+        <button
+          type="button"
+          className="studio-saved-looks-toggle"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span>{chosen ? chosen.name : "None picked"}</span>
+          <StudioIcon name="chevron" size={15} className="studio-saved-looks-chevron" />
+        </button>
+        {open && (
+          <div id={panelId} className="studio-saved-looks-panel">
+            {!managing && (
+              <>
+                {all.length > 4 && (
+                  <input
+                    type="search"
+                    aria-label="Search saved looks"
+                    placeholder="Search saved looks"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                )}
+                {all.length > 0 && (
+                  <ul className="studio-saved-looks-list" aria-label="Saved looks">
+                    {shown.map((entry) => (
+                      <li key={`${entry.scope}:${entry.id}`}>
+                        <button
+                          type="button"
+                          aria-pressed={sameLook(entry.look, current)}
+                          onClick={() => onApply(entry.look)}
+                        >
+                          <span className="studio-saved-look-title">{entry.name}</span>
+                          {scopeOf(entry) && <span className="studio-saved-look-scope">{scopeOf(entry)}</span>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {needle && !shown.length && <p className="studio-muted">No saved look matches “{query.trim()}”.</p>}
+                {!all.length && (
+                  <p className="studio-muted">No saved looks yet. Change this widget’s look, then save it here.</p>
+                )}
+                <div className="studio-saved-looks-actions">
+                  {scopes.length > 0 && naming === null && (
+                    <button
+                      type="button"
+                      className="studio-text-button"
+                      disabled={!canSave}
+                      title={
+                        canSave
+                          ? undefined
+                          : Object.keys(current).length
+                            ? "This look is already saved"
+                            : "Change the look first; the default look needs no saving"
+                      }
+                      onClick={() => setNaming({ name: "", scope: scopes[0] })}
+                    >
+                      Save this look…
+                    </button>
+                  )}
+                  {all.length > 0 && (onChange || personal?.available) && (
+                    <button type="button" className="studio-text-button" onClick={() => setManaging(true)}>
+                      Manage saved looks
+                    </button>
+                  )}
+                </div>
+              </>
             )}
-          </span>
-        ))}
-        {canSave && naming === null && (
-          <button type="button" className="studio-chip studio-chip-add" onClick={() => setNaming("")}>
-            + Save this look
-          </button>
+            {managing && (
+              <div className="studio-saved-looks-manage">
+                <ul className="studio-saved-looks-list" aria-label="Manage saved looks">
+                  {all
+                    .filter((entry) => entry.scope !== "dashboard" || onChange)
+                    .map((entry) => {
+                      const key = `${entry.scope}:${entry.id}`;
+                      return (
+                        <li key={key} className="studio-saved-look-manage-row">
+                          {renaming?.key === key ? (
+                            <span className="studio-saved-look-name-edit">
+                              <input
+                                aria-label={`New name for ${entry.name}`}
+                                maxLength={40}
+                                value={renaming.name}
+                                autoFocus
+                                onChange={(event) => setRenaming({ ...renaming, name: event.target.value })}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    rename(entry);
+                                  } else if (event.key === "Escape") {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setRenaming(null);
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="studio-button studio-quiet"
+                                onClick={() => setRenaming(null)}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                className="studio-button studio-primary"
+                                disabled={!renaming.name.trim() || taken(renaming.name, entry.scope, entry.id)}
+                                onClick={() => rename(entry)}
+                              >
+                                Save
+                              </button>
+                            </span>
+                          ) : deleting === key ? (
+                            <span className="studio-saved-look-name-edit" role="alert">
+                              <span>Delete “{entry.name}”? Widgets using it keep their look.</span>
+                              <button
+                                type="button"
+                                className="studio-button studio-quiet"
+                                onClick={() => setDeleting(null)}
+                              >
+                                Keep it
+                              </button>
+                              <button
+                                type="button"
+                                className="studio-button studio-danger"
+                                onClick={() => remove(entry)}
+                              >
+                                Delete
+                              </button>
+                            </span>
+                          ) : (
+                            <>
+                              <span className="studio-saved-look-text">
+                                <span className="studio-saved-look-title">{entry.name}</span>
+                                {scopeOf(entry) && <span className="studio-saved-look-scope">{scopeOf(entry)}</span>}
+                              </span>
+                              <button
+                                type="button"
+                                className="studio-button studio-quiet"
+                                onClick={() => setRenaming({ key, name: entry.name })}
+                              >
+                                Rename
+                              </button>
+                              <button
+                                type="button"
+                                className="studio-button studio-quiet"
+                                disabled={sameLook(entry.look, current) || !Object.keys(current).length}
+                                title="Make it this widget's look"
+                                onClick={() => update(entry)}
+                              >
+                                Update
+                              </button>
+                              <button
+                                type="button"
+                                className="studio-icon-button"
+                                aria-label={`Delete saved look ${entry.name}`}
+                                onClick={() => setDeleting(key)}
+                              >
+                                <StudioIcon name="trash" size={16} />
+                              </button>
+                            </>
+                          )}
+                        </li>
+                      );
+                    })}
+                </ul>
+                <p className="studio-note">Update makes a saved look this widget&apos;s look.</p>
+                <button type="button" className="studio-text-button" onClick={() => setManaging(false)}>
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
+      {asking && (
+        <div className="studio-saved-look-ask" role="alert">
+          <span>
+            {asking.count === 1 ? "1 other widget" : `${asking.count} other widgets`} on this dashboard{" "}
+            {asking.count === 1 ? "uses" : "use"} “{asking.entry.name}”. Update {asking.count === 1 ? "it" : "them"}{" "}
+            too?
+          </span>
+          <span className="studio-inline-actions">
+            <button type="button" className="studio-button studio-quiet" onClick={() => setAsking(null)}>
+              Leave {asking.count === 1 ? "it" : "them"}
+            </button>
+            <button
+              type="button"
+              className="studio-button studio-primary"
+              onClick={() => {
+                onUpdateUsers(asking.from, asking.to);
+                setAsking(null);
+              }}
+            >
+              Update {asking.count === 1 ? "it" : "them"}
+            </button>
+          </span>
+        </div>
+      )}
       {naming !== null && (
         <div className="studio-saved-look-name">
           <input
             aria-label="Name for this look"
             placeholder="For example Night"
             maxLength={40}
-            value={naming}
+            value={naming.name}
             autoFocus
-            onChange={(event) => setNaming(event.target.value)}
+            onChange={(event) => setNaming({ ...naming, name: event.target.value })}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
@@ -122,14 +353,32 @@ function SavedLooks({ saved = [], look, onApply, onChange }) {
               }
             }}
           />
+          {scopes.length > 1 && (
+            <Segmented
+              label="Who can use it"
+              value={naming.scope}
+              onChange={(scope) => setNaming({ ...naming, scope })}
+              options={scopes.map((scope) => [scope, SCOPE_NAMES[scope]])}
+            />
+          )}
           <button type="button" className="studio-button studio-quiet" onClick={() => setNaming(null)}>
             Cancel
           </button>
-          <button type="button" className="studio-button studio-primary" disabled={!name || taken} onClick={save}>
+          <button
+            type="button"
+            className="studio-button studio-primary"
+            disabled={!naming.name.trim() || taken(naming.name, naming.scope)}
+            onClick={save}
+          >
             Save
           </button>
-          {taken && <span className="studio-field-error">That name is taken.</span>}
+          {taken(naming.name, naming.scope) && <span className="studio-field-error">That name is taken.</span>}
         </div>
+      )}
+      {error && (
+        <p className="studio-field-error" role="alert">
+          {error}
+        </p>
       )}
     </Row>
   );
@@ -373,10 +622,50 @@ function GaugeValue({ rows, formats, commit }) {
   );
 }
 
-function ValueList({ fields, values, layout, show = "numbers", formats = {}, onChange }) {
+// The native key of a value (pfsense.wanIP -> wanIP), for the widget's own
+// fields list; null when the value isn't one of the widget's choices.
+export function nativeKey(field, prefix, choices) {
+  const key = typeof field === "string" && field.startsWith(`${prefix}.`) ? field.slice(prefix.length + 1) : field;
+  return choices.includes(key) ? key : null;
+}
+
+// One list of every value the widget can show (board 27), in your order.
+// Values the widget isn't drawing yet (not in its fields list) are listed
+// too, hidden; showing one adds it to that list, hiding one removes it, and
+// the list keeps your order, so the YAML always says what the card shows.
+export function withNativeValues(fields, choices = [], prefix = "") {
+  const present = new Set(fields.map((field) => field.field));
+  return [
+    ...fields,
+    ...choices
+      .map((choice) => `${prefix}.${choice}`)
+      .filter((field) => !present.has(field))
+      .map((field) => ({ field, label: field, absent: true })),
+  ];
+}
+
+function ValueList({
+  fields: reported,
+  values,
+  layout,
+  show = "numbers",
+  formats = {},
+  onChange,
+  choices = [],
+  prefix = "",
+  nativeFields,
+  onNativeFields,
+}) {
   const { t } = useTranslation();
+  const synced = Boolean(onNativeFields && choices.length);
+  const fields = synced ? withNativeValues(reported, choices, prefix) : reported;
+  const absent = new Set(fields.filter((field) => field.absent).map((field) => field.field));
   // Widgets name their values with translation keys (adguard.queries).
-  const rows = arrangeValues(fields, values).map((row) => ({ ...row, label: t(row.label) }));
+  const rows = arrangeValues(fields, values).map((row) => ({
+    ...row,
+    label: t(row.label),
+    ...(absent.has(row.field) && !row.slot ? { slot: "hidden" } : {}),
+  }));
   const [rulesOpen, setRulesOpen] = useState(null);
   // Donut and pie draw only the values in one format (card-chart partsFormat).
   const partsUnit =
@@ -384,7 +673,23 @@ function ValueList({ fields, values, layout, show = "numbers", formats = {}, onC
       ? partsFormat(Object.entries(formats).map(([field, format]) => ({ field, format })))
       : null;
   const coloured = ["line", "area", "bar", "donut", "pie"].includes(show);
-  const commit = (next) => onChange(storedValues(next, fields));
+  // Which native fields the rows ask for, in their order.
+  const nativeOf = (next) =>
+    next
+      .filter((row) => row.slot !== "hidden")
+      .map((row) => nativeKey(row.field, prefix, choices))
+      .filter(Boolean);
+  const commit = (next) => {
+    onChange(storedValues(next, fields));
+    if (!synced) return;
+    const wanted = nativeOf(next);
+    // The widget stays on its usual set until what it shows or their order
+    // changes. Homepage can't be told to show none, so hiding the last value
+    // hides it in the card only.
+    if (!wanted.length) return;
+    if (!nativeFields?.length && JSON.stringify(wanted) === JSON.stringify(nativeOf(rows))) return;
+    if (JSON.stringify(wanted) !== JSON.stringify(nativeFields ?? null)) onNativeFields(wanted);
+  };
   // Donut and pie draw every shown value as a part, so there is no hero row.
   const heroed = layout === "hero" && show !== "donut" && show !== "pie";
   const hero = heroed ? heroIndex(rows) : -1;
@@ -413,22 +718,32 @@ function ValueList({ fields, values, layout, show = "numbers", formats = {}, onC
     commit(next);
   };
   if (show === "gauge") return <GaugeValue rows={rows} formats={formats} commit={commit} />;
-  const slots = heroed
+  // Board 27: on a chart each value goes in the chart, beside it as a
+  // number, or nowhere.
+  const charted = CHART_SHOWS.includes(show) || show === "donut" || show === "pie";
+  const slots = charted
     ? [
-        ["hero", "Hero"],
-        ["below", "Below"],
+        ["below", "Chart"],
+        ["number", "Number"],
         ["hidden", "Hidden"],
       ]
-    : [
-        ["below", "Shown"],
-        ["hidden", "Hidden"],
-      ];
+    : heroed
+      ? [
+          ["hero", "Hero"],
+          ["below", "Below"],
+          ["hidden", "Hidden"],
+        ]
+      : [
+          ["below", "Shown"],
+          ["hidden", "Hidden"],
+        ];
   // The colour each value gets on a chart unless it has its own, as the
   // chart counts them (card-chart chartSeries): by its place among the
   // charted values, hidden ones included, so hiding one recolours nothing.
   // Picking that colour again stores nothing (Rule 2).
   const shownSlot = (row, index) => {
-    if (index === hero) return "hero";
+    if (index === hero && !charted) return "hero";
+    if (row.slot === "number") return charted ? "number" : "below";
     return row.slot === "hero" || !row.slot ? "below" : row.slot;
   };
   const known = Object.keys(formats).length > 0;
@@ -440,7 +755,7 @@ function ValueList({ fields, values, layout, show = "numbers", formats = {}, onC
   return (
     <ol className="studio-value-list">
       {rows.map((row, index) => {
-        if (partsUnit && (formats[row.field] || "plain") !== partsUnit) return null;
+        if (partsUnit && formats[row.field] && formats[row.field] !== partsUnit) return null;
         const slot = shownSlot(row, index);
         return (
           <li key={row.field}>
@@ -471,18 +786,14 @@ function ValueList({ fields, values, layout, show = "numbers", formats = {}, onC
               maxLength={40}
               onChange={(event) => update(index, { name: event.target.value })}
             />
-            <select
-              aria-label={`Where ${row.label} shows`}
+            <Segmented
+              label={`Where ${row.label} shows`}
               value={slot}
-              onChange={(event) => update(index, { slot: event.target.value })}
-            >
-              {slots.map(([value, text]) => (
-                <option key={value} value={value}>
-                  {text}
-                </option>
-              ))}
-            </select>
+              options={slots}
+              onChange={(value) => update(index, { slot: value })}
+            />
             <select
+              className="studio-value-format"
               aria-label={`Number style for ${row.label}`}
               value={row.format || "full"}
               onChange={(event) => update(index, { format: event.target.value })}
@@ -524,6 +835,43 @@ function ValueList({ fields, values, layout, show = "numbers", formats = {}, onC
 // and `behaviour` are the widget's own sparse overrides; `inherited*` is what
 // it gets from the dashboard. Every change goes through setOverride, so a
 // value equal to the dashboard's removes the key (Rule 2).
+// Whether the Values and charts part has anything to show. A widget showing
+// its status history reports no values, so the part stays to switch back.
+export function valuesPartShown({ show, fields = [], nativeValues, effective }) {
+  return Boolean(
+    show.values && (fields.length > 0 || nativeValues?.choices?.length > 0 || effective.show === "status"),
+  );
+}
+
+const FILL_LABELS = { plain: "Plain", tint: "Tint", solid: "Solid", picture: "Picture", pattern: "Pattern" };
+const EDGE_LABELS = { line: "line", shadow: "shadow", both: "line and shadow", none: "no edge" };
+const CORNER_LABELS = { square: "square", default: "default corners", round: "round" };
+const CHECK_LABELS = { web: "Web address", ping: "Ping", off: "No status check" };
+const CLICK_LABELS = { same: "opens link", new: "opens in a new tab", none: "no click" };
+
+// The one-line summaries beside each closed section (board 24), so what a
+// widget is set to reads without opening anything.
+export function lookSummaries({ kind, look = {}, behaviour = {}, inheritedLook, inheritedBehaviour, savedLooks = [] }) {
+  const show = lookSections(kind);
+  const effective = { ...inheritedLook, ...look };
+  const acts = { ...inheritedBehaviour, ...behaviour };
+  const own = lookOnly(look);
+  const saved = Object.keys(own).length ? savedLooks.find((entry) => sameLook(entry.look, own)) : null;
+  const shape = [FILL_LABELS[effective.fill], CORNER_LABELS[effective.corners], EDGE_LABELS[effective.edge]]
+    .filter(Boolean)
+    .join(", ");
+  const showing =
+    effective.show === "numbers" || !effective.show
+      ? effective.layout === "quiet"
+        ? "Quiet"
+        : "Hero"
+      : SHOW_LABELS[effective.show] || "";
+  const status = [show.status && CHECK_LABELS[acts.status], show.link && CLICK_LABELS[acts.target]]
+    .filter(Boolean)
+    .join(" · ");
+  return { look: saved ? saved.name : shape, values: showing, status };
+}
+
 export default function LookEditor({
   kind,
   look = {},
@@ -540,17 +888,26 @@ export default function LookEditor({
   sections,
   savedLooks,
   onSavedLooks,
+  // Just me looks ({ available, looks, change }) and the widgets on this
+  // dashboard that use a look, for Manage saved looks › Update.
+  personalLooks,
+  lookUsage,
+  onUpdateLookUsers,
   statusAddress,
+  // The widget's own fields list and its choices (board 27): the Values list
+  // shows every choice and keeps that list in sync.
+  nativeValues,
   chartFields,
   // The time ranges the dashboard keeps history for (card-chart chartRanges).
   rangeChoices = ["1h", "6h", "24h", "7d", "30d"],
 }) {
   const show = sections || lookSections(kind);
   const showId = useId();
-  // The dialog puts Look and Status above the widget's own settings, and
-  // Show and Behaviour below them, as in the approved layout.
-  const top = part !== "bottom";
-  const bottom = part !== "top";
+  // The widget dialog shows each part in its own section (board 25): look,
+  // values (Values and charts), status (Status and behaviour) and page.
+  // "all" shows every part at once (several widgets edited together).
+  const inPart = (name) => part === "all" || part === name;
+  const sectioned = part !== "all";
   const effective = { ...inheritedLook, ...look };
   const acts = { ...inheritedBehaviour, ...behaviour };
   const setLook = (key, value) => onLook(setOverride(look, key, value, inheritedLook));
@@ -572,12 +929,15 @@ export default function LookEditor({
   const named = effective.header === "logo-name" || effective.header === "name";
   return (
     <div className="studio-look-editor">
-      {top && (
-        <Group title="Look">
+      {inPart("look") && (
+        <Group title={sectioned ? undefined : "Look"}>
           <SavedLooks
             saved={savedLooks}
             look={look}
             onChange={onSavedLooks}
+            personal={personalLooks}
+            usage={lookUsage}
+            onUpdateUsers={onUpdateLookUsers}
             onApply={(saved) => onLook({ ...saved, ...(look.values !== undefined ? { values: look.values } : {}) })}
           />
           {show.values && (!show.charts || effective.show === "numbers" || effective.show === MIXED) && (
@@ -605,24 +965,6 @@ export default function LookEditor({
                       ["xl", "XL"],
                     ]}
                   />
-                  {/* A trend needs a number the collector can keep (Rule 1). */}
-                  {show.charts &&
-                    effective.show === "numbers" &&
-                    ((Array.isArray(chartFields) && chartFields.length > 0) ||
-                      (effective.trend && effective.trend !== "off")) && (
-                      <Choice
-                        label="Trend"
-                        value={effective.trend}
-                        onChange={(value) => setLook("trend", value)}
-                        options={[
-                          ["off", "Off"],
-                          ["hour", "Last hour"],
-                          ["day", "Yesterday"],
-                          ["week", "Last week"],
-                        ]}
-                        info="The change in the large value since then, from the history Studio keeps for this widget."
-                      />
-                    )}
                 </Dependent>
               )}
             </>
@@ -795,7 +1137,7 @@ export default function LookEditor({
           />
         </Group>
       )}
-      {top && show.status && (
+      {inPart("status") && show.status && (
         <Group title="Status">
           <Choice
             label="Check by"
@@ -854,7 +1196,7 @@ export default function LookEditor({
       )}
       {/* A widget showing its status history shows no values, so it reports
           none; Show stays so it can be switched back. */}
-      {bottom && show.values && (fields.length > 0 || effective.show === "status") && (
+      {inPart("values") && valuesPartShown({ show, fields, nativeValues, effective }) && (
         <Group
           title="Show"
           info="The values this widget showed last. Pick the hero, hide what you don't need, rename a value or change how its number reads."
@@ -885,6 +1227,25 @@ export default function LookEditor({
               />
             </Dependent>
           )}
+          {/* A trend needs a number the collector can keep (Rule 1). */}
+          {show.charts &&
+            effective.show === "numbers" &&
+            effective.layout === "hero" &&
+            ((Array.isArray(chartFields) && chartFields.length > 0) ||
+              (effective.trend && effective.trend !== "off")) && (
+              <Choice
+                label="Trend"
+                value={effective.trend}
+                onChange={(value) => setLook("trend", value)}
+                options={[
+                  ["off", "Off"],
+                  ["hour", "Last hour"],
+                  ["day", "Yesterday"],
+                  ["week", "Last week"],
+                ]}
+                info="The change in the large value since then, from the history Studio keeps for this widget."
+              />
+            )}
           {effective.show !== "status" && (
             <ValueList
               fields={fields}
@@ -895,11 +1256,15 @@ export default function LookEditor({
                 (Array.isArray(chartFields) ? chartFields : []).map((f) => [f.field, f.format]),
               )}
               onChange={(values) => setLook("values", values)}
+              choices={nativeValues?.choices}
+              prefix={nativeValues?.prefix}
+              nativeFields={nativeValues?.fields}
+              onNativeFields={nativeValues?.onChange}
             />
           )}
         </Group>
       )}
-      {bottom && (
+      {inPart("status") && (
         <Group title="Behaviour">
           {show.link && (
             <Choice
@@ -912,17 +1277,6 @@ export default function LookEditor({
                 ["none", "Nothing"],
               ]}
             />
-          )}
-          {pages.length > 1 && onPage && (
-            <Row label="Page" htmlFor="studio-widget-page">
-              <select id="studio-widget-page" value={pageId} onChange={(event) => onPage(event.target.value)}>
-                {pages.map((page) => (
-                  <option key={page.id} value={page.id}>
-                    {page.name}
-                  </option>
-                ))}
-              </select>
-            </Row>
           )}
           <Choice
             label="On phones"
@@ -961,6 +1315,19 @@ export default function LookEditor({
               />
             </>
           )}
+        </Group>
+      )}
+      {inPart("page") && pages.length > 1 && onPage && (
+        <Group>
+          <Row label="Page" htmlFor="studio-widget-page">
+            <select id="studio-widget-page" value={pageId} onChange={(event) => onPage(event.target.value)}>
+              {pages.map((page) => (
+                <option key={page.id} value={page.id}>
+                  {page.name}
+                </option>
+              ))}
+            </select>
+          </Row>
         </Group>
       )}
     </div>

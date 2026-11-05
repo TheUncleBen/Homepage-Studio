@@ -534,7 +534,11 @@ Then check two things under **Administration**:
   it does, the `studio_auth_key` secret isn't reaching Studio.
 - **Activity** shows your own device's address in the Address column, not
   the proxy's. If it shows the proxy's, `STUDIO_TRUSTED_PROXIES` doesn't match
-  the network's subnet (step 2).
+  the network's subnet (step 2); Activity then names the proxy's address at
+  the top. If it shows an internal Swarm address (often `10.0.0.x`), the
+  proxy's own ports go through the ingress mesh, which hides the visitor's
+  address from the proxy: publish them in host mode, as in
+  [REVERSE-PROXY.md](REVERSE-PROXY.md#how-the-proxy-reaches-studio).
 
 Inviting people, sharing dashboards and session policies are in
 [AUTHENTICATION.md](AUTHENTICATION.md). If something's off, start with
@@ -588,31 +592,33 @@ Use the file form with a Docker secret for API keys and passwords: a value
 written straight into a widget stays in the snapshot history after you change
 it ([OPERATIONS.md](OPERATIONS.md#snapshots-and-secrets)).
 
-The names are yours, so the stack doesn't have them. To add one, for example
-a Proxmox token:
+The stack doesn't have them until you add them. Each widget's setup guide (in
+its dialog) and its page in [widgets/](widgets/README.md) give the exact names
+to use for each secret it takes. For example, Proxmox's token secret, which
+goes in its **Password** setting:
 
 1. Create the secret (Portainer **Secrets → Add secret**, or
-   `read -rs S && printf %s "$S" | docker secret create homepage_proxmox_token - ; unset S`).
+   `read -rs S && printf %s "$S" | docker secret create homepage_proxmox_password - ; unset S`).
 2. In the stack editor, add it next to the other secrets, both at the top level
    and on the service, and point a variable at it:
 
    ```yaml
    secrets:
      # ...the three Studio secrets...
-     homepage_proxmox_token:
+     homepage_proxmox_password:
        external: true
    services:
      studio:
        secrets:
          # ...the three Studio secrets...
-         - homepage_proxmox_token
+         - homepage_proxmox_password
        environment:
          # ...
-         HOMEPAGE_FILE_PROXMOX_TOKEN: /run/secrets/homepage_proxmox_token
+         HOMEPAGE_FILE_PROXMOX_PASSWORD: /run/secrets/homepage_proxmox_password
    ```
 
-3. Update the stack, then use `{{HOMEPAGE_FILE_PROXMOX_TOKEN}}` in the
-   widget's settings.
+3. Update the stack, then enter `{{HOMEPAGE_FILE_PROXMOX_PASSWORD}}` as the
+   widget's **Password**.
 
 Keep your additions when you paste a new bundle's stack at an update. One
 container serves every dashboard, so these values are available to all of

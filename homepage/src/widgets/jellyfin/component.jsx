@@ -7,7 +7,7 @@ import Container from "components/services/widget/container";
 import { dashboardFetch } from "components/studio/dashboard-path.mjs";
 import { getURLSearchParams } from "utils/proxy/api-helpers";
 import useWidgetAPI from "utils/proxy/use-widget-api";
-import withWidgetFields from "utils/widget-fields";
+import { useWidgetFields } from "utils/widget-fields";
 
 const DEFAULT_FIELDS = ["movies", "series", "episodes", "songs"];
 
@@ -208,7 +208,7 @@ function CountBlocks({ service, countData }) {
 export default function Component({ service: configuredService }) {
   const { t } = useTranslation();
 
-  const service = withWidgetFields(configuredService, DEFAULT_FIELDS);
+  const service = useWidgetFields(configuredService, DEFAULT_FIELDS);
   const { widget } = service;
   const version = widget?.version ?? 1;
   const useJellyfinV2 = version === 2;

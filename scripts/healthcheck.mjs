@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { runtimeHost } from './runtime-host.mjs';
 
-export const UPSTREAM_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
+export const UPSTREAM_COMMIT = '2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f';
 
 export function checkHealth({ url, host, kind, buildRevision, timeoutMs = 2500 }) {
   return new Promise((resolvePromise, reject) => {

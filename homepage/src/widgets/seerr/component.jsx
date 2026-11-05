@@ -1,12 +1,12 @@
 import Block from "components/services/widget/block";
 import Container from "components/services/widget/container";
 import useWidgetAPI from "utils/proxy/use-widget-api";
-import withWidgetFields from "utils/widget-fields";
+import { useWidgetFields } from "utils/widget-fields";
 
 export const seerrDefaultFields = ["pending", "approved", "completed"];
 
 export default function Component({ service: configuredService }) {
-  const service = withWidgetFields(configuredService, seerrDefaultFields);
+  const service = useWidgetFields(configuredService, seerrDefaultFields);
   const { widget } = service;
   const isIssueEnabled = widget.fields.includes("issues");
 

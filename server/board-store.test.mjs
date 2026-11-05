@@ -41,7 +41,7 @@ test('the board exposes independently addressable native content without raw wid
     bookmarksYaml: '- Reading:\n    - Homepage:\n        - href: https://gethomepage.dev\n          abbr: HP\n' });
   const envelope = await store.loadBoard();
   assert.equal(envelope.revision, current.revision);
-  assert.deepEqual(envelope.board.panels.map((p) => p.kind), ['service', 'serviceWidget', 'serviceWidget', 'serviceWidget', 'informationWidget', 'informationWidget', 'bookmark']);
+  assert.deepEqual(envelope.board.panels.map((p) => p.kind), ['serviceWidget', 'serviceWidget', 'serviceWidget', 'informationWidget', 'informationWidget', 'bookmark']);
   assert.deepEqual(envelope.board.panels.filter((p) => p.kind === 'serviceWidget').map((p) => p.nativeLocator.proxyIndex), [0, 1, -1]);
   assert.deepEqual(envelope.board.panels.filter((p) => p.kind === 'serviceWidget').map((p) => p.nativeLocator.widgetIndex), [0, 1, 2]);
   assert.doesNotMatch(JSON.stringify(envelope), /synthetic-only-password|HOMEPAGE_FILE|portainer\.example|first\.example|"config"/);
@@ -91,24 +91,33 @@ test('a widget-only parent produces one panel and removing its last widget does 
   assert.deepEqual(current.board.panels, []);
 });
 
-test('deleting the last widget preserves an explicitly created or legacy id-only service after restart', async (t) => {
+test('a widget card is its service\'s only card, so removing the last widget removes the whole entry after restart', async (t) => {
   const { store, options } = await fixture(t);
-  let current = await store.mutateService({ revision: (await store.load()).revision, action: 'add', name: 'Explicit service', group: 'Home', config: {} });
+  let current = await store.mutateService({ revision: (await store.load()).revision, action: 'add', name: 'Explicit service', group: 'Home', config: { href: 'https://portainer.example.test' } });
   const id = current.services[0].id;
+  assert.deepEqual(current.board.panels.map((panel) => panel.id), [id]);
   current = await store.mutateServiceWidget({ revision: current.revision, action: 'add', serviceId: id, type: 'portainer', config: { url: 'http://portainer.example.test', env: 1 } });
+  // The link card becomes the widget's card: one card, never two.
+  assert.deepEqual(current.board.panels.map((panel) => panel.kind), ['serviceWidget']);
   current = await createConfigStore(options).mutateServiceWidget({ revision: current.revision, action: 'delete', id: current.serviceWidgets[0].id });
-  assert.equal(current.services[0].id, id);
-  assert.equal(current.board.panels[0].id, id);
-  current = await store.save({ revision: current.revision, servicesYaml: '- Home:\n    - Legacy:\n        id: studio-legacy\n        widget:\n          type: portainer\n' });
-  current = await createConfigStore(options).mutateServiceWidget({ revision: current.revision, action: 'delete', id: current.serviceWidgets[0].id });
-  assert.equal(current.services[0].id, 'studio-legacy');
-  assert.equal(current.board.panels[0].kind, 'service');
+  assert.deepEqual(current.services, []);
+  assert.deepEqual(current.board.panels, []);
+  current = await store.save({ revision: current.revision, servicesYaml: '- Home:\n    - Legacy:\n        id: studio-legacy\n        href: https://legacy.example.test\n        widget:\n          type: portainer\n' });
+  current = await createConfigStore(options).deletePanels({ revision: current.revision, ids: [current.serviceWidgets[0].id] });
+  assert.deepEqual(current.services, []);
+  assert.deepEqual(current.board.panels, []);
 });
 
-test('service metadata stays visible when an independent widget has no service link', async (t) => {
+test('a service with a link, icon and status check and a widget shows one card, not a duplicate', async (t) => {
   const { store } = await fixture(t);
-  const current = await store.save({ revision: (await store.load()).revision, servicesYaml: '- Lab:\n    - Media:\n        description: Local media\n        icon: jellyfin.svg\n        widget:\n          type: jellyfin\n          url: http://media.example.test\n' });
-  assert.deepEqual(current.board.panels.map((panel) => panel.kind), ['service', 'serviceWidget']);
+  let current = await store.save({ revision: (await store.load()).revision, servicesYaml: '- Lab:\n    - Media:\n        description: Local media\n        icon: jellyfin.svg\n        href: https://media.example.test\n        widget:\n          type: jellyfin\n          url: http://media.example.test\n' });
+  assert.deepEqual(current.board.panels.map((panel) => panel.kind), ['serviceWidget']);
+  const card = current.board.panels[0].id;
+  // Turning on a status check (owner report, 3 Nov 2026) adds nothing to the board.
+  current = await store.mutateService({ revision: current.revision, action: 'update', id: current.services[0].id, config: { siteMonitor: 'https://media.example.test' } });
+  assert.deepEqual(current.board.panels.map((panel) => panel.id), [card]);
+  current = await store.mutateService({ revision: current.revision, action: 'update', id: current.services[0].id, config: { siteMonitor: null, ping: 'media.example.test' } });
+  assert.deepEqual(current.board.panels.map((panel) => panel.id), [card]);
 });
 
 test('raw YAML type edits retain both information and service-widget stack identities', async (t) => {
@@ -214,7 +223,6 @@ test('invalid board graphs, collisions, missing native panels and playback bound
   const base = current.board, ids = base.panels.map((p) => p.id);
   const invalid = [];
   let board = clone(base); board.panels[1].rect = clone(board.panels[0].rect); invalid.push(board);
-  board = clone(base); board.panels.pop(); invalid.push(board);
   board = clone(base); board.panels[0].rect.w = 13; invalid.push(board);
   board = clone(base); board.stacks = [{ id: 'self', panelIds: [ids[0], 'self'], rect: base.panels[0].rect }]; invalid.push(board);
   board = clone(base); board.stacks = [{ id: 'repeat', panelIds: [ids[0], ids[0]], rect: base.panels[0].rect }]; invalid.push(board);
@@ -225,6 +233,10 @@ test('invalid board graphs, collisions, missing native panels and playback bound
   for (const value of invalid) await assert.rejects(store.saveBoard({ revision: current.revision, board: value }));
   assert.equal((await store.listBackups()).length, count);
   assert.equal((await store.load()).revision, current.revision);
+  // An arrangement that leaves a panel out keeps that panel where it is.
+  board = clone(base); const left = board.panels.pop();
+  const saved = await store.saveBoard({ revision: current.revision, board });
+  assert.deepEqual(saved.board.panels.find((p) => p.id === left.id).rect, left.rect);
 });
 
 test('removing a stacked source collapses a single-member stack into a free panel with stable identity', async (t) => {

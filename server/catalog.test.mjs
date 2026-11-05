@@ -119,7 +119,8 @@ test('reviewed nonstandard documentation lists expose native field selections', 
       assert.equal(Object.hasOwn(widget(type, 'service', source).defaults, 'fields'), false);
     }
   }
-  for (const type of ['backrest', 'dockhand', 'suwayomi', 'unraid']) assert.equal(field(type, 'fields').maxItems, 4);
+  // Homepage's four-value limit does not apply in Studio cards (4 Nov 2026).
+  for (const item of shipped.service) for (const entry of item.fields) assert.equal(Object.hasOwn(entry, 'maxItems'), false, item.type);
   assert.match(widget('emby').setupNotes.join(' '), /enableBlocks/);
   assert.match(widget('unraid').setupNotes.join(' '), /pool name/);
   assert.match(field('evcc', 'fields').source, /src\/widgets\/evcc\/component\.jsx$/);
@@ -160,9 +161,55 @@ test('registry-only implementations and undocumented WeatherAPI are labeled expl
 });
 
 test('generated full catalog keeps every pinned registered type exactly once', () => {
-  assert.equal(shipped.service.length,169);assert.equal(shipped.info.length,14);
+  assert.equal(shipped.service.length,170);assert.equal(shipped.info.length,14);
   for(const kind of ['service','info']){assert.equal(new Set(shipped[kind].map(item=>item.type)).size,shipped[kind].length);assert.ok(shipped[kind].every(item=>item.coverage&&item.documentationStatus));}
   assert.match(shipped.schemaNotice,/not runtime integration tests/);
+});
+
+// Owner request, 4 Nov 2026 (NetBird was missing): nothing Homepage registers
+// or documents may be missing from what Studio offers.
+test('every widget Homepage registers or documents is in the shipped catalog', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const registered = text => [...text.matchAll(/^\s+([a-z0-9_]+):\s*dynamic\(/gm)].map(match => match[1]);
+  const registries = { service: 'src/widgets/components.js', info: 'src/components/widgets/widget.jsx' };
+  for (const [kind, folder] of [['service', 'services'], ['info', 'info']]) {
+    const types = new Set(shipped[kind].map(item => item.type));
+    const missing = registered(await readFile(join(nativeSource, registries[kind]), 'utf8')).filter(type => !types.has(type));
+    assert.deepEqual(missing, [], `Registered ${kind} widgets missing from the catalog: ${missing.join(', ')}`);
+    const covered = new Set(shipped[kind].flatMap(item => item.sources.map(source => source.path)));
+    const pages = (await readdir(join(nativeSource, 'docs/widgets', folder))).filter(name => name.endsWith('.md') && name !== 'index.md');
+    const undocumented = pages.filter(name => !covered.has(`docs/widgets/${folder}/${name}`));
+    assert.deepEqual(undocumented, [], `Documented ${kind} widgets missing from the catalog: ${undocumented.join(', ')}`);
+  }
+  assert.ok(widget('netbird', 'service', shipped));
+});
+
+// Owner request, 4 Nov 2026: each integration says what it is and shows,
+// instead of one shared line.
+test('every widget has its own description of what it is and what it shows', () => {
+  for (const kind of ['service', 'info']) for (const item of shipped[kind]) assert.ok(item.description && item.description.length > item.name.length + 2, `${kind} ${item.type}`);
+  assert.equal(widget('pfsense', 'service', shipped).description, 'Firewall. Load Avg, Mem Usage, Temp, WAN Status, WAN IP, Disk Usage.');
+  assert.equal(widget('portainer', 'service', shipped).description, 'Docker management. Running, Stopped, Total.');
+  assert.match(widget('netbird', 'service', shipped).description, /^Mesh VPN\. Online Peers, Users, Login Expired\.$/);
+  const services = shipped.service.map(item => item.description);
+  assert.ok(new Set(services).size > services.length * 0.9, 'descriptions are mostly distinct');
+});
+
+test('every secret setting names its exact Docker secret, variable and reference', () => {
+  assert.deepEqual(widget('pfsense', 'service', shipped).secrets, [
+    { key: 'password', label: 'Password', variable: 'HOMEPAGE_FILE_PFSENSE_PASSWORD', secret: 'homepage_pfsense_password', reference: '{{HOMEPAGE_FILE_PFSENSE_PASSWORD}}' },
+    { key: 'headers.X-API-Key', label: 'API key (v2), as the X-API-Key header', variable: 'HOMEPAGE_FILE_PFSENSE_API_KEY', secret: 'homepage_pfsense_api_key', reference: '{{HOMEPAGE_FILE_PFSENSE_API_KEY}}' },
+  ]);
+  assert.equal(widget('unifi_drive', 'service', shipped).secrets[0].variable, 'HOMEPAGE_FILE_UNIFI_DRIVE_PASSWORD');
+  for (const kind of ['service', 'info']) for (const item of shipped[kind]) {
+    const sensitive = item.fields.filter(field => field.sensitive).map(field => field.key);
+    assert.deepEqual((item.secrets || []).map(entry => entry.key).filter(key => !key.includes('.')), sensitive, item.type);
+    for (const entry of item.secrets || []) {
+      assert.match(entry.variable, /^HOMEPAGE_FILE_[A-Z0-9_]+$/);
+      assert.equal(entry.reference, `{{${entry.variable}}}`);
+      assert.equal(entry.secret, entry.variable.replace('HOMEPAGE_FILE_', 'homepage_').toLowerCase());
+    }
+  }
 });
 
 test('incomplete documentation examples stay visible as warnings rather than fabricated schemas', () => {
@@ -190,7 +237,7 @@ test('catalog generation preserves the project license notice and writes its own
 
 test('a mismatched source version cannot be mislabeled as the catalog pin', async () => {
   const source=await mkdtemp(join(tmpdir(),'homepage-catalog-version-'));
-  try{await writeFile(join(source,'package.json'),JSON.stringify({version:'99.0.0'}));await assert.rejects(()=>buildCatalog(source),/verified Homepage v2\.6\.0/);}
+  try{await writeFile(join(source,'package.json'),JSON.stringify({version:'99.0.0'}));await assert.rejects(()=>buildCatalog(source),/verified Homepage v2\.7\.0/);}
   finally{await rm(source,{recursive:true,force:true});}
 });
 

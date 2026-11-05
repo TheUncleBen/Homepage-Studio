@@ -251,11 +251,21 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
 
   // ---- Sessions -----------------------------------------------------------
 
-  function clientIp(req) {
+  // The latest proxy that forwarded a request Studio did not trust, so
+  // Administration can say which address to add to STUDIO_TRUSTED_PROXIES
+  // (owner report, 4 Nov 2026: Activity showed a Docker address). Only the
+  // address is kept; the forwarded header is never trusted from it. Only a
+  // signed-in request records it, so a stranger's X-Forwarded-For can't make
+  // Administration suggest trusting the stranger.
+  let untrustedProxy = null;
+  function clientIp(req, { signedIn = false } = {}) {
     const remote = String(req.socket?.remoteAddress ?? '').replace(/^::ffff:/, '');
-    if (!config.trustedProxies || !remote) return remote;
     const family = remote.includes(':') ? 'ipv6' : 'ipv4';
-    if (!config.trustedProxies.check(remote, family)) return remote;
+    if (!remote) return remote;
+    if (!config.trustedProxies || !config.trustedProxies.check(remote, family)) {
+      if (signedIn && req.headers['x-forwarded-for']) untrustedProxy = { address: remote, at: now() };
+      return remote;
+    }
     // Walk X-Forwarded-For from the right, skipping trusted proxies.
     const chain = String(req.headers['x-forwarded-for'] ?? '').split(',').map(part => part.trim().replace(/^::ffff:/, '')).filter(Boolean);
     for (let index = chain.length - 1; index >= 0; index--) {
@@ -399,15 +409,18 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     policy = effectivePolicy(data, user);
     if (time - session.lastSeenAt >= TOUCH_INTERVAL) store.sessions.touch(session.id, { lastSeenAt: time });
     return {
-      user, session, policy,
+      user, session, policy, ip: clientIp(req, { signedIn: true }),
       level: dashboardId => dashboardLevel(data, user, dashboardId),
       landing: dashboards => landingDashboard(data, user, dashboards),
       fresh: () => time - session.authAt <= policy.stepUpMinutes * MINUTE,
     };
   }
 
-  async function audit(type, fields = {}, req) {
-    await store.audit({ type, ...fields, ...(req ? { ip: clientIp(req) } : {}) });
+  // source: the request, or the signed-in person (who carries their request's
+  // address), so every event someone causes records where it came from.
+  async function audit(type, fields = {}, source) {
+    const ip = source?.socket ? clientIp(source) : source?.ip;
+    await store.audit({ type, ...fields, ...(ip ? { ip } : {}) });
   }
 
   // ---- Provider groups and roles -----------------------------------------
@@ -924,7 +937,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       change(user, data);
       if (user.source === 'local' && !hasCompleteLocalFactors(user)) fail('Keep a passkey, or a password with an authenticator app, so you can still sign in.', 'FACTOR_REQUIRED');
     });
-    if (event) await audit(event, { userId: current.user.id });
+    if (event) await audit(event, { userId: current.user.id }, current);
   }
   // A default dashboard is null (none) or the id of a dashboard in the
   // registry. Archived dashboards can't be chosen.
@@ -961,7 +974,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         if (changing) user.email = email;
         if (renaming) user.username = username;
       });
-      await audit('profile-changed', { userId: current.user.id, ...(renaming ? { username: { from: before, to: username } } : {}) });
+      await audit('profile-changed', { userId: current.user.id, ...(renaming ? { username: { from: before, to: username } } : {}) }, current);
       if (renaming) await notify({ ...current.user, username }, 'Your username was changed', `Your Studio username was changed from "${before}" to "${username}". Use the new one to sign in.`);
       return accountView(await refreshed(current));
     },
@@ -1048,7 +1061,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       if (current.user.source !== 'local' || !current.user.oidc) fail('There is no linked identity to remove.', 'NOT_LINKED', 409);
       await store.mutate(data => { Object.assign(findUser(data, current.user.id), { oidc: null, oidcGroups: [], providerAdmin: false, emailFromProvider: false, displayNameFromProvider: false }); });
       await store.sessions.remove(item => item.userId === current.user.id && item.method === 'oidc' && item.id !== current.session.id);
-      await audit('identity-unlinked', { userId: current.user.id });
+      await audit('identity-unlinked', { userId: current.user.id }, current);
       await notify(current.user, 'Single sign-on unlinked', `Your ${oidc?.name ?? 'single sign-on'} account was unlinked. It can no longer sign in to Studio as you.`);
       if (current.session.method === 'oidc') await store.sessions.remove(item => item.id === current.session.id);
       return accountView({ ...current, session: { ...current.session, method: 'local' }, user: findUser(store.read(), current.user.id) });
@@ -1062,7 +1075,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     async revokeSessions(current, body) {
       const target = body?.id;
       const removed = await store.sessions.remove(item => item.userId === current.user.id && item.id !== current.session.id && (target === 'others' || (String(target).length >= 16 && item.id.startsWith(String(target)))));
-      await audit('sessions-revoked', { userId: current.user.id, count: removed });
+      await audit('sessions-revoked', { userId: current.user.id, count: removed }, current);
       return accountView(current);
     },
   };
@@ -1128,6 +1141,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         deploymentNameDefault: config.deploymentName,
         email: Boolean(mailer), keyConfigured: Boolean(config.key), fresh: current.fresh(), currentUserId: current.user.id,
         canDisableLocal: canDisableLocal(data, current),
+        // Seen within the last day: an older sighting may be a removed proxy.
+        proxy: { trustedConfigured: Boolean(config.trustedProxies), untrusted: untrustedProxy && now() - untrustedProxy.at < 24 * 60 * MINUTE ? untrustedProxy.address : null },
         deployment: { adminGroups: Boolean(deploymentGroups('adminGroups')), allowedGroups: Boolean(deploymentGroups('allowedGroups')), adminSeed: Boolean(config.adminSeed) },
       };
     },
@@ -1147,7 +1162,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       const link = inviteLink(token);
       const mail = body?.sendEmail === true ? await sendInvite(user, link) : null;
       const emailed = Boolean(mail?.sent), emailError = mail && !mail.sent ? (mail.reason ?? 'not sent') : undefined;
-      await audit('user-invited', { userId: user.id, by: current.user.id, role });
+      await audit('user-invited', { userId: user.id, by: current.user.id, role }, current);
       return { user: publicUser(user), link, emailed, emailError, expiresInHours: INVITE_HOURS };
     },
     async update(current, body) {
@@ -1192,7 +1207,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         guardAdmins(data);
       });
       if (body.disabled === true) await store.sessions.remove(item => item.userId === body.id);
-      await audit('user-updated', { userId: body.id, by: current.user.id, fields: Object.keys(body).filter(key => key !== 'id') });
+      await audit('user-updated', { userId: body.id, by: current.user.id, fields: Object.keys(body).filter(key => key !== 'id') }, current);
       // Someone renamed by an administrator hears about it like a rename of their own.
       if (renamed) await notify(renamed.user, 'Your username was changed', `An administrator changed your Studio username from "${renamed.from}" to "${renamed.user.username}". Use the new one to sign in.`);
       return admin.overview(current);
@@ -1214,7 +1229,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       const link = inviteLink(token);
       const mail = body?.sendEmail === true ? await sendInvite(user, link) : null;
       const emailed = Boolean(mail?.sent), emailError = mail && !mail.sent ? (mail.reason ?? 'not sent') : undefined;
-      await audit('user-reset', { userId: user.id, by: current.user.id });
+      await audit('user-reset', { userId: user.id, by: current.user.id }, current);
       return { link, emailed, emailError, expiresInHours: INVITE_HOURS };
     },
     async unlink(current, body) {
@@ -1227,7 +1242,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         Object.assign(user, { oidc: null, oidcGroups: [], providerAdmin: false, emailFromProvider: false, displayNameFromProvider: false });
       });
       await store.sessions.remove(item => item.userId === user.id && item.method === 'oidc' && item.id !== current.session.id);
-      await audit('identity-unlinked', { userId: user.id, by: current.user.id });
+      await audit('identity-unlinked', { userId: user.id, by: current.user.id }, current);
       await notify(user, 'Single sign-on unlinked', `An administrator unlinked your ${oidc?.name ?? 'single sign-on'} account. It can no longer sign in to Studio as you.`);
       return admin.overview(current);
     },
@@ -1245,13 +1260,13 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       await store.sessions.remove(item => item.userId === body.id);
       // Their own images and preferences go with the account.
       await onUserRemoved(body.id);
-      await audit('user-deleted', { userId: body.id, by: current.user.id });
+      await audit('user-deleted', { userId: body.id, by: current.user.id }, current);
       return admin.overview(current);
     },
     async revokeUserSessions(current, body) {
       requireAdmin(current);
       const removed = await store.sessions.remove(item => item.userId === body?.userId && item.id !== current.session.id);
-      await audit('sessions-revoked', { userId: body?.userId, by: current.user.id, count: removed });
+      await audit('sessions-revoked', { userId: body?.userId, by: current.user.id, count: removed }, current);
       return admin.overview(current);
     },
     async group(current, body) {
@@ -1305,7 +1320,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
           for (const id of Object.keys(data.grants)) data.grants[id] = data.grants[id].filter(grant => grant.subject !== 'group:' + group.id);
         } else fail('Choose a group action.', 'INVALID_ACTION');
       });
-      await audit('group-changed', { action: body?.action, groupId: body?.id, by: current.user.id });
+      await audit('group-changed', { action: body?.action, groupId: body?.id, by: current.user.id }, current);
       return admin.overview(current);
     },
     async policy(current, body) {
@@ -1322,7 +1337,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
           for (const group of data.groups) if (group.policyId === policy.id) group.policyId = null;
         } else fail('Choose a policy action.', 'INVALID_ACTION');
       });
-      await audit('policy-changed', { action: body?.action, policyId: body?.id, by: current.user.id });
+      await audit('policy-changed', { action: body?.action, policyId: body?.id, by: current.user.id }, current);
       return admin.overview(current);
     },
     async settings(current, body) {
@@ -1359,7 +1374,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         }
         data.settings = next;
       });
-      await audit('settings-changed', { by: current.user.id, fields: Object.keys(body ?? {}) });
+      await audit('settings-changed', { by: current.user.id, fields: Object.keys(body ?? {}) }, current);
       return admin.overview(current);
     },
     async grants(current, body) {
@@ -1370,7 +1385,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
         if (!validGrantList(body.grants, data)) fail(`Share with existing users or groups, at ${GRANT_LEVELS.join(' or ')} level, once each.`, 'INVALID_GRANTS');
         data.grants[body.dashboardId] = body.grants.map(grant => ({ subject: grant.subject, level: grant.level }));
       });
-      await audit('access-changed', { dashboardId: body.dashboardId, by: current.user.id, count: body.grants.length });
+      await audit('access-changed', { dashboardId: body.dashboardId, by: current.user.id, count: body.grants.length }, current);
       return { grants: store.read().grants[body.dashboardId] };
     },
     async audit(current) { requireAdmin(current, { fresh: false }); return { events: await store.readAudit(500) }; },
@@ -1398,6 +1413,16 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   // Copies the access list when a dashboard is duplicated with "copy access".
   async function copyGrants(fromId, toId) {
     await store.mutate(data => { data.grants[toId] = structuredClone(data.grants[fromId] ?? []); });
+  }
+
+  // A dashboard deleted for good: its access list goes, and nobody keeps it
+  // as their default.
+  async function forgetDashboard(id) {
+    await store.mutate(data => {
+      delete data.grants[id];
+      for (const user of data.users) if (user.defaultDashboardId === id) delete user.defaultDashboardId;
+      for (const group of data.groups) if (group.defaultDashboardId === id) delete group.defaultDashboardId;
+    });
   }
 
   // ---- Single sign-on -----------------------------------------------------
@@ -1662,7 +1687,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     settled: () => Promise.all([...background]),
     startSetup, resumeSetup, inviteDetails, startInvite, enrollTotpStart, enrollTotpConfirm, enrollPasskeyOptions, enrollPasskeyVerify, finishEnrollment,
     requestRecovery, recoveryDetails, finishRecovery, redeemRecovery,
-    account, admin, copyGrants, audience, siteName, oidcStart, oidcCallback, backchannelLogout,
+    account, admin, copyGrants, forgetDashboard, audience, siteName, oidcStart, oidcCallback, backchannelLogout,
     dashboardLevel: (current, id) => current ? current.level(id) : 'none',
     hasOidc: Boolean(oidc), hasMail: Boolean(mailer),
   };

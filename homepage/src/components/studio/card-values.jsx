@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { CardChart, Trend } from "./card-chart";
 import { ValueSlotContext } from "./card-look";
@@ -11,6 +11,101 @@ const keyOf = (child, index) => {
   const label = Array.isArray(props.label) ? props.label[0] : props.label;
   return typeof props.field === "string" ? props.field : typeof label === "string" ? label : `#${index}`;
 };
+
+// Values fold rather than scroll (board 28, owner note D1): when a card is
+// too small for all of them, the ones that fit stay, in order, and "+N more"
+// says how many are left. Measured against the card's content box, again
+// whenever it changes size.
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+// `least`: how many values always stay (none under a hero, which stays).
+// `content`: what the card shows; new numbers (the first answer after the
+// placeholders, a longer value) measure again from all shown.
+function useFold(count, least = 1, content = "") {
+  const ref = useRef(null);
+  const [shown, setShown] = useState(count);
+  const [epoch, setEpoch] = useState(0);
+  useIsoLayoutEffect(() => {
+    // Measure afresh at the card's usual spacing.
+    ref.current?.closest(".studio-native-content")?.removeAttribute("data-tight");
+    setShown(count);
+  }, [count, epoch, content]);
+  useIsoLayoutEffect(() => {
+    const list = ref.current;
+    const clip = list?.closest(".studio-native-content");
+    if (!list || !clip) return;
+    const limit = clip.getBoundingClientRect().bottom - (parseFloat(getComputedStyle(clip).paddingBottom) || 0);
+    const fits = (element) => !element || element.getBoundingClientRect().bottom <= limit + 0.5;
+    const items = [...list.children].filter((item) => item.classList.contains("studio-fold-item"));
+    if (shown === count) {
+      const measure = () => items.map((item) => (item.firstElementChild || item).getBoundingClientRect().bottom);
+      let bottoms = measure();
+      const all = () => !bottoms.length || bottoms.every((bottom) => bottom <= limit + 0.5);
+      if (all()) return;
+      // Before anything folds, the card draws a little tighter (smaller hero,
+      // less space between): often that is enough for every value (board 27).
+      clip.setAttribute("data-tight", "");
+      bottoms = measure();
+      if (all()) return;
+      // Keep every value that fits; the check below folds one more while the
+      // "+N more" hint (in the last free column of a row) doesn't fit too.
+      setShown(Math.max(least, bottoms.filter((bottom) => bottom <= limit + 0.5).length));
+      return;
+    }
+    // Folded: the values left can reflow (a narrower row, a wrapped line), so
+    // check the last one and the "+N more" line really fit; else fold one more.
+    const last = items[shown - 1];
+    if (shown > least && (!fits(last?.firstElementChild || last) || !fits(list.querySelector(".studio-values-more"))))
+      setShown(shown - 1);
+  }, [shown, count, epoch, least, content]);
+  useEffect(() => {
+    const clip = ref.current?.closest(".studio-native-content");
+    if (!clip || typeof ResizeObserver === "undefined") return undefined;
+    let width = clip.clientWidth;
+    let height = clip.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (clip.clientWidth === width && clip.clientHeight === height) return;
+      width = clip.clientWidth;
+      height = clip.clientHeight;
+      setEpoch((value) => value + 1);
+    });
+    observer.observe(clip);
+    // Text measures differently once the web font has loaded.
+    let live = true;
+    document.fonts?.ready?.then(() => live && setEpoch((value) => value + 1));
+    return () => {
+      live = false;
+      observer.disconnect();
+    };
+  }, []);
+  return { ref, shown };
+}
+
+function Folded({ className, items, slot, arranged, content }) {
+  const { ref, shown } = useFold(items.length, slot === "below" ? 0 : 1, content);
+  const hidden = items.length - shown;
+  return (
+    // Nothing left below the hero: the hint alone, without the rule.
+    <div ref={ref} className={className} data-empty={items.length > 0 && shown === 0 ? "" : undefined}>
+      {items.map((item, index) => (
+        <div key={item.key} className="studio-fold-item" hidden={index >= shown}>
+          <ValueSlotContext.Provider
+            value={slot === "quiet" ? { slot, ...arranged.get(item.key) } : { ...arranged.get(item.key), slot }}
+          >
+            {item.child}
+          </ValueSlotContext.Provider>
+        </div>
+      ))}
+      {hidden > 0 && (
+        <span
+          className="studio-values-more"
+          title={`${hidden} more ${hidden === 1 ? "value" : "values"}: make the widget bigger to see ${hidden === 1 ? "it" : "them"}`}
+        >
+          +{hidden} more
+        </span>
+      )}
+    </div>
+  );
+}
 
 // What a widget shows inside a Studio card. Hero: one value large and the rest
 // below it; Quiet: Homepage's equal boxes. The widget's own arrangement
@@ -27,6 +122,9 @@ export default function CardValues({ card, items: children }) {
   const fieldsKey = JSON.stringify(
     items.filter((item) => item.block).map((item) => [item.key, item.child.props.label]),
   );
+  // A widget that draws its own content (an embedded page, a calendar, a
+  // list) has no values to arrange or fold: it shows as it is and scrolls.
+  const ownContent = !items.some((item) => item.block);
   const report = card.reportFields;
   useEffect(() => {
     if (report) report(JSON.parse(fieldsKey).map(([field, label]) => ({ field, label })));
@@ -48,16 +146,31 @@ export default function CardValues({ card, items: children }) {
     return left === right ? 0 : left - right;
   });
   const visible = ordered.filter((item) => arranged.get(item.key)?.slot !== "hidden");
+  // What the values say now, so the fold measures again when they change.
+  const content = visible
+    .map((item) => {
+      const value = item.child?.props?.value;
+      return `${item.key}=${typeof value === "string" || typeof value === "number" ? value : value == null ? "" : "*"}`;
+    })
+    .join("|");
+  if (ownContent)
+    return (
+      <div className="studio-card-content">
+        {items.map((item, index) => (
+          <Fragment key={index}>{item.child}</Fragment>
+        ))}
+      </div>
+    );
   const show = card.show || "numbers";
   if (show === "table" || (show === "numbers" && card.layout === "quiet")) {
     return (
-      <div className={`studio-values ${show === "table" ? "studio-values-table" : "studio-values-quiet"}`}>
-        {visible.map((item) => (
-          <ValueSlotContext.Provider key={item.key} value={{ slot: "quiet", ...arranged.get(item.key) }}>
-            {item.child}
-          </ValueSlotContext.Provider>
-        ))}
-      </div>
+      <Folded
+        className={`studio-values ${show === "table" ? "studio-values-table" : "studio-values-quiet"}`}
+        items={visible}
+        slot="quiet"
+        arranged={arranged}
+        content={content}
+      />
     );
   }
   const chosen = visible.find((item) => item.block && arranged.get(item.key)?.slot === "hero");
@@ -77,13 +190,7 @@ export default function CardValues({ card, items: children }) {
       {trend && <Trend history={card.history} field={hero.key} trend={card.trend} />}
       {charted && <CardChart card={card} onOpen={CHART_SHOWS.includes(show) ? card.onFullView : undefined} />}
       {!charted && rest.length > 0 && (
-        <div className="studio-values-below">
-          {rest.map((item) => (
-            <ValueSlotContext.Provider key={item.key} value={{ ...arranged.get(item.key), slot: "below" }}>
-              {item.child}
-            </ValueSlotContext.Provider>
-          ))}
-        </div>
+        <Folded className="studio-values-below" items={rest} slot="below" arranged={arranged} content={content} />
       )}
     </div>
   );

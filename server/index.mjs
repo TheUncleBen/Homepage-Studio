@@ -7,7 +7,7 @@ import { createConfigStore, ConfigError, MAX_IMPORT_BYTES } from './config.mjs';
 import { BoardError, infoWidgetLabel } from './board.mjs';
 import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute, sharedPublic } from './dashboards.mjs';
-import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug } from './dashboard-paths.mjs';
+import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug, archiveDeletesAt, archiveRetentionOf } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
 import { starterFiles, starterChoices, starterLayout } from './starters.mjs';
 import { createHistoryStore, retentionDays } from './history.mjs';
@@ -24,6 +24,7 @@ import { createImageLibrary, ImageError, imageUsage, MAX_IMAGES, validImageId } 
 import { ConnectionError, createConnectionStore, MAX_CONNECTIONS, placeholder, publicConnection, SECRET_FIELDS } from './connections.mjs';
 const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'];
 import { createPersonalStore } from './personal.mjs';
+import { connectionIdsOf, createLibrary, LibraryError, MAX_SAVED_WIDGETS, publicEntry, SCOPES, SHARED_LIBRARY_FILE } from './library.mjs';
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
 import { LookError, STATUS_SHOW, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
 import { BACKGROUND_CHOICES, BASE_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
@@ -38,7 +39,7 @@ const studioVersion = (await readFile(join(base, 'VERSION'), 'utf8')).trim();
 if (!studioVersion) throw new Error('VERSION must identify this Studio build.');
 const hopHeaders = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 export const NATIVE_PROTOCOL = 1;
-export const UPSTREAM_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
+export const UPSTREAM_COMMIT = '2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f';
 // Native API routes use Next.js's default body parser limit ('1mb', which
 // Next.js reads as 1 MiB); no Homepage route raises it. The controller buffers a
 // native body before it asks for a worker, so it applies the same limit.
@@ -241,6 +242,20 @@ function readNativeBody(req, budget, { limit = NATIVE_BODY_LIMIT, timeoutMs = NA
   });
 }
 
+// An editor change names its editing session (an id the editor makes when
+// editing starts). The controller replaces it with a key bound to the signed-in
+// session, so undo can only ever reach that person's own steps.
+const EDIT_SESSION = /^[A-Za-z0-9_-]{8,64}$/;
+async function editBody(req) {
+  const body = await readBody(req);
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    const id = body.editSession;
+    delete body.editSession;
+    if (typeof id === 'string' && EDIT_SESSION.test(id)) body.editSession = `${req.studioSessionKey ?? 'local'}:${id}`;
+  }
+  return body;
+}
+
 async function readBody(req, maxBytes = 2 * 1024 * 1024) {
   if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) {
     throw Object.assign(new Error('Send JSON when saving changes.'), { status: 415 });
@@ -315,6 +330,9 @@ function createDashboardHandlers(options = {}) {
   const logo = createLogoStore({ stateDir });
   const images = createImageLibrary({ stateDir });
   const connections = createConnectionStore({ dir: stateDir });
+  // Saved widgets for This dashboard (server/library.mjs); its saved looks
+  // are in the board.
+  const library = createLibrary({ dir: stateDir, looks: false });
   const history = createHistoryStore({ stateDir });
   const store = createConfigStore({ configDir, stateDir, backupRetention, discoveryReader: async (host, dashboard) => {
     const lease = await acquireNative(host, dashboard);
@@ -590,7 +608,7 @@ function createDashboardHandlers(options = {}) {
       if (path === '/studio/config-ready' && req.method === 'GET') return await readiness(req, res, dashboard, true);
       if (!path.startsWith('/studio/')) await prepareNative();
       if (path === '/studio/catalog.json' && ['GET', 'HEAD'].includes(req.method)) return await serveCatalog(req, res);
-      const saveChange = path === '/studio/api/save' && req.method === 'POST' ? await readBody(req) : undefined;
+      const saveChange = path === '/studio/api/save' && req.method === 'POST' ? await editBody(req) : undefined;
       // Complete board replacements must validate against newly discovered
       // membership. Structured/native-file edits use their revision-checked
       // local sources and retained discovery identities, without a provider wait.
@@ -600,26 +618,28 @@ function createDashboardHandlers(options = {}) {
       }
       if (path === '/studio/api/state' && req.method === 'GET') return json(res, 200, await store.load());
       if (path === '/studio/api/board' && req.method === 'GET') return json(res, 200, await store.loadBoard());
-      if (path === '/studio/api/board' && req.method === 'POST') return json(res, 200, await store.saveBoard(await readBody(req)));
+      if (path === '/studio/api/board' && req.method === 'POST') return json(res, 200, await store.saveBoard(await editBody(req)));
       if (path === '/studio/api/export' && req.method === 'GET') return json(res, 200, await portableExport());
       if (path === '/studio/api/backups' && req.method === 'GET') return json(res, 200, await store.listBackups());
       if (path.startsWith('/studio/api/backups/') && req.method === 'GET') return json(res, 200, await store.exportBackup(path.slice('/studio/api/backups/'.length)));
       if (path === '/studio/api/restore' && req.method === 'POST') return json(res, 200, await store.restoreBackup(await readBody(req)));
       if (path === '/studio/api/import' && req.method === 'POST') return json(res, 200, await portableImport(await readBody(req, MAX_IMPORT_BYTES)));
       if (path === '/studio/api/save' && req.method === 'POST') return json(res, 200, await store.save(saveChange));
-      if (path === '/studio/api/service' && req.method === 'POST') return json(res, 200, await store.mutateService(await readBody(req)));
-      if (path === '/studio/api/info-widget' && req.method === 'POST') return json(res, 200, await store.mutateInfoWidget(await readBody(req)));
-      if (path === '/studio/api/service-widget' && req.method === 'POST') return json(res, 200, await store.mutateServiceWidget(await readBody(req)));
-      if (path === '/studio/api/bookmark' && req.method === 'POST') return json(res, 200, await store.mutateBookmark(await readBody(req)));
-      if (path === '/studio/api/settings' && req.method === 'POST') return json(res, 200, await store.mutateSettings(await readBody(req)));
+      if (path === '/studio/api/undo' && req.method === 'POST') return json(res, 200, await store.undo(await editBody(req)));
+      if (path === '/studio/api/redo' && req.method === 'POST') return json(res, 200, await store.redo(await editBody(req)));
+      if (path === '/studio/api/service' && req.method === 'POST') return json(res, 200, await store.mutateService(await editBody(req)));
+      if (path === '/studio/api/info-widget' && req.method === 'POST') return json(res, 200, await store.mutateInfoWidget(await editBody(req)));
+      if (path === '/studio/api/service-widget' && req.method === 'POST') return json(res, 200, await store.mutateServiceWidget(await editBody(req)));
+      if (path === '/studio/api/bookmark' && req.method === 'POST') return json(res, 200, await store.mutateBookmark(await editBody(req)));
+      if (path === '/studio/api/settings' && req.method === 'POST') return json(res, 200, await store.mutateSettings(await editBody(req)));
       // Administrators only (not in the access lists): removes native content.
-      if (path === '/studio/api/page-delete' && req.method === 'POST') return json(res, 200, await store.deletePage(await readBody(req)));
-      if (path === '/studio/api/page-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePage(await readBody(req)));
-      if (path === '/studio/api/widgets-delete' && req.method === 'POST') return json(res, 200, await store.deletePanels(await readBody(req)));
-      if (path === '/studio/api/widgets-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePanels(await readBody(req)));
+      if (path === '/studio/api/page-delete' && req.method === 'POST') return json(res, 200, await store.deletePage(await editBody(req)));
+      if (path === '/studio/api/page-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePage(await editBody(req)));
+      if (path === '/studio/api/widgets-delete' && req.method === 'POST') return json(res, 200, await store.deletePanels(await editBody(req)));
+      if (path === '/studio/api/widgets-duplicate' && req.method === 'POST') return json(res, 200, await store.duplicatePanels(await editBody(req)));
       // These two are open to people who may arrange a dashboard, so they answer
       // with the board only, never the configuration files.
-      if (path === '/studio/api/discovery-visibility' && req.method === 'POST') return json(res, 200, boardView(await store.mutateDiscoveryVisibility(await readBody(req))));
+      if (path === '/studio/api/discovery-visibility' && req.method === 'POST') return json(res, 200, boardView(await store.mutateDiscoveryVisibility(await editBody(req))));
       // Appearance only: the display mode and Studio theme keys of settings.yaml,
       // for people allowed to arrange a dashboard but not to read its settings.
       if (path === '/studio/api/appearance' && req.method === 'GET') {
@@ -770,14 +790,18 @@ function createDashboardHandlers(options = {}) {
       if (image) pictures.push({ kind: image.kind, name: image.name, image: `data:${image.type};base64,${image.bytes.toString('base64')}` });
     }
     const saved = (await connections.list()).map(({ id, name, url }) => ({ id, name, url }));
-    return { ...archive, ...(pictures.length ? { images: pictures } : {}), ...(saved.length ? { connections: saved } : {}) };
+    // Saved widgets for This dashboard; the keys of connections they use stay
+    // behind, as with the connections themselves.
+    const widgets = (await library.list()).filter((entry) => entry.kind === 'widget').map(({ name, widget: { connections: _connections, ...widget } }) => ({ name, widget }));
+    return { ...archive, ...(pictures.length ? { images: pictures } : {}), ...(saved.length ? { connections: saved } : {}), ...(widgets.length ? { savedWidgets: widgets } : {}) };
   }
   async function portableImport(change) {
     const archive = change?.archive && typeof change.archive === 'object' && !Array.isArray(change.archive) ? change.archive : null;
-    const { images: pictures, connections: saved, ...files } = archive ?? {};
+    const { images: pictures, connections: saved, savedWidgets, ...files } = archive ?? {};
     const refuse = () => { throw Object.assign(new Error('The imported images or connections are not valid.'), { status: 400, code: 'INVALID_IMPORT' }); };
     if (pictures !== undefined && (!Array.isArray(pictures) || pictures.length > MAX_IMAGES || pictures.some((item) => !item || typeof item !== 'object'))) refuse();
     if (saved !== undefined && (!Array.isArray(saved) || saved.length > MAX_CONNECTIONS || saved.some((item) => !item || typeof item !== 'object' || typeof item.id !== 'string'))) refuse();
+    if (savedWidgets !== undefined && (!Array.isArray(savedWidgets) || savedWidgets.length > MAX_SAVED_WIDGETS || savedWidgets.some((item) => !item || typeof item !== 'object'))) refuse();
     const result = await store.importArchive({ ...change, archive: archive ? files : change?.archive });
     const notes = [];
     for (const picture of pictures ?? []) {
@@ -791,10 +815,14 @@ function createDashboardHandlers(options = {}) {
       try { await connections.add({ name: entry.name, url: entry.url }, { id: entry.id }); needKeys.push(String(entry.name)); }
       catch (error) { if (error instanceof ConnectionError) notes.push(`Connection “${String(entry.name ?? '').slice(0, 60)}” was not added: ${error.message}`); else throw error; }
     }
+    for (const entry of savedWidgets ?? []) {
+      try { await library.add({ kind: 'widget', name: entry.name, widget: entry.widget }); }
+      catch (error) { if (error instanceof LibraryError) notes.push(`Saved widget “${String(entry.name ?? '').slice(0, 60)}” was not added: ${error.message}`); else throw error; }
+    }
     return { ...result, ...(needKeys.length ? { connectionsNeedingKeys: needKeys } : {}), ...(notes.length ? { importNotes: notes } : {}) };
   }
 
-  return { handle, checkRequest, store, logo, images, connections, history, collectHistory, initialization };
+  return { handle, checkRequest, store, logo, images, connections, library, history, collectHistory, initialization };
 }
 
 export function createStudioServer(options = {}) {
@@ -823,6 +851,8 @@ export function createStudioServer(options = {}) {
   const authConfig = readAuthConfig(options);
   let registryForAuth;
   const personal = createPersonalStore({ stateRoot });
+  // Saved widgets for Everyone (server/library.mjs), saved by administrators.
+  const sharedLibrary = createLibrary({ dir: stateRoot, file: SHARED_LIBRARY_FILE, looks: false });
   const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent, onUserRemoved: userId => personal.removeUser(userId) }) : null;
   // Administration's name for the deployment, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
@@ -868,7 +898,7 @@ export function createStudioServer(options = {}) {
     return owned;
   }
   const registry = createDashboardRegistry({ configRoot, prepareDashboard: async (entry, source, { isNew = false, starter } = {}) => {
-    let archive, logo, uploads = [], saved = [], starterContent;
+    let archive, logo, uploads = [], saved = [], savedWidgets = [], starterContent;
     if (starter !== undefined) {
       starterContent = starterFiles(starter);
       if (!starterContent) throw new DashboardError('Choose one of the starter templates.', 'INVALID_DASHBOARD_ACTION');
@@ -878,6 +908,7 @@ export function createStudioServer(options = {}) {
       await sourceHandler.initialization;
       archive = await sourceHandler.store.exportCurrent();
       saved = await sourceHandler.connections.list();
+      savedWidgets = await sourceHandler.library.list();
       logo = await sourceHandler.logo.read();
       for (const entry of await sourceHandler.images.list()) {
         const image = await sourceHandler.images.read(entry.id);
@@ -905,6 +936,19 @@ export function createStudioServer(options = {}) {
     for (const image of uploads) await target.images.add({ kind: image.kind, name: image.name, image: `data:${image.type};base64,${image.bytes.toString('base64')}` });
     // And its saved connections, under the same names its widgets use.
     for (const entry of saved) await target.connections.add({ name: entry.name, url: entry.url, ...entry.secrets }, { id: entry.id });
+    // And its saved widgets.
+    if (savedWidgets.length) await target.library.copyFrom(savedWidgets);
+  }, removeDashboard: async entry => {
+    // Deleted for good (board 28): its worker, files, pictures, saved
+    // widgets and snapshot history go, and its address becomes free.
+    try { await rendererPool.drain?.(entry.id); } catch (error) { console.error('Dashboard worker cleanup failed:', error.code || error.name); }
+    handlers.delete(entry.id);
+    for (const directory of new Set([dashboardConfigDir(configRoot, entry.id), dashboardStateDir(stateRoot, entry.id)])) {
+      try { await requireRealDirectory(directory); }
+      catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+    await auth?.forgetDashboard(entry.id);
   }, cleanupDashboard: async entry => {
     if (entry.id === 'default') throw new DashboardError('The original dashboard cannot be removed.', 'DEFAULT_DASHBOARD_REQUIRED');
     const owned = unpublished.get(entry.id);
@@ -1049,6 +1093,103 @@ export function createStudioServer(options = {}) {
     if (change.action === 'delete') { await mine.remove(change.id); return json(res, 200, { removed: true }); }
     throw new ConnectionError('Choose add, update or delete.');
   }
+  // Saved widgets and saved looks (server/library.mjs). Looks are for anyone
+  // who may arrange this dashboard and are kept Just me (This dashboard's are
+  // in its board). Only administrators save, rename or delete saved widgets,
+  // Just me, This dashboard or Everyone; anyone who may arrange this dashboard
+  // places them (owner decision, 5 Nov 2026). A saved widget's settings never
+  // leave the server: the list shows names and types only, and an arranger
+  // gets the board back, like an arrangement save, never the files.
+  async function handleLibrary(req, res, path, current, dashboard, level) {
+    const handler = forDashboard(dashboard);
+    const admin = level === 'admin';
+    const scopes = SCOPES.filter((scope) => scope !== 'me' || auth);
+    const place = (scope) => {
+      if (!scopes.includes(scope)) throw new LibraryError(scope === 'me' ? 'Your own saved widgets and looks need Studio sign-in.' : 'Choose Just me, This dashboard or Everyone.');
+      if (scope === 'me') return personal.forUser(current.user.id).library;
+      return scope === 'dashboard' ? handler.library : sharedLibrary;
+    };
+    const read = ['GET', 'HEAD'].includes(req.method);
+    if (path === '/studio/api/library' && read) {
+      const looks = auth ? (await place('me').list()).filter((entry) => entry.kind === 'look').map((entry) => publicEntry(entry, 'me')) : [];
+      const widgets = [];
+      for (const scope of scopes) for (const entry of await place(scope).list()) if (entry.kind === 'widget') widgets.push(publicEntry(entry, scope));
+      return json(res, 200, { scopes, looks, widgets });
+    }
+    if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST.' });
+    const change = await editBody(req);
+    if (!change || typeof change !== 'object') throw new LibraryError('Send a saved widget or look change.');
+    if (path === '/studio/api/library/use') {
+      if (Object.keys(change).some((key) => !['scope', 'id', 'revision', 'pageId', 'editSession'].includes(key))) throw new LibraryError('Send the saved widget to place.');
+      const entry = await place(change.scope).read(change.id);
+      if (entry.kind !== 'widget') throw new LibraryError('That is not a saved widget.');
+      // Its saved connections come along under the same ids, so its
+      // settings keep pointing at them.
+      const here = handler.connections;
+      const known = new Set((await here.list()).map((item) => item.id));
+      for (const connection of entry.widget.connections ?? []) {
+        if (known.has(connection.id)) continue;
+        try { await here.add({ name: connection.name, url: connection.url, ...connection.secrets }, { id: connection.id }); }
+        catch (error) {
+          if (error instanceof ConnectionError && /already a connection called/.test(error.message)) throw new LibraryError(admin ? `This dashboard already has a different connection called “${connection.name}”. Rename one of them in Dashboard settings › Saved connections, then place the widget again.` : `This dashboard already has a different connection called “${connection.name}”. Ask an administrator to rename one of them, then place the widget again.`, 'CONNECTION_NAME_TAKEN', 409);
+          throw error;
+        }
+      }
+      const placed = await handler.store.placeWidget({ revision: change.revision, pageId: typeof change.pageId === 'string' ? change.pageId : undefined, editSession: change.editSession }, entry.widget);
+      if (admin) return json(res, 200, placed);
+      const { revision, configurationRevision, board, discoveredSources, hiddenDiscoveredIds, warnings } = placed;
+      return json(res, 200, { revision, configurationRevision, board, discoveredSources, hiddenDiscoveredIds, warnings });
+    }
+    if (path !== '/studio/api/library') return json(res, 404, { error: 'This editor endpoint does not exist.' });
+    if (Object.keys(change).some((key) => !['action', 'kind', 'scope', 'id', 'name', 'look', 'panelId', 'editSession'].includes(key))) throw new LibraryError('Send a saved widget or look change.');
+    const { action, kind } = change;
+    if (kind === 'look') {
+      if (change.scope !== 'me') throw new LibraryError('Looks for This dashboard are saved with its arrangement.');
+    } else if (kind === 'widget') {
+      if (!admin) return forbidden(res, 'Only administrators can save widgets.');
+    } else throw new LibraryError('Choose a saved widget or a saved look.');
+    const target = place(change.scope);
+    // A widget is saved from one on this dashboard, read here so its keys
+    // never pass through a browser.
+    const widgetOf = async () => {
+      const state = await handler.store.load();
+      const panel = state.board.panels.find((item) => item.id === change.panelId);
+      if (!panel) throw new LibraryError('That widget is no longer on this dashboard.', 'TILE_NOT_FOUND', 404);
+      const looks = { look: panel.look, behaviour: panel.behaviour };
+      let widget;
+      if (panel.kind === 'serviceWidget') {
+        const source = state.serviceWidgets.find((item) => item.id === panel.id);
+        const parent = source && state.services.find((item) => item.id === source.serviceId);
+        if (!source || !parent) throw new LibraryError('Only widgets in this dashboard\'s own files can be saved.');
+        const service = Object.fromEntries(['href', 'siteMonitor', 'ping'].filter((key) => typeof parent.config?.[key] === 'string').map((key) => [key, parent.config[key]]));
+        widget = { kind: 'serviceWidget', type: source.type, title: parent.name, config: source.config ?? {}, service, ...looks };
+      } else if (panel.kind === 'informationWidget') {
+        const source = state.infoWidgets.find((item) => item.id === panel.id);
+        if (!source) throw new LibraryError('That widget is no longer on this dashboard.', 'TILE_NOT_FOUND', 404);
+        widget = { kind: 'informationWidget', type: source.type, config: source.config ?? {}, ...looks };
+      } else throw new LibraryError('Only integration and information widgets can be saved. Links stay on their dashboard.');
+      // Saved anywhere but here, it keeps its own copy of the connections it uses.
+      if (change.scope !== 'dashboard') {
+        const saved = await handler.connections.list();
+        const connections = connectionIdsOf(widget.config).map((id) => saved.find((item) => item.id === id)).filter(Boolean);
+        if (connections.length) widget.connections = connections.map(({ id, name, url, secrets }) => ({ id, name, url, secrets }));
+      }
+      return widget;
+    };
+    if (action === 'add') {
+      const entry = await target.add({ kind, name: change.name, ...(kind === 'look' ? { look: change.look } : { widget: await widgetOf() }) });
+      return json(res, 200, { entry: publicEntry(entry, change.scope) });
+    }
+    const existing = await target.read(change.id);
+    if (existing.kind !== kind) throw new LibraryError('That saved item no longer exists.', 'LIBRARY_NOT_FOUND', 404);
+    if (action === 'rename') return json(res, 200, { entry: publicEntry(await target.update(change.id, { name: change.name }), change.scope) });
+    if (action === 'update') {
+      const input = kind === 'look' ? { look: change.look } : { widget: await widgetOf() };
+      return json(res, 200, { entry: publicEntry(await target.update(change.id, input), change.scope) });
+    }
+    if (action === 'delete') { await target.remove(change.id); return json(res, 200, { removed: true }); }
+    throw new LibraryError('Choose add, rename, update or delete.');
+  }
   async function handleRequest(req, res) {
     for (const [name, value] of Object.entries(responseHeaders)) res.setHeader(name, value);
     try {
@@ -1080,6 +1221,9 @@ export function createStudioServer(options = {}) {
       if (auth) {
         await authInitialization;
         if (auth.ready) current = await auth.principal(req);
+        // Never sent anywhere: binds editing sessions (undo) to this sign-in.
+        // The role is part of the key, so a changed role starts a new history.
+        if (current) req.studioSessionKey = createHash('sha256').update(JSON.stringify([current.session.id, current.user.role])).digest('hex').slice(0, 32);
         if (isAuthPath(path)) {
           if (!auth.ready) return json(res, 503, { error: 'Sign-in storage is unavailable. Check the application logs and the state volume.', code: 'AUTH_STORAGE_UNAVAILABLE' });
           return await authRoutes.handle(req, res, current);
@@ -1120,10 +1264,16 @@ export function createStudioServer(options = {}) {
         if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST for dashboard management.' });
         if (!isAdmin) return forbidden(res, 'Only administrators can manage dashboards.');
         const change = await readBody(req);
+        // Expiry is the server's own sweep, never a request.
+        if (change?.action === 'expire') throw new DashboardError('Choose a supported dashboard operation.', 'INVALID_DASHBOARD_ACTION');
+        // Deleting for good, and how soon archives are deleted, need a recent sign-in, like restore and import.
+        if (auth && (change?.action === 'delete' || change?.action === 'retention') && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
         // "Copy access" is a sign-in option, not a registry field.
         const copyAccess = change.copyAccess === true;
         delete change.copyAccess;
         const result = await registry.mutate(change);
+        if (change.action === 'retention') return json(res, 200, result);
+        if (change.action === 'delete') return json(res, 200, { registry: result.registry, deleted: { id: result.dashboard.id, name: result.dashboard.name }, ...(result.cleanupPending ? { cleanupPending: true } : {}) });
         if (auth && copyAccess && change.action === 'create' && change.sourceId) await auth.copyGrants(change.sourceId, result.dashboard.id);
         unpublished.delete(result.dashboard.id);
         forDashboard(result.dashboard);
@@ -1157,8 +1307,10 @@ export function createStudioServer(options = {}) {
           user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role, defaultDashboardId: current.user.defaultDashboardId ?? null } : null,
           landingId: auth ? current.landing(manifest.dashboards) : null,
           revision: isAdmin ? manifest.revision : undefined,
+          archiveRetention: isAdmin ? archiveRetentionOf(manifest) : undefined,
           dashboards: await Promise.all(listed.map(async entry => ({
             id: entry.id, name: entry.name, slug: entry.slug, path: dashboardBasePath(entry) || null, archived: entry.archived, level: level(entry),
+            ...(entry.archived ? { archivedAt: entry.archivedAt, deletesAt: archiveDeletesAt(entry, archiveRetentionOf(manifest)) } : {}),
             lastChanged: await forDashboard(entry).store.lastChanged().catch(() => null),
             audience: isAdmin && auth ? auth.audience(entry.id) : undefined,
           }))),
@@ -1276,6 +1428,7 @@ export function createStudioServer(options = {}) {
       }
       if (local === '/studio/api/preferences' || local.startsWith('/studio/api/my-images')) return await handlePersonal(req, res, local, current, route.dashboard);
       if (local === '/studio/api/my-connections' || local === '/studio/api/my-connections/use') return await handlePersonalConnections(req, res, local, current, route.dashboard);
+      if (local === '/studio/api/library' || local === '/studio/api/library/use') return await handleLibrary(req, res, local, current, route.dashboard, level);
       // A signed-in viewer's own language (Preferences › Display) reaches the
       // dashboard page as a header the controller sets; any such header from
       // the browser was already dropped.
@@ -1347,9 +1500,27 @@ export function createStudioServer(options = {}) {
     finally { collecting = false; }
   }, collectMs) : null;
   collector?.unref();
+  // Archived dashboards past their time are deleted for good (board 28):
+  // checked shortly after start and then every hour.
+  const expireArchives = async () => {
+    if (applicationClosing) return;
+    try {
+      const manifest = await prepareRegistry();
+      const result = await registry.mutate({ revision: manifest.revision, action: 'expire' });
+      for (const gone of result.removed) console.log('Deleted archived dashboard after its time:', gone.id);
+    } catch (error) {
+      if (error.code !== 'DASHBOARDS_NOT_READY' && error.code !== 'DASHBOARD_REVISION_CONFLICT') console.error('Archived dashboard clean-up failed:', error.code || error.name);
+    }
+  };
+  const archiveSweep = options.archiveSweepMs === 0 ? null : setInterval(expireArchives, options.archiveSweepMs ?? 60 * 60 * 1000);
+  archiveSweep?.unref();
+  const firstSweep = options.archiveSweepMs === 0 ? null : setTimeout(expireArchives, 30 * 1000);
+  firstSweep?.unref();
   let shutdownResult;
   function shutdown({ graceMs = 10000 } = {}) {
     if (collector) clearInterval(collector);
+    if (archiveSweep) clearInterval(archiveSweep);
+    if (firstSweep) clearTimeout(firstSweep);
     if (shutdownResult) return shutdownResult;
     if (!Number.isInteger(graceMs) || graceMs < 0 || graceMs > 30000) throw new Error('Shutdown grace must be an integer from 0 to 30000 milliseconds.');
     applicationClosing = true;

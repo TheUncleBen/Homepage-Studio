@@ -1,4 +1,4 @@
-import { DASHBOARDS, expect, mouseDrag, openEditor, openSettings, panelPixels, seedServicePanels, studioApi, test } from '../helpers/dashboard.mjs';
+import { DASHBOARDS, expect, expectSaved, mouseDrag, openEditor, openSettings, panelPixels, seedServicePanels, studioApi, test } from '../helpers/dashboard.mjs';
 import { activePanel, carousel, playback } from '../helpers/engineering.mjs';
 
 const serviceSlots = () => ['Alpha', 'Beta', 'Gamma'].map((name, index) => ({ name, rect: { x: index * 6, y: 0, w: 6, h: 3 } }));
@@ -124,65 +124,87 @@ test('automatic wrap uses the forward transition after a complete playback cycle
   expect(await page.locator(`[data-panel-id="${ids.at(-1)}"] .studio-panel-slide`).evaluate(node => node.style.transform)).toBe('translateX(-100%)');
 });
 
+// Wide enough that a phone shows one per row, stacked as on desktop.
+const wideSlots = () => ['Alpha', 'Beta', 'Gamma'].map((name, index) => ({ name, rect: { x: 0, y: index * 3, w: 12, h: 3 } }));
+const desktopRects = { Alpha: { x: 0, y: 0, w: 12, h: 3 }, Beta: { x: 0, y: 3, w: 12, h: 3 }, Gamma: { x: 0, y: 6, w: 12, h: 3 } };
+
+// Each size keeps its own layout (board 22): arranging on a phone or tablet
+// changes that size only, and saves as you go.
 for (const input of ['pointer', 'keyboard']) {
-  test(`a projected mobile row can move upward by ${input} and persist the shared desktop layout`, async ({ page, request }) => {
-    await seedServicePanels(request, serviceSlots());
+  test(`a phone row can move upward by ${input} and persist in the phone layout only`, async ({ page, request }) => {
+    await seedServicePanels(request, wideSlots());
     await page.setViewportSize({ width: 390, height: 844 });
     await openEditor(page);
     const beta = page.locator('[data-panel-id][aria-label="Beta"]');
     await expect(beta).toBeVisible();
-    // Phones show one widget per row: Beta is one 3-row tile (3 × 48 px) down.
-    expect((await panelPixels(beta)).top).toBe(144);
+    // Phones show one widget per row: Beta is in the second row.
+    const below = (await panelPixels(beta)).top;
+    expect(below).toBeGreaterThan((await panelPixels(page.locator('[data-panel-id][aria-label="Alpha"]'))).top);
     await page.evaluate(() => { window.__reviewedHost = document.querySelector('[data-panel-id][aria-label="Beta"]'); });
     const handle = page.getByRole('button', { name: 'Move Beta. Use arrow keys; Shift and arrow keys resize.' });
-    if (input === 'pointer') await mouseDrag(page, handle, 0, -144);
-    else await handle.press('ArrowUp');
-    expect((await panelPixels(beta)).top).toBe(0);
+    if (input === 'pointer') await mouseDrag(page, handle, 0, -below);
+    // One row per press.
+    else for (let row = 0; row < Math.round(below / 48); row += 1) await handle.press('ArrowUp');
+    await expect.poll(async () => (await panelPixels(beta)).top).toBe(0);
     expect(await page.evaluate(() => window.__reviewedHost === document.querySelector('[data-panel-id][aria-label="Beta"]'))).toBe(true);
-    await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
-    const saved = await studioApi(request, '/dashboard/studio/api/board');
-    expect(saved.board.panels.find(panel => panel.title === 'Beta').rect).toEqual({ x: 0, y: 0, w: 6, h: 3 });
-    expect(saved.board.panels.find(panel => panel.title === 'Alpha').rect).toEqual({ x: 6, y: 0, w: 6, h: 3 });
+    await expect.poll(async () => (await studioApi(request, '/dashboard/studio/api/board')).board.layouts?.phone).toBeTruthy();
+    await expectSaved(page);
+    const saved = (await studioApi(request, '/dashboard/studio/api/board')).board;
+    const id = name => saved.panels.find(panel => panel.title === name).id;
+    expect(saved.layouts.phone[id('Beta')]).toMatchObject({ y: 0 });
+    expect(saved.layouts.phone[id('Alpha')].y).toBeGreaterThanOrEqual(3);
+    expect(saved.layouts.tablet).toBeUndefined();
+    for (const [name, rect] of Object.entries(desktopRects)) expect(saved.panels.find(panel => panel.title === name).rect).toEqual(rect);
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
+    await page.waitForURL(`**${DASHBOARDS}`);
+    // Desktop keeps its own order; the phone keeps the new one.
     await page.setViewportSize({ width: 1440, height: 1080 });
     await page.goto('/dashboard');
     await expect(beta).toBeVisible();
-    expect((await panelPixels(beta)).left).toBe(0);
-    expect((await panelPixels(page.locator('[data-panel-id][aria-label="Alpha"]'))).left).toBeGreaterThan(0);
+    expect((await panelPixels(page.locator('[data-panel-id][aria-label="Alpha"]'))).top).toBe(0);
+    expect((await panelPixels(beta)).top).toBe(144);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/dashboard');
+    await expect(beta).toBeVisible();
+    expect((await panelPixels(beta)).top).toBe(0);
   });
 }
 
-test('on a tablet Left and Right move a wrapped panel one reading position and persist the desktop order', async ({ page, request }) => {
+test('on a tablet a move changes the tablet layout only and survives reload', async ({ page, request }) => {
   await seedServicePanels(request, serviceSlots());
   await page.setViewportSize({ width: 820, height: 1180 });
   await openEditor(page);
   const panel = name => page.locator(`[data-panel-id][aria-label="${name}"]`);
   await expect(panel('Gamma')).toBeVisible();
   // A tablet shows halves, so a row of three wraps: Gamma goes below Alpha.
-  expect((await panelPixels(panel('Gamma'))).top).toBeGreaterThan((await panelPixels(panel('Alpha'))).top);
+  const before = await panelPixels(panel('Gamma'));
+  expect(before.top).toBeGreaterThan((await panelPixels(panel('Alpha'))).top);
   const handle = page.getByRole('button', { name: 'Move Gamma. Use arrow keys; Shift and arrow keys resize.' });
-  await handle.press('ArrowLeft');
-  const [alpha, beta, gamma] = await Promise.all(['Alpha', 'Beta', 'Gamma'].map(name => panelPixels(panel(name))));
-  expect(gamma.top).toBe(alpha.top);
-  expect(gamma.left).toBeGreaterThan(alpha.left);
-  expect(beta.top).toBeGreaterThan(alpha.top);
-  expect(beta.left).toBe(alpha.left);
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
-  const saved = await studioApi(request, '/dashboard/studio/api/board');
-  const rect = name => saved.board.panels.find(item => item.title === name).rect;
+  await handle.press('ArrowDown');
+  await expect.poll(async () => (await panelPixels(panel('Gamma'))).top).toBe(before.top + 48);
+  await expect.poll(async () => (await studioApi(request, '/dashboard/studio/api/board')).board.layouts?.tablet).toBeTruthy();
+  await expectSaved(page);
+  const saved = (await studioApi(request, '/dashboard/studio/api/board')).board;
+  const rect = name => saved.panels.find(item => item.title === name).rect;
   expect(rect('Alpha')).toEqual({ x: 0, y: 0, w: 6, h: 3 });
-  expect(rect('Gamma')).toEqual({ x: 6, y: 0, w: 6, h: 3 });
-  expect(rect('Beta')).toEqual({ x: 12, y: 0, w: 6, h: 3 });
-  await handle.press('ArrowRight');
-  expect((await panelPixels(panel('Beta'))).top).toBe((await panelPixels(panel('Alpha'))).top);
-  expect((await panelPixels(panel('Gamma'))).top).toBeGreaterThan((await panelPixels(panel('Alpha'))).top);
+  expect(rect('Beta')).toEqual({ x: 6, y: 0, w: 6, h: 3 });
+  expect(rect('Gamma')).toEqual({ x: 12, y: 0, w: 6, h: 3 });
+  expect(saved.layouts.phone).toBeUndefined();
+  // Undo puts it back, and that saves too.
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect.poll(async () => (await panelPixels(panel('Gamma'))).top).toBe(before.top);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect.poll(async () => (await panelPixels(panel('Gamma'))).top).toBe(before.top + 48);
+  await expectSaved(page);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
+  await expect.poll(async () => (await panelPixels(panel('Gamma'))).top).toBe(before.top + 48);
 });
 
 test.describe('interrupted touch arrangement', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   test('a second finger cancels the first arrangement and restores its original position', async ({ page, request }) => {
-    await seedServicePanels(request, serviceSlots());
+    await seedServicePanels(request, wideSlots());
     await openEditor(page);
     const handle = page.getByRole('button', { name: 'Move Beta. Use arrow keys; Shift and arrow keys resize.' });
     // On a touch screen a widget shows its controls once tapped.
@@ -192,22 +214,24 @@ test.describe('interrupted touch arrangement', () => {
     const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
     const cdp = await page.context().newCDPSession(page);
     const point = (id, px, py) => ({ id, x: px, y: py, radiusX: 5, radiusY: 5, force: 1 });
+    const before = (await studioApi(request, '/dashboard/studio/api/board')).revision;
+    const top = (await panelPixels(page.locator('[data-panel-id][aria-label="Beta"]'))).top;
     try {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point(1, x, y)] });
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [point(1, x, y + 88)] });
       await expect(page.locator('.studio-moving')).toHaveCount(1);
-      // The narrow toolbar hides its secondary status text; the dirty state
-      // still exists and its Save action must be available before cancellation.
-      await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(1);
-      await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point(1, x, y + 88), point(2, x - 100, y + 88)] });
       await expect(page.locator('.studio-moving')).toHaveCount(0);
-      await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
-      expect((await panelPixels(page.locator('[data-panel-id][aria-label="Beta"]'))).top).toBe(144);
+      expect((await panelPixels(page.locator('[data-panel-id][aria-label="Beta"]'))).top).toBe(top);
     } finally {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       await cdp.detach();
     }
+    // The cancelled move saved nothing and left nothing to undo.
+    await page.waitForTimeout(1000);
+    expect((await studioApi(request, '/dashboard/studio/api/board')).revision).toBe(before);
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
+    expect((await panelPixels(page.locator('[data-panel-id][aria-label="Beta"]'))).top).toBe(top);
   });
 });
 

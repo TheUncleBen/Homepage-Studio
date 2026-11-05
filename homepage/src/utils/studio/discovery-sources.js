@@ -6,7 +6,7 @@ import {
   servicesFromKubernetes,
 } from "utils/config/service-helpers";
 
-const UPSTREAM_COMMIT = "51cc1684f9f34a7877ed462b8f94c9cc687b4dde";
+const UPSTREAM_COMMIT = "2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f";
 const digest = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
 const flatten = (groups = [], parent = []) =>
@@ -78,13 +78,14 @@ export function buildDiscoveredSources({
       groupPath,
       name: service.name,
     };
-    sources.push({
+    const serviceSource = {
       id: discoveryId,
       kind: "service",
       title: service.name,
       group: groupPath.join(" / "),
       nativeLocator: common,
-    });
+    };
+    const widgetsBefore = sources.length;
     const configuredWidgets = Array.isArray(service.widgets)
       ? service.widgets
       : [];
@@ -128,6 +129,9 @@ export function buildDiscoveredSources({
         nativeLocator: { ...common, ...locator, type: widget.type },
       });
     });
+    // A service with a widget is shown only by its widget cards, as for
+    // services.yaml entries (server/board.mjs boardSources).
+    if (sources.length === widgetsBefore) sources.splice(widgetsBefore, 0, serviceSource);
   });
   const warnings = [];
   if (ambiguous)

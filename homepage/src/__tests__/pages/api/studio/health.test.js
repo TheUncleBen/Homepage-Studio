@@ -33,7 +33,7 @@ describe("controlled native renderer readiness identity", () => {
     expect(res.setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
     expect(res.json).toHaveBeenCalledWith({
       protocolVersion: 1,
-      upstreamCommit: "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
+      upstreamCommit: "2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f",
       buildRevision: "fixture-revision",
       dashboardId: id,
       dashboardBasePath: "/family",

@@ -106,12 +106,18 @@ export async function addInformation(page, name, yaml) {
 }
 
 export async function addBookmark(page, name = 'Browser bookmark') {
-  const dialog = await chooseContent(page, 'Bookmark', 'Bookmarks');
+  const dialog = await chooseContent(page, 'Bookmark', 'Links');
   await dialog.getByLabel('Name', { exact: true }).fill(name);
   await dialog.getByLabel(/^Destination URL/).fill('https://example.test/reference');
   await dialog.getByRole('button', { name: 'Add to dashboard', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   return page.locator('[data-panel-kind="bookmark"]').filter({ hasText: name });
+}
+
+// The editing bar's save note. Narrow bars hide it from view, so it is read
+// by its text, not as a visible status.
+export async function expectSaved(page) {
+  await expect(page.locator('.studio-edit-bar-note')).toHaveText('Saved');
 }
 
 export async function finishArrangement(page) {

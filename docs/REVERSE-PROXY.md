@@ -81,7 +81,34 @@ Every container on that network is then trusted to report the client address
 in `X-Forwarded-For`, so keep the network to the proxy and the services behind
 it. Make sure the proxy sets `X-Forwarded-For` (most do by default). To check,
 sign in and open **Administration → Activity**: the Address column should show
-your own device's address, not the proxy's.
+your own device's address, not the proxy's. If Studio sees forwarded requests
+from a proxy it doesn't trust, Activity names that proxy's address at the top,
+so you know what to add.
+
+**The proxy must see the visitor's address too.** On a Swarm, a port
+published the default way goes through the ingress mesh, which replaces the
+visitor's address with an internal one (often `10.0.0.x`) before the proxy
+sees it. Studio then trusts the proxy but can only record that internal
+address. Publish the proxy's own ports (80 and 443 for Nginx Proxy Manager)
+in host mode, on the node where the proxy runs:
+
+```yaml
+services:
+  npm:
+    # ...everything else unchanged...
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+```
+
+Docker Compose publishes ports without an ingress mesh, so this applies to
+Swarm only.
 
 ### If the proxy can't join a Docker network
 

@@ -71,7 +71,8 @@ export default function Menu({ anchor, items, label, onClose, returnFocus }) {
           <button
             key={item.id}
             type="button"
-            role="menuitem"
+            role={item.checked === undefined ? "menuitem" : "menuitemradio"}
+            aria-checked={item.checked === undefined ? undefined : item.checked}
             className={item.danger ? "studio-menu-danger" : undefined}
             disabled={item.disabled}
             title={item.hint}
@@ -81,7 +82,13 @@ export default function Menu({ anchor, items, label, onClose, returnFocus }) {
               item.onSelect();
             }}
           >
-            {item.icon ? <StudioIcon name={item.icon} size={15} /> : <span className="studio-menu-gap" />}
+            {item.checked ? (
+              <StudioIcon name="check" size={15} />
+            ) : item.icon && item.checked === undefined ? (
+              <StudioIcon name={item.icon} size={15} />
+            ) : (
+              <span className="studio-menu-gap" />
+            )}
             <span className="studio-menu-label">{item.label}</span>
             {item.shortcut && <kbd>{item.shortcut}</kbd>}
           </button>

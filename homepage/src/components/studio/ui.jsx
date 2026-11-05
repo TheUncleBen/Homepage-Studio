@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import StudioIcon from "./icons";
 
@@ -158,6 +158,41 @@ export function Disclosure({ title, icon, children, defaultOpen = false, classNa
           {children}
         </div>
       )}
+    </section>
+  );
+}
+
+// One section of a dialog that opens one at a time (board 24): its title,
+// what it covers, and a summary of what it is set to while closed. The body
+// stays mounted while closed, so nothing typed in it is lost.
+export function Section({ title, detail, summary, open, onToggle, attention, children, className = "" }) {
+  const id = useId();
+  const ref = useRef(null);
+  const opened = useRef(open);
+  useEffect(() => {
+    // Opening a section further down brings its start into view.
+    if (open && !opened.current) ref.current?.scrollIntoView?.({ block: "nearest" });
+    opened.current = open;
+  }, [open]);
+  return (
+    <section ref={ref} className={`studio-section${open ? " studio-section-open" : ""} ${className}`.trim()}>
+      <h3 className="studio-section-heading">
+        <button type="button" aria-expanded={open} aria-controls={id} onClick={onToggle}>
+          <span className="studio-section-text">
+            <span className="studio-section-title">{title}</span>
+            {detail && <span className="studio-section-detail">{detail}</span>}
+          </span>
+          {(attention || summary) && (
+            <span className={`studio-section-summary${attention ? " studio-section-attention" : ""}`}>
+              {attention || summary}
+            </span>
+          )}
+          <StudioIcon name="chevron" size={15} className="studio-section-chevron" />
+        </button>
+      </h3>
+      <div id={id} className="studio-section-body" hidden={!open}>
+        {children}
+      </div>
     </section>
   );
 }

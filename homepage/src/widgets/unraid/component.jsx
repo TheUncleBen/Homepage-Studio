@@ -3,7 +3,7 @@ import { useTranslation } from "next-i18next/pages";
 import Block from "components/services/widget/block";
 import Container from "components/services/widget/container";
 import useWidgetAPI from "utils/proxy/use-widget-api";
-import withWidgetFields from "utils/widget-fields";
+import { useWidgetFields } from "utils/widget-fields";
 
 const UNRAID_DEFAULT_FIELDS = ["status", "cpu", "memoryPercent", "notifications"];
 
@@ -16,7 +16,7 @@ const POOL_FIELDS = [
 
 export default function Component({ service: configuredService }) {
   const { t } = useTranslation();
-  const service = withWidgetFields(configuredService, UNRAID_DEFAULT_FIELDS);
+  const service = useWidgetFields(configuredService, UNRAID_DEFAULT_FIELDS);
   const { widget } = service;
 
   const { data, error } = useWidgetAPI(widget);

@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 
 import StudioIcon from "./icons";
 
@@ -100,7 +100,61 @@ function Block({ block }) {
   }
 }
 
-export default function Guide({ blocks = [], notes = [], docs }) {
+function CopyValue({ label, value }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="studio-guide-copy">
+      <span className="studio-guide-copy-label">{label}</span>
+      <code>{value}</code>
+      <button
+        type="button"
+        className="studio-text-button"
+        aria-label={`Copy ${label.toLowerCase()} ${value}`}
+        onClick={() =>
+          navigator.clipboard?.writeText(value).then(
+            () => setCopied(true),
+            () => setCopied(false),
+          )
+        }
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+// Each secret the widget takes, with the exact names to use for it as a
+// Docker secret (board 25; docs/DEPLOY.md, "Widget API keys as Docker
+// secrets").
+export function SecretSteps({ secrets, name }) {
+  return (
+    <div className="studio-guide-secrets">
+      <h4>Keep {secrets.length > 1 ? "its secrets" : `the ${secrets[0].label.toLowerCase()}`} out of the files</h4>
+      <p>
+        A value typed into the settings stays in the snapshot history. Store it as a Docker secret instead, so the
+        settings only name it.
+      </p>
+      {secrets.map((entry) => (
+        <div key={entry.key} className="studio-guide-secret">
+          {secrets.length > 1 && <h5>{entry.label}</h5>}
+          <CopyValue label="Secret name" value={entry.secret} />
+          <CopyValue label="Stack variable" value={`${entry.variable}: /run/secrets/${entry.secret}`} />
+          <CopyValue
+            label={`In ${entry.key.includes(".") ? "the YAML" : `the ${entry.label} field`}`}
+            value={entry.reference}
+          />
+        </div>
+      ))}
+      <p>
+        Add the secret to the stack&apos;s secrets on both levels (the top of the stack and Studio&apos;s service), add
+        the variable to Studio&apos;s environment, update the stack, then enter the last line. For a second{" "}
+        {name || "widget"} with different credentials, add a suffix such as <code>_2</code> to each name.
+      </p>
+    </div>
+  );
+}
+
+export default function Guide({ blocks = [], notes = [], secrets = [], name, docs }) {
   return (
     <div className="studio-guide">
       {notes.map((note, index) => (
@@ -111,6 +165,7 @@ export default function Guide({ blocks = [], notes = [], docs }) {
       {blocks.map((block, index) => (
         <Block key={index} block={block} />
       ))}
+      {secrets.length > 0 && <SecretSteps secrets={secrets} name={name} />}
       {docs && (
         <a className="studio-guide-docs" href={docs} target="_blank" rel="noopener noreferrer">
           <StudioIcon name="book" size={16} />

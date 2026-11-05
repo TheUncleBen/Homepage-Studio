@@ -44,7 +44,9 @@ export default function Block({ value, highlightValue, label, field }) {
   // style can be the widget's own.
   if (slot) {
     const loading = value === undefined;
-    const shown = loading || value === null ? "-" : formatValue(value, slot.format);
+    // A number the widget couldn't work out (missing fields) never shows as "NaN".
+    const unknown = value === null || (typeof value === "string" ? /\bNaN\b/.test(value) : Number.isNaN(value));
+    const shown = loading || unknown ? "-" : formatValue(value, slot.format);
     const { number, unit } = slot.slot === "hero" ? splitValue(shown) : { number: shown, unit: "" };
     const text = slot.label || t(label);
     return (
@@ -66,6 +68,7 @@ export default function Block({ value, highlightValue, label, field }) {
             applyToValueOnly && "studio-value-highlighted",
             "service-block-value",
           )}
+          title={typeof shown === "string" || typeof shown === "number" ? String(shown) : undefined}
         >
           {number}
           {unit && <span className="studio-value-unit">{unit}</span>}

@@ -4,9 +4,11 @@ import { useMemo } from "react";
 import Block from "components/services/widget/block";
 import Container from "components/services/widget/container";
 import useWidgetAPI from "utils/proxy/use-widget-api";
+import { useUncappedFields } from "utils/widget-fields";
 
 export default function Component({ service }) {
   const { t } = useTranslation();
+  const uncapped = useUncappedFields();
 
   const { widget } = service;
   const { data: nextcloudData, error: nextcloudError } = useWidgetAPI(widget, "serverinfo");
@@ -15,6 +17,9 @@ export default function Component({ service }) {
   const [showCpuLoad, showMemoryUsage] = useMemo(() => {
     // Default values if fields is not set
     if (!widget.fields) return [false, false];
+
+    // Studio: in a Studio card the fields list alone decides (no limit).
+    if (uncapped) return [true, true];
 
     // Allows for backwards compatibility with existing values of fields
     if (widget.fields.length <= 4) return [true, true];
@@ -28,7 +33,7 @@ export default function Component({ service }) {
     // If (for some reason) 5 fields are set, drop memoryusage
     if (hasCpuLoad && hasMemoryUsage) return [true, false];
     return [!hasCpuLoad, !hasMemoryUsage];
-  }, [widget.fields]);
+  }, [widget.fields, uncapped]);
 
   if (nextcloudError) {
     return <Container service={service} error={nextcloudError} />;

@@ -20,6 +20,10 @@ const nextConfig = {
     unoptimized: true,
   },
   i18n,
+  // Studio: the About row names the Homepage release this build is based on.
+  env: {
+    NEXT_PUBLIC_HOMEPAGE_VERSION: require("./package.json").version,
+  },
 };
 
 module.exports = nextConfig;

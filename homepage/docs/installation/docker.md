@@ -13,4 +13,4 @@ those variables and any corresponding read-only secret mounts explicitly to the
 `studio` container, as described in the deployment guide. Native Docker discovery
 configuration is documented separately under [Docker integration](../configs/docker.md).
 
-Historical upstream reference: [pinned Homepage docker.md](https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/installation/docker.md).
+Historical upstream reference: [pinned Homepage docker.md](https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/docs/installation/docker.md).

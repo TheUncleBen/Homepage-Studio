@@ -14,6 +14,62 @@ the volumes and follow [docs/DEPLOY.md](docs/DEPLOY.md) from the start. Studio
 carries no conversions for data from earlier candidates, and the upgrade notes
 in older entries below are history only.
 
+### A layout per size, a sectioned widget dialog, saved widgets and looks
+
+- **A layout for each size.** Tablet and phone layouts are made from desktop
+  and follow it until you move or resize a widget on that size; from then
+  that size keeps your arrangement. Desktop never moves because of a phone
+  or tablet change. The editing bar has a **Desktop / Tablet / Phone** switch
+  with small pictures of the other sizes and **Follow desktop again**.
+- **Even or centred grid** per page (24 or 25 columns), with a centre line,
+  snap and **Centre in row**.
+- **Resizing moves only that widget**, to the nearest free space if it no
+  longer fits. An integration card can shrink to a small square (3 × 3,
+  was 6 × 4); its values fold, and **+N more** sits beside the values that
+  stay when there's room.
+- **The editor saves as you go.** The bar has **Done** only and says
+  *Saving…*, *Saved* or *Not saved yet, retrying*. **Undo** and **Redo** step
+  through the whole editing session on the server, deletes included, and a
+  save that meets someone else's change keeps both instead of being refused.
+- **Every widget is self-contained.** No Group or Service picker: Studio keeps
+  one fixed group in `services.yaml`, and a widget's name, link and status
+  check are edited with it. A service with a widget is one card.
+- **Widget dialog in sections**, one open at a time and each summarised:
+  Connection, Values and charts, Look, Status and behaviour, Page,
+  Management (Duplicate, Save as a saved widget, Delete) and Setting up. The
+  widget is drawn on top at its real desktop size; drag its corner to resize.
+- **One Values list** with every value the integration provides, in your
+  order, as Hero/Below, Shown, or Chart/Number, or Hidden. It keeps the
+  widget's `fields` in step with what the card shows. Homepage's four-value
+  limit no longer applies inside Studio cards; values that don't fit fold
+  away behind **+N more** instead of scrolling. Widgets that draw their own
+  content, such as an embedded page or a calendar, are not folded and scroll
+  as before.
+- **Saved looks** in one list with a search, saved **Just me** or for **This
+  dashboard**, and **Manage saved looks** to rename, update (optionally on
+  every widget using it) or delete.
+- **Saved widgets**: a widget's configuration (never its size or place),
+  saved **Just me**, for **This dashboard** or for **Everyone**, and placed
+  from the new **Saved** tab of *Add to your dashboard*. Administrators save
+  them; people who can arrange a dashboard can place them too.
+  Their settings and keys stay on the server.
+- **Add to your dashboard** has All, Integrations, Information, Links and
+  Saved tabs, a description for every integration, and **Back** with your
+  search kept.
+- **Setting up** shows each secret's exact Docker secret name, variable and
+  `{{HOMEPAGE_FILE_...}}` reference with **Copy** buttons.
+- **Widget controls inside the card**: select box top left, Move and Edit top
+  right; a selected widget gets an accent edge.
+- **Archived dashboards can be deleted for good** (type the name to confirm),
+  and are deleted automatically 7, 30 (default) or 90 days after archiving,
+  or never.
+- **Homepage v2.7.0** (adds NetBird). Settings → About shows the Homepage
+  version Studio is built on.
+- **Administration** no longer shows a standing *Confirm it's you* banner; a
+  change that needs a fresh sign-in asks at that moment. It names a proxy
+  that forwards requests Studio doesn't trust, and activity records the
+  address of the person who made a change.
+
 ### Pages, widget looks, charts, saved connections and search
 
 - **Pages.** A dashboard has up to 20 pages, shown as tabs; each widget and

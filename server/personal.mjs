@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createImageLibrary } from './image-library.mjs';
 import { createConnectionStore } from './connections.mjs';
+import { createLibrary } from './library.mjs';
 import { LANGUAGES } from '../homepage/src/components/studio/languages.mjs';
 
 // Each signed-in person's own things, kept apart from every dashboard:
@@ -13,6 +14,7 @@ import { LANGUAGES } from '../homepage/src/components/studio/languages.mjs';
 // - connections: service addresses and keys saved "Just me"
 //   (server/connections.mjs). Using one on a dashboard copies it there, as
 //   with images.
+// - library: widgets and looks saved "Just me" (server/library.mjs).
 // - preferences: how that person likes to see dashboards (search engine,
 //   light or dark, motion, language, clock, temperature).
 // Stored under <state>/people/<user id>/ and removed with the account.
@@ -123,6 +125,8 @@ export function createPersonalStore({ stateRoot }) {
       person = {
         images: createImageLibrary({ stateDir: dir }),
         connections: createConnectionStore({ dir }),
+        // Saved widgets and looks kept Just me (server/library.mjs).
+        library: createLibrary({ dir }),
         preferences: {
           read: () => serial(() => readPreferences(dir)),
           write: value => serial(async () => { const clean = validatePreferences(value); await writePreferences(dir, clean); return clean; }),

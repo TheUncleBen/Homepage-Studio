@@ -105,7 +105,8 @@ export const BUILT_IN_BEHAVIOUR = Object.freeze({
 
 export const BACKGROUND_FIT = ["fill", "fit", "tile"];
 export const BACKGROUND_SHADE = ["auto", "light", "medium", "strong"];
-export const VALUE_SLOTS = ["hero", "below", "hidden"];
+// "number": beside a chart as a number instead of in it (board 27).
+export const VALUE_SLOTS = ["hero", "below", "number", "hidden"];
 export const NUMBER_STYLES = ["full", "short", "compact"];
 export const MAX_VALUES = 24;
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -211,7 +212,8 @@ function values(list) {
     seen.add(entry.field);
     const out = { field: entry.field };
     if (own(entry, "slot")) {
-      if (!VALUE_SLOTS.includes(entry.slot)) fail("A value can be the hero, below or hidden.");
+      if (!VALUE_SLOTS.includes(entry.slot))
+        fail("A value can be the hero, below, a number beside a chart, or hidden.");
       out.slot = entry.slot;
       if (entry.slot === "hero") heroes += 1;
     }

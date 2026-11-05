@@ -60,7 +60,7 @@ async function fixture(t) {
     async drain(id) { drains.push(id); },
     async close() { closes++; },
   };
-  const app = createStudioServer({ configDir, stateDir, rendererDir, rendererPool: pool, allowedHosts: HOST, buildRevision: BUILD, auth: 'off' });
+  const app = createStudioServer({ configDir, stateDir, rendererDir, rendererPool: pool, allowedHosts: HOST, buildRevision: BUILD, auth: 'off', archiveSweepMs: 0 });
   const port = await listen(app.server);
   await addressMainDashboard({ port, host: HOST, origin: ORIGIN });
   drains.length = 0;
@@ -399,4 +399,71 @@ test('browser navigation to an unavailable dashboard gets an accessible page; AP
   const posted = await f.request('/family', { method: 'POST', headers: { ...html, 'content-type': 'application/json' }, body: '{}' });
   assert.equal(posted.status, 404); assert.match(posted.headers['content-type'], /^application\/json/);
   assert.equal((await f.request('/house/api/config', { headers: html })).json.id, child.id);
+});
+
+test('saved widgets: saved from a dashboard, listed without settings, placed on another with their connection', async t => {
+  const f = await fixture(t);
+  await f.create('family');
+  const connection = await f.post('/studio/api/connections', { action: 'add', name: 'Firewall', url: 'https://fw.example.test', key: 'connection-secret' });
+  assert.equal(connection.status, 200, connection.text);
+  const id = connection.json.connection.id;
+  let current = await f.state();
+  const added = await f.post('/studio/api/service-widget', { revision: current.revision, action: 'add', newService: { name: 'Edge' }, service: { href: 'https://fw.example.test' }, type: 'pfsense', config: { url: `{{STUDIO_CONNECTION_${id}_URL}}`, key: `{{STUDIO_CONNECTION_${id}_KEY}}`, version: 2, wan: 'igb0' } });
+  assert.equal(added.status, 200, added.text);
+  const panel = added.json.board.panels.find(item => item.kind === 'serviceWidget');
+  const looked = await f.post('/studio/api/board', { revision: added.json.revision, board: { ...added.json.board, panels: added.json.board.panels.map(item => item.id === panel.id ? { ...item, look: { corners: 'round' } } : item) } });
+  assert.equal(looked.status, 200, looked.text);
+  const saved = await f.post('/studio/api/library', { action: 'add', kind: 'widget', scope: 'everyone', name: 'Edge firewall', panelId: panel.id });
+  assert.equal(saved.status, 200, saved.text);
+  // Just me needs Studio sign-in, which is off here.
+  const personal = await f.post('/studio/api/library', { action: 'add', kind: 'widget', scope: 'me', name: 'Mine', panelId: panel.id });
+  assert.equal(personal.status, 400);
+  const listed = await f.request('/family/studio/api/library');
+  assert.equal(listed.status, 200, listed.text);
+  assert.deepEqual(listed.json.scopes, ['dashboard', 'everyone']);
+  assert.deepEqual(listed.json.widgets.map(item => [item.name, item.type, item.scope]), [['Edge firewall', 'pfsense', 'everyone']]);
+  assert.doesNotMatch(listed.text, /connection-secret|igb0|STUDIO_CONNECTION/);
+  const family = await f.state('family');
+  const placed = await f.post('/family/studio/api/library/use', { scope: 'everyone', id: saved.json.entry.id, revision: family.revision, pageId: 'home' });
+  assert.equal(placed.status, 200, placed.text);
+  const copy = placed.json.serviceWidgets.find(item => item.type === 'pfsense');
+  assert.equal(copy.config.wan, 'igb0');
+  assert.equal(copy.config.key, `{{STUDIO_CONNECTION_${id}_KEY}}`);
+  assert.equal(placed.json.services.find(item => item.id === copy.serviceId).config.href, 'https://fw.example.test');
+  assert.deepEqual(placed.json.board.panels.find(item => item.id === copy.id).look, { corners: 'round' });
+  const theirs = await f.request('/family/studio/api/connections');
+  assert.deepEqual(theirs.json.connections.map(item => [item.id, item.name, item.has.key]), [[id, 'Firewall', true]]);
+  // Placing it again makes a second, independent widget with its own name.
+  const again = await f.post('/family/studio/api/library/use', { scope: 'everyone', id: saved.json.entry.id, revision: placed.json.revision, pageId: 'home' });
+  assert.equal(again.status, 200, again.text);
+  assert.deepEqual(again.json.services.map(item => item.name).sort(), ['Edge', 'Edge 2']);
+});
+
+test('an archived dashboard is deleted for good when its name is typed, and its address becomes free', async t => {
+  const f = await fixture(t);
+  const child = await f.create('garden');
+  const childState = dashboardStateDir(f.stateDir, child.id);
+  assert.equal((await f.mutate({ action: 'delete', id: child.id, confirmName: 'garden' })).status, 400, 'only an archived dashboard');
+  assert.equal((await f.mutate({ action: 'archive', id: child.id, confirmed: true })).status, 200);
+  let overview = (await f.request('/studio/api/overview')).json;
+  const archived = overview.dashboards.find(item => item.id === child.id);
+  assert.equal(overview.archiveRetention, 30);
+  assert.equal(Date.parse(archived.deletesAt) - Date.parse(archived.archivedAt), 30 * 24 * 60 * 60 * 1000);
+  assert.equal((await f.mutate({ action: 'delete', id: child.id, confirmName: 'Garden' })).status, 400, 'the exact name');
+  assert.equal((await f.mutate({ action: 'expire' })).status, 400, 'expiry is never a request');
+  const deleted = await f.mutate({ action: 'delete', id: child.id, confirmName: 'garden' });
+  assert.equal(deleted.status, 200, deleted.text);
+  assert.ok(!deleted.json.registry.dashboards.some(item => item.id === child.id));
+  await assert.rejects(fs.stat(dashboardConfigDir(f.configDir, child.id)), { code: 'ENOENT' });
+  await assert.rejects(fs.stat(childState), { code: 'ENOENT' });
+  // The address is free again.
+  await f.create('garden');
+  // Never keeps archives until someone deletes them; the default is not stored.
+  assert.equal((await f.mutate({ action: 'retention', days: 'never' })).status, 200);
+  overview = (await f.request('/studio/api/overview')).json;
+  assert.equal(overview.archiveRetention, 'never');
+  assert.equal((await f.mutate({ action: 'retention', days: 14 })).status, 400);
+  assert.equal((await f.mutate({ action: 'retention', days: 30 })).status, 200);
+  const registryFile = JSON.parse(await fs.readFile(path.join(f.configDir, DASHBOARD_REGISTRY_FILE), 'utf8'));
+  assert.equal(Object.hasOwn(registryFile, 'archiveRetention'), false);
 });

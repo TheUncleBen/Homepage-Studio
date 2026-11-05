@@ -364,6 +364,20 @@ function EditTabs({
               onSelect: () => actions.move(current.id, 0),
             },
             { id: "link", label: "Copy link to page", icon: "link", onSelect: () => actions.copyLink(current) },
+            // Even or centred grid, per page (board 23).
+            actions.grid && "-",
+            actions.grid && {
+              id: "grid-even",
+              label: "Even grid, 24 columns",
+              checked: current.grid !== "centred",
+              onSelect: () => actions.grid(current, "even"),
+            },
+            actions.grid && {
+              id: "grid-centred",
+              label: "Centred grid, 25 columns",
+              checked: current.grid === "centred",
+              onSelect: () => actions.grid(current, "centred"),
+            },
             pages.length > 1 && "-",
             pages.length > 1 && {
               id: "delete",

@@ -1,12 +1,12 @@
 import Block from "components/services/widget/block";
 import Container from "components/services/widget/container";
 import useWidgetAPI from "utils/proxy/use-widget-api";
-import withWidgetFields from "utils/widget-fields";
+import { useWidgetFields } from "utils/widget-fields";
 
 const DEFAULT_FIELDS = ["public_ip", "region", "country"];
 
 export default function Component({ service: configuredService }) {
-  const service = withWidgetFields(configuredService, DEFAULT_FIELDS);
+  const service = useWidgetFields(configuredService, DEFAULT_FIELDS);
   const { widget } = service;
 
   const { data: gluetunData, error: gluetunError } = useWidgetAPI(widget, "ip");

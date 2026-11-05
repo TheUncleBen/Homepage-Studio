@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import Block from "components/services/widget/block";
 import Container from "components/services/widget/container";
 import { formatProxyUrl } from "utils/proxy/api-helpers";
-import withWidgetFields from "utils/widget-fields";
+import { useWidgetFields } from "utils/widget-fields";
 
 const DEFAULT_FIELDS = ["scenes", "images"];
 
 export default function Component({ service: configuredService }) {
   const { t } = useTranslation();
 
-  const service = withWidgetFields(configuredService, DEFAULT_FIELDS);
+  const service = useWidgetFields(configuredService, DEFAULT_FIELDS);
   const requestWidget = configuredService.widget;
   const [stats, setStats] = useState(null);
 

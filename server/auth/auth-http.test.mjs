@@ -409,13 +409,17 @@ test('sign-in data that cannot be read fails closed', async t => {
   const configDir = path.join(directory, 'config');
   const app = createStudioServer({ configDir, stateDir: context.stateDir, upstream: 'http://127.0.0.1:9', allowedHosts: HOST, auth: 'on', publicOrigin: ORIGIN });
   const port = await listen(app.server);
-  t.after(async () => {
+  // Stop this server inside the test: after-hooks run in the order they were
+  // added, so the setup's directory removal would otherwise race its writes.
+  let response;
+  try {
+    response = await new Promise((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port, path: '/', headers: { host: HOST } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode)); }).on('error', reject);
+    });
+  } finally {
     await close(app.server);
     await app.shutdown({ graceMs: 0 }).catch(() => {});
-  });
-  const response = await new Promise((resolve, reject) => {
-    http.get({ host: '127.0.0.1', port, path: '/', headers: { host: HOST } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode)); }).on('error', reject);
-  });
+  }
   assert.equal(response, 503);
 });
 
@@ -803,9 +807,85 @@ test('each person keeps their own images and preferences; using an image copies 
   assert.equal((await post('/home/studio/api/my-images/delete', { id }, { cookie: member.cookie })).status, 200);
   assert.equal((await request('/home/studio/api/my-images/' + id, { cookie: member.cookie })).status, 404);
   assert.equal((await request('/home/studio/api/images/' + id, { cookie: member.cookie })).status, 200);
+  // Saved looks Just me: anyone who arranges keeps their own. Only
+  // administrators save saved widgets; anyone who arranges lists (names and
+  // types only) and places them (owner decision, 5 Nov 2026).
+  const look = await post('/home/studio/api/library', { action: 'add', kind: 'look', scope: 'me', name: 'Night', look: { fill: 'tint' } }, { cookie: member.cookie });
+  assert.equal(look.status, 200, look.text);
+  const library = await request('/home/studio/api/library', { cookie: member.cookie });
+  assert.deepEqual(library.json.scopes, ['me', 'dashboard', 'everyone']);
+  assert.deepEqual(library.json.looks.map(item => item.name), ['Night']);
+  assert.deepEqual(library.json.widgets, []);
+  assert.deepEqual((await request('/home/studio/api/library', { cookie: admin.cookie })).json.looks, [], 'saved looks belong to one person');
+  assert.equal((await post('/home/studio/api/library', { action: 'add', kind: 'widget', scope: 'dashboard', name: 'W', panelId: 'x' }, { cookie: member.cookie })).status, 403);
+  const state = await request('/home/studio/api/state', { cookie: admin.cookie });
+  const added = await post('/home/studio/api/info-widget', { revision: state.json.revision, action: 'add', type: 'datetime', config: { text_size: 'xl', locale: 'en-GB' } }, { cookie: admin.cookie });
+  assert.equal(added.status, 200, added.text);
+  const clock = added.json.board.panels.find(item => item.kind === 'informationWidget');
+  const kept = await post('/home/studio/api/library', { action: 'add', kind: 'widget', scope: 'dashboard', name: 'Big clock', panelId: clock.id }, { cookie: admin.cookie });
+  assert.equal(kept.status, 200, kept.text);
+  const listed = await request('/home/studio/api/library', { cookie: member.cookie });
+  assert.deepEqual(listed.json.widgets.map(item => [item.name, item.type, item.scope]), [['Big clock', 'datetime', 'dashboard']]);
+  assert.doesNotMatch(listed.text, /en-GB|text_size/, 'an arranger sees names and types, never settings');
+  const board = await request('/home/studio/api/board', { cookie: member.cookie });
+  const placed = await post('/home/studio/api/library/use', { scope: 'dashboard', id: kept.json.entry.id, revision: board.json.revision, pageId: 'home' }, { cookie: member.cookie });
+  assert.equal(placed.status, 200, placed.text);
+  assert.equal(placed.json.board.panels.filter(item => item.kind === 'informationWidget').length, 2, 'a new, independent widget');
+  assert.equal(placed.json.infoWidgets, undefined, 'an arranger gets the board back, never the files');
+  assert.doesNotMatch(placed.text, /en-GB|text_size/);
+  assert.equal((await post('/home/studio/api/library', { action: 'rename', kind: 'widget', scope: 'dashboard', id: kept.json.entry.id, name: 'Mine now' }, { cookie: member.cookie })).status, 403, 'only administrators rename or delete them');
+  assert.equal((await post('/home/studio/api/library', { action: 'delete', kind: 'widget', scope: 'dashboard', id: kept.json.entry.id }, { cookie: member.cookie })).status, 403);
+  await share('view');
+  assert.equal((await post('/home/studio/api/library/use', { scope: 'dashboard', id: kept.json.entry.id, revision: placed.json.revision, pageId: 'home' }, { cookie: member.cookie })).status, 403, 'viewers cannot place them');
+  await share('arrange');
+  assert.equal((await post('/home/studio/api/library', { action: 'add', kind: 'look', scope: 'dashboard', name: 'D', look: { fill: 'tint' } }, { cookie: member.cookie })).status, 400, "This dashboard's looks are saved with its board");
   // Deleting the account removes what it kept.
   const folder = path.join(context.stateDir, 'people', member.invited.id);
   assert.ok((await fs.stat(folder)).isDirectory());
   assert.equal((await post('/studio/auth/admin/delete', { id: member.invited.id }, { cookie: admin.cookie })).status, 200);
   await assert.rejects(fs.stat(folder), { code: 'ENOENT' });
+});
+
+test('administration events record the address they came from, and Activity names a proxy Studio does not trust', async t => {
+  const context = await setup(t);
+  const { cookie } = await createAdmin(context);
+  const forwarded = { 'x-forwarded-for': '198.51.100.7' };
+  // A stranger's forwarded header doesn't count: only signed-in requests do.
+  await context.request('/studio/auth/session', { headers: forwarded });
+  await context.request('/', { headers: { ...forwarded, accept: 'text/html' } });
+  assert.equal((await context.request('/studio/auth/admin/overview', { cookie })).json.proxy.untrusted, null);
+  // Studio isn't told to trust 127.0.0.1 here, so it is the untrusted proxy.
+  const invited = await context.post('/studio/auth/admin/invite', { username: 'addressed' }, { cookie, headers: forwarded });
+  assert.equal(invited.status, 200, invited.text);
+  const { events } = (await context.request('/studio/auth/admin/audit', { cookie })).json;
+  assert.equal(events.find(event => event.type === 'user-invited').ip, '127.0.0.1');
+  const overview = (await context.request('/studio/auth/admin/overview', { cookie })).json;
+  assert.deepEqual(overview.proxy, { trustedConfigured: false, untrusted: '127.0.0.1' });
+});
+
+test('with the proxy trusted, events record the visitor address and no proxy warning shows', async t => {
+  const context = await setup(t, { trustedProxies: '127.0.0.1/32' });
+  const { cookie } = await createAdmin(context);
+  const forwarded = { 'x-forwarded-for': '198.51.100.7' };
+  const invited = await context.post('/studio/auth/admin/invite', { username: 'addressed' }, { cookie, headers: forwarded });
+  assert.equal(invited.status, 200, invited.text);
+  const { events } = (await context.request('/studio/auth/admin/audit', { cookie, headers: forwarded })).json;
+  assert.equal(events.find(event => event.type === 'user-invited').ip, '198.51.100.7');
+  const overview = (await context.request('/studio/auth/admin/overview', { cookie, headers: forwarded })).json;
+  assert.deepEqual(overview.proxy, { trustedConfigured: true, untrusted: null });
+});
+
+test('deleting an archived dashboard for good and changing how long archives are kept need a recent sign-in', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const context = await setup(t);
+  const { request, post } = context;
+  const admin = await createAdmin(context);
+  t.mock.timers.tick(30 * 60000);
+  const { revision } = (await request('/studio/api/dashboards', { cookie: admin.cookie })).json;
+  for (const change of [{ action: 'retention', days: 7 }, { action: 'delete', id: '00000000-0000-4000-8000-000000000000', confirmName: 'Gone' }]) {
+    const stale = await post('/studio/api/dashboards', { revision, ...change }, { cookie: admin.cookie });
+    assert.equal(stale.status, 401, stale.text);
+    assert.equal(stale.json.code, 'REAUTH_REQUIRED');
+  }
+  assert.equal((await request('/studio/api/dashboards', { cookie: admin.cookie })).json.revision, revision, 'nothing changed');
 });

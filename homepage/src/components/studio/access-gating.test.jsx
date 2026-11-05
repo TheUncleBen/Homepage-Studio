@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -44,6 +44,13 @@ function mount(access, mode = "live") {
   const fetch = vi.fn(async (path, options) => {
     let value = boardState;
     if (path === "/studio/api/access") value = access;
+    if (path === "/studio/api/library" && !options?.method)
+      value = {
+        scopes: ["me", "dashboard", "everyone"],
+        looks: [],
+        widgets: [{ id: "w1", scope: "everyone", name: "Edge firewall", type: "pfsense" }],
+      };
+    if (path === "/studio/catalog.json") value = { service: [{ type: "pfsense", name: "pfSense" }], info: [] };
     if (path === "/studio/api/appearance" && !options?.method)
       value = { revision: "before", settings: { theme: "dark" } };
     return { ok: true, status: 200, json: async () => value };
@@ -112,7 +119,14 @@ describe("dashboard controls follow the sign-in access level", () => {
   it("an arranger can move panels on the editor page and change the appearance on the settings page, but not edit widgets", async () => {
     const edit = mount({ authEnabled: true, level: "arrange", user }, "edit");
     await waitFor(() => expect(screen.getByText("Done", { selector: "button" })).toBeEnabled());
+    // Widgets offers saved widgets only (owner decision, 5 Nov 2026).
     expect(screen.queryByRole("button", { name: "Widgets" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Saved widgets" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a saved widget" });
+    expect(await within(dialog).findByText("Edge firewall")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Integrations" })).toBeNull();
+    expect(within(dialog).queryByText("Manage saved widgets")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }));
     expect(screen.queryByLabelText("Edit Clock")).toBeNull();
     expect(screen.getByLabelText("Edit Found")).toBeInTheDocument();
     expect(edit.fetch.mock.calls.some(([path]) => path === "/studio/api/state")).toBe(false);

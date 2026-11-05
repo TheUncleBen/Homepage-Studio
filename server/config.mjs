@@ -3,7 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { parseDocument, isMap, isSeq, isScalar } from 'yaml';
-import { MAX_PANELS, stableValue, reconcileIdentities, identityRecords, validateIdentityRecords, boardSources, reconcileBoard, validateStoredBoard, validateBoardChange, nextPosition } from './board.mjs';
+import { MAX_PANELS, stableValue, reconcileIdentities, identityRecords, validateIdentityRecords, boardSources, reconcileBoard, validateStoredBoard, validateBoardChange, mergeBoardChange, nextPosition } from './board.mjs';
+import { columnsOfPage } from '../homepage/src/components/studio/geometry.mjs';
 import { validateDiscoveryManifest, validateStoredDiscoveredSources, validateHiddenDiscoveredIds, mergeDiscoveredSources } from './discovery.mjs';
 import { readNativeIndexingPolicy } from './indexing-policy.mjs';
 
@@ -30,6 +31,14 @@ const MAX_BACKUP_BYTES = 20 * MAX_FILE_BYTES;
 // JSON) beside its files.
 export const MAX_IMPORT_BYTES = 100 * 1024 * 1024;
 export const DEFAULT_BACKUP_RETENTION = 25;
+// Bounds on undo history kept in memory per editing session.
+export const MAX_EDIT_STEPS = 100;
+export const MAX_EDIT_SESSIONS = 16;
+export const MAX_EDIT_SESSION_BYTES = 48 * 1024 * 1024;
+// All of one dashboard's editing sessions together, and how many one sign-in
+// may hold, so nobody can fill memory or push other people's history out.
+export const MAX_EDIT_STORE_BYTES = 96 * 1024 * 1024;
+export const MAX_EDIT_SESSIONS_PER_SIGN_IN = 3;
 // Fixed codes naming the API operation that created a pre-change snapshot.
 // They are chosen by the server per endpoint and never contain request text.
 // Every snapshot names one.
@@ -37,6 +46,7 @@ const CONTENT_ACTIONS = { add: 'added', update: 'edited', delete: 'deleted' };
 export const SNAPSHOT_ACTIONS = Object.freeze([
   'arrangement-saved', 'settings-saved', 'files-saved', 'snapshot-restored', 'dashboard-imported',
   'discovered-panel-hidden', 'discovered-panel-shown', 'page-deleted', 'page-duplicated', 'widgets-deleted', 'widgets-duplicated',
+  'change-undone', 'change-redone',
   ...['service', 'service-widget', 'info-widget', 'bookmark'].flatMap((kind) => Object.values(CONTENT_ACTIONS).map((verb) => `${kind}-${verb}`)),
 ]);
 const snapshotAction = (value) => (SNAPSHOT_ACTIONS.includes(value) ? value : null);
@@ -556,6 +566,69 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     return next;
   };
 
+  // Editing sessions (owner decision, 4 Nov 2026: autosave with Undo and
+  // Redo). Every change the editor makes carries its session's key, which the
+  // controller builds from the signed-in session and the editor's own id, so
+  // one person's undo can only reach their own steps. Each committed change
+  // records the files before it; undo puts them back while nothing else has
+  // changed the dashboard since. Only a session's first change keeps its
+  // snapshot, so the snapshot history holds one entry per editing session.
+  // Steps live in memory: a restart or another writer ends undo.
+  const editSessions = new Map();
+  let activeEdit = null;
+  const editEntry = (key, create) => {
+    if (typeof key !== 'string' || !key || key.length > 256) return null;
+    let entry = editSessions.get(key);
+    if (!entry && create) {
+      // The controller keys a session "<sign-in>:<editor id>". One sign-in
+      // keeps its few latest editors; the oldest idle sessions go first.
+      // With sign-in off ("local:") everyone shares one owner, so only the
+      // overall limits apply there.
+      const owner = key.slice(0, key.lastIndexOf(':') + 1);
+      const own = owner && owner !== 'local:' ? [...editSessions.keys()].filter((other) => other.startsWith(owner) && other.lastIndexOf(':') + 1 === owner.length) : [];
+      while (own.length >= MAX_EDIT_SESSIONS_PER_SIGN_IN) editSessions.delete(own.shift());
+      entry = { steps: [], redo: [], bytes: 0, started: false, usedAt: 0 };
+      editSessions.set(key, entry);
+      while (editSessions.size > MAX_EDIT_SESSIONS) editSessions.delete(editSessions.keys().next().value);
+    }
+    if (entry) {
+      entry.usedAt = Date.now();
+      editSessions.delete(key);
+      editSessions.set(key, entry);
+    }
+    return entry;
+  };
+  const rawBytes = (raw) => ALL_FILES.reduce((sum, name) => sum + (raw[name] == null ? 0 : Buffer.byteLength(raw[name])), 0);
+  const pushStep = (entry, list, step) => {
+    entry[list].push(step);
+    entry.bytes += step.bytes;
+    while (entry.steps.length + entry.redo.length > MAX_EDIT_STEPS || entry.bytes > MAX_EDIT_SESSION_BYTES) {
+      const from = entry.steps.length ? entry.steps : entry.redo;
+      entry.bytes -= from.shift().bytes;
+    }
+    // Over the dashboard's budget: the least recently used sessions lose
+    // their oldest steps first, this one last.
+    let total = 0;
+    for (const other of editSessions.values()) total += other.bytes;
+    for (const other of [...editSessions.values()].filter((item) => item !== entry).concat(entry)) {
+      while (total > MAX_EDIT_STORE_BYTES && other.steps.length + other.redo.length) {
+        const from = other.steps.length ? other.steps : other.redo;
+        const dropped = from.shift().bytes;
+        other.bytes -= dropped;
+        total -= dropped;
+      }
+      if (total <= MAX_EDIT_STORE_BYTES) break;
+    }
+  };
+  // Runs one editor change inside its editing session (if it names one).
+  // Undo and redo only use a session that exists (`create: false`).
+  const editing = (change, operation, { create = true } = {}) => serialized(async () => {
+    const key = object(change) ? change.editSession : undefined;
+    activeEdit = key === undefined ? null : { key, entry: editEntry(key, create), action: null };
+    try { return await operation(); }
+    finally { activeEdit = null; }
+  });
+
   async function rawSnapshot() {
     await verifyDirectory(configDir);
     await verifyDirectory(stateDir);
@@ -734,7 +807,41 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       await maintainBackups();
       throw error;
     }
+    const edit = activeEdit?.entry;
+    if (edit) {
+      // The save is complete, so its backup is no longer needed for recovery.
+      if (edit.started) await safeRemove(backupLocation(backupId));
+      edit.started = true;
+      const step = { before: current.raw, afterRevision: revisionOf(await rawSnapshot()), bytes: rawBytes(current.raw) };
+      if (activeEdit.action === 'undo') pushStep(edit, 'redo', step);
+      else {
+        if (activeEdit.action !== 'redo') { edit.bytes -= edit.redo.reduce((sum, item) => sum + item.bytes, 0); edit.redo = []; }
+        pushStep(edit, 'steps', step);
+      }
+    }
     await maintainBackups();
+  }
+
+  // Undo (or redo) the editing session's latest step.
+  async function stepEditInner(change, direction) {
+    const entry = editEntry(change.editSession, false);
+    const list = direction === 'undo' ? entry?.steps : entry?.redo;
+    if (!list?.length) fail(direction === 'undo' ? 'There is nothing to undo.' : 'There is nothing to redo.', 'NOTHING_TO_UNDO', 409);
+    const current = await readCurrent();
+    checkRevision(change.revision, current);
+    const step = list.at(-1);
+    if (current.revision !== step.afterRevision) {
+      editSessions.delete(change.editSession);
+      fail('This dashboard was changed somewhere else, so this step can no longer be undone.', 'UNDO_UNAVAILABLE', 409);
+    }
+    list.pop();
+    entry.bytes -= step.bytes;
+    activeEdit.action = direction;
+    await commit(current, { ...step.before }, direction === 'undo' ? 'change-undone' : 'change-redone');
+    // The board only, like an arrangement save: people who may arrange (but
+    // not read settings) can undo their own moves.
+    const result = response(await readCurrent());
+    return { revision: result.revision, configurationRevision: result.configurationRevision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, warnings: result.warnings, canUndo: entry.steps.length > 0, canRedo: entry.redo.length > 0 };
   }
   async function saveCurrent(current, change, action, forced = {}, restoredState) {
     checkRevision(change.revision, current);
@@ -770,13 +877,19 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       bookmarks: identityRecords(candidate.bookmarks),
       discoveredSources: candidate.discoveredSources.map(({ available, ...source }) => source),
       hiddenDiscoveredIds: candidate.hiddenDiscoveredIds,
-      board: own(change, 'board') ? validateBoardChange(change.board, candidate.sources) : candidate.board,
+      board: own(change, 'board') ? (action === 'arrangement-saved' ? mergeBoardChange(change.board, candidate.sources, current.board) : validateBoardChange(change.board, candidate.sources)) : candidate.board,
     };
+    // A saved widget placed on the dashboard brings its look and behaviour.
+    if (forced.placed?.id && (forced.placed.look || forced.placed.behaviour)) {
+      const { id, look, behaviour } = forced.placed;
+      state.board = validateStoredBoard({ ...state.board, panels: state.board.panels.map((panel) => (panel.id === id ? { ...panel, ...(look ? { look } : {}), ...(behaviour ? { behaviour } : {}) } : panel)) });
+    }
     desired['state.json'] = `${JSON.stringify(state, null, 2)}\n`;
     await commit(current, desired, action);
     return response(await readCurrent());
   }
 
+  const WIDGET_SERVICE_KEYS = new Set(['name', 'href', 'icon', 'description', 'siteMonitor', 'ping']);
   async function mutateServiceInner(change) {
     const current = await readCurrent();
     checkRevision(change.revision, current);
@@ -793,7 +906,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       const name = named(change.name ?? existing?.name, 'Service name');
       const groupPath = resolveGroup(change.group, current.groups, existing?.groupPath ?? ['Services']);
       if (current.services.some((entry) => entry.id !== existing?.id && entry.name === name && stable(entry.groupPath) === stable(groupPath))) {
-        fail('A service with that name already exists in this group.', 'DUPLICATE_SERVICE');
+        fail(`Another link is already called “${name}”. Use a different name.`, 'DUPLICATE_SERVICE');
       }
       const patch = change.config ?? {};
       if (!object(patch)) fail('Service config must be a mapping.');
@@ -818,7 +931,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, servicesYaml: parsed.text() }, `service-${CONTENT_ACTIONS[change.action]}`);
   }
 
-  async function mutateInfoInner(change) {
+  async function mutateInfoInner(change, internal = {}) {
     const current = await readCurrent();
     checkRevision(change.revision, current);
     if (!['add', 'update', 'delete'].includes(change.action)) fail('Unknown information widget action.', 'INVALID_ACTION', 400);
@@ -839,6 +952,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       if (change.action === 'add') {
         doc.contents.add(doc.createNode({ [type]: Object.fromEntries(Object.entries(config).filter(([, value]) => value !== null)) }));
         identities.push({ id: `info-${randomUUID()}` });
+        if (internal.placed) internal.placed.id = identities.at(-1).id;
       } else {
         const entry = doc.contents.items[existing.index];
         if (!isMap(entry)) fail('This information widget uses an unsupported YAML alias. Edit its YAML directly.');
@@ -846,7 +960,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         renamePair(entry.items[0], type);
       }
     }
-    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, widgetsYaml: parsed.text() }, `info-widget-${CONTENT_ACTIONS[change.action]}`, { infoWidgets: identities });
+    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, widgetsYaml: parsed.text() }, `info-widget-${CONTENT_ACTIONS[change.action]}`, { infoWidgets: identities, placed: internal.placed });
   }
 
   async function mutateBookmarkInner(change) {
@@ -892,7 +1006,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, bookmarksYaml: text }, `bookmark-${CONTENT_ACTIONS[change.action]}`, { bookmarks: forced });
   }
 
-  async function mutateServiceWidgetInner(change) {
+  async function mutateServiceWidgetInner(change, internal = {}) {
     const current = await readCurrent();
     checkRevision(change.revision, current);
     if (!['add', 'update', 'delete'].includes(change.action)) fail('Unknown service widget action.', 'INVALID_ACTION', 400);
@@ -902,9 +1016,14 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const parsed = current.parsed.servicesYaml, { doc } = parsed;
     const byService = new Map(current.services.map((entry) => [entry.id, current.serviceWidgets.filter((widget) => widget.serviceId === entry.id).map(({ id }) => ({ id }))]));
     if (change.action === 'add' && !service && object(change.newService)) {
-      const name = named(change.newService.name, 'Service name');
+      // Every widget is self-contained (owner rule, 4 Nov 2026): it gets its
+      // own entry in the one group Studio keeps (Q2: no group to choose). The
+      // same integration can be added again; a repeated name gets a number.
       const groupPath = resolveGroup(change.newService.group, current.groups, ['Services']);
-      if (current.services.some((entry) => entry.name === name && stable(entry.groupPath) === stable(groupPath))) fail('A service with that name already exists in this group.', 'DUPLICATE_SERVICE');
+      const taken = new Set(current.services.filter((entry) => stable(entry.groupPath) === stable(groupPath)).map((entry) => entry.name));
+      const wanted = named(change.newService.name, 'Widget name');
+      let name = wanted;
+      for (let index = 2; taken.has(name); index++) name = `${wanted} ${index}`;
       const id = `studio-widget-parent-${randomUUID()}`;
       ensureGroup(doc, groupPath).add(doc.createNode({ [name]: { id } }));
       service = serviceEntries(yamlDocument(parsed.text(), 'services.yaml').data).services.find((entry) => entry.id === id);
@@ -917,6 +1036,24 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     if (!isMap(options)) fail('This service uses an unsupported YAML alias. Edit its YAML directly.');
     // Pin a formerly name-derived service ID before changing its widget context.
     options.set('id', service.id);
+    // The widget's name, link and status check are its service's (the card
+    // shows them), so the widget dialog changes them in the same save.
+    if (change.action !== 'delete' && change.service !== undefined) {
+      if (!object(change.service) || Object.keys(change.service).some((key) => !WIDGET_SERVICE_KEYS.has(key))) fail('Only the widget\'s name, link, icon, description and status check can change with it.');
+      const { name: rename, ...servicePatch } = change.service;
+      if (Object.values(servicePatch).some((value) => value !== null && (typeof value !== 'string' || value.length > 4096))) fail('A widget\'s link, icon, description and status address are text.');
+      if (Object.keys(servicePatch).length) {
+        const next = patchMap(doc, options, servicePatch, parsed);
+        validateServiceConfig(Object.fromEntries(Object.entries({ ...service.config, ...servicePatch }).filter(([, value]) => value !== null)), 'Widget');
+        entry.set(service.name, next);
+        options = entry.get(service.name, true);
+      }
+      if (rename !== undefined && rename !== service.name) {
+        const name = named(rename, 'Widget name');
+        if (current.services.some((other) => other.id !== service.id && other.name === name && stable(other.groupPath) === stable(service.groupPath))) fail(`Another widget is already called “${name}”. Use a different name.`, 'DUPLICATE_SERVICE');
+        renamePair(entry.items[0], name);
+      }
+    }
     const identities = byService.get(service.id);
     if (change.action === 'delete') {
       if (existing.sourceKey === 'widget') options.delete('widget');
@@ -927,11 +1064,10 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         if (!list.items.length) options.delete('widgets');
       }
       identities.splice(existing.index, 1);
-      // A technical parent created only for an independent widget need not
-      // become a new empty service tile when its last widget is removed.
-      // Only newly generated technical parents carry this provenance. Older
-      // ambiguous id-only services are preserved rather than inferred/deleted.
-      if (service.id.startsWith('studio-widget-parent-') && options.items.length === 1 && options.has('id')) { parent.items.splice(service.index, 1); byService.delete(service.id); }
+      // The widget card was the service's only card (its link and status
+      // belong to it), so removing the service's last widget removes the
+      // whole entry rather than leaving a link card behind.
+      if (!options.has('widget') && !options.has('widgets')) { parent.items.splice(service.index, 1); byService.delete(service.id); }
     } else {
       const type = named(change.type ?? change.config?.type ?? existing?.type, 'Service widget type');
       const patch = change.config ?? {};
@@ -943,6 +1079,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         const position = list.items.length;
         list.add(doc.createNode({ ...Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== null)), type }));
         identities.splice(position, 0, { id: `widget-${randomUUID()}` });
+        if (internal.placed) internal.placed.id = identities[position].id;
       } else if (existing.sourceKey === 'widget') {
         options.set('widget', patchMap(doc, options.get('widget', true), { ...patch, type }, parsed));
       } else {
@@ -954,7 +1091,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const text = parsed.text();
     const newServices = serviceEntries(yamlDocument(text, 'services.yaml').data).services;
     const forcedIdentities = newServices.flatMap((entry) => byService.get(entry.id) ?? []);
-    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, servicesYaml: text }, `service-widget-${CONTENT_ACTIONS[change.action]}`, { serviceWidgets: forcedIdentities });
+    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, servicesYaml: text }, `service-widget-${CONTENT_ACTIONS[change.action]}`, { serviceWidgets: forcedIdentities, placed: internal.placed });
   }
 
 
@@ -988,18 +1125,16 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         if (!list.items.length) options.delete('widgets');
       }
       byService.set(service.id, byService.get(service.id).filter((identity) => !mine.some((widget) => widget.id === identity.id)));
-      if (service.id.startsWith('studio-widget-parent-') && options.items.length === 1 && options.has('id')) removedServices.add(service.id);
+      if (!options.has('widget') && !options.has('widgets')) removedServices.add(service.id);
     }
-    const parents = new Map();
-    for (const service of current.services.filter((entry) => removedServices.has(entry.id))) {
-      const key = JSON.stringify(service.path.slice(0, -2));
-      parents.set(key, [...(parents.get(key) || []), service]);
-    }
-    for (const [key, list] of parents) {
-      const parent = services.doc.getIn(JSON.parse(key), true);
-      if (!isSeq(parent)) fail('A service here uses an unsupported YAML alias. Edit its YAML directly.');
-      for (const service of list.sort(descending)) parent.items.splice(service.index, 1);
-    }
+    // Every node is found before any is removed, then removed by identity,
+    // so removing a service never shifts the path of one in a nested group.
+    const doomed = current.services.filter((entry) => removedServices.has(entry.id)).map((service) => {
+      const parent = services.doc.getIn(service.path.slice(0, -2), true);
+      if (!isSeq(parent) || !parent.items[service.index]) fail('A service here uses an unsupported YAML alias. Edit its YAML directly.');
+      return { parent, node: parent.items[service.index] };
+    });
+    for (const { parent, node } of doomed) parent.items.splice(parent.items.indexOf(node), 1);
     // Information widgets.
     const info = current.parsed.widgetsYaml;
     const infoGone = current.infoWidgets.filter((entry) => ids.has(entry.id)).sort(descending);
@@ -1079,14 +1214,17 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       taken.add(candidate);
       return candidate;
     };
-    // Services, with every widget they carry.
+    // Services. Every widget is self-contained (owner rule, 4 Nov 2026): a
+    // copied widget gets its own copy of its service (link, icon, status),
+    // holding only the widgets chosen, so the copy never shares an entry
+    // with its original. A chosen service is copied with all its widgets.
     const services = current.parsed.servicesYaml;
     const byService = new Map(current.services.map((entry) => [entry.id, current.serviceWidgets.filter((widget) => widget.serviceId === entry.id).map(({ id }) => ({ id }))]));
-    const copiedServices = new Set();
     for (const service of current.services) {
       const widgets = current.serviceWidgets.filter((widget) => widget.serviceId === service.id);
-      const wanted = ids.has(service.id) || (widgets.length && widgets.every((widget) => ids.has(widget.id)) && service.id.startsWith('studio-widget-parent-'));
-      if (!wanted) continue;
+      const whole = ids.has(service.id);
+      const chosen = whole ? widgets : widgets.filter((widget) => ids.has(widget.id));
+      if (!whole && !chosen.length) continue;
       const parent = services.doc.getIn(service.path.slice(0, -2), true), entry = parent?.items?.[service.index];
       if (!isSeq(parent) || !isMap(entry)) fail('A service here uses an unsupported YAML alias. Edit its YAML directly.');
       const taken = new Set(current.services.filter((other) => stable(other.groupPath) === stable(service.groupPath)).map((other) => other.name));
@@ -1094,35 +1232,29 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       renamePair(copy.items[0], copyName(service.name, taken));
       const options = copy.items[0].value;
       if (!isMap(options)) fail('A service here uses an unsupported YAML alias. Edit its YAML directly.');
+      if (!whole) {
+        if (options.has('widget') && !chosen.some((widget) => widget.sourceKey === 'widget')) options.delete('widget');
+        const list = options.get('widgets', true);
+        if (list != null) {
+          if (!isSeq(list)) fail('Widgets here use an unsupported YAML alias. Edit their YAML directly.');
+          const keep = new Set(chosen.filter((widget) => widget.sourceKey !== 'widget').map((widget) => widget.sourceIndex));
+          list.items = list.items.filter((_, index) => keep.has(index));
+          if (!list.items.length) options.delete('widgets');
+        }
+      }
       const newId = `${service.id.startsWith('studio-widget-parent-') ? 'studio-widget-parent' : 'studio'}-${randomUUID()}`;
       options.set('id', newId);
       // Appended, so the positions of entries read earlier stay valid.
       parent.add(copy);
-      idMap.set(service.id, newId);
-      byService.set(newId, widgets.map((widget) => {
+      if (whole) idMap.set(service.id, newId);
+      // Identities follow the copy's widget order: the list first, then a
+      // single `widget` key, as serviceEntries reads them.
+      const ordered = [...chosen].sort((a, b) => a.index - b.index);
+      byService.set(newId, ordered.map((widget) => {
         const fresh = `widget-${randomUUID()}`;
         idMap.set(widget.id, fresh);
         return { id: fresh };
       }));
-      copiedServices.add(service.id);
-    }
-    // Widgets whose service stays behind: a second widget on the same service.
-    for (const widget of current.serviceWidgets.filter((item) => ids.has(item.id) && !copiedServices.has(item.serviceId))) {
-      const service = current.services.find((entry) => entry.id === widget.serviceId);
-      const parent = services.doc.getIn(service.path.slice(0, -2), true), entry = parent?.items?.[service.index];
-      const options = isMap(entry) ? entry.get(service.name, true) : null;
-      if (!isMap(options)) fail('A service here uses an unsupported YAML alias. Edit its YAML directly.');
-      options.set('id', service.id);
-      const source = widget.sourceKey === 'widget' ? options.get('widget', true) : options.get('widgets', true)?.items?.[widget.sourceIndex];
-      if (!isMap(source)) fail('A widget here uses an unsupported YAML alias. Edit its YAML directly.');
-      let list = options.get('widgets', true);
-      if (list == null) { options.set('widgets', services.doc.createNode([])); list = options.get('widgets', true); }
-      if (!isSeq(list)) fail('Widgets here use an unsupported YAML alias. Edit their YAML directly.');
-      const position = list.items.length;
-      list.add(source.clone());
-      const fresh = `widget-${randomUUID()}`;
-      byService.get(service.id).splice(position, 0, { id: fresh });
-      idMap.set(widget.id, fresh);
     }
     // Information widgets.
     const info = current.parsed.widgetsYaml;
@@ -1176,10 +1308,11 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       ...board.panels.filter((panel) => panel.pageId === pageId && !stacked.has(panel.id)).map((panel) => panel.rect),
       ...extra.filter((unit) => unit.pageId === pageId).map((unit) => unit.rect),
     ];
+    const columnsOn = (pageId) => columnsOfPage(board.pages.find((page) => page.id === pageId));
     const added = [];
     const stacks = [];
     for (const stack of board.stacks.filter((item) => item.panelIds.every((id) => idMap.has(id)))) {
-      const rect = nextPosition({ w: stack.rect.w, h: stack.rect.h }, occupied(stack.pageId, added));
+      const rect = nextPosition({ w: stack.rect.w, h: stack.rect.h }, occupied(stack.pageId, added), columnsOn(stack.pageId));
       const copy = { ...stack, id: `stack-${randomUUID()}`, rect, panelIds: stack.panelIds.map((id) => idMap.get(id)) };
       stacks.push(copy);
       added.push(copy);
@@ -1188,7 +1321,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const clones = board.panels.filter((panel) => idMap.has(panel.id)).map((panel) => {
       const id = idMap.get(panel.id);
       const owner = stacks.find((stack) => stack.panelIds.includes(id));
-      const rect = owner ? { ...owner.rect } : nextPosition({ w: panel.rect.w, h: panel.rect.h }, occupied(panel.pageId, added));
+      const rect = owner ? { ...owner.rect } : nextPosition({ w: panel.rect.w, h: panel.rect.h }, occupied(panel.pageId, added), columnsOn(panel.pageId));
       const clone = { ...panel, id, rect, pageId: owner ? owner.pageId : panel.pageId };
       if (!inStack.has(id)) added.push(clone);
       return clone;
@@ -1327,11 +1460,11 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     }),
     load: () => serialized(async () => response(await readCurrent())),
     loadBoard: () => serialized(async () => { const current = await readCurrent(); return { revision: current.revision, configurationRevision: current.configurationRevision, board: current.board, discoveredSources: current.discoveredSources, hiddenDiscoveredIds: current.hiddenDiscoveredIds, newDiscoveredIds: newDiscoveredIds(current), warnings: discoveryWarnings }; }),
-    saveBoard: (change) => serialized(async () => {
+    saveBoard: (change) => editing(change, async () => {
       const result = await saveCurrent(await readCurrent(), { revision: change.revision, board: change.board }, 'arrangement-saved');
       return { revision: result.revision, configurationRevision: result.configurationRevision, board: result.board, discoveredSources: result.discoveredSources, hiddenDiscoveredIds: result.hiddenDiscoveredIds, warnings: result.warnings };
     }),
-    mutateDiscoveryVisibility: (change) => serialized(async () => {
+    mutateDiscoveryVisibility: (change) => editing(change, async () => {
       const current = await readCurrent();
       checkRevision(change.revision, current);
       if (typeof change.hidden !== 'boolean') fail('Discovered panel visibility must be a boolean.', 'INVALID_ACTION', 400);
@@ -1342,15 +1475,25 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     }),
     // Raw file saves never carry an editor arrangement; a board they send is checked strictly.
     save: ({ arrangement: ignored, ...change }) => serialized(async () => saveCurrent(await readCurrent(), change, 'files-saved')),
-    mutateService: (change) => serialized(() => mutateServiceInner(change)),
-    mutateInfoWidget: (change) => serialized(() => mutateInfoInner(change)),
-    mutateBookmark: (change) => serialized(() => mutateBookmarkInner(change)),
-    mutateServiceWidget: (change) => serialized(() => mutateServiceWidgetInner(change)),
-    mutateSettings: (change) => serialized(() => mutateSettingsInner(change)),
-    deletePage: (change) => serialized(() => deletePageInner(change)),
-    duplicatePage: (change) => serialized(() => duplicatePageInner(change)),
-    deletePanels: (change) => serialized(() => deletePanelsInner(change)),
-    duplicatePanels: (change) => serialized(() => duplicatePanelsInner(change)),
+    undo: (change) => editing(change, () => stepEditInner(change, 'undo'), { create: false }),
+    redo: (change) => editing(change, () => stepEditInner(change, 'redo'), { create: false }),
+    mutateService: (change) => editing(change, () => mutateServiceInner(change)),
+    mutateInfoWidget: (change) => editing(change, () => mutateInfoInner(change)),
+    mutateBookmark: (change) => editing(change, () => mutateBookmarkInner(change)),
+    mutateServiceWidget: (change) => editing(change, () => mutateServiceWidgetInner(change)),
+    mutateSettings: (change) => editing(change, () => mutateSettingsInner(change)),
+    deletePage: (change) => editing(change, () => deletePageInner(change)),
+    duplicatePage: (change) => editing(change, () => duplicatePageInner(change)),
+    deletePanels: (change) => editing(change, () => deletePanelsInner(change)),
+    duplicatePanels: (change) => editing(change, () => duplicatePanelsInner(change)),
+    // Places a saved widget (server/library.mjs) as a new, independent
+    // widget on the page being edited, with its look and behaviour.
+    placeWidget: (change, widget) => editing(change, () => {
+      const placed = { look: widget.look, behaviour: widget.behaviour };
+      const base = { revision: change.revision, pageId: change.pageId, action: 'add', type: widget.type, config: widget.config };
+      if (widget.kind === 'informationWidget') return mutateInfoInner(base, { placed });
+      return mutateServiceWidgetInner({ ...base, newService: { name: widget.title }, ...(widget.service ? { service: widget.service } : {}) }, { placed });
+    }),
     listBackups: () => serialized(async () => {
       await ready();
       const names = await orderedBackupNames();
