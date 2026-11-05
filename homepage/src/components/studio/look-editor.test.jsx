@@ -232,7 +232,9 @@ describe("saved looks", () => {
       savedLooks: [{ id: "n", name: "Night", look: { edge: "none" } }],
       onSavedLooks,
     });
-    fireEvent.click(screen.getByRole("button", { name: "+ Save this look" }));
+    const toggle = screen.getByRole("button", { name: "None picked" });
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Save this look…" }));
     const input = screen.getByRole("textbox", { name: "Name for this look" });
     fireEvent.change(input, { target: { value: "night" } });
     expect(screen.getByText("That name is taken.")).toBeInTheDocument();
@@ -244,8 +246,63 @@ describe("saved looks", () => {
     ]);
     fireEvent.click(screen.getByRole("button", { name: "Night" }));
     expect(onLook).toHaveBeenCalledWith({ edge: "none", values });
-    fireEvent.click(screen.getByRole("button", { name: "Forget saved look Night" }));
-    expect(onSavedLooks).toHaveBeenLastCalledWith([]);
+  });
+
+  it("searches, and manages saved looks in one place: rename, update, delete", async () => {
+    const onSavedLooks = vi.fn();
+    const change = vi.fn(async () => ({}));
+    const onUpdateLookUsers = vi.fn();
+    const saved = ["Night", "Day", "Hexagon", "Quiet blue"].map((name, index) => ({
+      id: `l${index}`,
+      name,
+      look: { edge: index % 2 ? "line" : "none" },
+    }));
+    renderEditor({
+      look: { fill: "tint" },
+      savedLooks: saved,
+      onSavedLooks,
+      personalLooks: {
+        available: true,
+        looks: [{ id: "m1", name: "Mine", scope: "me", look: { corners: "round" } }],
+        change,
+      },
+      lookUsage: () => 2,
+      onUpdateLookUsers,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "None picked" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search saved looks" }), { target: { value: "hex" } });
+    expect(
+      within(screen.getByRole("list", { name: "Saved looks" }))
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["HexagonThis dashboard"]);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search saved looks" }), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Manage saved looks" }));
+    const manage = screen.getByRole("list", { name: "Manage saved looks" });
+    fireEvent.click(within(manage).getAllByRole("button", { name: "Rename" })[0]);
+    fireEvent.change(screen.getByRole("textbox", { name: "New name for Night" }), { target: { value: "Midnight" } });
+    fireEvent.click(within(manage).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSavedLooks).toHaveBeenLastCalledWith(
+        expect.arrayContaining([expect.objectContaining({ id: "l0", name: "Midnight" })]),
+      ),
+    );
+    // Update makes it this widget's look, and asks about the widgets using it.
+    fireEvent.click(within(manage).getAllByRole("button", { name: "Update" })[1]);
+    await waitFor(() =>
+      expect(onSavedLooks).toHaveBeenLastCalledWith(
+        expect.arrayContaining([{ id: "l1", name: "Day", look: { fill: "tint" } }]),
+      ),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "2 other widgets on this dashboard use “Day”. Update them too?",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Update them" }));
+    expect(onUpdateLookUsers).toHaveBeenCalledWith({ edge: "line" }, { fill: "tint" });
+    // A Just me look is changed on the account at once.
+    fireEvent.click(screen.getByRole("button", { name: "Delete saved look Mine" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(change).toHaveBeenCalledWith({ action: "delete", kind: "look", scope: "me", id: "m1" }));
   });
 });
 

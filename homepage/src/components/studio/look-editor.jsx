@@ -43,74 +43,292 @@ function MixedNote({ value }) {
 
 const newLookId = () =>
   globalThis.crypto?.randomUUID?.() || `look-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const lookOnly = (look = {}) => {
+export const lookOnly = (look = {}) => {
   const { values: _values, ...rest } = look;
   return rest;
 };
-const sameLook = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+export const sameLook = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
 
-// Named looks to reuse on other widgets: pick one to apply it, or save this
-// widget's look under a name. Only shown when there is something to pick or
-// something to save.
-function SavedLooks({ saved = [], look, onApply, onChange }) {
+const SCOPE_NAMES = { me: "Just me", dashboard: "This dashboard" };
+
+// Saved looks (board 24, owner request C2): a searchable list to apply one,
+// save this widget's look under a name (Just me or This dashboard), and one
+// place to rename, update or delete them. This dashboard's looks are saved
+// with the dashboard; Just me looks are kept on the account at once.
+// Updating one asks whether widgets that use it should change too.
+function SavedLooks({ saved = [], look, onApply, onChange, personal, usage, onUpdateUsers }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [naming, setNaming] = useState(null);
+  const [managing, setManaging] = useState(false);
+  const [renaming, setRenaming] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [asking, setAsking] = useState(null);
+  const [error, setError] = useState(null);
+  const panelId = useId();
   const current = lookOnly(look);
+  const mine = personal?.available ? personal.looks || [] : [];
+  const all = [...saved.map((entry) => ({ ...entry, scope: "dashboard" })), ...mine];
+  const scopes = [...(onChange ? ["dashboard"] : []), ...(personal?.available ? ["me"] : [])];
   const canSave =
-    Boolean(onChange) && Object.keys(current).length > 0 && !saved.some((entry) => sameLook(entry.look, current));
-  if (!saved.length && !canSave) return null;
-  const name = (naming ?? "").trim();
-  const taken = saved.some((entry) => entry.name.toLocaleLowerCase() === name.toLocaleLowerCase());
-  const save = () => {
-    if (!name || taken || name.length > 40) return;
-    const id = newLookId();
-    onChange([...saved, { id, name, look: current }]);
-    setNaming(null);
+    scopes.length > 0 && Object.keys(current).length > 0 && !all.some((entry) => sameLook(entry.look, current));
+  if (!all.length && !canSave) return null;
+  const chosen = all.find((entry) => sameLook(entry.look, current));
+  const needle = query.trim().toLocaleLowerCase();
+  const shown = needle ? all.filter((entry) => entry.name.toLocaleLowerCase().includes(needle)) : all;
+  const taken = (name, scope, except) =>
+    all.some(
+      (entry) =>
+        entry.scope === scope &&
+        entry.id !== except &&
+        entry.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase(),
+    );
+  const run = async (operation) => {
+    setError(null);
+    try {
+      await operation();
+      return true;
+    } catch (err) {
+      setError(err?.message || "That didn't save. Try again.");
+      return false;
+    }
   };
+  const save = () =>
+    run(async () => {
+      const name = naming.name.trim();
+      if (!name || name.length > 40 || taken(name, naming.scope)) return;
+      if (naming.scope === "dashboard") onChange([...saved, { id: newLookId(), name, look: current }]);
+      else await personal.change({ action: "add", kind: "look", scope: "me", name, look: current });
+      setNaming(null);
+    });
+  const rename = (entry) =>
+    run(async () => {
+      const name = renaming.name.trim();
+      if (!name || name.length > 40 || taken(name, entry.scope, entry.id)) return;
+      if (entry.scope === "dashboard") onChange(saved.map((item) => (item.id === entry.id ? { ...item, name } : item)));
+      else await personal.change({ action: "rename", kind: "look", scope: "me", id: entry.id, name });
+      setRenaming(null);
+    });
+  const update = (entry) =>
+    run(async () => {
+      if (entry.scope === "dashboard")
+        onChange(saved.map((item) => (item.id === entry.id ? { ...item, look: current } : item)));
+      else await personal.change({ action: "update", kind: "look", scope: "me", id: entry.id, look: current });
+      const count = usage ? usage(entry.look) : 0;
+      if (count > 0 && onUpdateUsers) setAsking({ entry, from: entry.look, to: current, count });
+    });
+  const remove = (entry) =>
+    run(async () => {
+      if (entry.scope === "dashboard") onChange(saved.filter((item) => item.id !== entry.id));
+      else await personal.change({ action: "delete", kind: "look", scope: "me", id: entry.id });
+      setDeleting(null);
+    });
+  const scopeOf = (entry) => (scopes.length > 1 || entry.scope === "me" ? SCOPE_NAMES[entry.scope] : null);
   return (
     <Row
       label="Saved looks"
       stacked
-      info="Name this look to reuse it on other widgets. Picking one replaces the look, not the widget's values."
+      info="Pick a saved look to use it on this widget; it replaces the look, not the widget's values. Save this widget's look to reuse it on others."
     >
       <div className="studio-saved-looks">
-        {saved.map((entry) => (
-          <span key={entry.id} className="studio-saved-look">
-            <button
-              type="button"
-              className="studio-chip"
-              aria-pressed={sameLook(entry.look, current)}
-              onClick={() => onApply(entry.look)}
-            >
-              {entry.name}
-            </button>
-            {onChange && (
-              <button
-                type="button"
-                className="studio-chip-remove"
-                aria-label={`Forget saved look ${entry.name}`}
-                title="Forget this saved look"
-                onClick={() => onChange(saved.filter((item) => item.id !== entry.id))}
-              >
-                ×
-              </button>
+        <button
+          type="button"
+          className="studio-saved-looks-toggle"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span>{chosen ? chosen.name : "None picked"}</span>
+          <StudioIcon name="chevron" size={15} className="studio-saved-looks-chevron" />
+        </button>
+        {open && (
+          <div id={panelId} className="studio-saved-looks-panel">
+            {!managing && (
+              <>
+                {all.length > 4 && (
+                  <input
+                    type="search"
+                    aria-label="Search saved looks"
+                    placeholder="Search saved looks"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                )}
+                {all.length > 0 && (
+                  <ul className="studio-saved-looks-list" aria-label="Saved looks">
+                    {shown.map((entry) => (
+                      <li key={`${entry.scope}:${entry.id}`}>
+                        <button
+                          type="button"
+                          aria-pressed={sameLook(entry.look, current)}
+                          onClick={() => onApply(entry.look)}
+                        >
+                          <span className="studio-saved-look-title">{entry.name}</span>
+                          {scopeOf(entry) && <span className="studio-saved-look-scope">{scopeOf(entry)}</span>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {needle && !shown.length && <p className="studio-muted">No saved look matches “{query.trim()}”.</p>}
+                <div className="studio-saved-looks-actions">
+                  {canSave && naming === null && (
+                    <button
+                      type="button"
+                      className="studio-text-button"
+                      onClick={() => setNaming({ name: "", scope: scopes[0] })}
+                    >
+                      Save this look…
+                    </button>
+                  )}
+                  {all.length > 0 && (onChange || personal?.available) && (
+                    <button type="button" className="studio-text-button" onClick={() => setManaging(true)}>
+                      Manage saved looks
+                    </button>
+                  )}
+                </div>
+              </>
             )}
-          </span>
-        ))}
-        {canSave && naming === null && (
-          <button type="button" className="studio-chip studio-chip-add" onClick={() => setNaming("")}>
-            + Save this look
-          </button>
+            {managing && (
+              <div className="studio-saved-looks-manage">
+                <ul className="studio-saved-looks-list" aria-label="Manage saved looks">
+                  {all
+                    .filter((entry) => entry.scope !== "dashboard" || onChange)
+                    .map((entry) => {
+                      const key = `${entry.scope}:${entry.id}`;
+                      return (
+                        <li key={key} className="studio-saved-look-manage-row">
+                          {renaming?.key === key ? (
+                            <span className="studio-saved-look-name-edit">
+                              <input
+                                aria-label={`New name for ${entry.name}`}
+                                maxLength={40}
+                                value={renaming.name}
+                                autoFocus
+                                onChange={(event) => setRenaming({ ...renaming, name: event.target.value })}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    rename(entry);
+                                  } else if (event.key === "Escape") {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setRenaming(null);
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="studio-button studio-quiet"
+                                onClick={() => setRenaming(null)}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                className="studio-button studio-primary"
+                                disabled={!renaming.name.trim() || taken(renaming.name, entry.scope, entry.id)}
+                                onClick={() => rename(entry)}
+                              >
+                                Save
+                              </button>
+                            </span>
+                          ) : deleting === key ? (
+                            <span className="studio-saved-look-name-edit" role="alert">
+                              <span>Delete “{entry.name}”? Widgets using it keep their look.</span>
+                              <button
+                                type="button"
+                                className="studio-button studio-quiet"
+                                onClick={() => setDeleting(null)}
+                              >
+                                Keep it
+                              </button>
+                              <button
+                                type="button"
+                                className="studio-button studio-danger"
+                                onClick={() => remove(entry)}
+                              >
+                                Delete
+                              </button>
+                            </span>
+                          ) : (
+                            <>
+                              <span className="studio-saved-look-text">
+                                <span className="studio-saved-look-title">{entry.name}</span>
+                                {scopeOf(entry) && <span className="studio-saved-look-scope">{scopeOf(entry)}</span>}
+                              </span>
+                              <button
+                                type="button"
+                                className="studio-button studio-quiet"
+                                onClick={() => setRenaming({ key, name: entry.name })}
+                              >
+                                Rename
+                              </button>
+                              <button
+                                type="button"
+                                className="studio-button studio-quiet"
+                                disabled={sameLook(entry.look, current) || !Object.keys(current).length}
+                                title="Make it this widget's look"
+                                onClick={() => update(entry)}
+                              >
+                                Update
+                              </button>
+                              <button
+                                type="button"
+                                className="studio-icon-button"
+                                aria-label={`Delete saved look ${entry.name}`}
+                                onClick={() => setDeleting(key)}
+                              >
+                                <StudioIcon name="trash" size={16} />
+                              </button>
+                            </>
+                          )}
+                        </li>
+                      );
+                    })}
+                </ul>
+                <p className="studio-note">Update makes a saved look this widget&apos;s look.</p>
+                <button type="button" className="studio-text-button" onClick={() => setManaging(false)}>
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
+      {asking && (
+        <div className="studio-saved-look-ask" role="alert">
+          <span>
+            {asking.count === 1 ? "1 other widget" : `${asking.count} other widgets`} on this dashboard{" "}
+            {asking.count === 1 ? "uses" : "use"} “{asking.entry.name}”. Update {asking.count === 1 ? "it" : "them"}{" "}
+            too?
+          </span>
+          <span className="studio-inline-actions">
+            <button type="button" className="studio-button studio-quiet" onClick={() => setAsking(null)}>
+              Leave {asking.count === 1 ? "it" : "them"}
+            </button>
+            <button
+              type="button"
+              className="studio-button studio-primary"
+              onClick={() => {
+                onUpdateUsers(asking.from, asking.to);
+                setAsking(null);
+              }}
+            >
+              Update {asking.count === 1 ? "it" : "them"}
+            </button>
+          </span>
+        </div>
+      )}
       {naming !== null && (
         <div className="studio-saved-look-name">
           <input
             aria-label="Name for this look"
             placeholder="For example Night"
             maxLength={40}
-            value={naming}
+            value={naming.name}
             autoFocus
-            onChange={(event) => setNaming(event.target.value)}
+            onChange={(event) => setNaming({ ...naming, name: event.target.value })}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
@@ -122,14 +340,32 @@ function SavedLooks({ saved = [], look, onApply, onChange }) {
               }
             }}
           />
+          {scopes.length > 1 && (
+            <Segmented
+              label="Who can use it"
+              value={naming.scope}
+              onChange={(scope) => setNaming({ ...naming, scope })}
+              options={scopes.map((scope) => [scope, SCOPE_NAMES[scope]])}
+            />
+          )}
           <button type="button" className="studio-button studio-quiet" onClick={() => setNaming(null)}>
             Cancel
           </button>
-          <button type="button" className="studio-button studio-primary" disabled={!name || taken} onClick={save}>
+          <button
+            type="button"
+            className="studio-button studio-primary"
+            disabled={!naming.name.trim() || taken(naming.name, naming.scope)}
+            onClick={save}
+          >
             Save
           </button>
-          {taken && <span className="studio-field-error">That name is taken.</span>}
+          {taken(naming.name, naming.scope) && <span className="studio-field-error">That name is taken.</span>}
         </div>
+      )}
+      {error && (
+        <p className="studio-field-error" role="alert">
+          {error}
+        </p>
       )}
     </Row>
   );
@@ -643,6 +879,11 @@ export default function LookEditor({
   sections,
   savedLooks,
   onSavedLooks,
+  // Just me looks ({ available, looks, change }) and the widgets on this
+  // dashboard that use a look, for Manage saved looks › Update.
+  personalLooks,
+  lookUsage,
+  onUpdateLookUsers,
   statusAddress,
   // The widget's own fields list and its choices (board 27): the Values list
   // shows every choice and keeps that list in sync.
@@ -685,6 +926,9 @@ export default function LookEditor({
             saved={savedLooks}
             look={look}
             onChange={onSavedLooks}
+            personal={personalLooks}
+            usage={lookUsage}
+            onUpdateUsers={onUpdateLookUsers}
             onApply={(saved) => onLook({ ...saved, ...(look.values !== undefined ? { values: look.values } : {}) })}
           />
           {show.values && (!show.charts || effective.show === "numbers" || effective.show === MIXED) && (

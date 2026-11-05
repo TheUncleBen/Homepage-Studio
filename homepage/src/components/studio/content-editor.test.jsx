@@ -172,7 +172,7 @@ describe("widget look in the widget dialog", () => {
     expect(screen.getByTestId("preview")).toHaveTextContent('{"corners":"round"}');
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await vi.waitFor(() => expect(onSaved).toHaveBeenCalled());
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls.find(([, options]) => options?.method === "POST");
     expect(String(url)).toContain("/studio/api/board");
     const body = JSON.parse(init.body);
     expect(body.board.panels[0].look).toEqual({ corners: "round" });
@@ -196,8 +196,8 @@ describe("widget look in the widget dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Look/ }));
     fireEvent.click(screen.getByRole("radio", { name: "Round" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const [url, init] = fetchMock.mock.calls[0];
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === "POST")).toBe(true));
+    const [url, init] = fetchMock.mock.calls.find(([, options]) => options?.method === "POST");
     expect(String(url)).toContain("/studio/api/bookmark");
     const body = JSON.parse(init.body);
     expect(body.name).toBe("Docs site");
@@ -356,8 +356,8 @@ describe("widget dialog sections", () => {
     fireEvent.keyDown(corner, { key: "ArrowDown" });
     expect(corner).toHaveAccessibleName(/8 columns wide, 3 rows tall/);
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const [url, init] = fetchMock.mock.calls[0];
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === "POST")).toBe(true));
+    const [url, init] = fetchMock.mock.calls.find(([, options]) => options?.method === "POST");
     expect(String(url)).toContain("/studio/api/board");
     expect(JSON.parse(init.body).board.panels[0].rect).toEqual({ x: 0, y: 0, w: 8, h: 3 });
     vi.unstubAllGlobals();
@@ -406,5 +406,76 @@ describe("widget dialog sections", () => {
     fireEvent.click(connection);
     expect(connection).toHaveAttribute("aria-expanded", "false");
     expect(connection).toHaveTextContent("Needs a fix");
+  });
+});
+
+describe("a saved look updated from the widget dialog", () => {
+  it("can move the other widgets using it to its new version when the dialog saves", async () => {
+    const night = { fill: "tint" };
+    const board = {
+      version: 3,
+      columns: 24,
+      pages: [{ id: "home", name: "Home" }],
+      panels: [
+        {
+          id: "bm-1",
+          kind: "bookmark",
+          title: "Docs",
+          pageId: "home",
+          rect: { x: 0, y: 0, w: 6, h: 2 },
+          look: { corners: "round" },
+        },
+        { id: "bm-2", kind: "bookmark", title: "Wiki", pageId: "home", rect: { x: 6, y: 0, w: 6, h: 2 }, look: night },
+      ],
+      stacks: [],
+      looks: [{ id: "n", name: "Night", look: night }],
+    };
+    const fetchMock = vi.fn(async (url) =>
+      String(url).includes("/studio/api/library")
+        ? new Response(JSON.stringify({ scopes: ["dashboard", "everyone"], looks: [], widgets: [] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
+        : new Response(JSON.stringify({ revision: "r2", board }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ContentEditor
+        state={{
+          revision: "r1",
+          services: [],
+          groups: [],
+          bookmarks: [
+            { id: "bm-1", name: "Docs", group: "Links", config: { href: "https://docs.example.com" } },
+            { id: "bm-2", name: "Wiki", group: "Links", config: { href: "https://wiki.example.com" } },
+          ],
+        }}
+        catalog={{ service: [], info: [] }}
+        panel={board.panels[0]}
+        wholeBoard={board}
+        renderPreview={() => null}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+        onReload={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Look/ }));
+    fireEvent.click(screen.getByRole("button", { name: "None picked" }));
+    fireEvent.click(screen.getByRole("button", { name: "Manage saved looks" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "1 other widget on this dashboard uses “Night”. Update it too?",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Update it" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === "POST")).toBe(true));
+    const body = JSON.parse(fetchMock.mock.calls.find(([, options]) => options?.method === "POST")[1].body);
+    expect(body.board.looks).toEqual([{ id: "n", name: "Night", look: { corners: "round" } }]);
+    expect(body.board.panels.find((item) => item.id === "bm-2").look).toEqual({ corners: "round" });
+    vi.unstubAllGlobals();
   });
 });

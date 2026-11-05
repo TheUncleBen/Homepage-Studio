@@ -24,6 +24,7 @@ const EDIT_PATHS = new Set([
   "/studio/api/widgets-delete",
   "/studio/api/widgets-duplicate",
   "/studio/api/discovery-visibility",
+  "/studio/api/library/use",
   "/studio/api/undo",
   "/studio/api/redo",
 ]);

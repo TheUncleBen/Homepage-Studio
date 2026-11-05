@@ -22,7 +22,8 @@ import Guide from "./guide";
 import { loadIndex } from "./icon-chooser";
 import { builtInIconUrl } from "./icon-source.mjs";
 import StudioIcon from "./icons";
-import LookEditor, { lookSections, lookSummaries, valuesPartShown } from "./look-editor";
+import { useLibrary } from "./library";
+import LookEditor, { lookOnly, lookSections, lookSummaries, sameLook, valuesPartShown } from "./look-editor";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
 import { ActionRow, Group, Row, Section } from "./ui";
 
@@ -339,6 +340,9 @@ export default function ContentEditor({
   const [behaviour, setBehaviour] = useState(boardPanel?.behaviour);
   const [page, setPage] = useState(initialPage);
   const [savedLooks, setSavedLooks] = useState(wholeBoard?.looks || []);
+  // Other widgets moved to a saved look's new version (Manage saved looks ›
+  // Update › Update them), applied when this dialog saves.
+  const [lookSwaps, setLookSwaps] = useState([]);
   // Its desktop size, changed by dragging the preview's corner (board 24). A
   // widget in a stack takes the stack's size, so it has none of its own here.
   const initialRect = boardPanel && !stacked ? boardPanel.rect : null;
@@ -357,13 +361,19 @@ export default function ContentEditor({
       JSON.stringify(behaviour ?? null) !== JSON.stringify(boardPanel.behaviour ?? null) ||
       page !== initialPage ||
       rectChanged ||
+      lookSwaps.length > 0 ||
       JSON.stringify(savedLooks) !== JSON.stringify(wholeBoard.looks || []));
   const nextBoard = () => {
     let next = {
       ...wholeBoard,
       ...(savedLooks.length ? { looks: savedLooks } : { looks: undefined }),
       panels: wholeBoard.panels.map((item) => {
-        if (item.id !== boardPanel.id) return item;
+        if (item.id !== boardPanel.id) {
+          const swap = item.look && lookSwaps.findLast((entry) => sameLook(lookOnly(item.look), entry.from));
+          return swap
+            ? { ...item, look: { ...swap.to, ...(item.look.values ? { values: item.look.values } : {}) } }
+            : item;
+        }
         const { look: _look, behaviour: _behaviour, ...rest } = item;
         return { ...rest, ...(look ? { look } : {}), ...(behaviour ? { behaviour } : {}) };
       }),
@@ -404,6 +414,10 @@ export default function ContentEditor({
   // One section open at a time (board 24). A new item opens on its settings;
   // an existing one opens with everything summarised.
   const [openSection, setOpenSection] = useState(startDeleting ? "manage" : panel ? null : "settings");
+  // Just me looks are read once the Look section is first opened.
+  const [lookOpened, setLookOpened] = useState(false);
+  if (openSection === "look" && !lookOpened) setLookOpened(true);
+  const library = useLibrary(Boolean(boardPanel) && lookOpened);
   const sectionProps = (id) => ({
     open: openSection === id,
     onToggle: () => setOpenSection((current) => (current === id ? null : id)),
@@ -516,6 +530,14 @@ export default function ContentEditor({
         onPage: stacked ? undefined : setPage,
         savedLooks,
         onSavedLooks: setSavedLooks,
+        personalLooks: library.scopes.includes("me")
+          ? { available: true, looks: library.looks, change: library.change }
+          : undefined,
+        lookUsage: (saved) =>
+          wholeBoard.panels.filter(
+            (item) => item.id !== boardPanel.id && item.look && sameLook(lookOnly(item.look), saved),
+          ).length,
+        onUpdateLookUsers: (from, to) => setLookSwaps((current) => [...current, { from, to }]),
         statusAddress:
           kind === "serviceWidget"
             ? {
