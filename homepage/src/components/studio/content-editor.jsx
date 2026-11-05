@@ -125,7 +125,7 @@ function SaveAsWidget({ library, defaultName, panelId, changed, onDone }) {
       </Row>
       <Row
         label="Who can use it"
-        info="Just me: only you, on any dashboard you edit. This dashboard: anyone who adds widgets here. Everyone: administrators, on every dashboard."
+        info="Just me: only you, on any dashboard you edit. This dashboard: anyone who can arrange this dashboard. Everyone: anyone who can arrange any dashboard."
       >
         <Segmented
           label="Who can use it"
@@ -139,6 +139,12 @@ function SaveAsWidget({ library, defaultName, panelId, changed, onDone }) {
         place.
         {changed && " It is saved as it was last saved: save your changes first to include them."}
       </p>
+      {chosen === "everyone" && (
+        <p className="studio-note">
+          Anyone who can arrange any dashboard can place it there. Its saved connections, keys included, are copied to
+          that dashboard; they never see the keys, but that dashboard’s viewers see the widget’s data.
+        </p>
+      )}
       <div className="studio-inline-actions">
         <button type="button" className="studio-button studio-quiet" onClick={onDone}>
           Cancel

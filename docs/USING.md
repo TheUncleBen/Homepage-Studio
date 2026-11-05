@@ -457,7 +457,10 @@ the dashboard can place them: for someone with **Can arrange**, **Widgets**
 opens *Add a saved widget*, which lists the saved widgets by name and type
 only. They never see the settings or keys, but what the widget shows (an
 app's numbers, for example) becomes visible to everyone who can open that
-dashboard.
+dashboard. A widget saved for **Everyone** can be placed by anyone who can
+arrange any dashboard, and placing it copies its saved connections, keys
+included, to that dashboard, so save one for Everyone only when its data is
+fine for any dashboard's viewers.
 
 Saved widgets are listed under **Saved** in *Add to your dashboard*, with their
 type and who can use them; choosing one adds it as a new, independent
