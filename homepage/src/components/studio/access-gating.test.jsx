@@ -120,7 +120,8 @@ describe("dashboard controls follow the sign-in access level", () => {
     const edit = mount({ authEnabled: true, level: "arrange", user }, "edit");
     await waitFor(() => expect(screen.getByText("Done", { selector: "button" })).toBeEnabled());
     // Widgets offers saved widgets only (owner decision, 5 Nov 2026).
-    fireEvent.click(screen.getByRole("button", { name: "Widgets" }));
+    expect(screen.queryByRole("button", { name: "Widgets" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Saved widgets" }));
     const dialog = await screen.findByRole("dialog", { name: "Add a saved widget" });
     expect(await within(dialog).findByText("Edge firewall")).toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: "Integrations" })).toBeNull();

@@ -2985,7 +2985,12 @@ body {
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     white-space: normal;
-    overflow-wrap: anywhere;
+    /* Break between words; only a word longer than the line breaks inside. */
+    overflow-wrap: break-word;
+  }
+  /* The description gives its line to the values on a narrow card. */
+  .studio-card .studio-card-name small {
+    display: none;
   }
   .studio-card .studio-card-status .studio-status-text {
     display: none;
@@ -3190,6 +3195,12 @@ body {
 }
 .studio-native-content[data-tight] .studio-values-below {
   padding-top: 5px;
+}
+.studio-native-content .studio-values-below[data-empty] {
+  /* Only "+N more" is left: no rule, and it tucks up beside the hero's label. */
+  border-top: 0;
+  padding-top: 0;
+  margin-top: -8px;
 }
 .studio-values-below {
   display: grid;

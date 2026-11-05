@@ -453,7 +453,7 @@ saved connection it uses. Never its size or place, which belong to each
 layout. **Who can use it** is **Just me**, **This dashboard** or **Everyone**
 (the whole Studio). Only administrators save, rename or delete saved
 widgets, because a widget's settings can hold keys. Anyone who can arrange
-the dashboard can place them: for someone with **Can arrange**, **Widgets**
+the dashboard can place them: for someone with **Can arrange**, **Saved widgets** in the editing bar
 opens *Add a saved widget*, which lists the saved widgets by name and type
 only. They never see the settings or keys, but what the widget shows (an
 app's numbers, for example) becomes visible to everyone who can open that

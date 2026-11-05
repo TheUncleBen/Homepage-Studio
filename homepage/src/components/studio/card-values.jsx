@@ -46,9 +46,9 @@ function useFold(count, least = 1, content = "") {
       clip.setAttribute("data-tight", "");
       bottoms = measure();
       if (all()) return;
-      // Room for the "+N more" line under the values that stay.
-      const room = limit - 20;
-      setShown(Math.max(least, bottoms.filter((bottom) => bottom <= room + 0.5).length));
+      // Keep every value that fits; the check below folds one more while the
+      // "+N more" hint (in the last free column of a row) doesn't fit too.
+      setShown(Math.max(least, bottoms.filter((bottom) => bottom <= limit + 0.5).length));
       return;
     }
     // Folded: the values left can reflow (a narrower row, a wrapped line), so
@@ -84,7 +84,8 @@ function Folded({ className, items, slot, arranged, content }) {
   const { ref, shown } = useFold(items.length, slot === "below" ? 0 : 1, content);
   const hidden = items.length - shown;
   return (
-    <div ref={ref} className={className}>
+    // Nothing left below the hero: the hint alone, without the rule.
+    <div ref={ref} className={className} data-empty={items.length > 0 && shown === 0 ? "" : undefined}>
       {items.map((item, index) => (
         <div key={item.key} className="studio-fold-item" hidden={index >= shown}>
           <ValueSlotContext.Provider

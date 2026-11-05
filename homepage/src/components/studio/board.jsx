@@ -2007,11 +2007,13 @@ export default function StudioBoard({
             <button
               className="studio-button studio-quiet"
               disabled={controlsDisabled}
-              aria-label="Widgets"
+              aria-label={isAdmin ? "Widgets" : "Saved widgets"}
               onClick={() => openEditor(isAdmin ? "picker" : "saved")}
             >
               <StudioIcon name="plus" size={16} />
-              <span className="studio-edit-bar-label studio-edit-bar-label-kept">Widgets</span>
+              <span className="studio-edit-bar-label studio-edit-bar-label-kept">
+                {isAdmin ? "Widgets" : "Saved widgets"}
+              </span>
             </button>
           )}
           <button
