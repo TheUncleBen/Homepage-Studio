@@ -591,6 +591,8 @@ export default function ConfigForm({
   title,
   info,
   connections = false,
+  // Inside the widget dialog's Connection section, which already names it.
+  sectioned = false,
 }) {
   const [tab, setTab] = useState("fields");
   // Whether a saved connection fills the address and key (connections.jsx).
@@ -691,7 +693,7 @@ export default function ConfigForm({
       {tab === "fields" ? (
         <>
           {connection.length > 0 && (
-            <Group title="Connection">
+            <Group title={sectioned ? undefined : "Connection"}>
               {offersSaved && (
                 <ConnectionChooser
                   value={value}

@@ -8,12 +8,13 @@ import ConfigForm, { LINK_FIELDS, SERVICE_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
 import { moveToPage, pageOf, pagesOf } from "./geometry.mjs";
+import Guide from "./guide";
 import { loadIndex } from "./icon-chooser";
 import { builtInIconUrl } from "./icon-source.mjs";
 import StudioIcon from "./icons";
-import LookEditor from "./look-editor";
+import LookEditor, { lookSections, lookSummaries, valuesPartShown } from "./look-editor";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
-import { ActionRow, Group, Row } from "./ui";
+import { ActionRow, Group, Row, Section } from "./ui";
 
 import { SettingsContext } from "utils/contexts/settings";
 
@@ -26,6 +27,16 @@ export function customApiMappingsMissing(type, config) {
   if (mappings === undefined || mappings === null || mappings === "") return true;
   if (Array.isArray(mappings)) return mappings.length === 0;
   return typeof mappings === "object" && Object.keys(mappings).length === 0;
+}
+
+// The host of an address, for a section's summary ("pfsense.home.arpa").
+function hostOf(value) {
+  if (typeof value !== "string" || !value) return "";
+  try {
+    return new URL(value).host;
+  } catch {
+    return "";
+  }
 }
 
 // What a widget's card takes from the entry it lives in: its link and
@@ -314,6 +325,13 @@ export default function ContentEditor({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(null);
   const [deleting, setDeleting] = useState(startDeleting);
+  // One section open at a time (board 24). A new item opens on its settings;
+  // an existing one opens with everything summarised.
+  const [openSection, setOpenSection] = useState(startDeleting ? "manage" : panel ? null : "settings");
+  const sectionProps = (id) => ({
+    open: openSection === id,
+    onToggle: () => setOpenSection((current) => (current === id ? null : id)),
+  });
   const deleteConfirm = useRef(null);
   const keepButton = useRef(null);
   const deleteButton = useRef(null);
@@ -447,6 +465,61 @@ export default function ContentEditor({
               : undefined,
       }
     : null;
+  const sections = lookSections(kind);
+  const valuesShown =
+    Boolean(boardPanel) &&
+    valuesPartShown({
+      show: sections,
+      fields: reportedValues,
+      nativeValues,
+      effective: { ...lookProps.inheritedLook, ...look },
+    });
+  const summaries = boardPanel ? lookSummaries({ ...lookProps, savedLooks }) : {};
+  const has = (...keys) => fields.some((field) => keys.includes(field.key));
+  const sentence = (parts) => {
+    const text = parts.filter(Boolean).join(", ");
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
+  const settingsSection =
+    kind === "serviceWidget"
+      ? {
+          title: "Connection",
+          detail: sentence([
+            has("url") && "address",
+            has("key", "token", "password", "username") && "key or secret",
+            has("version") && "version",
+            has("url") && "Test connection",
+            "every other setting",
+          ]),
+          summary: [hostOf(draft.url), /^\d+$/.test(String(draft.version ?? "")) ? `API v${draft.version}` : ""]
+            .filter(Boolean)
+            .join(" · "),
+        }
+      : kind === "informationWidget"
+        ? { title: "Settings", detail: "What it shows and how" }
+        : {
+            title: "Details",
+            detail: sentence(["address", "description", "icon", kind === "service" && "Docker container"]),
+            summary: hostOf(draft.href),
+          };
+  const behaviourDetail = boardPanel
+    ? sentence([
+        sections.status && "status check",
+        kind === "serviceWidget" && "link",
+        sections.link && "on click",
+        sections.values && "refresh",
+        "on phones",
+      ])
+    : "Where the card's name takes you";
+  if (!boardPanel) summaries.status = hostOf(service?.href);
+  const guideName = selectedEntry?.name;
+  const guided = Boolean(
+    selectedEntry &&
+    (selectedEntry.guide?.length > 0 ||
+      selectedEntry.setupNotes?.length > 0 ||
+      selectedEntry.secrets?.length > 0 ||
+      selectedEntry.docs),
+  );
   const submit = async (action = source ? "update" : "add") => {
     if (pending) return;
     setError(null);
@@ -532,100 +605,171 @@ export default function ContentEditor({
                     placeholder="Required"
                   />
                 </Row>
-                {kind === "serviceWidget" && (
-                  <Row
-                    label="Link"
-                    htmlFor="studio-widget-link"
-                    info="Where the card's name takes you, and where On click opens."
-                  >
-                    <input
-                      id="studio-widget-link"
-                      type="url"
-                      inputMode="url"
-                      value={service.href}
-                      onChange={(event) => setService({ ...service, href: event.target.value })}
-                      placeholder="https://"
-                    />
-                  </Row>
-                )}
               </Group>
             )}
-            {boardPanel && <LookEditor part="top" {...lookProps} />}
-            <ConfigForm
-              value={draft}
-              onChange={setDraft}
-              fields={fields}
-              knownKeys={hiddenKeys}
-              onValidity={setValid}
-              docs={selectedEntry?.docs}
-              guide={selectedEntry?.guide}
-              setupNotes={selectedEntry?.setupNotes}
-              secrets={selectedEntry?.secrets}
-              name={selectedEntry?.name}
-              connections={kind === "serviceWidget" || kind === "informationWidget"}
-              testable={kind === "serviceWidget" && (source?.type || selectedEntry?.type || true)}
-            />
-            {(kind === "serviceWidget" || kind === "informationWidget") &&
-              customApiMappingsMissing(source?.type || entry?.type, draft) && (
-                <p className="studio-callout studio-callout-warn" role="status">
-                  This Custom API widget has no <code>mappings</code> yet, so its panel will be empty. Add at least one
-                  in YAML. You can still save it now.
-                </p>
+            <div className="studio-sections">
+              <Section
+                title={settingsSection.title}
+                detail={settingsSection.detail}
+                summary={settingsSection.summary}
+                attention={valid ? null : "Needs a fix"}
+                {...sectionProps("settings")}
+              >
+                <ConfigForm
+                  value={draft}
+                  onChange={setDraft}
+                  fields={fields}
+                  knownKeys={hiddenKeys}
+                  onValidity={setValid}
+                  sectioned
+                  connections={kind === "serviceWidget" || kind === "informationWidget"}
+                  testable={kind === "serviceWidget" && (source?.type || selectedEntry?.type || true)}
+                />
+                {(kind === "serviceWidget" || kind === "informationWidget") &&
+                  customApiMappingsMissing(source?.type || entry?.type, draft) && (
+                    <p className="studio-callout studio-callout-warn" role="status">
+                      This Custom API widget has no <code>mappings</code> yet, so its panel will be empty. Add at least
+                      one in YAML. You can still save it now.
+                    </p>
+                  )}
+              </Section>
+              {boardPanel && valuesShown && (
+                <Section
+                  title="Values and charts"
+                  detail={
+                    sections.charts
+                      ? "Which values show, their order, charts, warnings"
+                      : "Which values show, their order, warnings"
+                  }
+                  summary={summaries.values}
+                  {...sectionProps("values")}
+                >
+                  <LookEditor part="values" {...lookProps} />
+                </Section>
               )}
-            {boardPanel && <LookEditor part="bottom" {...lookProps} />}
-            {source && (
-              <Group className="studio-item-actions">
-                <ActionRow
-                  icon="copy"
-                  disabled={pending}
-                  onClick={() => {
-                    // Duplicate the saved source. Switching away from an edited
-                    // source asks before discarding its local changes.
-                    onDuplicate(duplicateEntry(panel, state, catalog));
-                  }}
+              {boardPanel && (
+                <Section
+                  title="Look"
+                  detail={`Saved looks, fill, colour, edge, corners${sections.logo ? ", header" : ""}`}
+                  summary={summaries.look}
+                  {...sectionProps("look")}
                 >
-                  Duplicate
-                </ActionRow>
-                <ActionRow
-                  ref={deleteButton}
-                  icon="trash"
-                  danger
-                  disabled={pending}
-                  aria-expanded={deleting}
-                  onClick={() => setDeleting(true)}
+                  <LookEditor part="look" {...lookProps} />
+                </Section>
+              )}
+              {(boardPanel || kind === "serviceWidget") && (
+                <Section
+                  title={!boardPanel ? "Link" : sections.status ? "Status and behaviour" : "Behaviour"}
+                  detail={behaviourDetail}
+                  summary={summaries.status}
+                  {...sectionProps("status")}
                 >
-                  Delete
-                </ActionRow>
-              </Group>
-            )}
-            {deleting && (
-              <div ref={deleteConfirm} className="studio-delete-confirm" role="alert">
-                <strong>Delete {panel?.title || "this item"}?</strong>
-                <p>
-                  {kind === "service"
-                    ? "This removes the service and its widgets. The rest of the dashboard stays."
-                    : "A snapshot is kept, so you can restore it from dashboard settings under Snapshots & restore."}
-                </p>
-                <div className="studio-inline-actions">
-                  <button
-                    ref={keepButton}
-                    type="button"
-                    className="studio-button studio-quiet"
-                    onClick={() => setDeleting(false)}
-                  >
-                    Keep it
-                  </button>
-                  <button
-                    type="button"
-                    className="studio-button studio-danger"
-                    disabled={pending}
-                    onClick={() => submit("delete")}
-                  >
-                    Delete permanently
-                  </button>
-                </div>
-              </div>
-            )}
+                  {kind === "serviceWidget" && (
+                    <Group>
+                      <Row
+                        label="Link"
+                        htmlFor="studio-widget-link"
+                        info="Where the card's name takes you, and where On click opens."
+                      >
+                        <input
+                          id="studio-widget-link"
+                          type="url"
+                          inputMode="url"
+                          value={service.href}
+                          onChange={(event) => setService({ ...service, href: event.target.value })}
+                          placeholder="https://"
+                        />
+                      </Row>
+                    </Group>
+                  )}
+                  {boardPanel && <LookEditor part="status" {...lookProps} />}
+                </Section>
+              )}
+              {boardPanel && !stacked && lookProps.pages.length > 1 && (
+                <Section
+                  title="Page"
+                  detail="Which page it is on"
+                  summary={lookProps.pages.find((item) => item.id === page)?.name}
+                  {...sectionProps("page")}
+                >
+                  <LookEditor part="page" {...lookProps} />
+                </Section>
+              )}
+              {source && (
+                <Section title="Management" detail="Duplicate or delete" {...sectionProps("manage")}>
+                  <Group className="studio-item-actions">
+                    <ActionRow
+                      icon="copy"
+                      disabled={pending}
+                      onClick={() => {
+                        // Duplicate the saved source. Switching away from an edited
+                        // source asks before discarding its local changes.
+                        onDuplicate(duplicateEntry(panel, state, catalog));
+                      }}
+                    >
+                      Duplicate
+                    </ActionRow>
+                    <ActionRow
+                      ref={deleteButton}
+                      icon="trash"
+                      danger
+                      disabled={pending}
+                      aria-expanded={deleting}
+                      onClick={() => setDeleting(true)}
+                    >
+                      Delete
+                    </ActionRow>
+                  </Group>
+                  {deleting && (
+                    <div ref={deleteConfirm} className="studio-delete-confirm" role="alert">
+                      <strong>Delete {panel?.title || "this item"}?</strong>
+                      <p>
+                        {kind === "service"
+                          ? "This removes the service and its widgets. The rest of the dashboard stays."
+                          : "A snapshot is kept, so you can restore it from dashboard settings under Snapshots & restore."}
+                      </p>
+                      <div className="studio-inline-actions">
+                        <button
+                          ref={keepButton}
+                          type="button"
+                          className="studio-button studio-quiet"
+                          onClick={() => setDeleting(false)}
+                        >
+                          Keep it
+                        </button>
+                        <button
+                          type="button"
+                          className="studio-button studio-danger"
+                          disabled={pending}
+                          onClick={() => submit("delete")}
+                        >
+                          Delete permanently
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </Section>
+              )}
+              {guided && (
+                <Section
+                  title={guideName ? `Setting up ${guideName}` : "Setting it up"}
+                  detail={
+                    selectedEntry?.secrets?.length
+                      ? `What ${guideName || "it"} needs and how to name its secrets`
+                      : `What ${guideName || "it"} needs`
+                  }
+                  {...sectionProps("guide")}
+                >
+                  <Guide
+                    blocks={selectedEntry?.guide}
+                    notes={selectedEntry?.setupNotes}
+                    secrets={selectedEntry?.secrets}
+                    name={guideName}
+                    docs={selectedEntry?.docs}
+                  />
+                </Section>
+              )}
+            </div>
           </fieldset>
         </div>
       </div>

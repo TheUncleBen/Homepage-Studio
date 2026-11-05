@@ -146,7 +146,7 @@ describe("widget look in the widget dialog", () => {
         )}
         onSaved={onSaved}
         onCancel={vi.fn()}
-          onReload={vi.fn()}
+        onReload={vi.fn()}
         onDuplicate={vi.fn()}
       />,
     );
@@ -164,6 +164,7 @@ describe("widget look in the widget dialog", () => {
   it("previews the change and saves a look-only edit as the arrangement", async () => {
     const fetchMock = ok();
     const onSaved = renderBookmark(fetchMock);
+    fireEvent.click(screen.getByRole("button", { name: /^Look/ }));
     fireEvent.click(screen.getByRole("radio", { name: "Line" }));
     // Back to the dashboard's edge: the key is removed, not stored.
     expect(screen.getByTestId("preview")).toHaveTextContent("null");
@@ -192,6 +193,7 @@ describe("widget look in the widget dialog", () => {
     const fetchMock = ok();
     renderBookmark(fetchMock);
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Docs site" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Look/ }));
     fireEvent.click(screen.getByRole("radio", { name: "Round" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -210,6 +212,7 @@ describe("widget look in the widget dialog", () => {
     });
     expect(screen.queryByText("Open target")).toBeNull();
     expect(screen.queryByText("More options")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Behaviour/ }));
     expect(screen.getByRole("radiogroup", { name: "On click" })).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
@@ -221,7 +224,10 @@ describe("a self-contained widget", () => {
   it("adds a widget with only its name: no Group, no Service picker", async () => {
     const fetchMock = vi.fn(
       async () =>
-        new Response(JSON.stringify({ revision: "r2" }), { status: 200, headers: { "content-type": "application/json" } }),
+        new Response(JSON.stringify({ revision: "r2" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     vi.stubGlobal("fetch", fetchMock);
     renderEditor(customApi);
@@ -229,7 +235,7 @@ describe("a self-contained widget", () => {
     expect(screen.queryByLabelText("Service")).toBeNull();
     expect(screen.getByLabelText("Name")).toHaveValue("Custom API");
     fireEvent.change(screen.getByLabelText("Link"), { target: { value: "https://api.example.test" } });
-    fireEvent.click(screen.getByRole("button", { name: /Add/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to dashboard" }));
     const post = () => fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     await vi.waitFor(() => expect(post()).toBeTruthy());
     expect(String(post()[0])).toContain("/studio/api/service-widget");
@@ -239,5 +245,114 @@ describe("a self-contained widget", () => {
     expect(body).not.toHaveProperty("serviceId");
     expect(body).not.toHaveProperty("group");
     vi.unstubAllGlobals();
+  });
+});
+
+// Board 24: the dialog's settings live in sections opened one at a time, each
+// summarised while closed; the setup guide has a section of its own.
+describe("widget dialog sections", () => {
+  const board = {
+    version: 3,
+    columns: 24,
+    pages: [
+      { id: "home", name: "Home" },
+      { id: "media", name: "Media" },
+    ],
+    panels: [
+      {
+        id: "bm-1",
+        kind: "bookmark",
+        title: "Docs",
+        pageId: "media",
+        rect: { x: 0, y: 0, w: 6, h: 2 },
+        look: { fill: "tint", corners: "round" },
+      },
+    ],
+    stacks: [],
+  };
+  const renderBookmark = () =>
+    render(
+      <ContentEditor
+        state={{
+          revision: "r1",
+          services: [],
+          groups: [],
+          bookmarks: [{ id: "bm-1", name: "Docs", group: "Links", config: { href: "https://docs.example.com/a" } }],
+        }}
+        catalog={{ service: [], info: [] }}
+        panel={board.panels[0]}
+        wholeBoard={board}
+        renderPreview={() => null}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+        onReload={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    );
+
+  it("opens one section at a time and summarises the closed ones", () => {
+    renderBookmark();
+    const details = screen.getByRole("button", { name: /^Details/ });
+    const look = screen.getByRole("button", { name: /^Look/ });
+    const page = screen.getByRole("button", { name: /^Page/ });
+    // An existing item opens with everything closed and summarised.
+    for (const button of [details, look, page]) expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(details).toHaveTextContent("docs.example.com");
+    expect(look).toHaveTextContent("Tint, round");
+    expect(page).toHaveTextContent("Media");
+    fireEvent.click(look);
+    expect(look).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("radiogroup", { name: "Fill" })).toBeInTheDocument();
+    fireEvent.click(page);
+    expect(look).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("radiogroup", { name: "Fill" })).toBeNull();
+    expect(screen.getByLabelText("Page")).toHaveValue("media");
+    // Name stays outside the sections, always shown.
+    expect(screen.getByLabelText("Name")).toBeVisible();
+  });
+
+  it("keeps Duplicate and Delete under Management", () => {
+    renderBookmark();
+    expect(screen.queryByRole("button", { name: "Duplicate" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Management/ }));
+    expect(screen.getByRole("button", { name: "Duplicate" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+  });
+
+  it("a new widget opens on its connection, with the setup guide in its own section", () => {
+    renderEditor({
+      ...customApi,
+      guide: [{ type: "p", text: "Turn on the API." }],
+      secrets: [
+        {
+          key: "key",
+          label: "API key",
+          secret: "homepage_customapi_key",
+          variable: "HOMEPAGE_FILE_CUSTOMAPI_KEY",
+          reference: "{{HOMEPAGE_FILE_CUSTOMAPI_KEY}}",
+        },
+      ],
+    });
+    const connection = screen.getByRole("button", { name: /^Connection/ });
+    expect(connection).toHaveAttribute("aria-expanded", "true");
+    expect(connection).toHaveTextContent("api.example.test");
+    const guide = screen.getByRole("button", { name: /^Setting up Custom API/ });
+    expect(guide).toHaveTextContent("how to name its secrets");
+    fireEvent.click(guide);
+    expect(connection).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("Turn on the API.")).toBeVisible();
+  });
+
+  it("flags a closed section whose settings need fixing", () => {
+    renderEditor({
+      ...customApi,
+      fields: [...customApi.fields, { key: "refreshInterval", label: "Refresh interval", type: "number" }],
+    });
+    const connection = screen.getByRole("button", { name: /^Connection/ });
+    expect(connection).not.toHaveTextContent("Needs a fix");
+    fireEvent.change(screen.getByLabelText("Refresh interval"), { target: { value: "soon" } });
+    fireEvent.click(connection);
+    expect(connection).toHaveAttribute("aria-expanded", "false");
+    expect(connection).toHaveTextContent("Needs a fix");
   });
 });

@@ -2031,6 +2031,95 @@ body {
 .studio-row-stacked .studio-row-control > .studio-segmented {
   justify-self: start;
 }
+/* The widget dialog's sections (board 24): one open at a time, each closed
+   one a row with what it covers and a summary of what it is set to. */
+.studio-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 22px;
+}
+.studio-section-heading {
+  margin: 0;
+  font: inherit;
+}
+.studio-section-heading > button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--studio-raised);
+  color: var(--studio-text);
+  text-align: left;
+}
+.studio-section-heading > button:hover {
+  background: color-mix(in srgb, var(--studio-accent) 7%, var(--studio-raised));
+}
+.studio-section-open > .studio-section-heading > button {
+  box-shadow: inset 3px 0 0 var(--studio-accent);
+}
+.studio-section-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.studio-section-title {
+  font-weight: 600;
+}
+.studio-section-detail {
+  color: var(--studio-muted);
+  font-size: 13px;
+}
+.studio-section-summary {
+  flex: 0 1 40%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--studio-muted);
+  font-size: 13px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-section-attention {
+  color: var(--studio-status-problem, #e5604f);
+  font-weight: 600;
+}
+.studio-section-chevron {
+  flex: none;
+  color: var(--studio-muted);
+  transition: transform 0.2s ease;
+}
+.studio-section-open .studio-section-chevron {
+  transform: rotate(90deg);
+}
+.studio-section-body {
+  padding: 14px 0 6px;
+}
+.studio-section-body > :last-child,
+.studio-section-body .studio-look-editor > :last-child {
+  margin-bottom: 0;
+}
+@media (max-width: 560px) {
+  .studio-section-heading > button {
+    flex-wrap: wrap;
+  }
+  .studio-section-summary {
+    flex-basis: 100%;
+    order: 3;
+    text-align: left;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-section-chevron {
+    transition: none;
+  }
+}
 .studio-disclosure {
   margin: 0 0 22px;
   overflow: hidden;

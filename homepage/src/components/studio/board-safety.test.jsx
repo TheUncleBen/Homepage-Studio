@@ -497,6 +497,7 @@ describe("Native board save and draft safety", () => {
     try {
       await mountBoard();
       fireEvent.click(screen.getByRole("button", { name: "Edit Clock" }));
+      fireEvent.click(await screen.findByRole("button", { name: /^Management/ }));
       const remove = await screen.findByRole("button", { name: "Delete", exact: true });
       remove.focus();
       fireEvent.click(remove);
@@ -697,6 +698,7 @@ describe("Native board save and draft safety", () => {
   it("guards native widget and position drafts, while Apply explicitly transfers a draft to the arrangement", async () => {
     await mountBoard();
     fireEvent.click(screen.getByRole("button", { name: "Edit Clock" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Settings/ }));
     const locale = await screen.findByRole("textbox", { name: "Locale" });
     fireEvent.change(locale, { target: { value: "en-GB" } });
     fireEvent.click(
@@ -781,6 +783,7 @@ describe("Native board save and draft safety", () => {
       });
       expect(survivor).toHaveTextContent("SECOND widget");
       fireEvent.click(screen.getByRole("button", { name: "Edit Clock" }));
+      fireEvent.click(await screen.findByRole("button", { name: /^Management/ }));
       fireEvent.click(await screen.findByRole("button", { name: "Delete", exact: true }));
       fireEvent.click(screen.getByRole("button", { name: "Delete permanently" }));
       await screen.findByText(/Your changes were saved, but widget data could not refresh/);

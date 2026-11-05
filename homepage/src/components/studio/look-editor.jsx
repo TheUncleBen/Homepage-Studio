@@ -590,6 +590,43 @@ function ValueList({
 // and `behaviour` are the widget's own sparse overrides; `inherited*` is what
 // it gets from the dashboard. Every change goes through setOverride, so a
 // value equal to the dashboard's removes the key (Rule 2).
+// Whether the Values and charts part has anything to show. A widget showing
+// its status history reports no values, so the part stays to switch back.
+export function valuesPartShown({ show, fields = [], nativeValues, effective }) {
+  return Boolean(
+    show.values && (fields.length > 0 || nativeValues?.choices?.length > 0 || effective.show === "status"),
+  );
+}
+
+const FILL_LABELS = { plain: "Plain", tint: "Tint", solid: "Solid", picture: "Picture", pattern: "Pattern" };
+const EDGE_LABELS = { line: "line", shadow: "shadow", both: "line and shadow", none: "no edge" };
+const CORNER_LABELS = { square: "square", default: "default corners", round: "round" };
+const CHECK_LABELS = { web: "Web address", ping: "Ping", off: "No status check" };
+const CLICK_LABELS = { same: "opens link", new: "opens in a new tab", none: "no click" };
+
+// The one-line summaries beside each closed section (board 24), so what a
+// widget is set to reads without opening anything.
+export function lookSummaries({ kind, look = {}, behaviour = {}, inheritedLook, inheritedBehaviour, savedLooks = [] }) {
+  const show = lookSections(kind);
+  const effective = { ...inheritedLook, ...look };
+  const acts = { ...inheritedBehaviour, ...behaviour };
+  const own = lookOnly(look);
+  const saved = Object.keys(own).length ? savedLooks.find((entry) => sameLook(entry.look, own)) : null;
+  const shape = [FILL_LABELS[effective.fill], CORNER_LABELS[effective.corners], EDGE_LABELS[effective.edge]]
+    .filter(Boolean)
+    .join(", ");
+  const showing =
+    effective.show === "numbers" || !effective.show
+      ? effective.layout === "quiet"
+        ? "Quiet"
+        : "Hero"
+      : SHOW_LABELS[effective.show] || "";
+  const status = [show.status && CHECK_LABELS[acts.status], show.link && CLICK_LABELS[acts.target]]
+    .filter(Boolean)
+    .join(" · ");
+  return { look: saved ? saved.name : shape, values: showing, status };
+}
+
 export default function LookEditor({
   kind,
   look = {},
@@ -616,10 +653,11 @@ export default function LookEditor({
 }) {
   const show = sections || lookSections(kind);
   const showId = useId();
-  // The dialog puts Look and Status above the widget's own settings, and
-  // Show and Behaviour below them, as in the approved layout.
-  const top = part !== "bottom";
-  const bottom = part !== "top";
+  // The widget dialog shows each part in its own section (board 25): look,
+  // values (Values and charts), status (Status and behaviour) and page.
+  // "all" shows every part at once (several widgets edited together).
+  const inPart = (name) => part === "all" || part === name;
+  const sectioned = part !== "all";
   const effective = { ...inheritedLook, ...look };
   const acts = { ...inheritedBehaviour, ...behaviour };
   const setLook = (key, value) => onLook(setOverride(look, key, value, inheritedLook));
@@ -641,8 +679,8 @@ export default function LookEditor({
   const named = effective.header === "logo-name" || effective.header === "name";
   return (
     <div className="studio-look-editor">
-      {top && (
-        <Group title="Look">
+      {inPart("look") && (
+        <Group title={sectioned ? undefined : "Look"}>
           <SavedLooks
             saved={savedLooks}
             look={look}
@@ -674,24 +712,6 @@ export default function LookEditor({
                       ["xl", "XL"],
                     ]}
                   />
-                  {/* A trend needs a number the collector can keep (Rule 1). */}
-                  {show.charts &&
-                    effective.show === "numbers" &&
-                    ((Array.isArray(chartFields) && chartFields.length > 0) ||
-                      (effective.trend && effective.trend !== "off")) && (
-                      <Choice
-                        label="Trend"
-                        value={effective.trend}
-                        onChange={(value) => setLook("trend", value)}
-                        options={[
-                          ["off", "Off"],
-                          ["hour", "Last hour"],
-                          ["day", "Yesterday"],
-                          ["week", "Last week"],
-                        ]}
-                        info="The change in the large value since then, from the history Studio keeps for this widget."
-                      />
-                    )}
                 </Dependent>
               )}
             </>
@@ -864,7 +884,7 @@ export default function LookEditor({
           />
         </Group>
       )}
-      {top && show.status && (
+      {inPart("status") && show.status && (
         <Group title="Status">
           <Choice
             label="Check by"
@@ -923,58 +943,75 @@ export default function LookEditor({
       )}
       {/* A widget showing its status history shows no values, so it reports
           none; Show stays so it can be switched back. */}
-      {bottom &&
-        show.values &&
-        (fields.length > 0 || nativeValues?.choices?.length > 0 || effective.show === "status") && (
-          <Group
-            title="Show"
-            info="The values this widget showed last. Pick the hero, hide what you don't need, rename a value or change how its number reads."
-          >
-            {show.charts && (
-              <Row
-                label="Show as"
-                htmlFor={showId}
-                info="Charts use history Studio keeps for this widget, about one value a minute."
-              >
-                <select id={showId} value={effective.show} onChange={(event) => setLook("show", event.target.value)}>
-                  {showChoices(chartFields, effective.show, acts.status !== "off").map(([value, text]) => (
-                    <option key={value} value={value}>
-                      {text}
-                    </option>
-                  ))}
-                </select>
-              </Row>
-            )}
-            {/* Status history's range is Uptime over, in the Status section. */}
-            {show.charts && CHART_SHOWS.includes(effective.show) && (
-              <Dependent>
-                <Choice
-                  label="Time range"
-                  value={effective.chartRange}
-                  onChange={(value) => setLook("chartRange", value)}
-                  options={rangeChoices.map((key) => [key, key.replace(/(\d)([hd])/, "$1 $2")])}
-                />
-              </Dependent>
-            )}
-            {effective.show !== "status" && (
-              <ValueList
-                fields={fields}
-                values={look.values || []}
-                layout={effective.show === "numbers" ? effective.layout : "hero"}
-                show={effective.show}
-                formats={Object.fromEntries(
-                  (Array.isArray(chartFields) ? chartFields : []).map((f) => [f.field, f.format]),
-                )}
-                onChange={(values) => setLook("values", values)}
-                choices={nativeValues?.choices}
-                prefix={nativeValues?.prefix}
-                nativeFields={nativeValues?.fields}
-                onNativeFields={nativeValues?.onChange}
+      {inPart("values") && valuesPartShown({ show, fields, nativeValues, effective }) && (
+        <Group
+          title="Show"
+          info="The values this widget showed last. Pick the hero, hide what you don't need, rename a value or change how its number reads."
+        >
+          {show.charts && (
+            <Row
+              label="Show as"
+              htmlFor={showId}
+              info="Charts use history Studio keeps for this widget, about one value a minute."
+            >
+              <select id={showId} value={effective.show} onChange={(event) => setLook("show", event.target.value)}>
+                {showChoices(chartFields, effective.show, acts.status !== "off").map(([value, text]) => (
+                  <option key={value} value={value}>
+                    {text}
+                  </option>
+                ))}
+              </select>
+            </Row>
+          )}
+          {/* Status history's range is Uptime over, in the Status section. */}
+          {show.charts && CHART_SHOWS.includes(effective.show) && (
+            <Dependent>
+              <Choice
+                label="Time range"
+                value={effective.chartRange}
+                onChange={(value) => setLook("chartRange", value)}
+                options={rangeChoices.map((key) => [key, key.replace(/(\d)([hd])/, "$1 $2")])}
+              />
+            </Dependent>
+          )}
+          {/* A trend needs a number the collector can keep (Rule 1). */}
+          {show.charts &&
+            effective.show === "numbers" &&
+            effective.layout === "hero" &&
+            ((Array.isArray(chartFields) && chartFields.length > 0) ||
+              (effective.trend && effective.trend !== "off")) && (
+              <Choice
+                label="Trend"
+                value={effective.trend}
+                onChange={(value) => setLook("trend", value)}
+                options={[
+                  ["off", "Off"],
+                  ["hour", "Last hour"],
+                  ["day", "Yesterday"],
+                  ["week", "Last week"],
+                ]}
+                info="The change in the large value since then, from the history Studio keeps for this widget."
               />
             )}
-          </Group>
-        )}
-      {bottom && (
+          {effective.show !== "status" && (
+            <ValueList
+              fields={fields}
+              values={look.values || []}
+              layout={effective.show === "numbers" ? effective.layout : "hero"}
+              show={effective.show}
+              formats={Object.fromEntries(
+                (Array.isArray(chartFields) ? chartFields : []).map((f) => [f.field, f.format]),
+              )}
+              onChange={(values) => setLook("values", values)}
+              choices={nativeValues?.choices}
+              prefix={nativeValues?.prefix}
+              nativeFields={nativeValues?.fields}
+              onNativeFields={nativeValues?.onChange}
+            />
+          )}
+        </Group>
+      )}
+      {inPart("status") && (
         <Group title="Behaviour">
           {show.link && (
             <Choice
@@ -987,17 +1024,6 @@ export default function LookEditor({
                 ["none", "Nothing"],
               ]}
             />
-          )}
-          {pages.length > 1 && onPage && (
-            <Row label="Page" htmlFor="studio-widget-page">
-              <select id="studio-widget-page" value={pageId} onChange={(event) => onPage(event.target.value)}>
-                {pages.map((page) => (
-                  <option key={page.id} value={page.id}>
-                    {page.name}
-                  </option>
-                ))}
-              </select>
-            </Row>
           )}
           <Choice
             label="On phones"
@@ -1036,6 +1062,19 @@ export default function LookEditor({
               />
             </>
           )}
+        </Group>
+      )}
+      {inPart("page") && pages.length > 1 && onPage && (
+        <Group>
+          <Row label="Page" htmlFor="studio-widget-page">
+            <select id="studio-widget-page" value={pageId} onChange={(event) => onPage(event.target.value)}>
+              {pages.map((page) => (
+                <option key={page.id} value={page.id}>
+                  {page.name}
+                </option>
+              ))}
+            </select>
+          </Row>
         </Group>
       )}
     </div>
