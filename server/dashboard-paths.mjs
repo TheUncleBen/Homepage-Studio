@@ -26,13 +26,28 @@ export function validateDashboardSlug(slug, id) {
   return slug;
 }
 const exactKeys = (value, keys) => value && !Array.isArray(value) && typeof value === 'object' && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+// How long an archived dashboard is kept before it is deleted for good
+// (owner request E3, board 28): days, or never. 30 is the default and is
+// never stored.
+export const ARCHIVE_RETENTION = Object.freeze([7, 30, 90, 'never']);
+export const DEFAULT_ARCHIVE_RETENTION = 30;
+export const archiveRetentionOf = manifest => manifest.archiveRetention ?? DEFAULT_ARCHIVE_RETENTION;
+// When an archived dashboard is deleted automatically, or null for never.
+export function archiveDeletesAt(entry, retention) {
+  if (!entry.archived || retention === 'never' || !entry.archivedAt) return null;
+  return new Date(Date.parse(entry.archivedAt) + retention * 24 * 60 * 60 * 1000).toISOString();
+}
 export function validateDashboardManifest(value) {
   const invalid = () => { throw new DashboardError('The dashboard registry is invalid. Existing dashboard files have not been changed.', 'INVALID_DASHBOARD_REGISTRY', 503); };
-  if (!exactKeys(value, ['version', 'revision', 'dashboards']) || value.version !== 1 || typeof value.revision !== 'string' || !uuid.test(value.revision) || !Array.isArray(value.dashboards) || !value.dashboards.length || value.dashboards.length > MAX_DASHBOARDS) invalid();
+  const retention = Object.hasOwn(value ?? {}, 'archiveRetention');
+  if (retention && (!ARCHIVE_RETENTION.includes(value.archiveRetention) || value.archiveRetention === DEFAULT_ARCHIVE_RETENTION)) invalid();
+  if (!exactKeys(value, ['version', 'revision', 'dashboards', ...(retention ? ['archiveRetention'] : [])]) || value.version !== 1 || typeof value.revision !== 'string' || !uuid.test(value.revision) || !Array.isArray(value.dashboards) || !value.dashboards.length || value.dashboards.length > MAX_DASHBOARDS) invalid();
   const ids = new Set(), slugs = new Set();
   try {
     for (const entry of value.dashboards) {
-      if (!exactKeys(entry, ['id', 'name', 'slug', 'archived']) || typeof entry.archived !== 'boolean') invalid();
+      // An archived dashboard says when it was archived.
+      if (!exactKeys(entry, ['id', 'name', 'slug', 'archived', ...(entry?.archived ? ['archivedAt'] : [])]) || typeof entry.archived !== 'boolean') invalid();
+      if (entry.archived && (typeof entry.archivedAt !== 'string' || !Number.isFinite(Date.parse(entry.archivedAt)))) invalid();
       validateDashboardId(entry.id); validateDashboardSlug(entry.slug, entry.id);
       if (validateDashboardName(entry.name) !== entry.name || ids.has(entry.id) || slugs.has(entry.slug) || (entry.id === 'default' && entry.archived)) invalid();
       ids.add(entry.id); slugs.add(entry.slug);

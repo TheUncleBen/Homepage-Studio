@@ -60,7 +60,7 @@ async function fixture(t) {
     async drain(id) { drains.push(id); },
     async close() { closes++; },
   };
-  const app = createStudioServer({ configDir, stateDir, rendererDir, rendererPool: pool, allowedHosts: HOST, buildRevision: BUILD, auth: 'off' });
+  const app = createStudioServer({ configDir, stateDir, rendererDir, rendererPool: pool, allowedHosts: HOST, buildRevision: BUILD, auth: 'off', archiveSweepMs: 0 });
   const port = await listen(app.server);
   await addressMainDashboard({ port, host: HOST, origin: ORIGIN });
   drains.length = 0;
@@ -437,4 +437,33 @@ test('saved widgets: saved from a dashboard, listed without settings, placed on 
   const again = await f.post('/family/studio/api/library/use', { scope: 'everyone', id: saved.json.entry.id, revision: placed.json.revision, pageId: 'home' });
   assert.equal(again.status, 200, again.text);
   assert.deepEqual(again.json.services.map(item => item.name).sort(), ['Edge', 'Edge 2']);
+});
+
+test('an archived dashboard is deleted for good when its name is typed, and its address becomes free', async t => {
+  const f = await fixture(t);
+  const child = await f.create('garden');
+  const childState = dashboardStateDir(f.stateDir, child.id);
+  assert.equal((await f.mutate({ action: 'delete', id: child.id, confirmName: 'garden' })).status, 400, 'only an archived dashboard');
+  assert.equal((await f.mutate({ action: 'archive', id: child.id, confirmed: true })).status, 200);
+  let overview = (await f.request('/studio/api/overview')).json;
+  const archived = overview.dashboards.find(item => item.id === child.id);
+  assert.equal(overview.archiveRetention, 30);
+  assert.equal(Date.parse(archived.deletesAt) - Date.parse(archived.archivedAt), 30 * 24 * 60 * 60 * 1000);
+  assert.equal((await f.mutate({ action: 'delete', id: child.id, confirmName: 'Garden' })).status, 400, 'the exact name');
+  assert.equal((await f.mutate({ action: 'expire' })).status, 400, 'expiry is never a request');
+  const deleted = await f.mutate({ action: 'delete', id: child.id, confirmName: 'garden' });
+  assert.equal(deleted.status, 200, deleted.text);
+  assert.ok(!deleted.json.registry.dashboards.some(item => item.id === child.id));
+  await assert.rejects(fs.stat(dashboardConfigDir(f.configDir, child.id)), { code: 'ENOENT' });
+  await assert.rejects(fs.stat(childState), { code: 'ENOENT' });
+  // The address is free again.
+  await f.create('garden');
+  // Never keeps archives until someone deletes them; the default is not stored.
+  assert.equal((await f.mutate({ action: 'retention', days: 'never' })).status, 200);
+  overview = (await f.request('/studio/api/overview')).json;
+  assert.equal(overview.archiveRetention, 'never');
+  assert.equal((await f.mutate({ action: 'retention', days: 14 })).status, 400);
+  assert.equal((await f.mutate({ action: 'retention', days: 30 })).status, 200);
+  const registryFile = JSON.parse(await fs.readFile(path.join(f.configDir, DASHBOARD_REGISTRY_FILE), 'utf8'));
+  assert.equal(Object.hasOwn(registryFile, 'archiveRetention'), false);
 });

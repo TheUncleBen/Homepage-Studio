@@ -3156,10 +3156,10 @@ body {
   align-items: baseline;
   gap: 12px;
   padding: 5px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--card-text) 10%, transparent);
 }
-.studio-values-table .studio-value:last-child {
-  border-bottom: 0;
+/* A line between rows; each row sits in its own fold item. */
+.studio-values-table .studio-fold-item + .studio-fold-item .studio-value {
+  border-top: 1px solid color-mix(in srgb, var(--card-text) 10%, transparent);
 }
 .studio-values-table .studio-value-number {
   font-size: 14px;
@@ -5149,4 +5149,22 @@ svg.studio-chart-gauge {
 .studio-save-as .studio-row {
   border-radius: 12px;
   background: var(--studio-raised);
+}
+/* Values fold, never scroll (board 28): what doesn't fit is counted. */
+.studio-fold-item {
+  display: contents;
+}
+.studio-fold-item[hidden] {
+  display: none;
+}
+.studio-values-more {
+  grid-column: 1 / -1;
+  align-self: flex-end;
+  justify-self: end;
+  color: var(--card-muted-text);
+  font-size: 12px;
+  line-height: 18px;
+}
+.studio-native-content:has(.studio-values) {
+  overflow: hidden;
 }

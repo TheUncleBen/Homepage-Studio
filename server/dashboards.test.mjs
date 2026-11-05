@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { createDashboardRegistry, resolveDashboardRoute } from './dashboards.mjs';
 import { DASHBOARD_REGISTRY_FILE, DASHBOARD_REGISTRY_MARKER, validateDashboardManifest, dashboardConfigDir, suggestedDashboardSlug } from './dashboard-paths.mjs';
 
-async function fixture(t, prepare, cleanup) {
+async function fixture(t, prepare, cleanup, { removeDashboard } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-dashboard-registry-'));
   const configRoot = path.join(root, 'config');
   const prepared = [];
@@ -15,7 +15,7 @@ async function fixture(t, prepare, cleanup) {
   const registry = createDashboardRegistry({ configRoot, prepareDashboard: async (entry, source) => {
     prepared.push({ entry: structuredClone(entry), source: source && structuredClone(source) });
     await prepare?.(entry, source);
-  }, cleanupDashboard: async entry => { cleaned.push(structuredClone(entry)); await cleanup?.(entry); } });
+  }, cleanupDashboard: async entry => { cleaned.push(structuredClone(entry)); await cleanup?.(entry); }, removeDashboard });
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   return { root, configRoot, registry, prepared, cleaned };
 }
@@ -264,4 +264,25 @@ test('marker repair rejects links and directories without changing targets', asy
   assert.equal(await fs.readFile(outside, 'utf8'), 'untouched');
   await fs.unlink(marker); await fs.mkdir(marker);
   await rejectsCode(f.registry.initialize(), 'INVALID_DASHBOARD_REGISTRY');
+});
+
+test('archived dashboards past their time are deleted by the sweep, others kept', async t => {
+  const removed = [];
+  const { registry } = await fixture(t, undefined, undefined, { removeDashboard: async entry => removed.push(entry.id) });
+  await registry.initialize();
+  const old = (await create(registry, 'old')).dashboard;
+  const recent = (await create(registry, 'recent')).dashboard;
+  for (const id of [old.id, recent.id]) await registry.mutate({ action: 'archive', revision: (await registry.read()).revision, id, confirmed: true });
+  const archivedAt = Date.parse((await registry.read()).dashboards.find(item => item.id === old.id).archivedAt);
+  let result = await registry.mutate({ action: 'expire', revision: (await registry.read()).revision, now: archivedAt + 29 * 24 * 60 * 60 * 1000 });
+  assert.deepEqual(result.removed, []);
+  await registry.mutate({ action: 'retention', revision: (await registry.read()).revision, days: 7 });
+  result = await registry.mutate({ action: 'expire', revision: (await registry.read()).revision, now: archivedAt + 8 * 24 * 60 * 60 * 1000 });
+  assert.deepEqual(result.removed.map(item => item.id).sort(), [old.id, recent.id].sort());
+  assert.deepEqual(removed.sort(), [old.id, recent.id].sort());
+  await registry.mutate({ action: 'retention', revision: (await registry.read()).revision, days: 'never' });
+  const kept = (await create(registry, 'kept')).dashboard;
+  await registry.mutate({ action: 'archive', revision: (await registry.read()).revision, id: kept.id, confirmed: true });
+  result = await registry.mutate({ action: 'expire', revision: (await registry.read()).revision, now: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000 });
+  assert.deepEqual(result.removed, []);
 });

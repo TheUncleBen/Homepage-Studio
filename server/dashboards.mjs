@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import {
   DASHBOARD_REGISTRY_FILE, DASHBOARD_REGISTRY_MARKER, MAX_DASHBOARDS, MAX_REGISTRY_BYTES,
   DashboardError, validateDashboardManifest, validateDashboardName, validateDashboardSlug, dashboardBasePath,
+  ARCHIVE_RETENTION, DEFAULT_ARCHIVE_RETENTION, archiveDeletesAt, archiveRetentionOf,
 } from './dashboard-paths.mjs';
 
 const copy = value => structuredClone(value);
@@ -38,7 +39,7 @@ async function syncDirectory(directory) {
   const handle = await fs.open(directory, 'r');
   try { await handle.sync(); } finally { await handle.close(); }
 }
-export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupDashboard }) {
+export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupDashboard, removeDashboard }) {
   configRoot = resolve(configRoot);
   const registryFile = join(configRoot, DASHBOARD_REGISTRY_FILE);
   const markerFile = join(configRoot, DASHBOARD_REGISTRY_MARKER);
@@ -117,7 +118,7 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
     read: async () => copy(await read()),
     mutate: change => serial(async () => {
       if (!change || typeof change !== 'object' || Array.isArray(change)) throw new DashboardError('Choose a dashboard operation.', 'INVALID_DASHBOARD_ACTION');
-      const fields = { create: ['name', 'slug', 'sourceId', 'starter'], update: ['id', 'name', 'slug'], archive: ['id', 'confirmed'], restore: ['id'] };
+      const fields = { create: ['name', 'slug', 'sourceId', 'starter'], update: ['id', 'name', 'slug'], archive: ['id', 'confirmed'], restore: ['id'], delete: ['id', 'confirmName'], retention: ['days'], expire: ['now'] };
       if (!Object.hasOwn(fields, change.action)) throw new DashboardError('Choose a supported dashboard operation.', 'INVALID_DASHBOARD_ACTION');
       const allowed = new Set(['revision', 'action', ...fields[change.action]]);
       if (Object.keys(change).some(key => !allowed.has(key))) throw new DashboardError('Unexpected dashboard fields.', 'INVALID_DASHBOARD_ACTION');
@@ -125,6 +126,27 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
       if (change.revision !== current.revision) conflict();
       const next = copy(current);
       let entry, newEntry;
+      // Archived dashboards past their time, deleted by the server's own
+      // sweep (never from a request: index.mjs refuses this action there).
+      if (change.action === 'expire') {
+        const retention = archiveRetentionOf(current);
+        const now = typeof change.now === 'number' ? change.now : Date.now();
+        const expired = current.dashboards.filter(item => { const at = archiveDeletesAt(item, retention); return at && Date.parse(at) <= now; });
+        if (!expired.length) return { registry: copy(current), removed: [] };
+        next.dashboards = next.dashboards.filter(item => !expired.some(gone => gone.id === item.id));
+        next.revision = randomUUID();
+        await publish(next, current.revision);
+        for (const gone of expired) await removeDashboard?.(copy(gone));
+        return { registry: copy(next), removed: expired.map(copy) };
+      }
+      if (change.action === 'retention') {
+        if (!ARCHIVE_RETENTION.includes(change.days)) throw new DashboardError('Choose 7, 30 or 90 days, or never.', 'INVALID_DASHBOARD_ACTION');
+        if (change.days === DEFAULT_ARCHIVE_RETENTION) delete next.archiveRetention;
+        else next.archiveRetention = change.days;
+        next.revision = randomUUID();
+        await publish(next, current.revision);
+        return { registry: copy(next) };
+      }
       try {
         if (change.action === 'create') {
           if (current.dashboards.length >= MAX_DASHBOARDS) throw new DashboardError('This deployment supports up to ' + MAX_DASHBOARDS + ' dashboards, including archives.', 'DASHBOARD_LIMIT');
@@ -150,12 +172,20 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
             if (entry.id === 'default') throw new DashboardError('The original dashboard must remain available. You can rename it or change its address.', 'DEFAULT_DASHBOARD_REQUIRED');
             if (change.confirmed !== true) throw new DashboardError('Confirm archiving this dashboard. Its files and snapshots will be retained.', 'DASHBOARD_CONFIRMATION_REQUIRED');
             entry.archived = true;
+            entry.archivedAt = new Date().toISOString();
+          } else if (change.action === 'delete') {
+            // Deleting for good (board 28): only an archived dashboard, and
+            // only when its name is typed to confirm.
+            if (!entry.archived) throw new DashboardError('Archive the dashboard before deleting it.', 'DASHBOARD_NOT_ARCHIVED');
+            if (change.confirmName !== entry.name) throw new DashboardError('Type the dashboard’s name exactly to delete it for good.', 'DASHBOARD_CONFIRMATION_REQUIRED');
+            next.dashboards = next.dashboards.filter(item => item.id !== entry.id);
           } else {
-            await prepareDashboard(entry); entry.archived = false;
+            await prepareDashboard(entry); entry.archived = false; delete entry.archivedAt;
           }
         }
         next.revision = randomUUID();
         await publish(next, current.revision);
+        if (change.action === 'delete') await removeDashboard?.(copy(entry));
         return { registry: copy(next), dashboard: copy(entry) };
       } catch (error) {
         if (newEntry && cleanupDashboard) {

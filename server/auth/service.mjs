@@ -1413,6 +1413,16 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     await store.mutate(data => { data.grants[toId] = structuredClone(data.grants[fromId] ?? []); });
   }
 
+  // A dashboard deleted for good: its access list goes, and nobody keeps it
+  // as their default.
+  async function forgetDashboard(id) {
+    await store.mutate(data => {
+      delete data.grants[id];
+      for (const user of data.users) if (user.defaultDashboardId === id) delete user.defaultDashboardId;
+      for (const group of data.groups) if (group.defaultDashboardId === id) delete group.defaultDashboardId;
+    });
+  }
+
   // ---- Single sign-on -----------------------------------------------------
 
   // Owner direction (24 Oct 2026): a person links their own local and
@@ -1675,7 +1685,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     settled: () => Promise.all([...background]),
     startSetup, resumeSetup, inviteDetails, startInvite, enrollTotpStart, enrollTotpConfirm, enrollPasskeyOptions, enrollPasskeyVerify, finishEnrollment,
     requestRecovery, recoveryDetails, finishRecovery, redeemRecovery,
-    account, admin, copyGrants, audience, siteName, oidcStart, oidcCallback, backchannelLogout,
+    account, admin, copyGrants, forgetDashboard, audience, siteName, oidcStart, oidcCallback, backchannelLogout,
     dashboardLevel: (current, id) => current ? current.level(id) : 'none',
     hasOidc: Boolean(oidc), hasMail: Boolean(mailer),
   };

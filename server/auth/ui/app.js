@@ -1924,7 +1924,10 @@
     const message = notice();
     const isAdmin = !view.authEnabled || view.user?.role === 'admin';
     const registry = change => call('/studio/api/dashboards', { revision: view.revision, ...change });
-    async function reload(success) {
+    // The Archived list stays open across a reload made from inside it.
+    let openArchived = false;
+    async function reload(success, { open = false } = {}) {
+      openArchived = open || Boolean(document.querySelector('.archived-list[open]'));
       view = await call('/studio/api/overview');
       draw();
       if (success) say(message, success, 'ok');
@@ -2010,6 +2013,21 @@
         const restore = h('button', { type: 'button', class: 'pill accent', text: 'Restore' });
         restore.addEventListener('click', () => busy(restore, 'Restoring…', async () => { try { await registry({ action: 'restore', id: entry.id }); await reload(`${entry.name} is back.`); } catch (error) { failure(message, error); } }));
         actions.push(restore);
+        // Deleting for good asks for the name typed (board 28).
+        actions.push(h('button', { type: 'button', class: 'pill danger', text: 'Delete', onclick: () => openDialog(`Delete ${entry.name} for good?`, close => {
+          const box = notice();
+          const typed = h('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', 'aria-label': `Type ${entry.name} to confirm` });
+          const remove = h('button', { type: 'button', class: 'danger', text: 'Delete for good', disabled: true });
+          typed.addEventListener('input', () => { remove.disabled = typed.value !== entry.name; });
+          remove.addEventListener('click', () => busy(remove, 'Deleting…', async () => {
+            try { await registry({ action: 'delete', id: entry.id, confirmName: typed.value }); close(); await reload(`${entry.name} is deleted.`); }
+            catch (error) { failure(box, error); }
+          }));
+          return h('div', { class: 'stack' },
+            h('p', { text: 'Its widgets, pages, pictures, saved widgets and snapshot history are removed, and its address becomes free. This can’t be undone. Type its name to confirm.' }),
+            typed, box,
+            h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Keep it' }), remove));
+        }) }));
       }
       return h('article', { class: 'dashboard-row' + (entry.archived ? ' archived' : '') },
         preview(entry),
@@ -2017,9 +2035,17 @@
           h('div', { class: 'dashboard-head' },
             h('div', { class: 'dashboard-title' }, h('h2', { text: entry.name }), h('div', { class: 'badges' }, badges)),
             more.length ? moreMenu(entry.name, more) : null),
-          h('p', { class: 'small muted mono address', text: entry.path ? location.host + entry.path : 'No address yet' }),
+          entry.archived
+            ? h('p', { class: 'small muted', text: archivedText(entry) })
+            : h('p', { class: 'small muted mono address', text: entry.path ? location.host + entry.path : 'No address yet' }),
           h('p', { class: 'small muted facts-line' }, [isAdmin ? audienceText(entry.audience) : null, 'Changed ' + changedText(entry.lastChanged).replace(/^Not changed yet$/, 'never')].filter(Boolean).join(' · ')),
           actions.length ? h('div', { class: 'dashboard-actions' }, actions) : null));
+    }
+    // "Archived 2 Nov · deleted automatically on 2 Dec" (board 28).
+    function archivedText(entry) {
+      const day = time => new Date(time).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+      const archived = entry.archivedAt ? `Archived ${day(entry.archivedAt)}` : 'Archived';
+      return entry.deletesAt ? `${archived} · deleted automatically on ${day(entry.deletesAt)}` : `${archived} · kept until you delete it`;
     }
     // The row's More menu, closed by a click outside or Escape.
     function moreMenu(name, items) {
@@ -2157,7 +2183,16 @@
         active.length ? h('div', { class: 'dashboard-list' }, active.map(card))
           : h('section', { class: 'section center' }, h('h2', { text: 'No dashboards have been shared with you yet' }), h('p', { class: 'muted', text: 'Ask an administrator to share a dashboard with your account.' })),
       ];
-      if (archived.length) parts.push(h('details', { class: 'archived-list' }, h('summary', {}, icon('chevron', 15), h('span', { text: `Archived (${archived.length})` })), h('div', { class: 'dashboard-list' }, archived.map(card))));
+      if (archived.length) {
+        // How long archived dashboards are kept before they are deleted for good.
+        const keep = isAdmin ? h('div', { class: 'archive-retention' },
+          h('span', { class: 'small', text: 'Delete archived dashboards after' }),
+          segmented({ value: view.archiveRetention ?? 30, label: 'Delete archived dashboards after', options: [[7, '7 days'], [30, '30 days'], [90, '90 days'], ['never', 'Never']], onChange: async days => {
+            try { await registry({ action: 'retention', days }); await reload(days === 'never' ? 'Archived dashboards are kept until you delete them.' : `Archived dashboards are deleted ${days} days after archiving.`, { open: true }); }
+            catch (error) { failure(message, error); }
+          } })) : null;
+        parts.push(h('details', { class: 'archived-list', ...(openArchived ? { open: true } : {}) }, h('summary', {}, icon('chevron', 15), h('span', { text: `Archived (${archived.length})` })), keep, h('div', { class: 'dashboard-list' }, archived.map(card))));
+      }
       render(...pageChrome('/studio/dashboards', view.user, ...parts));
       if (view.mainNeedsAddress && !document.querySelector('dialog[open]')) askMainAddress();
     }

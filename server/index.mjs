@@ -7,7 +7,7 @@ import { createConfigStore, ConfigError, MAX_IMPORT_BYTES } from './config.mjs';
 import { BoardError, infoWidgetLabel } from './board.mjs';
 import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute, sharedPublic } from './dashboards.mjs';
-import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug } from './dashboard-paths.mjs';
+import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug, archiveDeletesAt, archiveRetentionOf } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
 import { starterFiles, starterChoices, starterLayout } from './starters.mjs';
 import { createHistoryStore, retentionDays } from './history.mjs';
@@ -938,6 +938,17 @@ export function createStudioServer(options = {}) {
     for (const entry of saved) await target.connections.add({ name: entry.name, url: entry.url, ...entry.secrets }, { id: entry.id });
     // And its saved widgets.
     if (savedWidgets.length) await target.library.copyFrom(savedWidgets);
+  }, removeDashboard: async entry => {
+    // Deleted for good (board 28): its worker, files, pictures, saved
+    // widgets and snapshot history go, and its address becomes free.
+    try { await rendererPool.drain?.(entry.id); } catch (error) { console.error('Dashboard worker cleanup failed:', error.code || error.name); }
+    handlers.delete(entry.id);
+    for (const directory of new Set([dashboardConfigDir(configRoot, entry.id), dashboardStateDir(stateRoot, entry.id)])) {
+      try { await requireRealDirectory(directory); }
+      catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+    await auth?.forgetDashboard(entry.id);
   }, cleanupDashboard: async entry => {
     if (entry.id === 'default') throw new DashboardError('The original dashboard cannot be removed.', 'DEFAULT_DASHBOARD_REQUIRED');
     const owned = unpublished.get(entry.id);
@@ -1249,10 +1260,14 @@ export function createStudioServer(options = {}) {
         if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST for dashboard management.' });
         if (!isAdmin) return forbidden(res, 'Only administrators can manage dashboards.');
         const change = await readBody(req);
+        // Expiry is the server's own sweep, never a request.
+        if (change?.action === 'expire') throw new DashboardError('Choose a supported dashboard operation.', 'INVALID_DASHBOARD_ACTION');
         // "Copy access" is a sign-in option, not a registry field.
         const copyAccess = change.copyAccess === true;
         delete change.copyAccess;
         const result = await registry.mutate(change);
+        if (change.action === 'retention') return json(res, 200, result);
+        if (change.action === 'delete') return json(res, 200, { registry: result.registry, deleted: { id: result.dashboard.id, name: result.dashboard.name } });
         if (auth && copyAccess && change.action === 'create' && change.sourceId) await auth.copyGrants(change.sourceId, result.dashboard.id);
         unpublished.delete(result.dashboard.id);
         forDashboard(result.dashboard);
@@ -1286,8 +1301,10 @@ export function createStudioServer(options = {}) {
           user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role, defaultDashboardId: current.user.defaultDashboardId ?? null } : null,
           landingId: auth ? current.landing(manifest.dashboards) : null,
           revision: isAdmin ? manifest.revision : undefined,
+          archiveRetention: isAdmin ? archiveRetentionOf(manifest) : undefined,
           dashboards: await Promise.all(listed.map(async entry => ({
             id: entry.id, name: entry.name, slug: entry.slug, path: dashboardBasePath(entry) || null, archived: entry.archived, level: level(entry),
+            ...(entry.archived ? { archivedAt: entry.archivedAt, deletesAt: archiveDeletesAt(entry, archiveRetentionOf(manifest)) } : {}),
             lastChanged: await forDashboard(entry).store.lastChanged().catch(() => null),
             audience: isAdmin && auth ? auth.audience(entry.id) : undefined,
           }))),
@@ -1477,9 +1494,27 @@ export function createStudioServer(options = {}) {
     finally { collecting = false; }
   }, collectMs) : null;
   collector?.unref();
+  // Archived dashboards past their time are deleted for good (board 28):
+  // checked shortly after start and then every hour.
+  const expireArchives = async () => {
+    if (applicationClosing) return;
+    try {
+      const manifest = await prepareRegistry();
+      const result = await registry.mutate({ revision: manifest.revision, action: 'expire' });
+      for (const gone of result.removed) console.log('Deleted archived dashboard after its time:', gone.id);
+    } catch (error) {
+      if (error.code !== 'DASHBOARDS_NOT_READY' && error.code !== 'DASHBOARD_REVISION_CONFLICT') console.error('Archived dashboard clean-up failed:', error.code || error.name);
+    }
+  };
+  const archiveSweep = options.archiveSweepMs === 0 ? null : setInterval(expireArchives, options.archiveSweepMs ?? 60 * 60 * 1000);
+  archiveSweep?.unref();
+  const firstSweep = options.archiveSweepMs === 0 ? null : setTimeout(expireArchives, 30 * 1000);
+  firstSweep?.unref();
   let shutdownResult;
   function shutdown({ graceMs = 10000 } = {}) {
     if (collector) clearInterval(collector);
+    if (archiveSweep) clearInterval(archiveSweep);
+    if (firstSweep) clearTimeout(firstSweep);
     if (shutdownResult) return shutdownResult;
     if (!Number.isInteger(graceMs) || graceMs < 0 || graceMs > 30000) throw new Error('Shutdown grace must be an integer from 0 to 30000 milliseconds.');
     applicationClosing = true;

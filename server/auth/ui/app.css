@@ -453,6 +453,8 @@ dialog .group-body .pill { background: var(--surface); }
 .pill:hover:not(:disabled) { border: 0; background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line, var(--accent)); }
 .pill.accent, .group-body .pill.accent { background: var(--accent-solid); color: var(--accent-contrast); }
 .pill.accent:hover:not(:disabled) { filter: brightness(1.1); box-shadow: none; background: var(--accent-solid); }
+.pill.danger { color: var(--danger-text); }
+.archive-retention { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; }
 .notice .pill { background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; }
 /* Dashboard access */
 .grant-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 10px 8px 16px; }
