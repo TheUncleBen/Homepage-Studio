@@ -4843,3 +4843,29 @@ svg.studio-chart-gauge {
     grid-column: 1 / -1;
   }
 }
+/* Board 27: values set to Number (and a pie's total) beside the chart. */
+.studio-chart-with-numbers {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.studio-chart-with-numbers > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.studio-chart-numbers {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  flex: none;
+}
+.studio-chart-numbers dt {
+  font-size: 11px;
+  color: var(--studio-card-muted, var(--studio-muted));
+}
+.studio-chart-numbers dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}

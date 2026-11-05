@@ -401,3 +401,50 @@ describe("Status history on a service tile", () => {
     expect(screen.getByRole("radiogroup", { name: "Style" })).toBeTruthy();
   });
 });
+
+// Board 27 (approved 4 Nov 2026): every value the integration provides is
+// listed, in your order, as a number, in the chart, or hidden; the widget's
+// own fields list follows, so the YAML says what the card shows.
+describe("one Values list for every value", () => {
+  const pfsense = ["load", "memory", "temp", "wanStatus"].map((key) => ({
+    field: `pfsense.${key}`,
+    label: `pfsense.${key}`,
+  }));
+  const native = (fieldsList, onChange = vi.fn()) => ({
+    choices: ["load", "memory", "temp", "wanStatus", "wanIP", "disk"],
+    prefix: "pfsense",
+    fields: fieldsList,
+    onChange,
+  });
+
+  it("lists values the widget isn't drawing yet as hidden, and showing one adds it to the fields list", () => {
+    const onChange = vi.fn();
+    renderEditor({ fields: pfsense, nativeValues: native(undefined, onChange) });
+    expect(screen.getByLabelText("Where pfsense.wanIP shows")).toHaveValue("hidden");
+    expect(screen.getByLabelText("Where pfsense.disk shows")).toHaveValue("hidden");
+    fireEvent.change(screen.getByLabelText("Where pfsense.wanIP shows"), { target: { value: "below" } });
+    expect(onChange).toHaveBeenCalledWith(["load", "memory", "temp", "wanStatus", "wanIP"]);
+  });
+
+  it("hiding a value removes it from the fields list, and moving one reorders it", () => {
+    const onChange = vi.fn();
+    renderEditor({ fields: pfsense, nativeValues: native(["load", "memory", "temp", "wanStatus"], onChange) });
+    fireEvent.change(screen.getByLabelText("Where pfsense.temp shows"), { target: { value: "hidden" } });
+    expect(onChange).toHaveBeenLastCalledWith(["load", "memory", "wanStatus"]);
+    fireEvent.click(screen.getByRole("button", { name: "Move pfsense.memory up" }));
+    expect(onChange).toHaveBeenLastCalledWith(["memory", "load", "temp", "wanStatus"]);
+  });
+
+  it("leaves the usual set alone when only a name changes", () => {
+    const onChange = vi.fn();
+    renderEditor({ fields: pfsense, nativeValues: native(undefined, onChange) });
+    fireEvent.change(screen.getByLabelText("Name shown for pfsense.load"), { target: { value: "CPU" } });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("on a chart, each value goes in the chart, beside it as a number, or nowhere", () => {
+    renderEditor({ fields: pfsense, look: { show: "line" } });
+    const where = screen.getByLabelText("Where pfsense.load shows");
+    expect([...where.options].map((option) => option.textContent)).toEqual(["Chart", "Number", "Hidden"]);
+  });
+});

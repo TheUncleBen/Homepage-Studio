@@ -111,7 +111,28 @@ export function chartSeries(history, card, labelOf) {
       name: entry.arranged?.label || labelOf(entry.field.label || entry.field.field),
       colour: entry.arranged?.colour || PALETTE[position % PALETTE.length],
     }))
-    .filter((entry) => entry.arranged?.slot !== "hidden");
+    .filter((entry) => entry.arranged?.slot !== "hidden" && entry.arranged?.slot !== "number");
+}
+
+// Board 27: a value that is the sum of others (a total) is never a slice of
+// a pie or donut; it stands beside the chart as a number instead.
+export const isTotal = (field) =>
+  [field.field, field.label].some((key) => typeof key === "string" && /(^|[._-])total$/i.test(key));
+
+// The values a card shows as numbers beside its chart: those set to Number,
+// and on a pie or donut the totals it leaves out.
+export function besideSeries(history, card, labelOf) {
+  if (!history?.fields?.length) return [];
+  const arranged = new Map((card.values || []).map((value, order) => [value.field, { ...value, order }]));
+  const round = card.show === "donut" || card.show === "pie";
+  return history.fields
+    .map((field) => ({ field, arranged: arranged.get(field.field) }))
+    .filter(
+      (entry) =>
+        entry.arranged?.slot === "number" || (round && entry.arranged?.slot !== "hidden" && isTotal(entry.field)),
+    )
+    .sort((a, b) => (a.arranged?.order ?? Infinity) - (b.arranged?.order ?? Infinity))
+    .map((entry) => ({ ...entry, name: entry.arranged?.label || labelOf(entry.field.label || entry.field.field) }));
 }
 
 const W = 300;
@@ -512,7 +533,7 @@ export function CardChart({ card, onOpen }) {
     body = <Gauge entry={entry} value={value} text={format(entry.field, value)} level={ruleLevel(rule, value)} />;
   } else if (round) {
     const unit = partsFormat(history.fields);
-    const parts = series.filter((entry) => (entry.field.format || "plain") === unit);
+    const parts = series.filter((entry) => (entry.field.format || "plain") === unit && !isTotal(entry.field));
     const hero = heroSeries(parts);
     const total = parts.reduce((sum, entry) => {
       const value = history.latest.values?.[entry.field.field];
@@ -536,9 +557,22 @@ export function CardChart({ card, onOpen }) {
       ? `Since ${when.time(since)}`
       : RANGE_LABELS[card.chartRange]
     : null;
+  const beside = besideSeries(history, card, labelOf);
   const content = (
     <>
-      <div className={`studio-chart studio-chart-${show}`}>{body}</div>
+      <div className={`studio-chart studio-chart-${show}${beside.length ? " studio-chart-with-numbers" : ""}`}>
+        {body}
+        {beside.length > 0 && (
+          <dl className="studio-chart-numbers">
+            {beside.map((entry) => (
+              <div key={entry.field.field}>
+                <dt>{entry.name}</dt>
+                <dd>{format(entry.field, history.latest.values?.[entry.field.field])}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
       {/* One line under the chart: the legend, then the range. */}
       {((!round && show !== "gauge" && series.length > 1) || label) && (
         <div className="studio-chart-foot">

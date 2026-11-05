@@ -373,10 +373,50 @@ function GaugeValue({ rows, formats, commit }) {
   );
 }
 
-function ValueList({ fields, values, layout, show = "numbers", formats = {}, onChange }) {
+// The native key of a value (pfsense.wanIP -> wanIP), for the widget's own
+// fields list; null when the value isn't one of the widget's choices.
+export function nativeKey(field, prefix, choices) {
+  const key = typeof field === "string" && field.startsWith(`${prefix}.`) ? field.slice(prefix.length + 1) : field;
+  return choices.includes(key) ? key : null;
+}
+
+// One list of every value the widget can show (board 27), in your order.
+// Values the widget isn't drawing yet (not in its fields list) are listed
+// too, hidden; showing one adds it to that list, hiding one removes it, and
+// the list keeps your order, so the YAML always says what the card shows.
+export function withNativeValues(fields, choices = [], prefix = "") {
+  const present = new Set(fields.map((field) => field.field));
+  return [
+    ...fields,
+    ...choices
+      .map((choice) => `${prefix}.${choice}`)
+      .filter((field) => !present.has(field))
+      .map((field) => ({ field, label: field, absent: true })),
+  ];
+}
+
+function ValueList({
+  fields: reported,
+  values,
+  layout,
+  show = "numbers",
+  formats = {},
+  onChange,
+  choices = [],
+  prefix = "",
+  nativeFields,
+  onNativeFields,
+}) {
   const { t } = useTranslation();
+  const synced = Boolean(onNativeFields && choices.length);
+  const fields = synced ? withNativeValues(reported, choices, prefix) : reported;
+  const absent = new Set(fields.filter((field) => field.absent).map((field) => field.field));
   // Widgets name their values with translation keys (adguard.queries).
-  const rows = arrangeValues(fields, values).map((row) => ({ ...row, label: t(row.label) }));
+  const rows = arrangeValues(fields, values).map((row) => ({
+    ...row,
+    label: t(row.label),
+    ...(absent.has(row.field) && !row.slot ? { slot: "hidden" } : {}),
+  }));
   const [rulesOpen, setRulesOpen] = useState(null);
   // Donut and pie draw only the values in one format (card-chart partsFormat).
   const partsUnit =
@@ -384,7 +424,23 @@ function ValueList({ fields, values, layout, show = "numbers", formats = {}, onC
       ? partsFormat(Object.entries(formats).map(([field, format]) => ({ field, format })))
       : null;
   const coloured = ["line", "area", "bar", "donut", "pie"].includes(show);
-  const commit = (next) => onChange(storedValues(next, fields));
+  // Which native fields the rows ask for, in their order.
+  const nativeOf = (next) =>
+    next
+      .filter((row) => row.slot !== "hidden")
+      .map((row) => nativeKey(row.field, prefix, choices))
+      .filter(Boolean);
+  const commit = (next) => {
+    onChange(storedValues(next, fields));
+    if (!synced) return;
+    const wanted = nativeOf(next);
+    // The widget stays on its usual set until what it shows or their order
+    // changes. Homepage can't be told to show none, so hiding the last value
+    // hides it in the card only.
+    if (!wanted.length) return;
+    if (!nativeFields?.length && JSON.stringify(wanted) === JSON.stringify(nativeOf(rows))) return;
+    if (JSON.stringify(wanted) !== JSON.stringify(nativeFields ?? null)) onNativeFields(wanted);
+  };
   // Donut and pie draw every shown value as a part, so there is no hero row.
   const heroed = layout === "hero" && show !== "donut" && show !== "pie";
   const hero = heroed ? heroIndex(rows) : -1;
@@ -413,22 +469,32 @@ function ValueList({ fields, values, layout, show = "numbers", formats = {}, onC
     commit(next);
   };
   if (show === "gauge") return <GaugeValue rows={rows} formats={formats} commit={commit} />;
-  const slots = heroed
+  // Board 27: on a chart each value goes in the chart, beside it as a
+  // number, or nowhere.
+  const charted = CHART_SHOWS.includes(show) || show === "donut" || show === "pie";
+  const slots = charted
     ? [
-        ["hero", "Hero"],
-        ["below", "Below"],
+        ["below", "Chart"],
+        ["number", "Number"],
         ["hidden", "Hidden"],
       ]
-    : [
-        ["below", "Shown"],
-        ["hidden", "Hidden"],
-      ];
+    : heroed
+      ? [
+          ["hero", "Hero"],
+          ["below", "Below"],
+          ["hidden", "Hidden"],
+        ]
+      : [
+          ["below", "Shown"],
+          ["hidden", "Hidden"],
+        ];
   // The colour each value gets on a chart unless it has its own, as the
   // chart counts them (card-chart chartSeries): by its place among the
   // charted values, hidden ones included, so hiding one recolours nothing.
   // Picking that colour again stores nothing (Rule 2).
   const shownSlot = (row, index) => {
-    if (index === hero) return "hero";
+    if (index === hero && !charted) return "hero";
+    if (row.slot === "number") return charted ? "number" : "below";
     return row.slot === "hero" || !row.slot ? "below" : row.slot;
   };
   const known = Object.keys(formats).length > 0;
@@ -440,7 +506,7 @@ function ValueList({ fields, values, layout, show = "numbers", formats = {}, onC
   return (
     <ol className="studio-value-list">
       {rows.map((row, index) => {
-        if (partsUnit && (formats[row.field] || "plain") !== partsUnit) return null;
+        if (partsUnit && formats[row.field] && formats[row.field] !== partsUnit) return null;
         const slot = shownSlot(row, index);
         return (
           <li key={row.field}>
@@ -541,6 +607,9 @@ export default function LookEditor({
   savedLooks,
   onSavedLooks,
   statusAddress,
+  // The widget's own fields list and its choices (board 27): the Values list
+  // shows every choice and keeps that list in sync.
+  nativeValues,
   chartFields,
   // The time ranges the dashboard keeps history for (card-chart chartRanges).
   rangeChoices = ["1h", "6h", "24h", "7d", "30d"],
@@ -854,51 +923,57 @@ export default function LookEditor({
       )}
       {/* A widget showing its status history shows no values, so it reports
           none; Show stays so it can be switched back. */}
-      {bottom && show.values && (fields.length > 0 || effective.show === "status") && (
-        <Group
-          title="Show"
-          info="The values this widget showed last. Pick the hero, hide what you don't need, rename a value or change how its number reads."
-        >
-          {show.charts && (
-            <Row
-              label="Show as"
-              htmlFor={showId}
-              info="Charts use history Studio keeps for this widget, about one value a minute."
-            >
-              <select id={showId} value={effective.show} onChange={(event) => setLook("show", event.target.value)}>
-                {showChoices(chartFields, effective.show, acts.status !== "off").map(([value, text]) => (
-                  <option key={value} value={value}>
-                    {text}
-                  </option>
-                ))}
-              </select>
-            </Row>
-          )}
-          {/* Status history's range is Uptime over, in the Status section. */}
-          {show.charts && CHART_SHOWS.includes(effective.show) && (
-            <Dependent>
-              <Choice
-                label="Time range"
-                value={effective.chartRange}
-                onChange={(value) => setLook("chartRange", value)}
-                options={rangeChoices.map((key) => [key, key.replace(/(\d)([hd])/, "$1 $2")])}
+      {bottom &&
+        show.values &&
+        (fields.length > 0 || nativeValues?.choices?.length > 0 || effective.show === "status") && (
+          <Group
+            title="Show"
+            info="The values this widget showed last. Pick the hero, hide what you don't need, rename a value or change how its number reads."
+          >
+            {show.charts && (
+              <Row
+                label="Show as"
+                htmlFor={showId}
+                info="Charts use history Studio keeps for this widget, about one value a minute."
+              >
+                <select id={showId} value={effective.show} onChange={(event) => setLook("show", event.target.value)}>
+                  {showChoices(chartFields, effective.show, acts.status !== "off").map(([value, text]) => (
+                    <option key={value} value={value}>
+                      {text}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+            )}
+            {/* Status history's range is Uptime over, in the Status section. */}
+            {show.charts && CHART_SHOWS.includes(effective.show) && (
+              <Dependent>
+                <Choice
+                  label="Time range"
+                  value={effective.chartRange}
+                  onChange={(value) => setLook("chartRange", value)}
+                  options={rangeChoices.map((key) => [key, key.replace(/(\d)([hd])/, "$1 $2")])}
+                />
+              </Dependent>
+            )}
+            {effective.show !== "status" && (
+              <ValueList
+                fields={fields}
+                values={look.values || []}
+                layout={effective.show === "numbers" ? effective.layout : "hero"}
+                show={effective.show}
+                formats={Object.fromEntries(
+                  (Array.isArray(chartFields) ? chartFields : []).map((f) => [f.field, f.format]),
+                )}
+                onChange={(values) => setLook("values", values)}
+                choices={nativeValues?.choices}
+                prefix={nativeValues?.prefix}
+                nativeFields={nativeValues?.fields}
+                onNativeFields={nativeValues?.onChange}
               />
-            </Dependent>
-          )}
-          {effective.show !== "status" && (
-            <ValueList
-              fields={fields}
-              values={look.values || []}
-              layout={effective.show === "numbers" ? effective.layout : "hero"}
-              show={effective.show}
-              formats={Object.fromEntries(
-                (Array.isArray(chartFields) ? chartFields : []).map((f) => [f.field, f.format]),
-              )}
-              onChange={(values) => setLook("values", values)}
-            />
-          )}
-        </Group>
-      )}
+            )}
+          </Group>
+        )}
       {bottom && (
         <Group title="Behaviour">
           {show.link && (

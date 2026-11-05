@@ -351,6 +351,41 @@ export default function ContentEditor({
   // On click under Behaviour, so each has one home there. Studio cards don't
   // read the native target or showStats, so they have no row (Rule 1).
   const studioOwned = new Set(["target", "showStats", ...(boardPanel ? ["ping", "siteMonitor"] : [])]);
+  // Board 27: on an existing widget the Values list is the one place to pick
+  // which values show and in what order; it keeps the widget's fields list.
+  const fieldsOption = kind === "serviceWidget" ? selectedEntry?.fields?.find((field) => field.key === "fields") : null;
+  const reportedValues = boardPanel ? widgetFields.get(boardPanel.id) || [] : [];
+  const valuePrefix =
+    reportedValues.map((value) => String(value.field).split(".")[0]).find(Boolean) || source?.type || entry?.type || "";
+  const valueChoices = (() => {
+    if (fieldsOption?.choices) return fieldsOption.choices;
+    const groups = fieldsOption?.optionGroups || [];
+    if (!groups.length) return null;
+    const shown = new Set(reportedValues.map((value) => String(value.field).replace(`${valuePrefix}.`, "")));
+    const overlap = (group) => (group.choices || []).filter((choice) => shown.has(choice)).length;
+    return [...groups].sort((a, b) => overlap(b) - overlap(a))[0].choices || null;
+  })();
+  const draftFields = (() => {
+    if (Array.isArray(draft.fields)) return draft.fields.map(String);
+    if (typeof draft.fields === "string") {
+      try {
+        const parsed = JSON.parse(draft.fields);
+        return Array.isArray(parsed) ? parsed.map(String) : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  })();
+  const nativeValues =
+    boardPanel && valueChoices?.length
+      ? {
+          choices: valueChoices,
+          prefix: valuePrefix,
+          fields: draftFields,
+          onChange: (next) => setDraft({ ...draft, fields: next }),
+        }
+      : undefined;
   const fields =
     kind === "service"
       ? SERVICE_FIELDS.filter((field) => !studioOwned.has(field.key))
@@ -358,7 +393,7 @@ export default function ContentEditor({
         ? [...LINK_FIELDS, { key: "abbr", label: "Abbreviation", type: "string" }].filter(
             (field) => !studioOwned.has(field.key),
           )
-        : selectedEntry?.fields || [];
+        : (selectedEntry?.fields || []).filter((field) => !(nativeValues && field.key === "fields"));
   // The id is the panel's identity and a service's widgets are their own
   // panels, so neither is listed under More options.
   const hiddenKeys =
@@ -366,7 +401,9 @@ export default function ContentEditor({
       ? ["id", "target", "showStats", "widget", "widgets"]
       : kind === "bookmark"
         ? ["id", "target"]
-        : [];
+        : nativeValues
+          ? ["fields"]
+          : [];
   const lookProps = boardPanel
     ? {
         kind,
@@ -376,7 +413,8 @@ export default function ContentEditor({
         behaviour,
         inheritedLook: resolvedLook(settings, null),
         inheritedBehaviour: resolvedBehaviour(settings, null),
-        fields: widgetFields.get(boardPanel.id) || [],
+        fields: reportedValues,
+        nativeValues,
         pages: pagesOf(wholeBoard),
         pageId: page,
         onLook: setLook,
