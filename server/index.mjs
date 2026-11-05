@@ -1262,12 +1262,14 @@ export function createStudioServer(options = {}) {
         const change = await readBody(req);
         // Expiry is the server's own sweep, never a request.
         if (change?.action === 'expire') throw new DashboardError('Choose a supported dashboard operation.', 'INVALID_DASHBOARD_ACTION');
+        // Deleting for good, and how soon archives are deleted, need a recent sign-in, like restore and import.
+        if (auth && (change?.action === 'delete' || change?.action === 'retention') && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
         // "Copy access" is a sign-in option, not a registry field.
         const copyAccess = change.copyAccess === true;
         delete change.copyAccess;
         const result = await registry.mutate(change);
         if (change.action === 'retention') return json(res, 200, result);
-        if (change.action === 'delete') return json(res, 200, { registry: result.registry, deleted: { id: result.dashboard.id, name: result.dashboard.name } });
+        if (change.action === 'delete') return json(res, 200, { registry: result.registry, deleted: { id: result.dashboard.id, name: result.dashboard.name }, ...(result.cleanupPending ? { cleanupPending: true } : {}) });
         if (auth && copyAccess && change.action === 'create' && change.sourceId) await auth.copyGrants(change.sourceId, result.dashboard.id);
         unpublished.delete(result.dashboard.id);
         forDashboard(result.dashboard);

@@ -41,7 +41,11 @@ export function validateDashboardManifest(value) {
   const invalid = () => { throw new DashboardError('The dashboard registry is invalid. Existing dashboard files have not been changed.', 'INVALID_DASHBOARD_REGISTRY', 503); };
   const retention = Object.hasOwn(value ?? {}, 'archiveRetention');
   if (retention && (!ARCHIVE_RETENTION.includes(value.archiveRetention) || value.archiveRetention === DEFAULT_ARCHIVE_RETENTION)) invalid();
-  if (!exactKeys(value, ['version', 'revision', 'dashboards', ...(retention ? ['archiveRetention'] : [])]) || value.version !== 1 || typeof value.revision !== 'string' || !uuid.test(value.revision) || !Array.isArray(value.dashboards) || !value.dashboards.length || value.dashboards.length > MAX_DASHBOARDS) invalid();
+  // Dashboards deleted from the registry whose files could not all be
+  // removed yet; every sweep tries them again.
+  const pending = Object.hasOwn(value ?? {}, 'pendingRemoval');
+  if (pending && (!Array.isArray(value.pendingRemoval) || !value.pendingRemoval.length || value.pendingRemoval.length > MAX_DASHBOARDS)) invalid();
+  if (!exactKeys(value, ['version', 'revision', 'dashboards', ...(retention ? ['archiveRetention'] : []), ...(pending ? ['pendingRemoval'] : [])]) || value.version !== 1 || typeof value.revision !== 'string' || !uuid.test(value.revision) || !Array.isArray(value.dashboards) || !value.dashboards.length || value.dashboards.length > MAX_DASHBOARDS) invalid();
   const ids = new Set(), slugs = new Set();
   try {
     for (const entry of value.dashboards) {
@@ -54,6 +58,14 @@ export function validateDashboardManifest(value) {
     }
   } catch { invalid(); }
   if (!ids.has('default')) invalid();
+  try {
+    for (const entry of value.pendingRemoval ?? []) {
+      if (!exactKeys(entry, ['id', 'name']) || entry.id === 'default' || ids.has(entry.id)) invalid();
+      validateDashboardId(entry.id);
+      if (validateDashboardName(entry.name) !== entry.name) invalid();
+      ids.add(entry.id);
+    }
+  } catch { invalid(); }
   return value;
 }
 // The suggested address for a new dashboard: the lowest free of "dashboard",

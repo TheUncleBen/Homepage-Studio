@@ -286,3 +286,36 @@ test('archived dashboards past their time are deleted by the sweep, others kept'
   result = await registry.mutate({ action: 'expire', revision: (await registry.read()).revision, now: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000 });
   assert.deepEqual(result.removed, []);
 });
+
+test('a removal that fails stays pending, never stops the others and is retried by the next sweep', async t => {
+  const removed = [];
+  let failNext = 1;
+  const { registry } = await fixture(t, undefined, undefined, { removeDashboard: async entry => {
+    if (failNext-- > 0) throw Object.assign(new Error('disk'), { code: 'EIO' });
+    removed.push(entry.id);
+  } });
+  await registry.initialize();
+  const ids = [];
+  for (const slug of ['aa', 'bb']) ids.push((await create(registry, slug)).dashboard.id);
+  for (const id of ids) await registry.mutate({ action: 'archive', revision: (await registry.read()).revision, id, confirmed: true });
+  const later = Date.now() + 31 * 24 * 60 * 60 * 1000;
+  const first = await registry.mutate({ action: 'expire', revision: (await registry.read()).revision, now: later });
+  assert.equal(first.failed.length, 1);
+  assert.equal(removed.length, 1);
+  const between = await registry.read();
+  assert.deepEqual(between.dashboards.filter(item => ids.includes(item.id)), []);
+  assert.deepEqual(between.pendingRemoval.map(item => item.id), first.failed.map(item => item.id));
+  const second = await registry.mutate({ action: 'expire', revision: between.revision, now: later });
+  assert.deepEqual(second.failed, []);
+  assert.deepEqual(removed.sort(), [...ids].sort());
+  assert.equal((await registry.read()).pendingRemoval, undefined);
+  // A manual delete whose clean-up fails still deletes it, and says so.
+  const third = (await create(registry, 'cc')).dashboard;
+  await registry.mutate({ action: 'archive', revision: (await registry.read()).revision, id: third.id, confirmed: true });
+  failNext = 1;
+  const deleted = await registry.mutate({ action: 'delete', revision: (await registry.read()).revision, id: third.id, confirmName: third.name });
+  assert.equal(deleted.cleanupPending, true);
+  assert.equal((await registry.read()).dashboards.some(item => item.id === third.id), false);
+  await registry.mutate({ action: 'expire', revision: (await registry.read()).revision, now: later });
+  assert.ok(removed.includes(third.id));
+});

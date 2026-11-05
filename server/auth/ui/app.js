@@ -871,12 +871,13 @@
     dialog.querySelector('input:not([type=hidden]):not([hidden]), select, textarea, button.primary')?.focus();
     return dialog;
   }
-  function confirmDialog(title, text, actionLabel, action, { danger = true } = {}) {
+  function confirmDialog(title, text, actionLabel, action, { danger = true, cancelLabel = 'Cancel', onCancel } = {}) {
     openDialog(title, close => {
       const box = notice();
       const confirmButton = h('button', { type: 'button', class: danger ? 'danger' : 'primary', text: actionLabel });
       confirmButton.addEventListener('click', () => busy(confirmButton, 'Working…', async () => { try { await action(); close(); } catch (error) { failure(box, error); } }));
-      return h('div', { class: 'stack' }, h('p', { text }), box, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: close, text: 'Cancel' }), confirmButton));
+      const cancel = () => { close(); onCancel?.(); };
+      return h('div', { class: 'stack' }, h('p', { text }), box, h('div', { class: 'actions' }, h('button', { type: 'button', onclick: cancel, text: cancelLabel }), confirmButton));
     });
   }
   async function copyText(text, box) {
@@ -1888,8 +1889,8 @@
       const proxyNote = untrusted ? h('div', { class: 'notice warn', role: 'status' },
         h('p', { text: `Requests reach Studio through a proxy at ${untrusted} that it doesn't trust, so Activity shows that address instead of each visitor's.` }),
         h('p', { text: view.proxy.trustedConfigured
-          ? `Add ${untrusted}, or the subnet of the Docker network your proxy and Studio share, to STUDIO_TRUSTED_PROXIES, then redeploy.`
-          : `Set STUDIO_TRUSTED_PROXIES to the subnet of the Docker network your proxy and Studio share (or to ${untrusted}), then redeploy.` }),
+          ? `If ${untrusted} is your reverse proxy, add it, or the subnet of the Docker network your proxy and Studio share, to STUDIO_TRUSTED_PROXIES, then redeploy. Don't add an address you don't recognise.`
+          : `Set STUDIO_TRUSTED_PROXIES to the subnet of the Docker network your proxy and Studio share (or to ${untrusted}, only if that is your reverse proxy), then redeploy.` }),
         h('p', { class: 'muted', text: 'If the proxy itself only sees Docker addresses, publish its ports in host mode. The deployment guide covers both.' })) : null;
       return group({ title: 'Activity', info: 'The latest 500 sign-in and administration events. They are also written to the container log for tools such as fail2ban or CrowdSec.' }, proxyNote, holder);
     }
@@ -2020,7 +2021,11 @@
           const remove = h('button', { type: 'button', class: 'danger', text: 'Delete for good', disabled: true });
           typed.addEventListener('input', () => { remove.disabled = typed.value !== entry.name; });
           remove.addEventListener('click', () => busy(remove, 'Deleting…', async () => {
-            try { await registry({ action: 'delete', id: entry.id, confirmName: typed.value }); close(); await reload(`${entry.name} is deleted.`); }
+            try {
+              const result = await registry({ action: 'delete', id: entry.id, confirmName: typed.value });
+              close();
+              await reload(result?.cleanupPending ? `${entry.name} is deleted. Some of its files couldn’t be removed yet; Studio tries again within the hour.` : `${entry.name} is deleted.`);
+            }
             catch (error) { failure(box, error); }
           }));
           return h('div', { class: 'stack' },
@@ -2188,7 +2193,16 @@
         const keep = isAdmin ? h('div', { class: 'archive-retention' },
           h('span', { class: 'small', text: 'Delete archived dashboards after' }),
           segmented({ value: view.archiveRetention ?? 30, label: 'Delete archived dashboards after', options: [[7, '7 days'], [30, '30 days'], [90, '90 days'], ['never', 'Never']], onChange: async days => {
-            try { await registry({ action: 'retention', days }); await reload(days === 'never' ? 'Archived dashboards are kept until you delete them.' : `Archived dashboards are deleted ${days} days after archiving.`, { open: true }); }
+            const change = async () => { await registry({ action: 'retention', days }); await reload(days === 'never' ? 'Archived dashboards are kept until you delete them.' : `Archived dashboards are deleted ${days} days after archiving.`, { open: true }); };
+            // A shorter time can make archives due at once: say which, and ask.
+            const due = days === 'never' ? [] : archived.filter(entry => entry.archivedAt && Date.parse(entry.archivedAt) + days * 24 * 60 * 60 * 1000 <= Date.now());
+            if (due.length) {
+              const names = due.map(entry => entry.name).join(', ');
+              return confirmDialog(due.length === 1 ? `Delete ${names} now?` : `Delete ${due.length} archived dashboards now?`,
+                `With ${days} days, ${names} ${due.length === 1 ? 'is' : 'are'} past ${due.length === 1 ? 'its' : 'their'} time and will be deleted for good within the hour. This can’t be undone.`,
+                'Change and delete', change, { cancelLabel: 'Keep them', onCancel: () => reload(undefined, { open: true }) });
+            }
+            try { await change(); }
             catch (error) { failure(message, error); }
           } })) : null;
         parts.push(h('details', { class: 'archived-list', ...(openArchived ? { open: true } : {}) }, h('summary', {}, icon('chevron', 15), h('span', { text: `Archived (${archived.length})` })), keep, h('div', { class: 'dashboard-list' }, archived.map(card))));

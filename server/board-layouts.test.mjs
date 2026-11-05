@@ -135,3 +135,20 @@ test("a centred page has 25 columns; an even page 24", () => {
     /even or centred/,
   );
 });
+
+test("a widget added under a layout arranged at the last row goes into a free gap, so adding never fails", async (t) => {
+  const store = await fixture(t);
+  let current = await addLink(store, await store.load(), "First");
+  const [first] = current.board.panels;
+  current = await store.saveBoard({
+    revision: current.revision,
+    board: { ...current.board, layouts: { phone: { [first.id]: { x: 0, y: 200000, w: 4, h: 2000 } } } },
+  });
+  current = await addLink(store, current, "Second");
+  const second = current.board.panels.find((panel) => panel.id !== first.id);
+  const placed = current.board.layouts.phone[second.id];
+  assert.ok(placed.y <= 200000, `placed at row ${placed.y}`);
+  assert.deepEqual(current.board.layouts.phone[first.id], { x: 0, y: 200000, w: 4, h: 2000 });
+  current = await addLink(store, current, "Third");
+  assert.equal(Object.keys(current.board.layouts.phone).length, 3);
+});

@@ -114,12 +114,16 @@ async function readFile(path) {
 }
 
 async function writeFile(dir, path, entries) {
+  const text = JSON.stringify({ version: 1, entries }, null, 2) + '\n';
+  // Never write a file this module would refuse to read back (readFile), or
+  // nobody could list or delete entries to make room again.
+  if (Buffer.byteLength(text) > MAX_FILE_BYTES) fail('Saved items here use all their room (2 MB). Delete some, then save again.', 'LIBRARY_FULL', 413);
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   const temp = join(dir, `.library-${randomUUID()}.tmp`);
   let handle;
   try {
     handle = await fs.open(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-    await handle.writeFile(JSON.stringify({ version: 1, entries }, null, 2) + '\n');
+    await handle.writeFile(text);
     await handle.sync(); await handle.close(); handle = null;
     await fs.rename(temp, path);
   } finally {

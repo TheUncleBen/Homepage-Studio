@@ -35,6 +35,10 @@ export const DEFAULT_BACKUP_RETENTION = 25;
 export const MAX_EDIT_STEPS = 100;
 export const MAX_EDIT_SESSIONS = 16;
 export const MAX_EDIT_SESSION_BYTES = 48 * 1024 * 1024;
+// All of one dashboard's editing sessions together, and how many one sign-in
+// may hold, so nobody can fill memory or push other people's history out.
+export const MAX_EDIT_STORE_BYTES = 96 * 1024 * 1024;
+export const MAX_EDIT_SESSIONS_PER_SIGN_IN = 3;
 // Fixed codes naming the API operation that created a pre-change snapshot.
 // They are chosen by the server per endpoint and never contain request text.
 // Every snapshot names one.
@@ -576,9 +580,15 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     if (typeof key !== 'string' || !key || key.length > 256) return null;
     let entry = editSessions.get(key);
     if (!entry && create) {
+      // The controller keys a session "<sign-in>:<editor id>". One sign-in
+      // keeps its few latest editors; the oldest idle sessions go first.
+      // With sign-in off ("local:") everyone shares one owner, so only the
+      // overall limits apply there.
+      const owner = key.slice(0, key.lastIndexOf(':') + 1);
+      const own = owner && owner !== 'local:' ? [...editSessions.keys()].filter((other) => other.startsWith(owner) && other.lastIndexOf(':') + 1 === owner.length) : [];
+      while (own.length >= MAX_EDIT_SESSIONS_PER_SIGN_IN) editSessions.delete(own.shift());
       entry = { steps: [], redo: [], bytes: 0, started: false, usedAt: 0 };
       editSessions.set(key, entry);
-      // The oldest idle sessions go first; a few people edit at once.
       while (editSessions.size > MAX_EDIT_SESSIONS) editSessions.delete(editSessions.keys().next().value);
     }
     if (entry) {
@@ -596,11 +606,25 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       const from = entry.steps.length ? entry.steps : entry.redo;
       entry.bytes -= from.shift().bytes;
     }
+    // Over the dashboard's budget: the least recently used sessions lose
+    // their oldest steps first, this one last.
+    let total = 0;
+    for (const other of editSessions.values()) total += other.bytes;
+    for (const other of [...editSessions.values()].filter((item) => item !== entry).concat(entry)) {
+      while (total > MAX_EDIT_STORE_BYTES && other.steps.length + other.redo.length) {
+        const from = other.steps.length ? other.steps : other.redo;
+        const dropped = from.shift().bytes;
+        other.bytes -= dropped;
+        total -= dropped;
+      }
+      if (total <= MAX_EDIT_STORE_BYTES) break;
+    }
   };
   // Runs one editor change inside its editing session (if it names one).
-  const editing = (change, operation) => serialized(async () => {
+  // Undo and redo only use a session that exists (`create: false`).
+  const editing = (change, operation, { create = true } = {}) => serialized(async () => {
     const key = object(change) ? change.editSession : undefined;
-    activeEdit = key === undefined ? null : { key, entry: editEntry(key, true), action: null };
+    activeEdit = key === undefined ? null : { key, entry: editEntry(key, create), action: null };
     try { return await operation(); }
     finally { activeEdit = null; }
   });
@@ -1451,8 +1475,8 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     }),
     // Raw file saves never carry an editor arrangement; a board they send is checked strictly.
     save: ({ arrangement: ignored, ...change }) => serialized(async () => saveCurrent(await readCurrent(), change, 'files-saved')),
-    undo: (change) => editing(change, () => stepEditInner(change, 'undo')),
-    redo: (change) => editing(change, () => stepEditInner(change, 'redo')),
+    undo: (change) => editing(change, () => stepEditInner(change, 'undo'), { create: false }),
+    redo: (change) => editing(change, () => stepEditInner(change, 'redo'), { create: false }),
     mutateService: (change) => editing(change, () => mutateServiceInner(change)),
     mutateInfoWidget: (change) => editing(change, () => mutateInfoInner(change)),
     mutateBookmark: (change) => editing(change, () => mutateBookmarkInner(change)),

@@ -537,7 +537,10 @@ An archived dashboard is deleted automatically 30 days after it was archived.
 Under *Archived*, administrators choose **7 days**, **30 days**, **90 days** or
 **Never**; each archived row says when it will go (*Archived 2 Nov · deleted
 automatically on 2 Dec*) or that it's kept until you delete it. Studio checks
-once an hour.
+once an hour. If a shorter time makes archives due at once, Studio names them
+and asks first. Deleting for good and changing the time ask you to confirm it's
+you if you signed in a while ago. If some of a deleted dashboard's files
+can't be removed right away, Studio says so and tries again every hour.
 
 - An address is one path segment of 1 to 64 lowercase letters, numbers and
   inner hyphens: `https://homepage.example.test/family`. A few names used by

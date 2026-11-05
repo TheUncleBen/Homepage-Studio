@@ -128,3 +128,19 @@ test('adding the same integration twice makes two independent widgets, and a wid
   await assert.rejects(store.mutateServiceWidget({ revision: current.revision, action: 'update', id: widget.id, config: {}, service: { name: 'pfSense' } }), /already called “pfSense”/);
   await assert.rejects(store.mutateServiceWidget({ revision: current.revision, action: 'update', id: widget.id, config: {}, service: { widgets: [] } }), /Only the widget's name/);
 });
+
+test('one sign-in keeps only its latest few editing sessions, and an undo with nothing to undo creates none', async (t) => {
+  const { store } = await fixture(t);
+  let current = await store.load();
+  // A stranger's undo for an id nobody used: refused, and it takes no slot.
+  await assert.rejects(store.undo({ revision: current.revision, editSession: 'sign-in-b:nobody' }), { code: 'NOTHING_TO_UNDO' });
+  current = await addLink(store, current, 'Kept', 'sign-in-b:editor');
+  // Sign-in A opens four editors; only its three latest keep their steps.
+  for (const [index, name] of ['One', 'Two', 'Three', 'Four'].entries()) current = await addLink(store, current, name, `sign-in-a:editor-${index}`);
+  await assert.rejects(store.undo({ revision: current.revision, editSession: 'sign-in-a:editor-0' }), { code: 'NOTHING_TO_UNDO' });
+  current = await store.undo({ revision: current.revision, editSession: 'sign-in-a:editor-3' });
+  assert.equal(current.board.panels.some((panel) => panel.title === 'Four'), false);
+  // Sign-in B's history was not pushed out by sign-in A's editors, though its
+  // step is no longer the latest change, so it can't be undone now.
+  await assert.rejects(store.undo({ revision: current.revision, editSession: 'sign-in-b:editor' }), { code: 'UNDO_UNAVAILABLE' });
+});

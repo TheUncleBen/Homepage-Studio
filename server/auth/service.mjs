@@ -254,14 +254,16 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   // The latest proxy that forwarded a request Studio did not trust, so
   // Administration can say which address to add to STUDIO_TRUSTED_PROXIES
   // (owner report, 4 Nov 2026: Activity showed a Docker address). Only the
-  // address is kept; the forwarded header is never trusted from it.
+  // address is kept; the forwarded header is never trusted from it. Only a
+  // signed-in request records it, so a stranger's X-Forwarded-For can't make
+  // Administration suggest trusting the stranger.
   let untrustedProxy = null;
-  function clientIp(req) {
+  function clientIp(req, { signedIn = false } = {}) {
     const remote = String(req.socket?.remoteAddress ?? '').replace(/^::ffff:/, '');
     const family = remote.includes(':') ? 'ipv6' : 'ipv4';
     if (!remote) return remote;
     if (!config.trustedProxies || !config.trustedProxies.check(remote, family)) {
-      if (req.headers['x-forwarded-for']) untrustedProxy = { address: remote, at: now() };
+      if (signedIn && req.headers['x-forwarded-for']) untrustedProxy = { address: remote, at: now() };
       return remote;
     }
     // Walk X-Forwarded-For from the right, skipping trusted proxies.
@@ -407,7 +409,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     policy = effectivePolicy(data, user);
     if (time - session.lastSeenAt >= TOUCH_INTERVAL) store.sessions.touch(session.id, { lastSeenAt: time });
     return {
-      user, session, policy, ip: clientIp(req),
+      user, session, policy, ip: clientIp(req, { signedIn: true }),
       level: dashboardId => dashboardLevel(data, user, dashboardId),
       landing: dashboards => landingDashboard(data, user, dashboards),
       fresh: () => time - session.authAt <= policy.stepUpMinutes * MINUTE,

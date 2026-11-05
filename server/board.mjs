@@ -74,10 +74,12 @@ export function validateIdentityRecords(value, label) {
   return value;
 }
 
+// The furthest row a rectangle may start on.
+const MAX_ROW = 200000;
 export function rect(value, label = 'Panel', columns = BOARD_COLUMNS) {
   if (!object(value)) fail(`${label} requires grid position and dimensions.`);
   const { x, y, w, h } = value;
-  if (![x, y, w, h].every(Number.isSafeInteger) || x < 0 || y < 0 || w < 1 || h < 1 || w > columns || x + w > columns || y > 200000 || h > 2000) fail(`${label} has an invalid grid rectangle.`);
+  if (![x, y, w, h].every(Number.isSafeInteger) || x < 0 || y < 0 || w < 1 || h < 1 || w > columns || x + w > columns || y > MAX_ROW || h > 2000) fail(`${label} has an invalid grid rectangle.`);
   return { x, y, w, h };
 }
 
@@ -231,9 +233,16 @@ function completeLayouts(board) {
     for (const unit of [...units].sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)) {
       if (placed[unit.id]) continue;
       const area = arrivalRect(unit.rect, size, columnsOf.get(unit.pageId));
-      const y = bottom.get(unit.pageId) ?? 0;
-      placed[unit.id] = { x: 0, y, w: area.w, h: area.h };
-      bottom.set(unit.pageId, y + area.h);
+      let position = { x: 0, y: bottom.get(unit.pageId) ?? 0, w: area.w, h: area.h };
+      // A layout arranged far down leaves no room at the bottom within the
+      // row limit (rect()): take the first free gap on that page instead, so
+      // adding a widget never makes the board invalid.
+      if (position.y > MAX_ROW) {
+        const occupied = units.filter((other) => other.pageId === unit.pageId && placed[other.id]).map((other) => placed[other.id]);
+        position = nextPosition(area, occupied, LAYOUT_COLUMNS[size] ?? BOARD_COLUMNS);
+      }
+      placed[unit.id] = position;
+      bottom.set(unit.pageId, Math.max(bottom.get(unit.pageId) ?? 0, position.y + position.h));
     }
     layouts[size] = placed;
   }

@@ -409,13 +409,17 @@ test('sign-in data that cannot be read fails closed', async t => {
   const configDir = path.join(directory, 'config');
   const app = createStudioServer({ configDir, stateDir: context.stateDir, upstream: 'http://127.0.0.1:9', allowedHosts: HOST, auth: 'on', publicOrigin: ORIGIN });
   const port = await listen(app.server);
-  t.after(async () => {
+  // Stop this server inside the test: after-hooks run in the order they were
+  // added, so the setup's directory removal would otherwise race its writes.
+  let response;
+  try {
+    response = await new Promise((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port, path: '/', headers: { host: HOST } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode)); }).on('error', reject);
+    });
+  } finally {
     await close(app.server);
     await app.shutdown({ graceMs: 0 }).catch(() => {});
-  });
-  const response = await new Promise((resolve, reject) => {
-    http.get({ host: '127.0.0.1', port, path: '/', headers: { host: HOST } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode)); }).on('error', reject);
-  });
+  }
   assert.equal(response, 503);
 });
 
@@ -826,6 +830,10 @@ test('administration events record the address they came from, and Activity name
   const context = await setup(t);
   const { cookie } = await createAdmin(context);
   const forwarded = { 'x-forwarded-for': '198.51.100.7' };
+  // A stranger's forwarded header doesn't count: only signed-in requests do.
+  await context.request('/studio/auth/session', { headers: forwarded });
+  await context.request('/', { headers: { ...forwarded, accept: 'text/html' } });
+  assert.equal((await context.request('/studio/auth/admin/overview', { cookie })).json.proxy.untrusted, null);
   // Studio isn't told to trust 127.0.0.1 here, so it is the untrusted proxy.
   const invited = await context.post('/studio/auth/admin/invite', { username: 'addressed' }, { cookie, headers: forwarded });
   assert.equal(invited.status, 200, invited.text);

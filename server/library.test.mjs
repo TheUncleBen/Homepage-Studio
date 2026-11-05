@@ -58,3 +58,19 @@ test('a saved widget finds the saved connections it uses', () => {
   assert.throws(() => validWidget({ kind: 'service', type: 'x', config: {} }), /cannot be saved/);
   assert.throws(() => validWidget({ ...widget, title: '' }), /1 to 60/);
 });
+
+test('a library never grows past what it can read back, so entries can always be listed and deleted', async (t) => {
+  const library = createLibrary({ dir: await tempDir(t) });
+  const big = { ...widget, config: { url: 'https://fw.example.test', note: 'x'.repeat(60 * 1024) } };
+  let saved = 0;
+  let refusal;
+  for (let i = 0; i < 100 && !refusal; i++) {
+    try { await library.add({ kind: 'widget', name: `Big ${i}`, widget: big }); saved++; }
+    catch (error) { refusal = error; }
+  }
+  assert.equal(refusal?.code, 'LIBRARY_FULL');
+  const list = await library.list();
+  assert.equal(list.length, saved);
+  await library.remove(list[0].id);
+  await library.add({ kind: 'widget', name: 'Fits again', widget: big });
+});

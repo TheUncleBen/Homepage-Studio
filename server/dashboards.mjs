@@ -55,6 +55,26 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
     if (!value) throw new DashboardError('The dashboard registry is not initialized.', 'DASHBOARDS_NOT_READY', 503);
     return value;
   }
+  // Removes the files of every dashboard deleted from the registry and drops
+  // the ones that went from its pending list. One that fails stays pending
+  // for the next sweep and never stops the others.
+  async function finishRemovals(manifest) {
+    const failed = [];
+    if (!manifest.pendingRemoval?.length) return { registry: copy(manifest), failed };
+    const done = new Set();
+    for (const entry of manifest.pendingRemoval) {
+      try { await removeDashboard?.(copy(entry)); done.add(entry.id); }
+      catch (error) { failed.push(copy(entry)); console.error('Removing a deleted dashboard’s files failed; it will be tried again:', entry.id, error.code || error.name); }
+    }
+    if (!done.size) return { registry: copy(manifest), failed };
+    const settled = copy(manifest);
+    settled.pendingRemoval = settled.pendingRemoval.filter(entry => !done.has(entry.id));
+    if (!settled.pendingRemoval.length) delete settled.pendingRemoval;
+    settled.revision = randomUUID();
+    try { await publish(settled, manifest.revision); }
+    catch (error) { console.error('Recording removed dashboards failed; they will be tried again:', error.code || error.name); return { registry: copy(manifest), failed }; }
+    return { registry: settled, failed };
+  }
   async function publish(value, previousRevision = null) {
     await realDirectory(configRoot);
     validateDashboardManifest(value);
@@ -132,12 +152,15 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
         const retention = archiveRetentionOf(current);
         const now = typeof change.now === 'number' ? change.now : Date.now();
         const expired = current.dashboards.filter(item => { const at = archiveDeletesAt(item, retention); return at && Date.parse(at) <= now; });
-        if (!expired.length) return { registry: copy(current), removed: [] };
-        next.dashboards = next.dashboards.filter(item => !expired.some(gone => gone.id === item.id));
-        next.revision = randomUUID();
-        await publish(next, current.revision);
-        for (const gone of expired) await removeDashboard?.(copy(gone));
-        return { registry: copy(next), removed: expired.map(copy) };
+        if (!expired.length && !current.pendingRemoval) return { registry: copy(current), removed: [] };
+        if (expired.length) {
+          next.dashboards = next.dashboards.filter(item => !expired.some(gone => gone.id === item.id));
+          next.pendingRemoval = [...(next.pendingRemoval ?? []), ...expired.map(({ id, name }) => ({ id, name }))];
+          next.revision = randomUUID();
+          await publish(next, current.revision);
+        }
+        const { registry: settled, failed } = await finishRemovals(next);
+        return { registry: settled, removed: expired.map(copy), failed };
       }
       if (change.action === 'retention') {
         if (!ARCHIVE_RETENTION.includes(change.days)) throw new DashboardError('Choose 7, 30 or 90 days, or never.', 'INVALID_DASHBOARD_ACTION');
@@ -179,13 +202,19 @@ export function createDashboardRegistry({ configRoot, prepareDashboard, cleanupD
             if (!entry.archived) throw new DashboardError('Archive the dashboard before deleting it.', 'DASHBOARD_NOT_ARCHIVED');
             if (change.confirmName !== entry.name) throw new DashboardError('Type the dashboard’s name exactly to delete it for good.', 'DASHBOARD_CONFIRMATION_REQUIRED');
             next.dashboards = next.dashboards.filter(item => item.id !== entry.id);
+            next.pendingRemoval = [...(next.pendingRemoval ?? []), { id: entry.id, name: entry.name }];
           } else {
             await prepareDashboard(entry); entry.archived = false; delete entry.archivedAt;
           }
         }
         next.revision = randomUUID();
         await publish(next, current.revision);
-        if (change.action === 'delete') await removeDashboard?.(copy(entry));
+        if (change.action === 'delete') {
+          // It is deleted once the registry says so; files that can't be
+          // removed now are retried by the next sweep, not reported as a failure.
+          const { registry: settled, failed } = await finishRemovals(next);
+          return { registry: settled, dashboard: copy(entry), cleanupPending: failed.length > 0 };
+        }
         return { registry: copy(next), dashboard: copy(entry) };
       } catch (error) {
         if (newEntry && cleanupDashboard) {
