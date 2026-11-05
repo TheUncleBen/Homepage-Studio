@@ -400,3 +400,41 @@ test('browser navigation to an unavailable dashboard gets an accessible page; AP
   assert.equal(posted.status, 404); assert.match(posted.headers['content-type'], /^application\/json/);
   assert.equal((await f.request('/house/api/config', { headers: html })).json.id, child.id);
 });
+
+test('saved widgets: saved from a dashboard, listed without settings, placed on another with their connection', async t => {
+  const f = await fixture(t);
+  await f.create('family');
+  const connection = await f.post('/studio/api/connections', { action: 'add', name: 'Firewall', url: 'https://fw.example.test', key: 'connection-secret' });
+  assert.equal(connection.status, 200, connection.text);
+  const id = connection.json.connection.id;
+  let current = await f.state();
+  const added = await f.post('/studio/api/service-widget', { revision: current.revision, action: 'add', newService: { name: 'Edge' }, service: { href: 'https://fw.example.test' }, type: 'pfsense', config: { url: `{{STUDIO_CONNECTION_${id}_URL}}`, key: `{{STUDIO_CONNECTION_${id}_KEY}}`, version: 2, wan: 'igb0' } });
+  assert.equal(added.status, 200, added.text);
+  const panel = added.json.board.panels.find(item => item.kind === 'serviceWidget');
+  const looked = await f.post('/studio/api/board', { revision: added.json.revision, board: { ...added.json.board, panels: added.json.board.panels.map(item => item.id === panel.id ? { ...item, look: { corners: 'round' } } : item) } });
+  assert.equal(looked.status, 200, looked.text);
+  const saved = await f.post('/studio/api/library', { action: 'add', kind: 'widget', scope: 'everyone', name: 'Edge firewall', panelId: panel.id });
+  assert.equal(saved.status, 200, saved.text);
+  // Just me needs Studio sign-in, which is off here.
+  const personal = await f.post('/studio/api/library', { action: 'add', kind: 'widget', scope: 'me', name: 'Mine', panelId: panel.id });
+  assert.equal(personal.status, 400);
+  const listed = await f.request('/family/studio/api/library');
+  assert.equal(listed.status, 200, listed.text);
+  assert.deepEqual(listed.json.scopes, ['dashboard', 'everyone']);
+  assert.deepEqual(listed.json.widgets.map(item => [item.name, item.type, item.scope]), [['Edge firewall', 'pfsense', 'everyone']]);
+  assert.doesNotMatch(listed.text, /connection-secret|igb0|STUDIO_CONNECTION/);
+  const family = await f.state('family');
+  const placed = await f.post('/family/studio/api/library/use', { scope: 'everyone', id: saved.json.entry.id, revision: family.revision, pageId: 'home' });
+  assert.equal(placed.status, 200, placed.text);
+  const copy = placed.json.serviceWidgets.find(item => item.type === 'pfsense');
+  assert.equal(copy.config.wan, 'igb0');
+  assert.equal(copy.config.key, `{{STUDIO_CONNECTION_${id}_KEY}}`);
+  assert.equal(placed.json.services.find(item => item.id === copy.serviceId).config.href, 'https://fw.example.test');
+  assert.deepEqual(placed.json.board.panels.find(item => item.id === copy.id).look, { corners: 'round' });
+  const theirs = await f.request('/family/studio/api/connections');
+  assert.deepEqual(theirs.json.connections.map(item => [item.id, item.name, item.has.key]), [[id, 'Firewall', true]]);
+  // Placing it again makes a second, independent widget with its own name.
+  const again = await f.post('/family/studio/api/library/use', { scope: 'everyone', id: saved.json.entry.id, revision: placed.json.revision, pageId: 'home' });
+  assert.equal(again.status, 200, again.text);
+  assert.deepEqual(again.json.services.map(item => item.name).sort(), ['Edge', 'Edge 2']);
+});

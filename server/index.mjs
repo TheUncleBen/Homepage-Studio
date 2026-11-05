@@ -24,6 +24,7 @@ import { createImageLibrary, ImageError, imageUsage, MAX_IMAGES, validImageId } 
 import { ConnectionError, createConnectionStore, MAX_CONNECTIONS, placeholder, publicConnection, SECRET_FIELDS } from './connections.mjs';
 const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'password', 'clear'];
 import { createPersonalStore } from './personal.mjs';
+import { connectionIdsOf, createLibrary, LibraryError, MAX_SAVED_WIDGETS, publicEntry, SCOPES, SHARED_LIBRARY_FILE } from './library.mjs';
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
 import { LookError, STATUS_SHOW, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
 import { BACKGROUND_CHOICES, BASE_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
@@ -329,6 +330,9 @@ function createDashboardHandlers(options = {}) {
   const logo = createLogoStore({ stateDir });
   const images = createImageLibrary({ stateDir });
   const connections = createConnectionStore({ dir: stateDir });
+  // Saved widgets for This dashboard (server/library.mjs); its saved looks
+  // are in the board.
+  const library = createLibrary({ dir: stateDir, looks: false });
   const history = createHistoryStore({ stateDir });
   const store = createConfigStore({ configDir, stateDir, backupRetention, discoveryReader: async (host, dashboard) => {
     const lease = await acquireNative(host, dashboard);
@@ -786,14 +790,18 @@ function createDashboardHandlers(options = {}) {
       if (image) pictures.push({ kind: image.kind, name: image.name, image: `data:${image.type};base64,${image.bytes.toString('base64')}` });
     }
     const saved = (await connections.list()).map(({ id, name, url }) => ({ id, name, url }));
-    return { ...archive, ...(pictures.length ? { images: pictures } : {}), ...(saved.length ? { connections: saved } : {}) };
+    // Saved widgets for This dashboard; the keys of connections they use stay
+    // behind, as with the connections themselves.
+    const widgets = (await library.list()).filter((entry) => entry.kind === 'widget').map(({ name, widget: { connections: _connections, ...widget } }) => ({ name, widget }));
+    return { ...archive, ...(pictures.length ? { images: pictures } : {}), ...(saved.length ? { connections: saved } : {}), ...(widgets.length ? { savedWidgets: widgets } : {}) };
   }
   async function portableImport(change) {
     const archive = change?.archive && typeof change.archive === 'object' && !Array.isArray(change.archive) ? change.archive : null;
-    const { images: pictures, connections: saved, ...files } = archive ?? {};
+    const { images: pictures, connections: saved, savedWidgets, ...files } = archive ?? {};
     const refuse = () => { throw Object.assign(new Error('The imported images or connections are not valid.'), { status: 400, code: 'INVALID_IMPORT' }); };
     if (pictures !== undefined && (!Array.isArray(pictures) || pictures.length > MAX_IMAGES || pictures.some((item) => !item || typeof item !== 'object'))) refuse();
     if (saved !== undefined && (!Array.isArray(saved) || saved.length > MAX_CONNECTIONS || saved.some((item) => !item || typeof item !== 'object' || typeof item.id !== 'string'))) refuse();
+    if (savedWidgets !== undefined && (!Array.isArray(savedWidgets) || savedWidgets.length > MAX_SAVED_WIDGETS || savedWidgets.some((item) => !item || typeof item !== 'object'))) refuse();
     const result = await store.importArchive({ ...change, archive: archive ? files : change?.archive });
     const notes = [];
     for (const picture of pictures ?? []) {
@@ -807,10 +815,14 @@ function createDashboardHandlers(options = {}) {
       try { await connections.add({ name: entry.name, url: entry.url }, { id: entry.id }); needKeys.push(String(entry.name)); }
       catch (error) { if (error instanceof ConnectionError) notes.push(`Connection “${String(entry.name ?? '').slice(0, 60)}” was not added: ${error.message}`); else throw error; }
     }
+    for (const entry of savedWidgets ?? []) {
+      try { await library.add({ kind: 'widget', name: entry.name, widget: entry.widget }); }
+      catch (error) { if (error instanceof LibraryError) notes.push(`Saved widget “${String(entry.name ?? '').slice(0, 60)}” was not added: ${error.message}`); else throw error; }
+    }
     return { ...result, ...(needKeys.length ? { connectionsNeedingKeys: needKeys } : {}), ...(notes.length ? { importNotes: notes } : {}) };
   }
 
-  return { handle, checkRequest, store, logo, images, connections, history, collectHistory, initialization };
+  return { handle, checkRequest, store, logo, images, connections, library, history, collectHistory, initialization };
 }
 
 export function createStudioServer(options = {}) {
@@ -839,6 +851,8 @@ export function createStudioServer(options = {}) {
   const authConfig = readAuthConfig(options);
   let registryForAuth;
   const personal = createPersonalStore({ stateRoot });
+  // Saved widgets for Everyone (server/library.mjs), saved by administrators.
+  const sharedLibrary = createLibrary({ dir: stateRoot, file: SHARED_LIBRARY_FILE, looks: false });
   const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent, onUserRemoved: userId => personal.removeUser(userId) }) : null;
   // Administration's name for the deployment, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
@@ -884,7 +898,7 @@ export function createStudioServer(options = {}) {
     return owned;
   }
   const registry = createDashboardRegistry({ configRoot, prepareDashboard: async (entry, source, { isNew = false, starter } = {}) => {
-    let archive, logo, uploads = [], saved = [], starterContent;
+    let archive, logo, uploads = [], saved = [], savedWidgets = [], starterContent;
     if (starter !== undefined) {
       starterContent = starterFiles(starter);
       if (!starterContent) throw new DashboardError('Choose one of the starter templates.', 'INVALID_DASHBOARD_ACTION');
@@ -894,6 +908,7 @@ export function createStudioServer(options = {}) {
       await sourceHandler.initialization;
       archive = await sourceHandler.store.exportCurrent();
       saved = await sourceHandler.connections.list();
+      savedWidgets = await sourceHandler.library.list();
       logo = await sourceHandler.logo.read();
       for (const entry of await sourceHandler.images.list()) {
         const image = await sourceHandler.images.read(entry.id);
@@ -921,6 +936,8 @@ export function createStudioServer(options = {}) {
     for (const image of uploads) await target.images.add({ kind: image.kind, name: image.name, image: `data:${image.type};base64,${image.bytes.toString('base64')}` });
     // And its saved connections, under the same names its widgets use.
     for (const entry of saved) await target.connections.add({ name: entry.name, url: entry.url, ...entry.secrets }, { id: entry.id });
+    // And its saved widgets.
+    if (savedWidgets.length) await target.library.copyFrom(savedWidgets);
   }, cleanupDashboard: async entry => {
     if (entry.id === 'default') throw new DashboardError('The original dashboard cannot be removed.', 'DEFAULT_DASHBOARD_REQUIRED');
     const owned = unpublished.get(entry.id);
@@ -1064,6 +1081,99 @@ export function createStudioServer(options = {}) {
     // Dashboards that use it keep their own copy.
     if (change.action === 'delete') { await mine.remove(change.id); return json(res, 200, { removed: true }); }
     throw new ConnectionError('Choose add, update or delete.');
+  }
+  // Saved widgets and saved looks (server/library.mjs). Looks are for anyone
+  // who may arrange this dashboard and are kept Just me (This dashboard's are
+  // in its board). Widgets are content, so only administrators save and
+  // place them, Just me, This dashboard or Everyone. A saved widget's
+  // settings never leave the server: the list shows names and types only.
+  async function handleLibrary(req, res, path, current, dashboard, level) {
+    const handler = forDashboard(dashboard);
+    const admin = level === 'admin';
+    const scopes = SCOPES.filter((scope) => scope !== 'me' || auth);
+    const place = (scope) => {
+      if (!scopes.includes(scope)) throw new LibraryError(scope === 'me' ? 'Your own saved widgets and looks need Studio sign-in.' : 'Choose Just me, This dashboard or Everyone.');
+      if (scope === 'me') return personal.forUser(current.user.id).library;
+      return scope === 'dashboard' ? handler.library : sharedLibrary;
+    };
+    const read = ['GET', 'HEAD'].includes(req.method);
+    if (path === '/studio/api/library' && read) {
+      const looks = auth ? (await place('me').list()).filter((entry) => entry.kind === 'look').map((entry) => publicEntry(entry, 'me')) : [];
+      const widgets = [];
+      if (admin) for (const scope of scopes) for (const entry of await place(scope).list()) if (entry.kind === 'widget') widgets.push(publicEntry(entry, scope));
+      return json(res, 200, { scopes, looks, widgets });
+    }
+    if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST.' });
+    const change = await editBody(req);
+    if (!change || typeof change !== 'object') throw new LibraryError('Send a saved widget or look change.');
+    if (path === '/studio/api/library/use') {
+      if (!admin) return forbidden(res, 'Only administrators can add widgets.');
+      if (Object.keys(change).some((key) => !['scope', 'id', 'revision', 'pageId', 'editSession'].includes(key))) throw new LibraryError('Send the saved widget to place.');
+      const entry = await place(change.scope).read(change.id);
+      if (entry.kind !== 'widget') throw new LibraryError('That is not a saved widget.');
+      // Its saved connections come along under the same ids, so its
+      // settings keep pointing at them.
+      const here = handler.connections;
+      const known = new Set((await here.list()).map((item) => item.id));
+      for (const connection of entry.widget.connections ?? []) {
+        if (known.has(connection.id)) continue;
+        try { await here.add({ name: connection.name, url: connection.url, ...connection.secrets }, { id: connection.id }); }
+        catch (error) {
+          if (error instanceof ConnectionError && /already a connection called/.test(error.message)) throw new LibraryError(`This dashboard already has a different connection called “${connection.name}”. Rename one of them in Dashboard settings › Saved connections, then place the widget again.`, 'CONNECTION_NAME_TAKEN', 409);
+          throw error;
+        }
+      }
+      return json(res, 200, await handler.store.placeWidget({ revision: change.revision, pageId: typeof change.pageId === 'string' ? change.pageId : undefined, editSession: change.editSession }, entry.widget));
+    }
+    if (path !== '/studio/api/library') return json(res, 404, { error: 'This editor endpoint does not exist.' });
+    if (Object.keys(change).some((key) => !['action', 'kind', 'scope', 'id', 'name', 'look', 'panelId', 'editSession'].includes(key))) throw new LibraryError('Send a saved widget or look change.');
+    const { action, kind } = change;
+    if (kind === 'look') {
+      if (change.scope !== 'me') throw new LibraryError('Looks for This dashboard are saved with its arrangement.');
+    } else if (kind === 'widget') {
+      if (!admin) return forbidden(res, 'Only administrators can save widgets.');
+    } else throw new LibraryError('Choose a saved widget or a saved look.');
+    const target = place(change.scope);
+    // A widget is saved from one on this dashboard, read here so its keys
+    // never pass through a browser.
+    const widgetOf = async () => {
+      const state = await handler.store.load();
+      const panel = state.board.panels.find((item) => item.id === change.panelId);
+      if (!panel) throw new LibraryError('That widget is no longer on this dashboard.', 'TILE_NOT_FOUND', 404);
+      const looks = { look: panel.look, behaviour: panel.behaviour };
+      let widget;
+      if (panel.kind === 'serviceWidget') {
+        const source = state.serviceWidgets.find((item) => item.id === panel.id);
+        const parent = source && state.services.find((item) => item.id === source.serviceId);
+        if (!source || !parent) throw new LibraryError('Only widgets in this dashboard\'s own files can be saved.');
+        const service = Object.fromEntries(['href', 'siteMonitor', 'ping'].filter((key) => typeof parent.config?.[key] === 'string').map((key) => [key, parent.config[key]]));
+        widget = { kind: 'serviceWidget', type: source.type, title: parent.name, config: source.config ?? {}, service, ...looks };
+      } else if (panel.kind === 'informationWidget') {
+        const source = state.infoWidgets.find((item) => item.id === panel.id);
+        if (!source) throw new LibraryError('That widget is no longer on this dashboard.', 'TILE_NOT_FOUND', 404);
+        widget = { kind: 'informationWidget', type: source.type, config: source.config ?? {}, ...looks };
+      } else throw new LibraryError('Only integration and information widgets can be saved. Links stay on their dashboard.');
+      // Saved anywhere but here, it keeps its own copy of the connections it uses.
+      if (change.scope !== 'dashboard') {
+        const saved = await handler.connections.list();
+        const connections = connectionIdsOf(widget.config).map((id) => saved.find((item) => item.id === id)).filter(Boolean);
+        if (connections.length) widget.connections = connections.map(({ id, name, url, secrets }) => ({ id, name, url, secrets }));
+      }
+      return widget;
+    };
+    if (action === 'add') {
+      const entry = await target.add({ kind, name: change.name, ...(kind === 'look' ? { look: change.look } : { widget: await widgetOf() }) });
+      return json(res, 200, { entry: publicEntry(entry, change.scope) });
+    }
+    const existing = await target.read(change.id);
+    if (existing.kind !== kind) throw new LibraryError('That saved item no longer exists.', 'LIBRARY_NOT_FOUND', 404);
+    if (action === 'rename') return json(res, 200, { entry: publicEntry(await target.update(change.id, { name: change.name }), change.scope) });
+    if (action === 'update') {
+      const input = kind === 'look' ? { look: change.look } : { widget: await widgetOf() };
+      return json(res, 200, { entry: publicEntry(await target.update(change.id, input), change.scope) });
+    }
+    if (action === 'delete') { await target.remove(change.id); return json(res, 200, { removed: true }); }
+    throw new LibraryError('Choose add, rename, update or delete.');
   }
   async function handleRequest(req, res) {
     for (const [name, value] of Object.entries(responseHeaders)) res.setHeader(name, value);
@@ -1295,6 +1405,7 @@ export function createStudioServer(options = {}) {
       }
       if (local === '/studio/api/preferences' || local.startsWith('/studio/api/my-images')) return await handlePersonal(req, res, local, current, route.dashboard);
       if (local === '/studio/api/my-connections' || local === '/studio/api/my-connections/use') return await handlePersonalConnections(req, res, local, current, route.dashboard);
+      if (local === '/studio/api/library' || local === '/studio/api/library/use') return await handleLibrary(req, res, local, current, route.dashboard, level);
       // A signed-in viewer's own language (Preferences › Display) reaches the
       // dashboard page as a header the controller sets; any such header from
       // the browser was already dropped.

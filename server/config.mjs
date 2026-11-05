@@ -855,6 +855,11 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       hiddenDiscoveredIds: candidate.hiddenDiscoveredIds,
       board: own(change, 'board') ? (action === 'arrangement-saved' ? mergeBoardChange(change.board, candidate.sources, current.board) : validateBoardChange(change.board, candidate.sources)) : candidate.board,
     };
+    // A saved widget placed on the dashboard brings its look and behaviour.
+    if (forced.placed?.id && (forced.placed.look || forced.placed.behaviour)) {
+      const { id, look, behaviour } = forced.placed;
+      state.board = validateStoredBoard({ ...state.board, panels: state.board.panels.map((panel) => (panel.id === id ? { ...panel, ...(look ? { look } : {}), ...(behaviour ? { behaviour } : {}) } : panel)) });
+    }
     desired['state.json'] = `${JSON.stringify(state, null, 2)}\n`;
     await commit(current, desired, action);
     return response(await readCurrent());
@@ -902,7 +907,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, servicesYaml: parsed.text() }, `service-${CONTENT_ACTIONS[change.action]}`);
   }
 
-  async function mutateInfoInner(change) {
+  async function mutateInfoInner(change, internal = {}) {
     const current = await readCurrent();
     checkRevision(change.revision, current);
     if (!['add', 'update', 'delete'].includes(change.action)) fail('Unknown information widget action.', 'INVALID_ACTION', 400);
@@ -923,6 +928,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       if (change.action === 'add') {
         doc.contents.add(doc.createNode({ [type]: Object.fromEntries(Object.entries(config).filter(([, value]) => value !== null)) }));
         identities.push({ id: `info-${randomUUID()}` });
+        if (internal.placed) internal.placed.id = identities.at(-1).id;
       } else {
         const entry = doc.contents.items[existing.index];
         if (!isMap(entry)) fail('This information widget uses an unsupported YAML alias. Edit its YAML directly.');
@@ -930,7 +936,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         renamePair(entry.items[0], type);
       }
     }
-    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, widgetsYaml: parsed.text() }, `info-widget-${CONTENT_ACTIONS[change.action]}`, { infoWidgets: identities });
+    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, widgetsYaml: parsed.text() }, `info-widget-${CONTENT_ACTIONS[change.action]}`, { infoWidgets: identities, placed: internal.placed });
   }
 
   async function mutateBookmarkInner(change) {
@@ -976,7 +982,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, bookmarksYaml: text }, `bookmark-${CONTENT_ACTIONS[change.action]}`, { bookmarks: forced });
   }
 
-  async function mutateServiceWidgetInner(change) {
+  async function mutateServiceWidgetInner(change, internal = {}) {
     const current = await readCurrent();
     checkRevision(change.revision, current);
     if (!['add', 'update', 'delete'].includes(change.action)) fail('Unknown service widget action.', 'INVALID_ACTION', 400);
@@ -1049,6 +1055,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
         const position = list.items.length;
         list.add(doc.createNode({ ...Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== null)), type }));
         identities.splice(position, 0, { id: `widget-${randomUUID()}` });
+        if (internal.placed) internal.placed.id = identities[position].id;
       } else if (existing.sourceKey === 'widget') {
         options.set('widget', patchMap(doc, options.get('widget', true), { ...patch, type }, parsed));
       } else {
@@ -1060,7 +1067,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     const text = parsed.text();
     const newServices = serviceEntries(yamlDocument(text, 'services.yaml').data).services;
     const forcedIdentities = newServices.flatMap((entry) => byService.get(entry.id) ?? []);
-    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, servicesYaml: text }, `service-widget-${CONTENT_ACTIONS[change.action]}`, { serviceWidgets: forcedIdentities });
+    return saveCurrent(current, { ...withBoard(change), revision: change.revision, pageId: change.pageId, servicesYaml: text }, `service-widget-${CONTENT_ACTIONS[change.action]}`, { serviceWidgets: forcedIdentities, placed: internal.placed });
   }
 
 
@@ -1455,6 +1462,14 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     duplicatePage: (change) => editing(change, () => duplicatePageInner(change)),
     deletePanels: (change) => editing(change, () => deletePanelsInner(change)),
     duplicatePanels: (change) => editing(change, () => duplicatePanelsInner(change)),
+    // Places a saved widget (server/library.mjs) as a new, independent
+    // widget on the page being edited, with its look and behaviour.
+    placeWidget: (change, widget) => editing(change, () => {
+      const placed = { look: widget.look, behaviour: widget.behaviour };
+      const base = { revision: change.revision, pageId: change.pageId, action: 'add', type: widget.type, config: widget.config };
+      if (widget.kind === 'informationWidget') return mutateInfoInner(base, { placed });
+      return mutateServiceWidgetInner({ ...base, newService: { name: widget.title }, ...(widget.service ? { service: widget.service } : {}) }, { placed });
+    }),
     listBackups: () => serialized(async () => {
       await ready();
       const names = await orderedBackupNames();

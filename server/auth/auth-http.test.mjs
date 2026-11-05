@@ -803,6 +803,18 @@ test('each person keeps their own images and preferences; using an image copies 
   assert.equal((await post('/home/studio/api/my-images/delete', { id }, { cookie: member.cookie })).status, 200);
   assert.equal((await request('/home/studio/api/my-images/' + id, { cookie: member.cookie })).status, 404);
   assert.equal((await request('/home/studio/api/images/' + id, { cookie: member.cookie })).status, 200);
+  // Saved looks Just me: anyone who arranges keeps their own. Saved widgets
+  // are content, for administrators only, and never listed to others.
+  const look = await post('/home/studio/api/library', { action: 'add', kind: 'look', scope: 'me', name: 'Night', look: { fill: 'tint' } }, { cookie: member.cookie });
+  assert.equal(look.status, 200, look.text);
+  const library = await request('/home/studio/api/library', { cookie: member.cookie });
+  assert.deepEqual(library.json.scopes, ['me', 'dashboard', 'everyone']);
+  assert.deepEqual(library.json.looks.map(item => item.name), ['Night']);
+  assert.deepEqual(library.json.widgets, []);
+  assert.deepEqual((await request('/home/studio/api/library', { cookie: admin.cookie })).json.looks, [], 'saved looks belong to one person');
+  assert.equal((await post('/home/studio/api/library', { action: 'add', kind: 'widget', scope: 'dashboard', name: 'W', panelId: 'x' }, { cookie: member.cookie })).status, 403);
+  assert.equal((await post('/home/studio/api/library/use', { scope: 'everyone', id: '0123456789abcdef', revision: 'r' }, { cookie: member.cookie })).status, 403);
+  assert.equal((await post('/home/studio/api/library', { action: 'add', kind: 'look', scope: 'dashboard', name: 'D', look: { fill: 'tint' } }, { cookie: member.cookie })).status, 400, "This dashboard's looks are saved with its board");
   // Deleting the account removes what it kept.
   const folder = path.join(context.stateDir, 'people', member.invited.id);
   assert.ok((await fs.stat(folder)).isDirectory());
