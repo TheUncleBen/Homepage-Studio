@@ -534,7 +534,11 @@ Then check two things under **Administration**:
   it does, the `studio_auth_key` secret isn't reaching Studio.
 - **Activity** shows your own device's address in the Address column, not
   the proxy's. If it shows the proxy's, `STUDIO_TRUSTED_PROXIES` doesn't match
-  the network's subnet (step 2).
+  the network's subnet (step 2); Activity then names the proxy's address at
+  the top. If it shows an internal Swarm address (often `10.0.0.x`), the
+  proxy's own ports go through the ingress mesh, which hides the visitor's
+  address from the proxy: publish them in host mode, as in
+  [REVERSE-PROXY.md](REVERSE-PROXY.md#how-the-proxy-reaches-studio).
 
 Inviting people, sharing dashboards and session policies are in
 [AUTHENTICATION.md](AUTHENTICATION.md). If something's off, start with
