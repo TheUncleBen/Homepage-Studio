@@ -18,11 +18,17 @@ const keyOf = (child, index) => {
 // whenever it changes size.
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 // `least`: how many values always stay (none under a hero, which stays).
-function useFold(count, least = 1) {
+// `content`: what the card shows; new numbers (the first answer after the
+// placeholders, a longer value) measure again from all shown.
+function useFold(count, least = 1, content = "") {
   const ref = useRef(null);
   const [shown, setShown] = useState(count);
   const [epoch, setEpoch] = useState(0);
-  useIsoLayoutEffect(() => setShown(count), [count, epoch]);
+  useIsoLayoutEffect(() => {
+    // Measure afresh at the card's usual spacing.
+    ref.current?.closest(".studio-native-content")?.removeAttribute("data-tight");
+    setShown(count);
+  }, [count, epoch, content]);
   useIsoLayoutEffect(() => {
     const list = ref.current;
     const clip = list?.closest(".studio-native-content");
@@ -31,8 +37,15 @@ function useFold(count, least = 1) {
     const fits = (element) => !element || element.getBoundingClientRect().bottom <= limit + 0.5;
     const items = [...list.children].filter((item) => item.classList.contains("studio-fold-item"));
     if (shown === count) {
-      const bottoms = items.map((item) => (item.firstElementChild || item).getBoundingClientRect().bottom);
-      if (!bottoms.length || bottoms.every((bottom) => bottom <= limit + 0.5)) return;
+      const measure = () => items.map((item) => (item.firstElementChild || item).getBoundingClientRect().bottom);
+      let bottoms = measure();
+      const all = () => !bottoms.length || bottoms.every((bottom) => bottom <= limit + 0.5);
+      if (all()) return;
+      // Before anything folds, the card draws a little tighter (smaller hero,
+      // less space between): often that is enough for every value (board 27).
+      clip.setAttribute("data-tight", "");
+      bottoms = measure();
+      if (all()) return;
       // Room for the "+N more" line under the values that stay.
       const room = limit - 20;
       setShown(Math.max(least, bottoms.filter((bottom) => bottom <= room + 0.5).length));
@@ -43,7 +56,7 @@ function useFold(count, least = 1) {
     const last = items[shown - 1];
     if (shown > least && (!fits(last?.firstElementChild || last) || !fits(list.querySelector(".studio-values-more"))))
       setShown(shown - 1);
-  }, [shown, count, epoch, least]);
+  }, [shown, count, epoch, least, content]);
   useEffect(() => {
     const clip = ref.current?.closest(".studio-native-content");
     if (!clip || typeof ResizeObserver === "undefined") return undefined;
@@ -56,13 +69,19 @@ function useFold(count, least = 1) {
       setEpoch((value) => value + 1);
     });
     observer.observe(clip);
-    return () => observer.disconnect();
+    // Text measures differently once the web font has loaded.
+    let live = true;
+    document.fonts?.ready?.then(() => live && setEpoch((value) => value + 1));
+    return () => {
+      live = false;
+      observer.disconnect();
+    };
   }, []);
   return { ref, shown };
 }
 
-function Folded({ className, items, slot, arranged }) {
-  const { ref, shown } = useFold(items.length, slot === "below" ? 0 : 1);
+function Folded({ className, items, slot, arranged, content }) {
+  const { ref, shown } = useFold(items.length, slot === "below" ? 0 : 1, content);
   const hidden = items.length - shown;
   return (
     <div ref={ref} className={className}>
@@ -104,7 +123,7 @@ export default function CardValues({ card, items: children }) {
   );
   // A widget that draws its own content (an embedded page, a calendar, a
   // list) has no values to arrange or fold: it shows as it is and scrolls.
-  const content = !items.some((item) => item.block);
+  const ownContent = !items.some((item) => item.block);
   const report = card.reportFields;
   useEffect(() => {
     if (report) report(JSON.parse(fieldsKey).map(([field, label]) => ({ field, label })));
@@ -126,7 +145,14 @@ export default function CardValues({ card, items: children }) {
     return left === right ? 0 : left - right;
   });
   const visible = ordered.filter((item) => arranged.get(item.key)?.slot !== "hidden");
-  if (content)
+  // What the values say now, so the fold measures again when they change.
+  const content = visible
+    .map((item) => {
+      const value = item.child?.props?.value;
+      return `${item.key}=${typeof value === "string" || typeof value === "number" ? value : value == null ? "" : "*"}`;
+    })
+    .join("|");
+  if (ownContent)
     return (
       <div className="studio-card-content">
         {items.map((item, index) => (
@@ -142,6 +168,7 @@ export default function CardValues({ card, items: children }) {
         items={visible}
         slot="quiet"
         arranged={arranged}
+        content={content}
       />
     );
   }
@@ -162,7 +189,7 @@ export default function CardValues({ card, items: children }) {
       {trend && <Trend history={card.history} field={hero.key} trend={card.trend} />}
       {charted && <CardChart card={card} onOpen={CHART_SHOWS.includes(show) ? card.onFullView : undefined} />}
       {!charted && rest.length > 0 && (
-        <Folded className="studio-values-below" items={rest} slot="below" arranged={arranged} />
+        <Folded className="studio-values-below" items={rest} slot="below" arranged={arranged} content={content} />
       )}
     </div>
   );

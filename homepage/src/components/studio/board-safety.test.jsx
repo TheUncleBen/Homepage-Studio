@@ -488,30 +488,20 @@ describe("Native board save and draft safety", () => {
     expect(catalogReads()).toBe(2);
   });
 
-  it("scrolls the delete confirmation into view, focuses its safe choice and restores focus on Keep it", async () => {
-    const scrolled = [];
-    const original = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = function scrollIntoView(options) {
-      scrolled.push([this, options]);
-    };
-    try {
-      await mountBoard();
-      fireEvent.click(screen.getByRole("button", { name: "Edit Clock" }));
-      fireEvent.click(await screen.findByRole("button", { name: /^Management/ }));
-      const remove = await screen.findByRole("button", { name: "Delete", exact: true });
-      remove.focus();
-      fireEvent.click(remove);
-      const confirmation = screen.getByText("Delete Clock?").closest(".studio-delete-confirm");
-      expect(scrolled.some(([element]) => element === confirmation)).toBe(true);
-      const keep = screen.getByRole("button", { name: "Keep it" });
-      expect(keep).toHaveFocus();
-      expect(confirmation).toContainElement(screen.getByRole("button", { name: "Delete permanently" }));
-      fireEvent.click(keep);
-      expect(screen.queryByText("Delete Clock?")).not.toBeInTheDocument();
-      expect(remove).toHaveFocus();
-    } finally {
-      Element.prototype.scrollIntoView = original;
-    }
+  it("Delete under Management closes the dialog and deletes at once, with Undo, like the menu", async () => {
+    const write = vi.fn(async () => ({
+      ...initialState,
+      revision: "after",
+      board: { ...initialState.board, panels: initialState.board.panels.filter((item) => item.id !== "clock") },
+    }));
+    await mountBoard({ write });
+    fireEvent.click(screen.getByRole("button", { name: "Edit Clock" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Management/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete", exact: true }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.queryByText("Delete Clock?")).not.toBeInTheDocument();
+    await screen.findByText("Clock deleted");
+    expect(write).toHaveBeenCalledWith("/studio/api/widgets-delete", expect.objectContaining({ ids: ["clock"] }));
   });
 
   it("Done waits for a change still saving, then goes back to the Dashboards page", async () => {
@@ -785,7 +775,6 @@ describe("Native board save and draft safety", () => {
       fireEvent.click(screen.getByRole("button", { name: "Edit Clock" }));
       fireEvent.click(await screen.findByRole("button", { name: /^Management/ }));
       fireEvent.click(await screen.findByRole("button", { name: "Delete", exact: true }));
-      fireEvent.click(screen.getByRole("button", { name: "Delete permanently" }));
       await screen.findByText(/Your changes were saved, but widget data could not refresh/);
       expect(survivor).toHaveTextContent("SECOND widget");
       expect(survivor.closest(".studio-native-content")).toHaveAttribute("inert");

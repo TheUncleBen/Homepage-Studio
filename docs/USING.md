@@ -112,8 +112,12 @@ and 8 on a phone. Each size has its own layout, made from the desktop one:
 
 - Until you move or resize a widget on a tablet or phone, that size follows
   desktop, in desktop's reading order. On a tablet a widget up to half the
-  desktop width takes half the width and a wider one the full width; on a
-  phone small widgets pair up at half width and the rest take the full width.
+  desktop width takes half the width and a wider one the full width, and
+  widgets rise to close any gap above them; on a phone small widgets pair up
+  at half width (link tiles with link tiles, widget cards with widget cards)
+  and the rest take the full width. A half-width card shows its status as a
+  dot, lets its name take two lines (on the narrowest screens without its
+  logo), and puts a donut's legend under it.
 - Once you move or resize a widget on that size, the size keeps your
   arrangement, position and size, for every widget on it. Desktop never moves
   because of a tablet or phone change.
@@ -371,8 +375,9 @@ line 12, column 3.* when a save is refused. The message never repeats the text
 of the line, so a secret on that line doesn't end up on screen or in a log. A
 draft with a mistake stays open for you to fix; the saved file isn't touched.
 
-**Delete**, under **Management**, asks *Delete ...?* with **Keep it** (selected)
-and **Delete permanently**. On a phone the question scrolls into view.
+**Delete**, under **Management**, closes the dialog and deletes the widget at
+once, as **Delete** in its menu does, with **Undo** in the message that
+follows.
 
 ### Saved connections and Test connection
 
@@ -430,7 +435,9 @@ and the exact values under your pointer. While editing, the widget's menu has
 
 **Look** lists saved looks under a button that names the look in use (or
 *None picked*); choose one to apply it. With more than four there is a search.
-**Save this look…** asks for a name and **Who can use it**: **Just me** (you,
+It is there even before the first look is saved; **Save this look…** is
+available once the widget's look differs from the default and isn't saved
+yet. It asks for a name and **Who can use it**: **Just me** (you,
 on every dashboard you edit) or **This dashboard** (everyone who edits it).
 **Manage saved looks** renames, **Update**s (to this widget's look) or deletes
 them. After an update, if other widgets on the dashboard use that look,

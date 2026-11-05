@@ -72,6 +72,53 @@ describe("a layout for each size", () => {
     expect(phone.d).toEqual({ x: 0, y: 10, w: 8, h: 4 });
   });
 
+  it("leaves no hole in the generated tablet layout when desktop rows are offset", () => {
+    const view = pageBoard(
+      {
+        ...board(),
+        panels: [
+          { id: "a", pageId: "home", rect: { x: 0, y: 0, w: 8, h: 2 } },
+          { id: "b", pageId: "home", rect: { x: 8, y: 0, w: 8, h: 2 } },
+          { id: "c", pageId: "home", rect: { x: 16, y: 0, w: 8, h: 2 } },
+          { id: "d", pageId: "home", rect: { x: 16, y: 3, w: 8, h: 4 } },
+          { id: "e", pageId: "home", rect: { x: 0, y: 5, w: 8, h: 4 } },
+        ],
+      },
+      "home",
+    );
+    const tablet = sizeProjection(view, "tablet").units;
+    disjoint(tablet);
+    // Every widget sits on the floor or on another widget.
+    for (const unit of tablet) {
+      if (unit.rect.y === 0) continue;
+      const above = { ...unit.rect, y: unit.rect.y - 1 };
+      expect(tablet.some((other) => other !== unit && intersects(above, other.rect))).toBe(true);
+    }
+  });
+
+  it("pairs link tiles with link tiles and cards with cards on the phone", () => {
+    const view = pageBoard(
+      {
+        ...board(),
+        panels: [
+          { id: "t1", pageId: "home", kind: "service", rect: { x: 0, y: 0, w: 5, h: 2 } },
+          { id: "w1", pageId: "home", kind: "serviceWidget", rect: { x: 5, y: 0, w: 6, h: 4 } },
+          { id: "w2", pageId: "home", kind: "serviceWidget", rect: { x: 11, y: 0, w: 6, h: 4 } },
+          { id: "t2", pageId: "home", kind: "bookmark", rect: { x: 17, y: 0, w: 5, h: 2 } },
+          { id: "t3", pageId: "home", kind: "service", rect: { x: 0, y: 4, w: 5, h: 2 } },
+        ],
+      },
+      "home",
+    );
+    const phone = rects(sizeProjection(view, "phone"));
+    // The first tile has a card after it, so it takes the row.
+    expect(phone.t1).toEqual({ x: 0, y: 0, w: 8, h: 2 });
+    expect(phone.w1).toMatchObject({ x: 0, w: 4 });
+    expect(phone.w2).toMatchObject({ x: 4, w: 4, y: phone.w1.y });
+    expect(phone.t2).toMatchObject({ x: 0, w: 4, h: 2 });
+    expect(phone.t3).toMatchObject({ x: 4, w: 4, h: 2, y: phone.t2.y });
+  });
+
   it("moving a widget on the phone changes only the phone layout, never desktop", () => {
     const whole = board();
     const view = sizeView(pageBoard(whole, "home"), "phone");

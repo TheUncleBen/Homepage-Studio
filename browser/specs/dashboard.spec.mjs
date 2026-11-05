@@ -180,7 +180,6 @@ test('native dashboard supports direct editing, independent size, mixed stacks a
   await page.getByRole('button', { name: 'Configure Browser fixture tile', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: /^Management/ }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Delete permanently', exact: true }).click();
   await expect(tile).toHaveCount(0);
   await expect(stack(page)).toHaveCount(0);
   await expect(greeting).toContainText('Browser fixture greeting');

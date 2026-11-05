@@ -38,6 +38,11 @@ function renderEditor(props = {}) {
 
 const radio = (group, name) => within(screen.getByRole("radiogroup", { name: group })).getByRole("radio", { name });
 
+// Where a value shows: a segmented control (board 27).
+const where = (label) => screen.getByRole("radiogroup", { name: `Where ${label} shows` });
+const whereIs = (label) => within(where(label)).getByRole("radio", { checked: true }).textContent;
+const putIt = (label, text) => fireEvent.click(within(where(label)).getByRole("radio", { name: text }));
+
 describe("widget dialog look (Rule 1: only what can apply)", () => {
   it("shows integration sections and hides colour rows until a fill needs them", () => {
     renderEditor();
@@ -138,7 +143,7 @@ describe("arranging values", () => {
 
   it("moves the hero when another value becomes the hero", () => {
     const { onLook } = renderEditor({ look: { values: [{ field: "users", slot: "hero" }] } });
-    fireEvent.change(screen.getByLabelText("Where Logins shows"), { target: { value: "hero" } });
+    putIt("Logins", "Hero");
     expect(onLook).toHaveBeenLastCalledWith({
       values: [{ field: "users" }, { field: "failed" }, { field: "logins", slot: "hero" }],
     });
@@ -219,9 +224,12 @@ describe("uploaded backgrounds", () => {
 });
 
 describe("saved looks", () => {
-  it("is offered only when there is a look to save or one to pick", () => {
+  it("is always shown where looks can be saved; saving waits for a changed look", () => {
     renderEditor({ look: {}, savedLooks: [], onSavedLooks: vi.fn() });
-    expect(screen.queryByText("Saved looks")).toBeNull();
+    expect(screen.getByText("Saved looks")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "None picked" }));
+    expect(screen.getByText(/No saved looks yet/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save this look…" })).toBeDisabled();
   });
 
   it("names this widget's look without its values, and applies a saved look keeping them", () => {
@@ -416,9 +424,9 @@ describe("Status history on a service tile", () => {
 
   it("names the line drawn as the hero, and hands the hero on when it moves below", () => {
     const { onLook } = renderEditor({ look: { show: "numbers", layout: "hero" } });
-    expect(screen.getByRole("combobox", { name: "Where Users shows" }).value).toBe("hero");
-    expect(screen.getByRole("combobox", { name: "Where Failed shows" }).value).toBe("below");
-    fireEvent.change(screen.getByRole("combobox", { name: "Where Users shows" }), { target: { value: "below" } });
+    expect(whereIs("Users")).toBe("Hero");
+    expect(whereIs("Failed")).toBe("Below");
+    putIt("Users", "Below");
     expect(onLook.mock.calls.at(-1)[0].values).toEqual([
       { field: "users" },
       { field: "failed", slot: "hero" },
@@ -438,7 +446,7 @@ describe("Status history on a service tile", () => {
     const value = screen.getByRole("combobox", { name: "Value" });
     expect(value.value).toBe("failed");
     expect([...value.options].map((option) => option.value)).toEqual(["failed", "logins"]);
-    expect(screen.queryByRole("combobox", { name: "Where Users shows" })).toBe(null);
+    expect(screen.queryByRole("radiogroup", { name: "Where Users shows" })).toBe(null);
     fireEvent.change(value, { target: { value: "logins" } });
     expect(onLook.mock.calls.at(-1)[0].values).toEqual([
       { field: "users" },
@@ -477,16 +485,16 @@ describe("one Values list for every value", () => {
   it("lists values the widget isn't drawing yet as hidden, and showing one adds it to the fields list", () => {
     const onChange = vi.fn();
     renderEditor({ fields: pfsense, nativeValues: native(undefined, onChange) });
-    expect(screen.getByLabelText("Where pfsense.wanIP shows")).toHaveValue("hidden");
-    expect(screen.getByLabelText("Where pfsense.disk shows")).toHaveValue("hidden");
-    fireEvent.change(screen.getByLabelText("Where pfsense.wanIP shows"), { target: { value: "below" } });
+    expect(whereIs("pfsense.wanIP")).toBe("Hidden");
+    expect(whereIs("pfsense.disk")).toBe("Hidden");
+    putIt("pfsense.wanIP", /^(Below|Shown)$/);
     expect(onChange).toHaveBeenCalledWith(["load", "memory", "temp", "wanStatus", "wanIP"]);
   });
 
   it("hiding a value removes it from the fields list, and moving one reorders it", () => {
     const onChange = vi.fn();
     renderEditor({ fields: pfsense, nativeValues: native(["load", "memory", "temp", "wanStatus"], onChange) });
-    fireEvent.change(screen.getByLabelText("Where pfsense.temp shows"), { target: { value: "hidden" } });
+    putIt("pfsense.temp", "Hidden");
     expect(onChange).toHaveBeenLastCalledWith(["load", "memory", "wanStatus"]);
     fireEvent.click(screen.getByRole("button", { name: "Move pfsense.memory up" }));
     expect(onChange).toHaveBeenLastCalledWith(["memory", "load", "temp", "wanStatus"]);
@@ -501,7 +509,10 @@ describe("one Values list for every value", () => {
 
   it("on a chart, each value goes in the chart, beside it as a number, or nowhere", () => {
     renderEditor({ fields: pfsense, look: { show: "line" } });
-    const where = screen.getByLabelText("Where pfsense.load shows");
-    expect([...where.options].map((option) => option.textContent)).toEqual(["Chart", "Number", "Hidden"]);
+    expect(
+      within(where("pfsense.load"))
+        .getAllByRole("radio")
+        .map((radio) => radio.textContent),
+    ).toEqual(["Chart", "Number", "Hidden"]);
   });
 });

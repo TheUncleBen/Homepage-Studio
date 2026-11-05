@@ -268,6 +268,15 @@ function tabletLayout(board) {
       }
       placed.push({ ...unit, rect });
     });
+  // No half-empty rows (plan rule 3): each widget, in reading order, rises
+  // into any free space above it in its own columns.
+  for (const item of placed) {
+    while (item.rect.y > 0) {
+      const up = { ...item.rect, y: item.rect.y - 1 };
+      if (placed.some((other) => other !== item && intersects(up, other.rect))) break;
+      item.rect = up;
+    }
+  }
   return placed;
 }
 
@@ -277,6 +286,12 @@ function tabletLayout(board) {
 // width. A half-width widget with no small neighbour to pair with takes the
 // full width instead of leaving a gap, and two side by side share a height.
 export const isSmallOnPhone = (rect, from = COLUMNS) => rect.w * 4 <= from;
+// Link tiles pair with link tiles and widget cards with widget cards, so a
+// pair is alike in height and a tile is never stretched beside a chart.
+const phoneGroup = (board, unit) => {
+  const panel = board.panels.find((item) => item.id === unit.id);
+  return panel && (panel.kind === "service" || panel.kind === "bookmark") ? "tile" : "card";
+};
 function phoneLayout(board) {
   const from = gridColumns(board);
   const half = PHONE_COLUMNS / 2;
@@ -288,7 +303,12 @@ function phoneLayout(board) {
   for (let index = 0; index < units.length; index += 1) {
     const { unit, rect } = units[index];
     const next = units[index + 1];
-    if (isSmallOnPhone(rect, from) && next && isSmallOnPhone(next.rect, from)) {
+    if (
+      isSmallOnPhone(rect, from) &&
+      next &&
+      isSmallOnPhone(next.rect, from) &&
+      phoneGroup(board, unit) === phoneGroup(board, next.unit)
+    ) {
       const h = Math.max(rect.h, next.rect.h);
       placed.push({ ...unit, rect: { x: 0, y, w: half, h } });
       placed.push({ ...next.unit, rect: { x: half, y, w: half, h } });

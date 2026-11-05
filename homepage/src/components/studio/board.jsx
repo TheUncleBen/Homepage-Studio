@@ -1312,6 +1312,10 @@ export default function StudioBoard({
   const stepping = useRef(false);
   const stepHistory = async (direction) => {
     if (stepping.current || nativeRefreshLock.current) return;
+    // Nothing to step (the button is greyed): a shortcut does nothing either.
+    // A change still waiting to save becomes a step once it saves.
+    const steps = direction === "undo" ? history.current.past : history.current.future;
+    if (!steps.length && !(direction === "undo" && draftPending.current)) return;
     stepping.current = true;
     try {
       if (!(await flushArrangement())) return;
@@ -1321,9 +1325,12 @@ export default function StudioBoard({
       await savedContent(state, { stepped: true });
       showToast(direction === "undo" ? "Undone" : "Redone");
     } catch (err) {
-      if (err?.details?.code === "NOTHING_TO_UNDO" || err?.details?.code === "UNDO_UNAVAILABLE")
+      // No step to take is not a conflict: say so quietly, never with the
+      // red "another change was saved" banner.
+      if (err?.details?.code === "NOTHING_TO_UNDO" || err?.details?.code === "UNDO_UNAVAILABLE") {
         setHistory({ past: [], future: [] });
-      setError(err);
+        if (err.details.code === "UNDO_UNAVAILABLE") showToast(err.message);
+      } else setError(err);
     } finally {
       stepping.current = false;
     }
@@ -1996,7 +2003,7 @@ export default function StudioBoard({
               onClick={() => openEditor("picker")}
             >
               <StudioIcon name="plus" size={16} />
-              <span className="studio-edit-bar-label">Widgets</span>
+              <span className="studio-edit-bar-label studio-edit-bar-label-kept">Widgets</span>
             </button>
           )}
           <button
@@ -2690,6 +2697,14 @@ export default function StudioBoard({
                   onCancel={closeModal}
                   onReload={reloadEditor}
                   onDuplicate={(entry) => requestEditorAction(() => setModal({ type: "content", entry }))}
+                  onDelete={
+                    isAdmin
+                      ? (panel) => {
+                          closeModal();
+                          deletePanel(panel);
+                        }
+                      : undefined
+                  }
                 />
               ) : modal.type === "appearance" ? (
                 <AppearanceOnlyEditor

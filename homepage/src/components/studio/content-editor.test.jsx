@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { describe, expect, it, vi } from "vitest";
 
-import ContentEditor, { ContentPicker, customApiMappingsMissing } from "./content-editor";
+import ContentEditor, { ContentPicker, customApiMappingsMissing, ResizeCorner } from "./content-editor";
 
 const customApi = {
   kind: "serviceWidget",
@@ -607,5 +607,33 @@ describe("adding a widget", () => {
     const body = JSON.parse(fetchMock.mock.calls.find(([, init]) => init?.method === "POST")[1].body);
     expect(body).toEqual({ action: "add", kind: "widget", scope: "everyone", name: "Clock", panelId: "info-1" });
     vi.unstubAllGlobals();
+  });
+});
+
+describe("the preview's resize corner", () => {
+  const drag = (dx, dy) => {
+    let rect = { x: 12, y: 30, w: 6, h: 4 };
+    const onChange = (update) => {
+      rect = update(rect);
+    };
+    const view = render(
+      <div className="studio-card-preview" data-testid="card">
+        <ResizeCorner rect={rect} minimum={{ w: 2, h: 2 }} columns={24} onChange={onChange} />
+      </div>,
+    );
+    // Drawn 6 columns of 40 px and 4 rows of 48 px.
+    view.getByTestId("card").getBoundingClientRect = () => ({ width: 240, height: 192, left: 0, top: 0 });
+    const corner = view.getByRole("button", { name: /^Resize:/ });
+    fireEvent.pointerDown(corner, { clientX: 500, clientY: 400, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 500 + dx, clientY: 400 + dy });
+    fireEvent.pointerUp(window);
+    view.unmount();
+    return rect;
+  };
+
+  it("measures a drag from where the pointer pressed, not from the widget's place", () => {
+    expect(drag(0, 0)).toMatchObject({ w: 6, h: 4 });
+    expect(drag(30, 0)).toMatchObject({ w: 7, h: 4 });
+    expect(drag(0, 40)).toMatchObject({ w: 6, h: 5 });
   });
 });

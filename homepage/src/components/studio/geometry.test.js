@@ -257,14 +257,15 @@ describe("Studio grid geometry", () => {
       284,
     );
     // On a phone (board 22) small widgets next to each other in reading
-    // order pair up at half width; one without a small neighbour, and
-    // anything wider than a quarter of desktop, takes the full width.
+    // order pair up at half width, tiles with tiles and cards with cards;
+    // one without a like small neighbour, and anything wider than a quarter
+    // of desktop, takes the full width. A link tile and a metrics card don't pair.
     expect(projection.units.map((unit) => [unit.id, unit.rect.w])).toEqual([
       ["bookmark", 8],
       ["calendar", 8],
       ["embed", 8],
-      ["link", 4],
-      ["metrics", 4],
+      ["link", 8],
+      ["metrics", 8],
       ["search", 8],
     ]);
     projection.units.forEach((unit, index) =>

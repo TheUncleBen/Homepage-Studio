@@ -2974,7 +2974,42 @@ body {
   flex-direction: column;
   gap: 10px;
   min-height: 100%;
+  container: studio-card / inline-size;
 }
+/* A narrow card (a half-width tile on a phone): the name may take two lines,
+   the status keeps its dot (its words stay in the label and tooltip), and a
+   donut or pie puts its legend under the shape. */
+@container studio-card (max-width: 200px) {
+  .studio-card .studio-card-name strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .studio-card .studio-card-status .studio-status-text {
+    display: none;
+  }
+  .studio-card .studio-card-tags {
+    min-height: 20px;
+  }
+  .studio-card .studio-chart-parts {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    justify-items: center;
+    gap: 6px;
+  }
+  .studio-card .studio-chart-parts .studio-chart-legend {
+    justify-self: stretch;
+  }
+}
+/* A very narrow card (a folded phone) gives the name the logo's room. */
+@container studio-card (max-width: 120px) {
+  .studio-card .studio-card-logo {
+    display: none;
+  }
+}
+
 .studio-card-head {
   display: flex;
   align-items: flex-start;
@@ -3132,6 +3167,23 @@ body {
 .studio-value-hero .studio-value-label {
   margin-top: 4px;
   font-size: 13px;
+}
+/* Tighter, before values fold (card-values useFold). */
+.studio-native-content[data-tight] .studio-card {
+  gap: 6px;
+}
+.studio-native-content[data-tight] .studio-values {
+  gap: 5px;
+}
+/* Only the default hero size gives way; a chosen size stays as chosen. */
+.studio-panel:not([data-hero]) .studio-native-content[data-tight] .studio-value-hero .studio-value-number {
+  font-size: 28px;
+}
+.studio-native-content[data-tight] .studio-value-hero .studio-value-label {
+  margin-top: 2px;
+}
+.studio-native-content[data-tight] .studio-values-below {
+  padding-top: 5px;
 }
 .studio-values-below {
   display: grid;
@@ -3862,6 +3914,25 @@ svg.studio-chart-gauge {
 .studio-value-list input {
   flex: 1 1 8rem;
   min-width: 0;
+}
+/* The value's own name reads as its name, not as a hint; typing renames it. */
+.studio-value-list input::placeholder {
+  color: var(--studio-text);
+  opacity: 1;
+}
+.studio-value-list .studio-segmented {
+  flex: none;
+}
+.studio-value-list select.studio-value-format {
+  appearance: none;
+  min-height: 32px;
+  padding: 0 24px 0 10px;
+  border: 1px solid var(--studio-line);
+  border-radius: 8px;
+  background: transparent
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 9 5-5 5 5M7 15l5 5 5-5'/%3E%3C/svg%3E")
+    right 8px center / 12px no-repeat;
+  cursor: pointer;
 }
 /* On a dialog wide enough, a row is one line of columns that line up from
    row to row; the name gives way first, and nothing passes the edge. */
@@ -4845,8 +4916,9 @@ svg.studio-chart-gauge {
     gap: 4px;
     padding: 10px 0;
   }
-  /* Widgets and Tidy up keep their icons and names for screen readers. */
-  .studio-edit-bar .studio-edit-bar-label,
+  /* Tidy up keeps its icon and its name for screen readers; Widgets, the
+     way to add anything, keeps its word too (board 21). */
+  .studio-edit-bar .studio-edit-bar-label:not(.studio-edit-bar-label-kept),
   .studio-edit-bar-note {
     position: absolute;
     width: 1px;
@@ -5037,6 +5109,20 @@ svg.studio-chart-gauge {
   margin: -4px 0 12px;
   color: var(--studio-muted);
   font-size: 13px;
+}
+/* On a phone or tablet the layout being edited reads at a glance, as a pill
+   like the Editing one. */
+@media (max-width: 1279px) {
+  .studio-size-status {
+    display: inline-block;
+    padding: 4px 12px;
+    border: 1px solid var(--studio-line);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--studio-accent) 10%, transparent);
+  }
+  .studio-size-status strong {
+    color: var(--studio-text);
+  }
 }
 .studio-size-previews {
   display: flex;

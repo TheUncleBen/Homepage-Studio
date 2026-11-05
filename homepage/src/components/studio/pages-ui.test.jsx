@@ -145,6 +145,16 @@ describe("Pages on a dashboard", () => {
     expect(writes[2].path).toBe("/studio/api/redo");
   });
 
+  it("Ctrl+Z with nothing to undo does nothing: no request, no conflict banner", async () => {
+    const { writes } = await mount({ mode: "edit" });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: "y", ctrlKey: true });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(writes).toHaveLength(0);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("Esc while naming a new page takes it back; Enter keeps it as New page", async () => {
     await mount({ mode: "edit" });
     const nav = screen.getByRole("navigation", { name: "Pages" });

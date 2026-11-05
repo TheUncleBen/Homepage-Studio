@@ -214,39 +214,27 @@ test.describe('touch on panel bodies', () => {
   });
 });
 
-test.describe('phone delete confirmation', () => {
+test.describe('phone delete', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test('Delete brings its confirmation into view with focus on Keep it, which returns focus to Delete', async ({ page, request }) => {
+  test('Delete under Management closes the dialog and deletes at once; Undo brings the widget back', async ({ page, request }) => {
     await seedServicePanels(request, [{ name: 'Delete fixture', rect: { x: 0, y: 0, w: 5, h: 3 } }]);
     await openEditor(page);
     // On a touch screen a widget shows its controls once tapped.
     await servicePanel(page, 'Delete fixture').tap();
     await page.getByRole('button', { name: 'Edit Delete fixture', exact: true }).click();
     const dialog = page.getByRole('dialog');
-    // Delete sits with Duplicate under the folded Management section.
+    // Delete sits with Duplicate under the folded Management section, and
+    // behaves as the card menu's Delete does (board 23).
     await dialog.getByRole('button', { name: /^Management/ }).click();
-    const remove = dialog.getByRole('button', { name: 'Delete', exact: true });
-    await remove.click();
-    const keep = dialog.getByRole('button', { name: 'Keep it', exact: true });
-    await expect(keep).toBeFocused();
-    await expect(keep).toBeInViewport();
-    await expect(dialog.getByRole('button', { name: 'Delete permanently', exact: true })).toBeInViewport();
-    // In view is not enough: the sticky dialog footer must not cover the question.
-    const uncovered = locator => locator.evaluate(element => {
-      const box = element.getBoundingClientRect();
-      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-      return Boolean(hit && element.contains(hit));
-    });
-    await expect.poll(() => uncovered(keep)).toBe(true);
-    expect(await uncovered(dialog.getByRole('button', { name: 'Delete permanently', exact: true }))).toBe(true);
-    const confirm = await dialog.locator('.studio-delete-confirm').boundingBox();
-    expect(confirm.y + confirm.height).toBeLessThanOrEqual((await dialog.locator('.studio-dialog-footer').boundingBox()).y);
-    await keep.click();
-    await expect(dialog.getByText('Delete Delete fixture?')).toHaveCount(0);
-    await expect(remove).toBeFocused();
-    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-    expect((await studioApi(request, '/dashboard/studio/api/board')).board.panels).toHaveLength(1);
+    await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(servicePanel(page, 'Delete fixture')).toHaveCount(0);
+    await expect(page.getByText('Delete fixture deleted', { exact: true })).toBeVisible();
+    expect((await studioApi(request, '/dashboard/studio/api/board')).board.panels).toHaveLength(0);
+    await page.getByRole('button', { name: 'Undo', exact: true }).first().click();
+    await expect(servicePanel(page, 'Delete fixture')).toHaveCount(1);
+    await expect.poll(async () => (await studioApi(request, '/dashboard/studio/api/board')).board.panels).toHaveLength(1);
   });
 });
 

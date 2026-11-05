@@ -31,7 +31,7 @@ export function SizeStatus({ size, follows, onFollow, disabled }) {
         <>Follows desktop until you move or resize a widget here.</>
       ) : (
         <>
-          your arrangement.{" "}
+          Your arrangement.{" "}
           <button type="button" className="studio-text-button" disabled={disabled} onClick={onFollow}>
             Follow desktop again
           </button>

@@ -42,7 +42,7 @@ export function customApiMappingsMissing(type, config) {
 
 // The preview's corner: drag it, or use the arrow keys on it, to change the
 // widget's size in grid steps, never below its smallest size.
-function ResizeCorner({ rect, minimum, columns, onChange, describedBy }) {
+export function ResizeCorner({ rect, minimum, columns, onChange, describedBy }) {
   const clamp = (w, h) => ({
     w: Math.max(Math.min(minimum.w, columns), Math.min(columns, w)),
     h: Math.max(minimum.h, Math.min(200, h)),
@@ -56,11 +56,12 @@ function ResizeCorner({ rect, minimum, columns, onChange, describedBy }) {
     const box = card.getBoundingClientRect();
     const stepX = box.width / rect.w || 40;
     const stepY = box.height / rect.h || ROW_HEIGHT;
-    const from = { x: event.clientX, y: event.clientY, ...rect };
+    // The pointer's start, kept apart from the widget's grid place.
+    const from = { pointerX: event.clientX, pointerY: event.clientY, w: rect.w, h: rect.h };
     const move = (moveEvent) => {
       const next = clamp(
-        from.w + Math.round((moveEvent.clientX - from.x) / stepX),
-        from.h + Math.round((moveEvent.clientY - from.y) / stepY),
+        from.w + Math.round((moveEvent.clientX - from.pointerX) / stepX),
+        from.h + Math.round((moveEvent.clientY - from.pointerY) / stepY),
       );
       onChange((current) => (current.w === next.w && current.h === next.h ? current : { ...current, ...next }));
     };
@@ -359,11 +360,11 @@ function SavedWidgets({ library, query, catalog, onPlace, busy }) {
                   </button>
                   <button
                     type="button"
-                    className="studio-icon-button"
+                    className="studio-button studio-quiet"
                     aria-label={`Delete saved widget ${entry.name}`}
                     onClick={() => setDeleting(key)}
                   >
-                    <StudioIcon name="trash" size={16} />
+                    Delete
                   </button>
                 </>
               )}
@@ -570,6 +571,7 @@ export default function ContentEditor({
   wholeBoard,
   renderPreview,
   startDeleting = false,
+  onDelete,
 }) {
   const kind = panel?.kind || entry.kind;
   // The widget's own look and behaviour live on the board, not in its YAML.
@@ -1092,8 +1094,10 @@ export default function ContentEditor({
                       icon="trash"
                       danger
                       disabled={pending}
-                      aria-expanded={deleting}
-                      onClick={() => setDeleting(true)}
+                      // A widget on the board goes at once, with Undo, as from
+                      // its menu (board 23): one Delete, one behaviour.
+                      aria-expanded={onDelete && boardPanel ? undefined : deleting}
+                      onClick={() => (onDelete && boardPanel ? onDelete(boardPanel) : setDeleting(true))}
                     >
                       Delete
                     </ActionRow>
@@ -1132,7 +1136,7 @@ export default function ContentEditor({
                           disabled={pending}
                           onClick={() => submit("delete")}
                         >
-                          Delete permanently
+                          Delete
                         </button>
                       </div>
                     </div>

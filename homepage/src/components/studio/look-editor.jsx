@@ -72,7 +72,9 @@ function SavedLooks({ saved = [], look, onApply, onChange, personal, usage, onUp
   const scopes = [...(onChange ? ["dashboard"] : []), ...(personal?.available ? ["me"] : [])];
   const canSave =
     scopes.length > 0 && Object.keys(current).length > 0 && !all.some((entry) => sameLook(entry.look, current));
-  if (!all.length && !canSave) return null;
+  // Always shown where looks can be saved, so the section's summary holds
+  // and the feature can be found before the first one is saved.
+  if (!all.length && !scopes.length) return null;
   const chosen = all.find((entry) => sameLook(entry.look, current));
   const needle = query.trim().toLocaleLowerCase();
   const shown = needle ? all.filter((entry) => entry.name.toLocaleLowerCase().includes(needle)) : all;
@@ -171,11 +173,22 @@ function SavedLooks({ saved = [], look, onApply, onChange, personal, usage, onUp
                   </ul>
                 )}
                 {needle && !shown.length && <p className="studio-muted">No saved look matches “{query.trim()}”.</p>}
+                {!all.length && (
+                  <p className="studio-muted">No saved looks yet. Change this widget’s look, then save it here.</p>
+                )}
                 <div className="studio-saved-looks-actions">
-                  {canSave && naming === null && (
+                  {scopes.length > 0 && naming === null && (
                     <button
                       type="button"
                       className="studio-text-button"
+                      disabled={!canSave}
+                      title={
+                        canSave
+                          ? undefined
+                          : Object.keys(current).length
+                            ? "This look is already saved"
+                            : "Change the look first; the default look needs no saving"
+                      }
                       onClick={() => setNaming({ name: "", scope: scopes[0] })}
                     >
                       Save this look…
@@ -773,18 +786,14 @@ function ValueList({
               maxLength={40}
               onChange={(event) => update(index, { name: event.target.value })}
             />
-            <select
-              aria-label={`Where ${row.label} shows`}
+            <Segmented
+              label={`Where ${row.label} shows`}
               value={slot}
-              onChange={(event) => update(index, { slot: event.target.value })}
-            >
-              {slots.map(([value, text]) => (
-                <option key={value} value={value}>
-                  {text}
-                </option>
-              ))}
-            </select>
+              options={slots}
+              onChange={(value) => update(index, { slot: value })}
+            />
             <select
+              className="studio-value-format"
               aria-label={`Number style for ${row.label}`}
               value={row.format || "full"}
               onChange={(event) => update(index, { format: event.target.value })}
