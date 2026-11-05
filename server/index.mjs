@@ -1095,9 +1095,11 @@ export function createStudioServer(options = {}) {
   }
   // Saved widgets and saved looks (server/library.mjs). Looks are for anyone
   // who may arrange this dashboard and are kept Just me (This dashboard's are
-  // in its board). Widgets are content, so only administrators save and
-  // place them, Just me, This dashboard or Everyone. A saved widget's
-  // settings never leave the server: the list shows names and types only.
+  // in its board). Only administrators save, rename or delete saved widgets,
+  // Just me, This dashboard or Everyone; anyone who may arrange this dashboard
+  // places them (owner decision, 5 Nov 2026). A saved widget's settings never
+  // leave the server: the list shows names and types only, and an arranger
+  // gets the board back, like an arrangement save, never the files.
   async function handleLibrary(req, res, path, current, dashboard, level) {
     const handler = forDashboard(dashboard);
     const admin = level === 'admin';
@@ -1111,14 +1113,13 @@ export function createStudioServer(options = {}) {
     if (path === '/studio/api/library' && read) {
       const looks = auth ? (await place('me').list()).filter((entry) => entry.kind === 'look').map((entry) => publicEntry(entry, 'me')) : [];
       const widgets = [];
-      if (admin) for (const scope of scopes) for (const entry of await place(scope).list()) if (entry.kind === 'widget') widgets.push(publicEntry(entry, scope));
+      for (const scope of scopes) for (const entry of await place(scope).list()) if (entry.kind === 'widget') widgets.push(publicEntry(entry, scope));
       return json(res, 200, { scopes, looks, widgets });
     }
     if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST.' });
     const change = await editBody(req);
     if (!change || typeof change !== 'object') throw new LibraryError('Send a saved widget or look change.');
     if (path === '/studio/api/library/use') {
-      if (!admin) return forbidden(res, 'Only administrators can add widgets.');
       if (Object.keys(change).some((key) => !['scope', 'id', 'revision', 'pageId', 'editSession'].includes(key))) throw new LibraryError('Send the saved widget to place.');
       const entry = await place(change.scope).read(change.id);
       if (entry.kind !== 'widget') throw new LibraryError('That is not a saved widget.');
@@ -1130,11 +1131,14 @@ export function createStudioServer(options = {}) {
         if (known.has(connection.id)) continue;
         try { await here.add({ name: connection.name, url: connection.url, ...connection.secrets }, { id: connection.id }); }
         catch (error) {
-          if (error instanceof ConnectionError && /already a connection called/.test(error.message)) throw new LibraryError(`This dashboard already has a different connection called “${connection.name}”. Rename one of them in Dashboard settings › Saved connections, then place the widget again.`, 'CONNECTION_NAME_TAKEN', 409);
+          if (error instanceof ConnectionError && /already a connection called/.test(error.message)) throw new LibraryError(admin ? `This dashboard already has a different connection called “${connection.name}”. Rename one of them in Dashboard settings › Saved connections, then place the widget again.` : `This dashboard already has a different connection called “${connection.name}”. Ask an administrator to rename one of them, then place the widget again.`, 'CONNECTION_NAME_TAKEN', 409);
           throw error;
         }
       }
-      return json(res, 200, await handler.store.placeWidget({ revision: change.revision, pageId: typeof change.pageId === 'string' ? change.pageId : undefined, editSession: change.editSession }, entry.widget));
+      const placed = await handler.store.placeWidget({ revision: change.revision, pageId: typeof change.pageId === 'string' ? change.pageId : undefined, editSession: change.editSession }, entry.widget);
+      if (admin) return json(res, 200, placed);
+      const { revision, configurationRevision, board, discoveredSources, hiddenDiscoveredIds, warnings } = placed;
+      return json(res, 200, { revision, configurationRevision, board, discoveredSources, hiddenDiscoveredIds, warnings });
     }
     if (path !== '/studio/api/library') return json(res, 404, { error: 'This editor endpoint does not exist.' });
     if (Object.keys(change).some((key) => !['action', 'kind', 'scope', 'id', 'name', 'look', 'panelId', 'editSession'].includes(key))) throw new LibraryError('Send a saved widget or look change.');

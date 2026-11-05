@@ -50,7 +50,8 @@ in older entries below are history only.
   every widget using it) or delete.
 - **Saved widgets**: a widget's configuration (never its size or place),
   saved **Just me**, for **This dashboard** or for **Everyone**, and placed
-  from the new **Saved** tab of *Add to your dashboard*. Administrators only.
+  from the new **Saved** tab of *Add to your dashboard*. Administrators save
+  them; people who can arrange a dashboard can place them too.
   Their settings and keys stay on the server.
 - **Add to your dashboard** has All, Integrations, Information, Links and
   Saved tabs, a description for every integration, and **Back** with your

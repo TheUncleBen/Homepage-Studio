@@ -32,7 +32,7 @@ There are two roles, and each dashboard is shared at one of two levels.
 | --- | --- |
 | **Administrator** | Everything: every dashboard, widget and integration settings, the raw configuration files, custom CSS and JavaScript, imports, exports and snapshots, other dashboards, people, groups, sharing and sign-in settings |
 | **Member, Can view** | Open the dashboard and use its widgets |
-| **Member, Can arrange** | Also move, resize and stack tiles, hide or show discovered services, and change the dashboard's appearance (dark, light or device, and the accent color) |
+| **Member, Can arrange** | Also move, resize and stack tiles, hide or show discovered services, change the dashboard's appearance (dark, light or device, and the accent color), and place saved widgets an administrator saved |
 | **Member, not shared** | Nothing. The dashboard looks exactly like an address that doesn't exist |
 
 Widget and integration settings are deliberately administrator-only. A

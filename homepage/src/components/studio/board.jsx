@@ -814,6 +814,13 @@ export default function StudioBoard({
   const loadEditorData = async (type) => {
     if (type === "picker" || type === "content") loadCatalog();
     if (type === "appearance") return { appearance: await studioRequest("/studio/api/appearance") };
+    // Arrangers place saved widgets from the board alone; the files stay
+    // with administrators.
+    if (type === "saved") {
+      loadCatalog();
+      const [state, catalog] = await Promise.all([studioRequest("/studio/api/board"), catalogRequest.current]);
+      return { state, catalog };
+    }
     const [state, catalog, backups, appearance] = await Promise.all([
       studioRequest("/studio/api/state"),
       type === "picker" || type === "content" ? catalogRequest.current : Promise.resolve(null),
@@ -1918,6 +1925,7 @@ export default function StudioBoard({
   const selectedCount = selection.length ? selectedPanels().length : 0;
   const modalTitles = {
     picker: "Add to your dashboard",
+    saved: "Add a saved widget",
     content: modal?.panel ? `Edit ${modal.panel.title}` : modal?.entry?.name || "Configure content",
     settings: "Dashboard settings",
     appearance: "Appearance",
@@ -1995,12 +2003,12 @@ export default function StudioBoard({
       {editing && (
         <div className="studio-board-toolbar studio-edit-bar" role="toolbar" aria-label="Editing">
           <span className="studio-editing-pill">Editing</span>
-          {isAdmin && (
+          {canArrange && (
             <button
               className="studio-button studio-quiet"
               disabled={controlsDisabled}
               aria-label="Widgets"
-              onClick={() => openEditor("picker")}
+              onClick={() => openEditor(isAdmin ? "picker" : "saved")}
             >
               <StudioIcon name="plus" size={16} />
               <span className="studio-edit-bar-label studio-edit-bar-label-kept">Widgets</span>
@@ -2635,8 +2643,9 @@ export default function StudioBoard({
                 <div className="studio-dialog-body studio-loading" role="status">
                   Loading local configuration…
                 </div>
-              ) : modal.type === "picker" ? (
+              ) : modal.type === "picker" || modal.type === "saved" ? (
                 <ContentPicker
+                  savedOnly={modal.type === "saved"}
                   catalog={editorData.catalog}
                   state={editorData.state}
                   onRestore={async (id) => {

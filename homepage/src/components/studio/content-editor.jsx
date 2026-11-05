@@ -235,7 +235,7 @@ const LABEL = {
 
 // Saved widgets in the picker's Saved tab (board 26): place one as a new,
 // independent widget on this page; rename or delete them in one place.
-function SavedWidgets({ library, query, catalog, onPlace, busy }) {
+function SavedWidgets({ library, query, catalog, onPlace, busy, canManage = true }) {
   const [managing, setManaging] = useState(false);
   const [renaming, setRenaming] = useState(null);
   const [deleting, setDeleting] = useState(null);
@@ -258,17 +258,21 @@ function SavedWidgets({ library, query, catalog, onPlace, busy }) {
   if (!library.widgets.length)
     return (
       <p className="studio-empty-note">
-        No saved widgets yet. To save one, open a widget and choose Save as a saved widget under Management.
+        {canManage
+          ? "No saved widgets yet. To save one, open a widget and choose Save as a saved widget under Management."
+          : "No saved widgets yet. An administrator saves them; then they appear here for you to place."}
       </p>
     );
   return (
     <>
       <ErrorMessage error={error} />
-      <div className="studio-saved-widgets-head">
-        <button type="button" className="studio-text-button" onClick={() => setManaging((value) => !value)}>
-          {managing ? "Done" : "Manage saved widgets"}
-        </button>
-      </div>
+      {canManage && (
+        <div className="studio-saved-widgets-head">
+          <button type="button" className="studio-text-button" onClick={() => setManaging((value) => !value)}>
+            {managing ? "Done" : "Manage saved widgets"}
+          </button>
+        </div>
+      )}
       <div className="studio-catalog">
         {shown.map((entry) => {
           const key = `${entry.scope}:${entry.id}`;
@@ -377,9 +381,11 @@ function SavedWidgets({ library, query, catalog, onPlace, busy }) {
   );
 }
 
-export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, initial }) {
+// `savedOnly`: people who arrange (but don't administer) a dashboard place
+// saved widgets only (owner decision, 5 Nov 2026): no other tab, no catalog.
+export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, initial, savedOnly = false }) {
   const [query, setQuery] = useState(initial?.query ?? "");
-  const [category, setCategory] = useState(initial?.category ?? "all");
+  const [category, setCategory] = useState(savedOnly ? "saved" : (initial?.category ?? "all"));
   const [restoring, setRestoring] = useState(null);
   const [placing, setPlacing] = useState(false);
   const library = useLibrary(Boolean(onPlace));
@@ -460,7 +466,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, in
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
-          <nav className="studio-tabs studio-picker-tabs" aria-label="Content categories">
+          <nav className="studio-tabs studio-picker-tabs" aria-label="Content categories" hidden={savedOnly}>
             {[
               ["all", "All"],
               ["serviceWidget", "Integrations"],
@@ -479,7 +485,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, in
               </button>
             ))}
           </nav>
-          {Boolean(state?.hiddenDiscoveredIds?.length) && (
+          {!savedOnly && Boolean(state?.hiddenDiscoveredIds?.length) && (
             <details className="studio-hidden-discovered">
               <summary>Hidden discovered panels ({state.hiddenDiscoveredIds.length})</summary>
               <div className="studio-stack-candidates">
@@ -516,6 +522,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, in
               query={query}
               catalog={catalog}
               busy={placing}
+              canManage={!savedOnly}
               onPlace={async (entry) => {
                 setPlacing(true);
                 try {

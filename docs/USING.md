@@ -156,7 +156,7 @@ In the editor, **Widgets** opens *Add to your dashboard*. Search, or pick a tab:
 | **Integrations** | One native service widget (Sonarr, Proxmox, AdGuard, ...), each with a line on what the app is and the values it shows |
 | **Information** | An information widget: date and time, greeting, weather, search, resources, stocks and the rest of Homepage's list |
 | **Links** | A service tile (a link to an app, with Homepage's status check) or a bookmark (a compact link) |
-| **Saved** | Your [saved widgets](#saved-widgets), for administrators |
+| **Saved** | Your [saved widgets](#saved-widgets) |
 
 Pick one, fill in its options, and save. **Back** in the dialog returns to
 the list with your search and tab as they were. The form lists what the native
@@ -451,8 +451,13 @@ Studio asks whether to update them too (**Leave them** or **Update them**).
 place again: its type, settings, values, look, link, status check and any
 saved connection it uses. Never its size or place, which belong to each
 layout. **Who can use it** is **Just me**, **This dashboard** or **Everyone**
-(the whole Studio). Saving and placing saved widgets is for administrators,
-because a widget's settings can hold keys.
+(the whole Studio). Only administrators save, rename or delete saved
+widgets, because a widget's settings can hold keys. Anyone who can arrange
+the dashboard can place them: for someone with **Can arrange**, **Widgets**
+opens *Add a saved widget*, which lists the saved widgets by name and type
+only. They never see the settings or keys, but what the widget shows (an
+app's numbers, for example) becomes visible to everyone who can open that
+dashboard.
 
 Saved widgets are listed under **Saved** in *Add to your dashboard*, with their
 type and who can use them; choosing one adds it as a new, independent
