@@ -14,6 +14,7 @@ import { ActionRow, Group, Row, Switch } from "./ui";
 import WidgetDefaults from "./widget-defaults";
 
 const buildRevision = process.env.NEXT_PUBLIC_REVISION;
+const homepageVersion = process.env.NEXT_PUBLIC_HOMEPAGE_VERSION;
 const sourceUrl = `https://github.com/TheUncleBen/Homepage-Studio${/^[a-f0-9]{40}$/i.test(buildRevision || "") ? `/tree/${buildRevision}` : ""}`;
 
 // Plain-English names for the fixed action codes the controller records with
@@ -339,7 +340,7 @@ export default function SettingsEditor({
           </Group>
           <Group title="About">
             <Row label="Homepage">
-              <span className="studio-row-value">2.6.0</span>
+              <span className="studio-row-value">{homepageVersion || "Development"}</span>
             </Row>
             <Row label="Studio build">
               <span className="studio-row-value">{buildRevision ? buildRevision.slice(0, 8) : "Development"}</span>

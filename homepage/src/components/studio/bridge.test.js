@@ -221,7 +221,7 @@ describe("Native Studio bridge endpoints", () => {
     healthHandler({ method: "GET" }, health);
     expect(health.payload).toMatchObject({
       protocolVersion: 1,
-      upstreamCommit: "51cc1684f9f34a7877ed462b8f94c9cc687b4dde",
+      upstreamCommit: "2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f",
     });
     const unavailable = response();
     await sourcesHandler({ method: "GET" }, unavailable);

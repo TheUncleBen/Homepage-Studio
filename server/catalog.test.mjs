@@ -160,9 +160,27 @@ test('registry-only implementations and undocumented WeatherAPI are labeled expl
 });
 
 test('generated full catalog keeps every pinned registered type exactly once', () => {
-  assert.equal(shipped.service.length,169);assert.equal(shipped.info.length,14);
+  assert.equal(shipped.service.length,170);assert.equal(shipped.info.length,14);
   for(const kind of ['service','info']){assert.equal(new Set(shipped[kind].map(item=>item.type)).size,shipped[kind].length);assert.ok(shipped[kind].every(item=>item.coverage&&item.documentationStatus));}
   assert.match(shipped.schemaNotice,/not runtime integration tests/);
+});
+
+// Owner request, 4 Nov 2026 (NetBird was missing): nothing Homepage registers
+// or documents may be missing from what Studio offers.
+test('every widget Homepage registers or documents is in the shipped catalog', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const registered = text => [...text.matchAll(/^\s+([a-z0-9_]+):\s*dynamic\(/gm)].map(match => match[1]);
+  const registries = { service: 'src/widgets/components.js', info: 'src/components/widgets/widget.jsx' };
+  for (const [kind, folder] of [['service', 'services'], ['info', 'info']]) {
+    const types = new Set(shipped[kind].map(item => item.type));
+    const missing = registered(await readFile(join(nativeSource, registries[kind]), 'utf8')).filter(type => !types.has(type));
+    assert.deepEqual(missing, [], `Registered ${kind} widgets missing from the catalog: ${missing.join(', ')}`);
+    const covered = new Set(shipped[kind].flatMap(item => item.sources.map(source => source.path)));
+    const pages = (await readdir(join(nativeSource, 'docs/widgets', folder))).filter(name => name.endsWith('.md') && name !== 'index.md');
+    const undocumented = pages.filter(name => !covered.has(`docs/widgets/${folder}/${name}`));
+    assert.deepEqual(undocumented, [], `Documented ${kind} widgets missing from the catalog: ${undocumented.join(', ')}`);
+  }
+  assert.ok(widget('netbird', 'service', shipped));
 });
 
 test('incomplete documentation examples stay visible as warnings rather than fabricated schemas', () => {
@@ -190,7 +208,7 @@ test('catalog generation preserves the project license notice and writes its own
 
 test('a mismatched source version cannot be mislabeled as the catalog pin', async () => {
   const source=await mkdtemp(join(tmpdir(),'homepage-catalog-version-'));
-  try{await writeFile(join(source,'package.json'),JSON.stringify({version:'99.0.0'}));await assert.rejects(()=>buildCatalog(source),/verified Homepage v2\.6\.0/);}
+  try{await writeFile(join(source,'package.json'),JSON.stringify({version:'99.0.0'}));await assert.rejects(()=>buildCatalog(source),/verified Homepage v2\.7\.0/);}
   finally{await rm(source,{recursive:true,force:true});}
 });
 

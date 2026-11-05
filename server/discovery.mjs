@@ -3,7 +3,7 @@ import http from 'node:http';
 import https from 'node:https';
 
 export const DISCOVERY_PROTOCOL = 1;
-export const DISCOVERY_UPSTREAM_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
+export const DISCOVERY_UPSTREAM_COMMIT = '2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f';
 export const MAX_DISCOVERED_SOURCES = 4096;
 export const MAX_DISCOVERY_BYTES = 1024 * 1024;
 const serviceIdPattern = /^discovered-service-[a-f0-9]{24,64}$/;

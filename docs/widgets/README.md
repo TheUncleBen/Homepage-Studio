@@ -1,6 +1,6 @@
 # Widget reference
 
-Every widget Studio can add, generated from Homepage 2.6.0's own documentation. Each page lists what the service needs, the settings the widget dialog shows, Homepage's examples and the source. How the widget dialog works is in [USING.md](../USING.md#changing-what-a-panel-shows); how to keep API keys out of the files is in [DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets).
+Every widget Studio can add, generated from Homepage 2.7.0's own documentation. Each page lists what the service needs, the settings the widget dialog shows, Homepage's examples and the source. How the widget dialog works is in [USING.md](../USING.md#changing-what-a-panel-shows); how to keep API keys out of the files is in [DEPLOY.md](../DEPLOY.md#widget-api-keys-as-docker-secrets).
 
 ## Integrations
 
@@ -93,6 +93,7 @@ Every widget Studio can add, generated from Homepage 2.6.0's own documentation. 
 | [MySpeed](myspeed.md) | Service URL, Password | 3 |
 | [Navidrome](navidrome.md) | Service URL, Token | 4 |
 | [NetAlertX](netalertx.md) | Service URL, API key | 4 |
+| [NetBird](netbird.md) | Service URL, API key | 3 |
 | [Netdata](netdata.md) | Service URL | 2 |
 | [Nextcloud](nextcloud.md) | Service URL, API key, Username, Password | 5 |
 | [NextDNS](nextdns.md) | API key | 2 |

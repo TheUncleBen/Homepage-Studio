@@ -5,9 +5,9 @@ Build and deploy with the [root project instructions](../README.md), root
 Dockerfile and [deployment guide](../docs/DEPLOYMENT.md). Studio ships one
 application image and manages independent native workers inside that container.
 
-The baseline is Homepage v2.6.0, commit
-[`51cc1684f9f34a7877ed462b8f94c9cc687b4dde`](https://github.com/gethomepage/homepage/tree/51cc1684f9f34a7877ed462b8f94c9cc687b4dde).
-The [original README](https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/README.md)
+The baseline is Homepage v2.7.0, commit
+[`2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f`](https://github.com/gethomepage/homepage/tree/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f).
+The [original README](https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/README.md)
 and [Homepage documentation](https://gethomepage.dev/) retain upstream project
 attribution and native configuration reference. Their standalone container,
 authentication and startup instructions do not define Studio deployment.

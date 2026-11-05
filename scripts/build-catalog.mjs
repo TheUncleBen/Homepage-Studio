@@ -5,8 +5,8 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-export const HOMEPAGE_VERSION = '2.6.0';
-export const SOURCE_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
+export const HOMEPAGE_VERSION = '2.7.0';
+export const SOURCE_COMMIT = '2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f';
 const SOURCE_BASE = `https://github.com/gethomepage/homepage/blob/${SOURCE_COMMIT}/`;
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const registryTypes = text => [...text.matchAll(/^\s+([a-z0-9_]+):\s*dynamic\(/gm)].map(match => match[1]);

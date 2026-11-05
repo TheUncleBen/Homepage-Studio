@@ -22,4 +22,4 @@ the standalone upstream product are historical references, not this fork's
 operational contract. See [native source and build provenance](../../../docs/NATIVE-SOURCE.md)
 and [current engineering verification](../../../VERIFICATION.md).
 
-Historical upstream reference: [pinned Homepage index.md](https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/installation/index.md).
+Historical upstream reference: [pinned Homepage index.md](https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/docs/installation/index.md).

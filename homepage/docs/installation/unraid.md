@@ -14,4 +14,4 @@ Native service fields and Docker discovery are documented under
 The historical upstream UNRAID package instructions below do not configure this
 fork's persistent state or independent dashboards.
 
-Historical upstream reference: [pinned Homepage unraid.md](https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/installation/unraid.md).
+Historical upstream reference: [pinned Homepage unraid.md](https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/docs/installation/unraid.md).

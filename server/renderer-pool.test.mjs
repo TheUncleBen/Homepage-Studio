@@ -26,7 +26,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/studio/health') {
     if (cached.silent) return;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({protocolVersion: 1, upstreamCommit: '51cc1684f9f34a7877ed462b8f94c9cc687b4dde', buildRevision: cached.badBuild ? 'wrong-build' : process.env.STUDIO_BUILD_REVISION, dashboardId: process.env.STUDIO_DASHBOARD_ID, dashboardBasePath: process.env.STUDIO_DASHBOARD_BASE_PATH, rendererInstance: cached.badContext ? 'another-worker' : process.env.STUDIO_RENDERER_INSTANCE}));
+    res.end(JSON.stringify({protocolVersion: 1, upstreamCommit: '2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f', buildRevision: cached.badBuild ? 'wrong-build' : process.env.STUDIO_BUILD_REVISION, dashboardId: process.env.STUDIO_DASHBOARD_ID, dashboardBasePath: process.env.STUDIO_DASHBOARD_BASE_PATH, rendererInstance: cached.badContext ? 'another-worker' : process.env.STUDIO_RENDERER_INSTANCE}));
   } else if (url.pathname === '/crash') {
     res.end('{}'); setImmediate(() => process.exit(19));
   } else {

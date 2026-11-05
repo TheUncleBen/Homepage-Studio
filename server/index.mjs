@@ -38,7 +38,7 @@ const studioVersion = (await readFile(join(base, 'VERSION'), 'utf8')).trim();
 if (!studioVersion) throw new Error('VERSION must identify this Studio build.');
 const hopHeaders = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 export const NATIVE_PROTOCOL = 1;
-export const UPSTREAM_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
+export const UPSTREAM_COMMIT = '2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f';
 // Native API routes use Next.js's default body parser limit ('1mb', which
 // Next.js reads as 1 MiB); no Homepage route raises it. The controller buffers a
 // native body before it asks for a worker, so it applies the same limit.

@@ -14,4 +14,4 @@ settings do not require deploying this application on Kubernetes. The inherited
 standalone Homepage manifests are retained only through the historical source
 link below; they are not a qualified deployment template for this fork.
 
-Historical upstream reference: [pinned Homepage k8s.md](https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/installation/k8s.md).
+Historical upstream reference: [pinned Homepage k8s.md](https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/docs/installation/k8s.md).

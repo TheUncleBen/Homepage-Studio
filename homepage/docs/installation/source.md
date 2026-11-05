@@ -15,4 +15,4 @@ sample skeleton or start the native renderer as an independent production
 service. Qualification and corresponding-source requirements are recorded in
 [VERIFICATION.md](../../../VERIFICATION.md) and [docs/RELEASES.md](../../../docs/RELEASES.md).
 
-Historical upstream reference: [pinned Homepage source.md](https://github.com/gethomepage/homepage/blob/51cc1684f9f34a7877ed462b8f94c9cc687b4dde/docs/installation/source.md).
+Historical upstream reference: [pinned Homepage source.md](https://github.com/gethomepage/homepage/blob/2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f/docs/installation/source.md).

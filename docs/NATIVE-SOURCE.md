@@ -7,11 +7,20 @@ Dockerfiles and companion-container entrypoints are retired.
 
 ## Provenance and updates
 
-The starting point is Homepage v2.6.0, commit
-`51cc1684f9f34a7877ed462b8f94c9cc687b4dde`.
-`upstream.lock.json` retains the verified original archive and dependency input
-hashes and the pinned Node/pnpm toolchain. Those original hashes describe the
-baseline; they are not a claim that the controlled source remains unchanged.
+The starting point was Homepage v2.6.0, commit
+`51cc1684f9f34a7877ed462b8f94c9cc687b4dde`. On 5 November 2026 the upstream
+changes to v2.7.0, commit `2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f`, were
+merged in as a reviewed source merge (NetBird widget, Prometheus metric and
+Unraid fixes, translations, the Next.js `middleware.js` to `proxy.js` rename,
+`js-yaml` 5.5.0). Upstream's Docker, Tilt, k3d and workflow files are not part
+of the controlled tree and were left out.
+
+`upstream.lock.json` records the v2.7.0 commit and the hashes of its
+`package.json` and `pnpm-lock.yaml`, read from the upstream Git tag. The
+v2.6.0 record under `mergedFrom` keeps the original verified archive hash;
+no archive hash is recorded for v2.7.0 because the merge was applied from the
+upstream Git tag, not from a downloaded archive. Those hashes describe the
+upstream inputs; they are not a claim that the controlled source is unchanged.
 The current Git commit/tree and committed `homepage/pnpm-lock.yaml` identify the
 source and dependency graph being built.
 
@@ -36,8 +45,7 @@ Later reviewed corrections to the baseline:
   WebSocket also limits messages to 32 MiB and closes the socket on every path.
 
 `upstream.lock.json` runtime package and lockfile hashes match the committed
-`homepage/package.json` and `pnpm-lock.yaml`; its v2.6.0 baseline hashes are
-unchanged.
+`homepage/package.json` and `pnpm-lock.yaml`.
 
 An upstream update is a reviewed source merge. Record the proposed upstream
 commit, review release/security changes, preserve Studio behavior and isolation,

@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { dashboardConfigDir, dashboardBasePath, dashboardStateDir, validateDashboardId } from './dashboard-paths.mjs';
 import { CONNECTIONS_FILE } from './connections.mjs';
 
-const UPSTREAM_COMMIT = '51cc1684f9f34a7877ed462b8f94c9cc687b4dde';
+const UPSTREAM_COMMIT = '2e5f10134ae3961bb936d3e7c441f9a1f4a4bf4f';
 const PROTOCOL = 1;
 
 export class RendererError extends Error {
