@@ -3009,6 +3009,12 @@ body {
     display: none;
   }
 }
+/* A hero number stays on one line on a narrow card. */
+@container studio-card (max-width: 150px) {
+  .studio-card .studio-value-hero .studio-value-number {
+    font-size: 24px;
+  }
+}
 
 .studio-card-head {
   display: flex;
