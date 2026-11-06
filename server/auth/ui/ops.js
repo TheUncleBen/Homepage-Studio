@@ -48,6 +48,8 @@
   const time = ts => (ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
   const shortTime = ts => new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const minutes = m => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`);
+  // A sentence-long value goes under its label instead of squeezing it.
+  const longRow = (label, text) => row(label, value(text), { className: String(text).length > 32 ? 'ops-long' : '' });
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const loading = () => h('p', { class: 'empty-row', text: 'Loading…' });
   const emptyRow = text => h('p', { class: 'empty-row', text });
@@ -280,12 +282,12 @@
         row('Checks', value(m.card ? `This card’s ${m.type === 'ping' ? 'ping' : 'web'} check` : typeLabel(m.type))),
         m.target && !m.card ? row('Target', value(m.target, true)) : null,
         row('Last check', value(m.lastCheck ? `${ago(m.lastCheck)}${m.ms !== null ? ' · ' + ms(m.ms) : ''}${m.code ? ' · HTTP ' + m.code : ''}` : 'Not yet')),
-        m.state !== 'up' && m.message ? row('Problem', value(m.message)) : null,
-        m.warning ? row('Warning', value(m.warning.message ?? String(m.warning))) : null,
+        m.state !== 'up' && m.message ? longRow('Problem', m.message) : null,
+        m.warning ? longRow('Warning', m.warning.message ?? String(m.warning)) : null,
         m.certExpires ? row('Certificate expires', value(new Date(m.certExpires).toLocaleDateString())) : null,
         row('Check every', value(`${m.interval} s`)));
       const avail = group({ title: 'Availability', info: 'Up time ÷ (up + down). Maintenance and time not checked are left out.' },
-        h('div', { class: 'ops-avail' }, ...availabilityRanges(a, detail.history.first).map(([label, v]) => h('div', {}, h('strong', { text: percent(v) }), h('small', { text: label })))));
+        h('div', { class: 'ops-avail', 'data-count': String(availabilityRanges(a, detail.history.first).length) }, ...availabilityRanges(a, detail.history.first).map(([label, v]) => h('div', {}, h('strong', { text: percent(v) }), h('small', { text: label })))));
       const hourly = group({ title: 'Last 24 hours' }, h('div', { class: 'ops-pad' }, bars(slots(detail.history.hourly, 24, 3600e3, Math.floor(Date.now() / 3600e3) * 3600e3), { label: 'Status each hour for the last 24 hours' })));
       const daily = detail.history.daily.length > 1 ? group({ title: 'Last 90 days' }, h('div', { class: 'ops-pad' }, bars(slots(detail.history.daily, 90, 86400e3, new Date().setHours(0, 0, 0, 0)), { label: 'Status each day for the last 90 days' }))) : null;
       const chartHolder = h('div', { class: 'ops-pad' }, loading());
@@ -361,7 +363,7 @@
         h('div', { class: 'ops-head' }, h('h2', { class: 'ops-name', text: incident.name }), stateMark(incident.closed ? 'up' : 'down'), h('span', { class: 'muted small', text: incident.closed ? `lasted ${minutes(Math.max(1, Math.round((incident.closed - incident.opened) / 60000)))}` : `since ${shortTime(incident.opened)}` })),
         toolbar(detail.monitor ? pill('Open monitor', { iconName: 'pulse', onclick: () => open('monitor/' + encodeURIComponent(incident.monitor_id)) }) : null, access.logs ? pill('Logs around it', { iconName: 'search', onclick: () => { pendingLogs = { query: `dashboard:${incident.scope}`, from: incident.opened - 15 * 60e3, to: (incident.closed ?? Date.now()) + 5 * 60e3 }; open('logs'); } }) : null, ack),
         box,
-        group({ title: 'What happened' }, row('Dashboard', value(scopeName(incident.scope))), incident.cause ? row('Problem', value(incident.cause)) : null, incident.ack_by ? row('Acknowledged by', value(`${incident.ack_by}, ${ago(incident.ack_at)}`)) : null),
+        group({ title: 'What happened' }, row('Dashboard', value(scopeName(incident.scope))), incident.cause ? longRow('Problem', incident.cause) : null, incident.ack_by ? row('Acknowledged by', value(`${incident.ack_by}, ${ago(incident.ack_at)}`)) : null),
         group({ title: 'Timeline' }, detail.timeline.map(item => h('div', { class: 'item-row' }, h('span', { class: 'nav-text' }, h('span', { class: 'nav-title', text: `${KIND_TEXT[item.kind] ?? item.kind}${item.actor ? ' · ' + item.actor : ''}` }), entryText(item) ? h('small', { class: 'ops-wrap', text: entryText(item) }) : null), h('time', { class: 'row-value small', text: shortTime(item.ts) }))),
           h('div', { class: 'ops-note' }, note, addNote)));
     }
