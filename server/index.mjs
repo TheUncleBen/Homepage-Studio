@@ -36,6 +36,7 @@ import { dashboardPreview } from './dashboard-preview.mjs';
 import { createAuthService } from './auth/service.mjs';
 import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendStudioAsset, sendStudioPage } from './auth/routes.mjs';
 import { atLeast, requiredLevel } from './auth/access.mjs';
+import { createObservability } from './observability/controller.mjs';
 
 const base = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const studioVersion = (await readFile(join(base, 'VERSION'), 'utf8')).trim();
@@ -561,21 +562,21 @@ function createDashboardHandlers(options = {}) {
   // the widgets that need history (utils/studio/collect.js), and they are kept
   // here. Runs from the collector loop in createStudioServer, never from a
   // request, so it uses the first approved host for the renderer.
-  async function rendererCollect(dashboard, panels) {
+  async function rendererPost(dashboard, path, payload, field) {
     const lease = await acquireNative(allowedHosts[0], dashboard);
     try {
-      const body = JSON.stringify({ panels });
+      const body = JSON.stringify(payload);
       const transport = lease.origin.protocol === 'https:' ? https : http;
       return await new Promise((resolveCollect, rejectCollect) => {
-        const request = transport.request(lease.origin, { method: 'POST', path: '/api/studio/collect', timeout: 120000, headers: { host: allowedHosts[0], 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), 'x-studio-internal': options.internalToken } }, response => {
+        const request = transport.request(lease.origin, { method: 'POST', path, timeout: 120000, headers: { host: allowedHosts[0], 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), 'x-studio-internal': options.internalToken } }, response => {
           const chunks = [];
           let size = 0;
           response.on('data', chunk => { size += chunk.length; if (size > 2 * 1024 * 1024) request.destroy(new Error('Too large')); else chunks.push(chunk); });
           response.on('end', () => {
             try {
               const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-              if (response.statusCode !== 200 || !value || typeof value.results !== 'object') return rejectCollect(Object.assign(new Error('Collection failed'), { code: 'HISTORY_COLLECT_FAILED' }));
-              resolveCollect(value.results);
+              if (response.statusCode !== 200 || !value || typeof value[field] !== 'object') return rejectCollect(Object.assign(new Error('Collection failed'), { code: 'HISTORY_COLLECT_FAILED' }));
+              resolveCollect(value[field]);
             } catch { rejectCollect(Object.assign(new Error('Collection failed'), { code: 'HISTORY_COLLECT_FAILED' })); }
           });
         });
@@ -584,6 +585,33 @@ function createDashboardHandlers(options = {}) {
         request.end(body);
       });
     } finally { lease.release(); }
+  }
+  const rendererCollect = (dashboard, panels) => rendererPost(dashboard, '/api/studio/collect', { panels }, 'results');
+  // Card monitors (owner decision D6): the cards whose status the engine
+  // checks, with the address each check uses, worked out by the dashboard's
+  // renderer exactly as the card's own check did. Asked again only when the
+  // dashboard changes, or every ten minutes.
+  const statusPanels = state => {
+    const acts = readBehaviour(state.settingsConfig?.studioDefaults);
+    const out = [];
+    for (const panel of state.board?.panels || []) {
+      if (!['service', 'serviceWidget'].includes(panel.kind) || panel.available === false) continue;
+      const check = inheritedBehaviour(acts, panel.behaviour).status;
+      if (check === 'web' || check === 'ping') out.push({ id: panel.id, kind: panel.kind, nativeLocator: panel.nativeLocator, check });
+    }
+    return out;
+  };
+  let statusCache = null;
+  async function statusTargets(dashboard) {
+    if (!(await initialization).ok) return null;
+    const state = await store.load();
+    const panels = statusPanels(state);
+    const key = JSON.stringify([state.revision, state.configurationRevision, dashboard.slug, panels]);
+    if (statusCache?.key === key && Date.now() - statusCache.at < 600000) return statusCache.value;
+    const targets = panels.length ? await rendererPost(dashboard, '/api/studio/status-targets', { panels }, 'targets') : {};
+    const value = panels.map(panel => ({ panel: panel.id, ...(targets[panel.id] ?? {}) })).filter(target => target.check === 'web' ? typeof target.url === 'string' : target.check === 'ping' && typeof target.host === 'string');
+    statusCache = { key, at: Date.now(), value };
+    return value;
   }
   // The widgets the collector polls: charts, trends and colour rules read
   // the widget's values; status history runs its status check instead.
@@ -856,7 +884,7 @@ function createDashboardHandlers(options = {}) {
     return { ...result, ...(needKeys.length ? { connectionsNeedingKeys: needKeys } : {}), ...(notes.length ? { importNotes: notes } : {}) };
   }
 
-  return { handle, checkRequest, store, logo, images, connections, library, history, collectHistory, initialization };
+  return { handle, checkRequest, store, logo, images, connections, library, history, collectHistory, statusTargets, initialization };
 }
 
 export function createStudioServer(options = {}) {
@@ -883,9 +911,12 @@ export function createStudioServer(options = {}) {
   // A worker decides at spawn from the bundle on disk, and the pool starts
   // again once the bundle is first written, so a worker spawned before then
   // (or from a previous run's bundle) never keeps a stale trust list.
-  const trusted = createTrustedCertificates({ stateRoot, onChange: async () => { await rendererPool?.drainAll?.(); } });
+  // Monitoring, metrics and logs (server/observability), created once
+  // sign-in is known, below.
+  let observability = null;
+  const trusted = createTrustedCertificates({ stateRoot, onChange: async () => { await rendererPool?.drainAll?.(); await observability?.refreshCertificates(); } });
   const trustReady = trusted.prepare().then(() => (rendererPool?.workerCount ? rendererPool.drainAll?.() : undefined), (error) => console.error('Trusted certificates could not be prepared:', error.code || error.message));
-  rendererPool ||= createRendererPool({ configRoot, stateRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision, workerEnv: () => ({ STUDIO_INTERNAL_TOKEN: internalToken, ...(existsSync(trusted.bundlePath) ? { NODE_EXTRA_CA_CERTS: trusted.bundlePath } : {}) }) });
+  rendererPool ||= createRendererPool({ configRoot, stateRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision, workerEnv: () => ({ STUDIO_INTERNAL_TOKEN: internalToken, ...(existsSync(trusted.bundlePath) ? { NODE_EXTRA_CA_CERTS: trusted.bundlePath } : {}) }), onOutput: options.observability === false ? null : (id, stream, line) => observability?.workerOutput(id, stream, line) });
   // Studio sign-in (owner direction, 23 Oct 2026). On by default; STUDIO_AUTH=off
   // returns to external access control only.
   const deploymentName = readDeploymentName(options.deploymentName ?? process.env.STUDIO_DEPLOYMENT_NAME);
@@ -894,7 +925,7 @@ export function createStudioServer(options = {}) {
   const personal = createPersonalStore({ stateRoot });
   // Saved widgets for Everyone (server/library.mjs), saved by administrators.
   const sharedLibrary = createLibrary({ dir: stateRoot, file: SHARED_LIBRARY_FILE, looks: false });
-  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent, onUserRemoved: userId => personal.removeUser(userId) }) : null;
+  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent, onUserRemoved: userId => personal.removeUser(userId), onAudit: (event, user) => observability?.auditEvent(event, user) }) : null;
   // Administration's name for the deployment, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
   const platform = createPlatformStore({ configRoot });
@@ -910,6 +941,26 @@ export function createStudioServer(options = {}) {
   });
   const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards, preferences: { read: userId => personal.forUser(userId).preferences.read(), write: (userId, value) => personal.forUser(userId).preferences.write(value) }, saved: { list: userId => savedItems.mine(userId), change: (userId, request) => savedItems.changeMine(userId, request) } }) : null;
   const privateCookies = auth ? [authConfig.cookieName, authConfig.flowCookieName, authConfig.setupCookieName] : [];
+  // With sign-in off, monitoring still runs for the cards' status, but nobody
+  // can open Operations, export or send logs (build addendum, 6 Nov 2026).
+  if (options.observability !== false) {
+    observability = createObservability({
+      stateRoot, configRoot, signIn: Boolean(auth), authConfig, smtp: authConfig.smtp ?? null, siteName, trusted,
+      publicOrigin: authConfig.origin ? String(authConfig.origin) : (options.publicOrigin || process.env.STUDIO_PUBLIC_ORIGIN || null),
+      listDashboards: async () => (await registryForAuth()).dashboards,
+      connectionsOf: entry => forDashboard(entry).connections.list(),
+    });
+  }
+  const clientErrorHits = new Map();
+  const clientErrorAllowed = userId => {
+    const t = Date.now();
+    const hits = (clientErrorHits.get(userId) ?? []).filter(at => t - at < 60000);
+    if (hits.length >= 30) return false;
+    hits.push(t); clientErrorHits.set(userId, hits);
+    if (clientErrorHits.size > 2000) clientErrorHits.clear();
+    return true;
+  };
+  const clientAddress = req => (auth ? auth.clientIp(req) : String(req.socket?.remoteAddress ?? '').replace(/^::ffff:/, ''));
   const handlers = new Map();
   const unpublished = new Map();
   let rendererClosed, applicationClosing = false;
@@ -999,6 +1050,7 @@ export function createStudioServer(options = {}) {
       await fs.rm(directory, { recursive: true, force: true });
     }
     await auth?.forgetDashboard(entry.id);
+    await observability?.forgetDashboard(entry.id);
   }, cleanupDashboard: async entry => {
     if (entry.id === 'default') throw new DashboardError('The original dashboard cannot be removed.', 'DEFAULT_DASHBOARD_REQUIRED');
     const owned = unpublished.get(entry.id);
@@ -1267,6 +1319,11 @@ export function createStudioServer(options = {}) {
         res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'content-length': Buffer.byteLength(content), 'x-content-type-options': 'nosniff', ...(status === 503 ? { 'retry-after': '60' } : {}) });
         return res.end(req.method === 'HEAD' ? undefined : content);
       }
+      // Push heartbeats and HTTPS log intake carry their own tokens.
+      if (observability && (path.startsWith('/studio/push/') || path === '/studio/ingest/logs')) {
+        const handled = await observability.handlePublic(req, res, path, { json, readBody, clientIp: clientAddress });
+        if (handled !== false) return;
+      }
       if (authConfig.blocked) return authBlocked(req, res);
       let current = null;
       if (auth) {
@@ -1289,7 +1346,7 @@ export function createStudioServer(options = {}) {
         // With sign-in on, only administrators and the container's own health
         // check (loopback inside the container) see build details.
         if (auth && current?.user.role !== 'admin' && !isLoopback(req.socket.remoteAddress)) return json(res, 200, { status: 'ready' });
-        return json(res, 200, { status: 'ready', version: studioVersion, checks, buildRevision: options.buildRevision ?? process.env.STUDIO_BUILD_REVISION ?? 'unreleased', nativeProtocol: NATIVE_PROTOCOL, upstreamCommit: UPSTREAM_COMMIT });
+        return json(res, 200, { status: 'ready', version: studioVersion, checks, ...(observability ? { observability: await observability.health() } : {}), buildRevision: options.buildRevision ?? process.env.STUDIO_BUILD_REVISION ?? 'unreleased', nativeProtocol: NATIVE_PROTOCOL, upstreamCommit: UPSTREAM_COMMIT });
       }
       if (auth) {
         // Fail closed: unreadable sign-in data never means open access.
@@ -1307,6 +1364,10 @@ export function createStudioServer(options = {}) {
         }
       }
       const isAdmin = !auth || current.user.role === 'admin';
+      if (path.startsWith('/studio/api/ops/')) {
+        if (!observability || !auth) return json(res, 404, { error: 'Operations needs Studio sign-in.', code: 'OPERATIONS_UNAVAILABLE' });
+        return await observability.handleApi(req, res, path, { current, json, readBody, manifest });
+      }
       if (path === '/studio/api/dashboards') {
         if (req.method === 'GET') {
           if (isAdmin) return json(res, 200, manifest);
@@ -1328,6 +1389,7 @@ export function createStudioServer(options = {}) {
         if (auth && copyAccess && change.action === 'create' && change.sourceId) await auth.copyGrants(change.sourceId, result.dashboard.id);
         unpublished.delete(result.dashboard.id);
         forDashboard(result.dashboard);
+        void observability?.refresh();
         const previous = manifest.dashboards.find(entry => entry.id === result.dashboard.id);
         if (previous && (previous.slug !== result.dashboard.slug || previous.archived !== result.dashboard.archived)) {
           try { await rendererPool.drain?.(result.dashboard.id); }
@@ -1489,7 +1551,10 @@ export function createStudioServer(options = {}) {
       // A dashboard you can't open looks exactly like one that doesn't exist.
       if (level === 'none') throw new DashboardError('That dashboard is unavailable. Its address may have changed or it may be archived.', 'DASHBOARD_NOT_FOUND', 404);
       if (local === '/studio/api/access' && req.method === 'GET') {
-        return json(res, 200, { authEnabled: Boolean(auth), deploymentName: siteName(), level, dashboard: { id: route.dashboard.id, name: route.dashboard.name, logo: await forDashboard(route.dashboard).logo.info() }, user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role } : null });
+        return json(res, 200, { authEnabled: Boolean(auth), deploymentName: siteName(), level, dashboard: { id: route.dashboard.id, name: route.dashboard.name, logo: await forDashboard(route.dashboard).logo.info() }, user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role } : null,
+          // Monitoring and Logs on this dashboard (Investigate in a widget's
+          // menu), and whether the name menu offers Operations at all.
+          ...(auth && observability ? { operations: current.operations(route.dashboard.id), operationsMenu: current.user.role === 'admin' || manifest.dashboards.some(entry => !entry.archived && Object.values(current.operations(entry.id)).some(Boolean)) } : {}) });
       }
       // The editor and settings pages open from the Dashboards page. They are
       // native pages behind Studio addresses; their native addresses stay closed
@@ -1506,6 +1571,25 @@ export function createStudioServer(options = {}) {
         if (required.level === 'blocked') return forbidden(res, 'This endpoint is turned off while Studio sign-in is on.');
         if (!atLeast(level, required.level)) return forbidden(res, required.level === 'admin' ? 'Only administrators can do this.' : 'You can view this dashboard but not change it.');
         if (required.stepUp && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
+      }
+      // Card status from the dashboard's card monitors (owner decision D6):
+      // the state, response time and plain sentence the card already shows.
+      if (local === '/studio/api/panel-status' && ['GET', 'HEAD'].includes(req.method)) {
+        const panels = observability ? await observability.panelStatus(route.dashboard.id) : null;
+        return json(res, 200, { available: Boolean(panels), panels: panels ?? {} });
+      }
+      // A widget that failed in someone's browser, for this dashboard's logs.
+      // Signed-in people only, so nobody anonymous can write to the logs.
+      if (local === '/studio/api/client-errors' && req.method === 'POST') {
+        if (!auth || !observability) return json(res, 404, { error: 'This editor endpoint does not exist.' });
+        if (!clientErrorAllowed(current.user.id)) return json(res, 429, { error: 'Too many reports.', code: 'RATE_LIMITED' });
+        const body = await readBody(req, 16 * 1024);
+        const reports = Array.isArray(body?.errors) ? body.errors.slice(0, 10) : [];
+        for (const report of reports) {
+          if (!report || typeof report.message !== 'string') continue;
+          observability.log({ source_type: 'browser', source_id: route.dashboard.id, scope: route.dashboard.id, category: 'integration', severity: 4, event_type: 'widget.error', panel: typeof report.panel === 'string' ? report.panel.slice(0, 64) : undefined, resource: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined, actor: current.user.username, message: report.message.slice(0, 500), fields: { widget: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined } });
+        }
+        return json(res, 202, { accepted: reports.length });
       }
       if (local === '/studio/api/preferences' || local.startsWith('/studio/api/my-images')) return await handlePersonal(req, res, local, current, route.dashboard);
       if (local === '/studio/api/my-connections' || local === '/studio/api/my-connections/use') return await handlePersonalConnections(req, res, local, current, route.dashboard);
@@ -1566,7 +1650,7 @@ export function createStudioServer(options = {}) {
     reported.add(code);
     console.error('Chart history collection failed:', code);
   };
-  const collector = collectMs > 0 ? setInterval(async () => {
+  const collect = async () => {
     if (collecting || applicationClosing) return;
     collecting = true;
     let failed = false;
@@ -1574,15 +1658,28 @@ export function createStudioServer(options = {}) {
       const manifest = await prepareRegistry();
       for (const entry of manifest.dashboards) {
         if (applicationClosing) break;
-        if (entry.archived || (!entry.slug && entry.id !== 'default')) continue;
+        if (entry.archived || (!entry.slug && entry.id !== 'default')) {
+          // An archived dashboard's cards aren't checked.
+          if (observability) await observability.syncCards(entry, []).catch(() => {});
+          continue;
+        }
         try { await forDashboard(entry).collectHistory(entry); }
         catch (error) { failed = true; collectFailed(error); }
+        if (observability) {
+          try { const targets = await forDashboard(entry).statusTargets(entry); if (targets) await observability.syncCards(entry, targets); }
+          catch (error) { collectFailed(Object.assign(new Error('status'), { code: 'CARD_MONITORS_' + (error.code || 'FAILED') })); }
+        }
       }
       if (!failed) reported.clear();
     } catch (error) { collectFailed(error); }
     finally { collecting = false; }
-  }, collectMs) : null;
+  };
+  const collector = collectMs > 0 ? setInterval(collect, collectMs) : null;
   collector?.unref();
+  // Card monitors start soon after Studio does, not a minute later.
+  const firstCollect = collectMs > 0 && observability ? setTimeout(collect, Math.min(collectMs, 5000)) : null;
+  firstCollect?.unref?.();
+  if (observability) void observability.start().catch(error => console.error('Monitoring and logs could not start:', error.code || error.message));
   // Archived dashboards past their time are deleted for good (board 28):
   // checked shortly after start and then every hour.
   const expireArchives = async () => {
@@ -1602,6 +1699,7 @@ export function createStudioServer(options = {}) {
   let shutdownResult;
   function shutdown({ graceMs = 10000 } = {}) {
     if (collector) clearInterval(collector);
+    if (firstCollect) clearTimeout(firstCollect);
     if (archiveSweep) clearInterval(archiveSweep);
     if (firstSweep) clearTimeout(firstSweep);
     if (shutdownResult) return shutdownResult;
@@ -1624,6 +1722,7 @@ export function createStudioServer(options = {}) {
         // Start-up work can still be writing to the state folder.
         await Promise.all([initialization, authInitialization]);
         await closeRenderer();
+        await observability?.stop();
         await auth?.close();
       } finally { clearTimeout(timer); }
     })();

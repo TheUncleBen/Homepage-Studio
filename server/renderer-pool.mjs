@@ -65,6 +65,9 @@ export function createRendererPool({
   configRoot, stateRoot, appRoot, workerScript, allowedHosts = process.env.HOMEPAGE_ALLOWED_HOSTS,
   buildRevision = process.env.STUDIO_BUILD_REVISION || 'unreleased',
   maxWorkers, idleMs, startupMs, workerEnv = {},
+  // Each line a dashboard's worker writes, for Studio's logs (Operations ›
+  // Logs). The lines still reach the container's own output unchanged.
+  onOutput = null,
 } = {}) {
   configRoot = resolve(configRoot);
   appRoot = resolve(appRoot);
@@ -153,8 +156,25 @@ export function createRendererPool({
           STUDIO_BUILD_REVISION: buildRevision, HOMEPAGE_AUTH_ENABLED: 'false',
           HOMEPAGE_MCP_ALLOW_WRITE: 'false', NEXT_TELEMETRY_DISABLED: '1', LOG_TARGETS: 'stdout',
         },
-        stdio: ['ignore', 'inherit', 'inherit'],
+        stdio: onOutput ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'inherit', 'inherit'],
       });
+      if (onOutput) {
+        for (const [stream, target] of [[record.child.stdout, process.stdout], [record.child.stderr, process.stderr]]) {
+          let pending = '';
+          stream.on('data', chunk => {
+            target.write(chunk);
+            pending += chunk.toString('utf8');
+            let index;
+            while ((index = pending.indexOf('\n')) >= 0) {
+              const line = pending.slice(0, index);
+              pending = pending.slice(index + 1);
+              if (line.trim()) { try { onOutput(record.id, target === process.stderr ? 'stderr' : 'stdout', line); } catch {} }
+            }
+            if (pending.length > 64 * 1024) pending = '';
+          });
+          stream.on('error', () => {});
+        }
+      }
       record.exit = new Promise(resolveExit => {
         const exited = () => { record.exited = true; remove(record); resolveExit(); };
         record.child.once('exit', exited);

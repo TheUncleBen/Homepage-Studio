@@ -26,6 +26,7 @@ const health = { status: 'starting', storage: 'unknown', reason: null, journal: 
 let defs = { settings: structuredClone(DEFAULT_SETTINGS), monitors: [], maintenance: [], channels: [], views: [], sources: [], alerts: [], overrides: {} };
 let dashboards = new Map(); // id → { name, slug, path }
 let dockerServers = {}; // monitor id → resolved server config
+const boundRaw = new Map(); // dashboard id → card monitors as the controller sent them
 let ca;
 
 // ---- Storage, with monitoring kept alive when history can't be written ----
@@ -352,7 +353,9 @@ const handlers = {
     dashboards = new Map((list ?? []).map(item => [item.id, item]));
     dockerServers = servers ?? {};
     // Bound monitors of dashboards that no longer exist go.
-    for (const monitor of monitoring.monitors()) if (monitor.card && !dashboards.has(monitor.scope)) monitoring.dropDashboard(monitor.scope);
+    for (const id of [...boundRaw.keys()]) if (!dashboards.has(id)) { boundRaw.delete(id); monitoring.dropDashboard(id); }
+    // Overrides (paused, notifications) of card monitors may have changed.
+    for (const [id, list] of boundRaw) monitoring.setBound(id, list.map(effective));
     docker.sync().catch(() => {});
     syncSyslog().catch(() => {});
     return { ok: true };
@@ -361,8 +364,8 @@ const handlers = {
   ca({ pem }) { ca = Array.isArray(pem) && pem.length ? pem : undefined; return { ok: true }; },
   log(events) { for (const event of Array.isArray(events) ? events : [events]) log(event); },
   mainMetrics(values) { mainMetrics = values ?? {}; },
-  bound({ dashboardId, monitors }) { monitoring.setBound(dashboardId, monitors); return { count: monitors.length }; },
-  dropDashboard({ id }) { monitoring.dropDashboard(id); metrics.dropScope(id); return { ok: true }; },
+  bound({ dashboardId, monitors }) { boundRaw.set(dashboardId, monitors); monitoring.setBound(dashboardId, monitors.map(effective)); return { count: monitors.length }; },
+  dropDashboard({ id }) { boundRaw.delete(id); monitoring.dropDashboard(id); metrics.dropScope(id); return { ok: true }; },
   panelStatus({ dashboardId }) {
     const out = {};
     for (const monitor of monitoring.bound(dashboardId)) {

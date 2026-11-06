@@ -7,7 +7,16 @@ import { createPort } from './rpc.mjs';
 const ENGINE = new URL('./engine.mjs', import.meta.url);
 const BACKOFF = [1000, 2000, 5000, 15000, 30000, 60000];
 
-export function createEngineHost({ dir, stateRoot, smtp = null, siteName = 'Homepage Studio', publicOrigin = null, journal = 'WAL', signIn = false, extraCaFile = null, onLog = () => {}, resourceLimits = { maxOldGenerationSizeMb: 256 } }) {
+export function createEngineHost({ dir, stateRoot, smtp = null, siteName = 'Homepage Studio', publicOrigin = null, journal = 'WAL', signIn = false, ...rest }) {
+  return createWorkerHost({ entry: ENGINE, name: 'monitoring engine', workerData: { dir, stateRoot, smtp, siteName, publicOrigin, journal, signIn }, ...rest });
+}
+
+// Log searches, in their own worker with read-only connections.
+export function createQueryHost({ dir, ...rest }) {
+  return createWorkerHost({ entry: new URL('./query-worker.mjs', import.meta.url), name: 'log search', workerData: { dir }, resourceLimits: { maxOldGenerationSizeMb: 192 }, ...rest });
+}
+
+export function createWorkerHost({ entry, name, workerData, extraCaFile = null, onLog = () => {}, resourceLimits = { maxOldGenerationSizeMb: 256 } }) {
   let worker = null, port = null, failures = 0, stopped = false, restartTimer = null, ready = null;
   // The last value of each replayed call, so a restarted engine catches up.
   const replay = new Map();
@@ -16,8 +25,9 @@ export function createEngineHost({ dir, stateRoot, smtp = null, siteName = 'Home
   function start() {
     if (stopped) return;
     const env = { ...process.env };
-    if (extraCaFile) env.NODE_EXTRA_CA_CERTS = extraCaFile;
-    worker = new Worker(ENGINE, { workerData: { dir, stateRoot, smtp, siteName, publicOrigin, journal, signIn }, resourceLimits, env, stdout: false, stderr: false });
+    const file = typeof extraCaFile === 'function' ? extraCaFile() : extraCaFile;
+    if (file) env.NODE_EXTRA_CA_CERTS = file;
+    worker = new Worker(entry, { workerData, resourceLimits, env, stdout: false, stderr: false });
     const current = worker;
     port = createPort(worker, {});
     const startedAt = Date.now();
@@ -25,7 +35,7 @@ export function createEngineHost({ dir, stateRoot, smtp = null, siteName = 'Home
       for (const [method, params] of replay.values()) await port.call(method, params, 30000).catch(() => {});
       while (queued.length) { const [method, params] = queued.shift(); port.cast(method, params); }
     })();
-    current.on('error', error => onLog({ severity: 3, message: `The monitoring engine stopped: ${error.message}` }));
+    current.on('error', error => onLog({ severity: 3, message: `The ${name} stopped: ${error.message}` }));
     current.on('exit', code => {
       if (worker !== current) return;
       port.abort();
@@ -34,7 +44,7 @@ export function createEngineHost({ dir, stateRoot, smtp = null, siteName = 'Home
       if (Date.now() - startedAt > 120000) failures = 0;
       const wait = BACKOFF[Math.min(failures, BACKOFF.length - 1)];
       failures++;
-      onLog({ severity: 3, message: `The monitoring engine exited (code ${code}); restarting in ${Math.round(wait / 1000)} s.` });
+      onLog({ severity: 3, message: `The ${name} exited (code ${code}); restarting in ${Math.round(wait / 1000)} s.` });
       restartTimer = setTimeout(start, wait);
       restartTimer.unref?.();
     });
@@ -65,6 +75,15 @@ export function createEngineHost({ dir, stateRoot, smtp = null, siteName = 'Home
       if (!port) return null;
       await ready;
       return port ? port.call(method, params, 30000) : null;
+    },
+    // Starts a fresh worker (for example after trusted certificates change).
+    async restart() {
+      if (!worker) return;
+      const current = worker;
+      failures = 0;
+      worker = null; port?.abort(); port = null;
+      await current.terminate().catch(() => {});
+      start();
     },
     async stop() {
       stopped = true;
