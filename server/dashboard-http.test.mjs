@@ -531,6 +531,11 @@ test('Test connection only fills in a secret reference for the address it is sav
   assert.match(elsewhere.json.message, /only sent to the address it is saved with/);
   const variable = await f.post('/studio/api/connection-test', { widget: { type: 'jellyfin', url: 'https://collector.example.test', key: '{{HOMEPAGE_VAR_KEY}}' } });
   assert.equal(variable.json.kind, 'address');
+  // A reference inside the address is held to the same rule.
+  for (const url of ['https://collector.example.test/{{HOMEPAGE_FILE_DB_PASSWORD}}', 'https://{{HOMEPAGE_VAR_SECRET}}.collector.example.test/']) {
+    const inAddress = await f.post('/studio/api/connection-test', { widget: { type: 'customapi', url } });
+    assert.equal(inAddress.json.kind, 'address', url);
+  }
   const own = await f.post('/studio/api/connection-test', { widget: { type: 'jellyfin', url: 'https://media.example.test', key: '{{HOMEPAGE_FILE_JELLYFIN_KEY}}' } });
   assert.equal(own.status, 200, own.text);
   assert.notEqual(own.json.kind, 'address');

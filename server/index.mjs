@@ -759,9 +759,10 @@ function createDashboardHandlers(options = {}) {
           if (match && change.widget.url !== placeholder(match[1], 'url')) return json(res, 200, { ok: false, kind: 'address', message: 'A saved key is only sent to its own connection’s address. Choose that connection for the address too.' });
         }
         // The same for a Docker secret or variable reference ({{HOMEPAGE_FILE_…}},
-        // {{HOMEPAGE_VAR_…}}): it is only filled in for the address a saved
-        // widget already sends it to, so a test can't carry it anywhere new.
-        const references = Object.entries(change.widget).filter(([field, value]) => field !== 'url' && /\{\{HOMEPAGE_(FILE|VAR)_/.test(JSON.stringify(value ?? null)));
+        // {{HOMEPAGE_VAR_…}}), in any field including the address itself: it
+        // is only filled in for the address a saved widget already sends it
+        // to, so a test can't carry it anywhere new.
+        const references = Object.entries(change.widget).filter(([, value]) => /\{\{HOMEPAGE_(FILE|VAR)_/.test(JSON.stringify(value ?? null)));
         if (references.length) {
           const saved = ((await store.load()).serviceWidgets || []).map(entry => entry.config).filter(config => config && typeof config === 'object' && config.url === change.widget.url);
           const allowed = references.every(([field, value]) => saved.some(config => JSON.stringify(config[field] ?? null) === JSON.stringify(value ?? null)));
