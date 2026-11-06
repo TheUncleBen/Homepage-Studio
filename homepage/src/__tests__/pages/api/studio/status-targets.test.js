@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("utils/config/api-response", () => ({ servicesResponse: vi.fn() }));
 vi.mock("utils/config/service-helpers", () => ({ getServiceItem: vi.fn() }));
 
-import { statusTarget } from "./status-targets";
+import { statusTarget } from "pages/api/studio/status-targets";
 
 const data = {
   services: [{ name: "Media", services: [{ name: "Plex", href: "https://plex.example" }] }],

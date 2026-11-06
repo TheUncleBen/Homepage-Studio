@@ -1,4 +1,5 @@
 import { resolveNativePanel } from "components/studio/native-adapter.mjs";
+import { withAuth } from "utils/auth";
 import { servicesResponse } from "utils/config/api-response";
 import { getServiceItem } from "utils/config/service-helpers";
 import { fromController } from "utils/studio/internal";
@@ -33,7 +34,7 @@ export async function statusTarget(panel, data, lookup = getServiceItem) {
   return url ? { check: "web", url, name: item.name } : null;
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (!fromController(req.headers["x-studio-internal"])) return res.status(404).end();
   if (req.method !== "POST") return res.status(405).end();
   const panels = req.body?.panels;
@@ -60,3 +61,5 @@ export default async function handler(req, res) {
   }
   return res.status(200).json({ targets });
 }
+
+export default withAuth(handler);
