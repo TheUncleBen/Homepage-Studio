@@ -8,6 +8,7 @@ import ColourField from "./colour-field";
 import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
 import { CHART_SHOWS, exactColour, setOverride } from "./look.mjs";
+import ShowOn from "./show-on";
 import { Group, Row, Segmented, Switch } from "./ui";
 
 // Which parts of the widget dialog apply to each kind of widget (Rule 1: only
@@ -1316,16 +1317,13 @@ export default function LookEditor({
               ]}
             />
           )}
-          <Choice
-            label="On phones"
-            value={acts.phones}
-            onChange={(value) => setBehaviour("phones", value)}
-            options={[
-              ["show", "Show"],
-              ["hide", "Hide"],
-            ]}
-            info="Hide keeps the widget off screens narrower than a tablet. It stays in place everywhere else."
-          />
+          <Row
+            label="Show on"
+            info="The layouts this widget appears on. While editing, a layout shows the widgets it leaves out faded, so you can turn them back on."
+          >
+            <MixedNote value={acts.showOn} />
+            <ShowOn value={acts.showOn} onChange={(value) => setBehaviour("showOn", value)} />
+          </Row>
           {show.values && (
             <>
               <Choice

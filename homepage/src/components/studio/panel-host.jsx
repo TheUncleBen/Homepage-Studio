@@ -140,6 +140,8 @@ export default function PanelHost({
   renderNative: RenderNative = NativePanel,
   // On phones, the widget last tapped while editing shows its controls.
   toolsShown = false,
+  // While editing: this layout leaves the widget out (Show on).
+  offLayout = false,
 }) {
   const nativeContent = useRef(null);
   const slide = useRef(null);
@@ -307,7 +309,7 @@ export default function PanelHost({
   useEffect(() => () => slideAnimation.current?.cancel(), []);
   return (
     <section
-      className={`studio-panel${stack ? " studio-stacked-panel" : ""}${selected ? " studio-selected" : ""}${toolsShown ? " studio-tools-shown" : ""}${moving ? " studio-moving" : ""}${!presented ? " studio-inactive" : ""}${!active ? " studio-noninteractive" : ""}`}
+      className={`studio-panel${stack ? " studio-stacked-panel" : ""}${selected ? " studio-selected" : ""}${toolsShown ? " studio-tools-shown" : ""}${moving ? " studio-moving" : ""}${!presented ? " studio-inactive" : ""}${!active ? " studio-noninteractive" : ""}${offLayout ? " studio-off-layout" : ""}`}
       data-panel-id={panel.id}
       data-panel-kind={panel.kind}
       {...attributes}

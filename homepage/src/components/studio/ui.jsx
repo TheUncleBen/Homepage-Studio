@@ -142,6 +142,35 @@ export function Segmented({ value, onChange, options, label, id, disabled = fals
   );
 }
 
+// Several on or off at once, drawn like Segmented (toggle buttons). options
+// are [value, text]; value is the array of values that are on. With
+// required, the last one on can't be turned off.
+export function MultiSegmented({ value = [], onChange, options, label, id, required = false }) {
+  return (
+    <div role="group" aria-label={label} id={id} className="studio-segmented studio-multi-segmented">
+      {options.map(([option, text]) => {
+        const on = value.includes(option);
+        const last = required && on && value.length === 1;
+        return (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={on}
+            aria-disabled={last || undefined}
+            title={last ? "At least one stays on" : undefined}
+            onClick={() => {
+              if (last) return;
+              onChange(on ? value.filter((entry) => entry !== option) : [...value, option]);
+            }}
+          >
+            {text}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // A row that opens more below it, for content most people never need.
 export function Disclosure({ title, icon, children, defaultOpen = false, className = "" }) {
   const [open, setOpen] = useState(defaultOpen);

@@ -55,7 +55,7 @@ import {
   sizeProjection,
   sizeView,
 } from "./layouts.mjs";
-import { CHART_SHOWS, needsHistory, readLook, statusColours } from "./look.mjs";
+import { CHART_SHOWS, needsHistory, readLook, showsOn, statusColours } from "./look.mjs";
 import Menu from "./menu";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
@@ -151,6 +151,7 @@ export function PanelLayer({
   onLongPress,
   renderNative,
   toolsShown = null,
+  offLayout = null,
 }) {
   const stackByPanel = new Map(board.stacks.flatMap((stack) => stack.panelIds.map((id) => [id, stack])));
   // Keep DOM sibling order independent of geometry. Moving an existing iframe
@@ -195,6 +196,7 @@ export function PanelLayer({
             onLongPress={onLongPress}
             renderNative={renderNative}
             toolsShown={!stack && toolsShown === panel.id}
+            offLayout={offLayout?.has(panel.id) || false}
           />
         );
       })}
@@ -256,11 +258,11 @@ function ShortcutsSheet({ editing, pages }) {
   );
 }
 
-// Widgets a phone leaves out (behaviour "On phones: Hide"), dropped from the
-// board before it is projected. A stack keeps its other members.
-export function withoutPhoneHidden(board, settings) {
+// Widgets a layout leaves out (behaviour "Show on"), dropped from the board
+// before it is projected. A stack keeps its other members.
+export function withoutHiddenOn(board, settings, size) {
   const hidden = new Set(
-    board.panels.filter((panel) => resolvedBehaviour(settings, panel).phones === "hide").map((panel) => panel.id),
+    board.panels.filter((panel) => !showsOn(resolvedBehaviour(settings, panel).showOn, size)).map((panel) => panel.id),
   );
   if (!hidden.size) return board;
   return {
@@ -539,11 +541,23 @@ export default function StudioBoard({
     });
     return () => element.removeEventListener("touchmove", preserveManipulation);
   }, []);
-  // On a phone, the live dashboard leaves out widgets set to hide on phones.
-  // The editor keeps them so they can still be arranged.
+  // The live dashboard leaves out widgets not shown on this layout. The
+  // editor keeps them, faded, so they can still be found and turned back on.
   const projection = useMemo(
-    () => sizeProjection(!editing && layoutSize === "phone" ? withoutPhoneHidden(board, settings) : board, layoutSize),
+    () => sizeProjection(editing ? board : withoutHiddenOn(board, settings, layoutSize), layoutSize),
     [board, layoutSize, editing, settings],
+  );
+  // While editing: the widgets this layout leaves out (shown faded).
+  const offLayout = useMemo(
+    () =>
+      editing
+        ? new Set(
+            board.panels
+              .filter((panel) => !showsOn(resolvedBehaviour(settings, panel).showOn, layoutSize))
+              .map((panel) => panel.id),
+          )
+        : null,
+    [board, settings, editing, layoutSize],
   );
   const gap = gapOf(settings);
   const geometry = useMemo(
@@ -2355,6 +2369,7 @@ export default function StudioBoard({
           ))}
         </div>
         <PanelLayer
+          offLayout={offLayout}
           board={board}
           data={renderedNativeData}
           geometry={geometry}

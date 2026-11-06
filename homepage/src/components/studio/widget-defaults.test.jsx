@@ -27,10 +27,17 @@ describe("dashboard widget defaults", () => {
     render(<Draft initial={{ title: "Lab" }} onChange={onChange} />);
     pick("Refresh", "1 min");
     expect(onChange).toHaveBeenLastCalledWith({ title: "Lab", studioDefaults: { refresh: "1m" } });
-    pick("On phones", "Hide");
-    expect(onChange.mock.lastCall[0].studioDefaults).toEqual({ refresh: "1m", phones: "hide" });
+    const showOn = within(screen.getByRole("group", { name: "Show on" }));
+    fireEvent.click(showOn.getByRole("button", { name: "Phone" }));
+    expect(onChange.mock.lastCall[0].studioDefaults).toEqual({ refresh: "1m", showOn: "desktop+tablet" });
+    fireEvent.click(showOn.getByRole("button", { name: "Tablet" }));
+    expect(onChange.mock.lastCall[0].studioDefaults).toEqual({ refresh: "1m", showOn: "desktop" });
+    // The last layout left on stays on.
+    fireEvent.click(showOn.getByRole("button", { name: "Desktop" }));
+    expect(onChange.mock.lastCall[0].studioDefaults).toEqual({ refresh: "1m", showOn: "desktop" });
     pick("Refresh", "Auto");
-    pick("On phones", "Show");
+    fireEvent.click(showOn.getByRole("button", { name: "Tablet" }));
+    fireEvent.click(showOn.getByRole("button", { name: "Phone" }));
     expect(onChange).toHaveBeenLastCalledWith({ title: "Lab" });
   });
 

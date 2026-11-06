@@ -874,7 +874,7 @@ export default function ContentEditor({
         kind === "serviceWidget" && "link",
         sections.link && "on click",
         sections.values && "refresh",
-        "on phones",
+        "which layouts show it",
       ])
     : "Where the card's name takes you";
   if (!boardPanel) summaries.status = hostOf(service?.href);

@@ -1,6 +1,7 @@
 import { dashboardBehaviour } from "./card-look";
 import ColourField from "./colour-field";
 import { BUILT_IN_BEHAVIOUR, STATUS_COLOURS, keepsUpdatingHidden, setOverride, statusColours } from "./look.mjs";
+import ShowOn from "./show-on";
 import { Group, Row, Segmented } from "./ui";
 
 // Chart history retention (server/history.mjs keeps the same choices).
@@ -107,16 +108,8 @@ export default function WidgetDefaults({ settings, onChange, pageCount = 1, hasC
             ]}
           />
         </Row>
-        <Row label="On phones">
-          <Segmented
-            label="On phones"
-            value={acts.phones}
-            onChange={(value) => set("phones", value)}
-            options={[
-              ["show", "Show"],
-              ["hide", "Hide"],
-            ]}
-          />
+        <Row label="Show on">
+          <ShowOn value={acts.showOn} onChange={(value) => set("showOn", value)} />
         </Row>
         <Row
           label="Status colours"

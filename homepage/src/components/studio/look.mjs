@@ -48,9 +48,19 @@ export function needsHistory(look) {
   );
 }
 
+// Which layouts show a widget (Show on: Desktop, Tablet, Phone). Stored as
+// the sizes joined by "+", always in this order, never empty.
+export const LAYOUT_SIZES = Object.freeze(["desktop", "tablet", "phone"]);
+const SHOW_ON = LAYOUT_SIZES.reduce((sets, size) => [...sets, ...sets.map((set) => [...set, size])], [[]])
+  .filter((set) => set.length)
+  .map((set) => set.join("+"));
+export function showsOn(value, size) {
+  return typeof value !== "string" || !SHOW_ON.includes(value) || value.split("+").includes(size);
+}
+
 export const BEHAVIOUR_OPTIONS = Object.freeze({
   target: ["same", "new", "none"],
-  phones: ["show", "hide"],
+  showOn: SHOW_ON,
   refresh: ["auto", "10s", "30s", "1m", "5m"],
   errors: ["link", "hide"],
   status: ["web", "ping", "off"],
@@ -97,7 +107,7 @@ export const BUILT_IN_LOOK = Object.freeze({
 
 export const BUILT_IN_BEHAVIOUR = Object.freeze({
   target: "new",
-  phones: "show",
+  showOn: "desktop+tablet+phone",
   refresh: "auto",
   errors: "link",
   status: "web",

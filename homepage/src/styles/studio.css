@@ -2027,17 +2027,10 @@ body {
   font-weight: 500;
   white-space: nowrap;
 }
-.studio-segmented > button[aria-checked="true"] {
+.studio-segmented > button:is([aria-checked="true"], [aria-pressed="true"]) {
   background: var(--studio-surface);
   box-shadow: 0 1px 4px #0003;
   font-weight: 600;
-}
-.studio-config-form > .studio-segmented {
-  display: flex;
-  margin: 0 0 20px;
-}
-.studio-config-form > .studio-segmented > button {
-  flex: 1;
 }
 .studio-row-control > :is(.studio-segmented, .studio-switch) {
   justify-self: end;
@@ -2529,11 +2522,6 @@ body {
 }
 .studio-row:focus-within {
   box-shadow: inset 3px 0 0 var(--studio-focus);
-}
-.studio-config-form > .studio-segmented {
-  width: fit-content;
-  min-width: 15rem;
-  margin: 0 auto 20px;
 }
 
 /* ---- Pages: tabs in the top bar ------------------------------------------ */
@@ -4803,6 +4791,7 @@ svg.studio-chart-gauge {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin: 0 0 16px;
 }
 .studio-status-colour {
   display: inline-flex;
@@ -5296,4 +5285,24 @@ svg.studio-chart-gauge {
   flex-direction: column;
   width: 100%;
   min-width: 0;
+}
+
+/* ---- Show on: a widget this layout leaves out, while editing ------------- */
+.studio-edit-mode .studio-panel.studio-off-layout > .studio-panel-slide {
+  opacity: 0.4;
+  filter: grayscale(0.6);
+}
+.studio-edit-mode .studio-panel.studio-off-layout::after {
+  content: "Not shown on this layout";
+  position: absolute;
+  inset: auto 8px 8px auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--studio-raised);
+  border: 1px solid var(--studio-line-strong);
+  color: var(--studio-text);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 2;
 }

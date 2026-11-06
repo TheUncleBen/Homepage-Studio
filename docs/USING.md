@@ -349,7 +349,7 @@ in sections, one open at a time, each with a short summary when closed:
 | **Connection** (**Settings** or **Details** for widgets without one) | The settings below. It says *Needs a fix* when one is wrong |
 | **Values and charts** | Which values show, in what order, and how ([How a widget looks](#how-a-widget-looks)) |
 | **Look** | Background, colour, edge, corners, header and [saved looks](#saved-looks) |
-| **Status and behaviour** (**Link** while adding) | The link, the status check, refresh, what a click does and whether it shows on phones |
+| **Status and behaviour** (**Link** while adding) | The link, the status check, refresh, what a click does and which layouts show it (Show on: Desktop, Tablet, Phone) |
 | **Page** | The page it's on |
 | **Management** | **Duplicate**, **Save as a saved widget** and **Delete** |
 | **Setting up …** | What the service needs, from Homepage's documentation, with each secret's exact Docker secret name, variable and `{{HOMEPAGE_FILE_...}}` reference and **Copy** buttons |
@@ -401,7 +401,7 @@ address's certificate isn't trusted by Studio.*
 The widget at the top of the dialog is a live preview. **Look** sets its
 background, colour, edge, corners, header and size of the hero number;
 **Status** chooses the check (web address, ping or off) and how it shows;
-**Behaviour** sets refresh, what a click does and whether it shows on phones.
+**Behaviour** sets refresh, what a click does and **Show on**: the layouts (Desktop, Tablet, Phone) the widget appears on. While you edit a layout, widgets it leaves out are shown faded with "Not shown on this layout".
 A choice that matches the dashboard's default is not stored, so changing the
 default in **Dashboard settings → Widget defaults** changes every widget that
 didn't choose otherwise.

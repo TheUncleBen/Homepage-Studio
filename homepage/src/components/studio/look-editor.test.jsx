@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { withoutPhoneHidden } from "./board";
+import { withoutHiddenOn } from "./board";
 import LookEditor, { arrangeValues, showChoices, storedValues } from "./look-editor";
 import { BUILT_IN_BEHAVIOUR, BUILT_IN_LOOK } from "./look.mjs";
 
@@ -172,26 +172,29 @@ describe("arranging values", () => {
   });
 });
 
-describe("hide on phones", () => {
+describe("show on each layout", () => {
   const board = {
     version: 3,
     columns: 24,
     panels: [
-      { id: "a", rect: { x: 0, y: 0, w: 6, h: 2 }, behaviour: { phones: "hide" } },
+      { id: "a", rect: { x: 0, y: 0, w: 6, h: 2 }, behaviour: { showOn: "desktop+tablet" } },
       { id: "b", rect: { x: 6, y: 0, w: 6, h: 2 } },
-      { id: "c", rect: { x: 0, y: 2, w: 6, h: 2 } },
+      { id: "c", rect: { x: 0, y: 2, w: 6, h: 2 }, behaviour: { showOn: "tablet" } },
     ],
     stacks: [{ id: "s", panelIds: ["a", "c"], rect: { x: 0, y: 2, w: 6, h: 2 } }],
   };
-  it("drops hidden widgets and keeps the rest of a stack", () => {
-    const shown = withoutPhoneHidden(board, {});
-    expect(shown.panels.map((panel) => panel.id)).toEqual(["b", "c"]);
-    expect(shown.stacks[0].panelIds).toEqual(["c"]);
+  it("drops widgets a layout leaves out and keeps the rest of a stack", () => {
+    const phone = withoutHiddenOn(board, {}, "phone");
+    expect(phone.panels.map((panel) => panel.id)).toEqual(["b"]);
+    expect(phone.stacks).toEqual([]);
+    const desktop = withoutHiddenOn(board, {}, "desktop");
+    expect(desktop.panels.map((panel) => panel.id)).toEqual(["a", "b"]);
+    expect(desktop.stacks[0].panelIds).toEqual(["a"]);
+    expect(withoutHiddenOn(board, {}, "tablet")).toBe(board);
   });
   it("follows the dashboard default", () => {
-    const shown = withoutPhoneHidden(board, { studioDefaults: { phones: "hide" } });
-    expect(shown.panels).toEqual([]);
-    expect(shown.stacks).toEqual([]);
+    const shown = withoutHiddenOn(board, { studioDefaults: { showOn: "phone" } }, "phone");
+    expect(shown.panels.map((panel) => panel.id)).toEqual(["b"]);
   });
 });
 
