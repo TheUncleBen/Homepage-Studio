@@ -231,14 +231,14 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.studio-search-icon {
+.studio-icon-button.studio-search-icon {
   display: none;
 }
 @media (max-width: 680px) {
   .studio-search-bar {
     display: none;
   }
-  .studio-search-icon {
+  .studio-icon-button.studio-search-icon {
     display: inline-flex;
   }
 }

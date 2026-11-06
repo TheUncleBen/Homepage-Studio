@@ -60,7 +60,7 @@ describe("balanced value boxes (U7)", () => {
   it("keeps a chosen number of columns while the boxes fit", async () => {
     const { balancedColumns } = await import("./card-values");
     expect(balancedColumns(6, 4, "2")).toBe(2);
-    expect(balancedColumns(6, 4, "6")).toBe(3);
+    expect(balancedColumns(6, 3, "4")).toBe(3);
     expect(balancedColumns(2, 4, "4")).toBe(2);
   });
 });

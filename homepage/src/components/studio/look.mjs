@@ -33,7 +33,7 @@ export const LOOK_OPTIONS = Object.freeze({
   chartRange: ["1h", "6h", "24h", "7d", "30d"],
   // Value boxes (U7): Auto balances them (6 values: 3 by 2, not 4 and 2);
   // a number keeps that many columns while each box still fits.
-  columns: ["auto", "1", "2", "3", "4", "5", "6"],
+  columns: ["auto", "1", "2", "3", "4"],
 });
 
 // Formats drawn from collected history, and the ones that need it at all

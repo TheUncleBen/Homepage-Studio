@@ -429,18 +429,20 @@ function StatusAddress({ check, address }) {
       }
     >
       <div className="studio-status-address">
-        <input
-          id={id}
-          value={ping ? address.ping : address.web}
-          inputMode={ping ? "text" : "url"}
-          autoComplete="off"
-          aria-describedby={`${id}-from`}
-          placeholder={shown || (ping ? "host.example.org" : "https://service.example.org/health")}
-          onChange={(event) => {
-            setResult(null);
-            address.onChange(check, event.target.value.trim());
-          }}
-        />
+        <div className="studio-input-line">
+          <input
+            id={id}
+            value={ping ? address.ping : address.web}
+            inputMode={ping ? "text" : "url"}
+            autoComplete="off"
+            aria-describedby={`${id}-from`}
+            placeholder={shown || (ping ? "host.example.org" : "https://service.example.org/health")}
+            onChange={(event) => {
+              setResult(null);
+              address.onChange(check, event.target.value.trim());
+            }}
+          />
+        </div>
         <div className="studio-inline-actions">
           <span id={`${id}-from`} className="studio-muted">
             {own ? "Your own address" : derived ? `From the ${from}` : "Nothing to check yet"}
@@ -1006,15 +1008,6 @@ export default function LookEditor({
                 ]}
                 info="Hero shows one value large with the rest below it. Quiet shows every value the same size."
               />
-              <Dependent>
-                <Choice
-                  label="Columns"
-                  value={effective.columns}
-                  onChange={(value) => setLook("columns", value)}
-                  options={[["auto", "Auto"], ...["1", "2", "3", "4", "5", "6"].map((count) => [count, count])]}
-                  info={`How the value boxes${effective.layout === "hero" ? " below the hero" : ""} line up. Auto balances them for the card's size (6 values: 3 by 2, not 4 and 2). A number keeps that many columns while the boxes still fit, then balances. The order comes from Values.`}
-                />
-              </Dependent>
               {effective.layout === "hero" && (
                 <Dependent>
                   <Choice
@@ -1030,6 +1023,15 @@ export default function LookEditor({
                   />
                 </Dependent>
               )}
+              <Dependent>
+                <Choice
+                  label="Columns"
+                  value={effective.columns}
+                  onChange={(value) => setLook("columns", value)}
+                  options={[["auto", "Auto"], ...["1", "2", "3", "4"].map((count) => [count, count])]}
+                  info={`How the value boxes${effective.layout === "hero" ? " below the hero" : ""} line up. Auto balances them for the card's size (6 values: 3 by 2, not 4 and 2). A number keeps that many columns while the boxes still fit, then balances. The order comes from Values.`}
+                />
+              </Dependent>
             </>
           )}
           <Choice
