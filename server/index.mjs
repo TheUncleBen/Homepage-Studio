@@ -1417,6 +1417,9 @@ export function createStudioServer(options = {}) {
           suggestedSlug: isAdmin ? suggestedDashboardSlug(manifest.dashboards) : undefined,
           starters: isAdmin ? starterChoices() : undefined,
           authEnabled: Boolean(auth),
+          // Operations is in the name menu for administrators and anyone with
+          // Monitoring or Logs on a dashboard (sign-in on only).
+          operations: Boolean(auth && observability) && (isAdmin || manifest.dashboards.some(entry => !entry.archived && Object.values(current.operations(entry.id)).some(Boolean))),
           user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role, defaultDashboardId: current.user.defaultDashboardId ?? null } : null,
           landingId: auth ? current.landing(manifest.dashboards) : null,
           revision: isAdmin ? manifest.revision : undefined,

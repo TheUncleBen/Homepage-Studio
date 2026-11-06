@@ -630,6 +630,16 @@
     clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5l3 2',
     lock: 'M6 11h12v10H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
     palette: 'M12 3a9 9 0 0 0 0 18c1.1 0 1.5-.8 1.5-1.6 0-1.2-1-1.6-1-2.6 0-.9.7-1.3 1.6-1.3H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5ZM7.5 11h.01M10 7.5h.01M15 7.5h.01',
+    pulse: 'M3 12h4l3-8 4 16 3-8h4',
+    search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM20 20l-4-4',
+    bell: 'M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9M10 20.5a2.2 2.2 0 0 0 4 0',
+    alert: 'M10.3 4 2 18.5A2 2 0 0 0 3.7 21.5h16.6A2 2 0 0 0 22 18.5L13.7 4a2 2 0 0 0-3.4 0ZM12 9.5v4M12 17.5h.01',
+    list: 'M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01',
+    refresh: 'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7',
+    pause: 'M8 5v14M16 5v14',
+    play: 'm7 4 13 8-13 8Z',
+    server: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
+    wrench: 'M14.5 6.5a4 4 0 0 0 5 5L21 13l-8 8-3-3 6.5-6.5M14.5 6.5 9 1M14.5 6.5l-8 8L3 18l3 3 3.5-3.5',
   };
   function icon(name, size = 17) {
     const ns = 'http://www.w3.org/2000/svg';
@@ -645,11 +655,16 @@
   // The name at the top left opens Studio's one navigation menu: All
   // dashboards, Administration for administrators, then the dashboards this
   // person can open.
+  // Whether the name menu offers Operations (from /studio/api/overview).
+  let operationsFlag = null;
   function switcher(name, current, isAdmin) {
     const navItem = (href, label, iconName) => h('a', { role: 'menuitem', href, 'aria-current': href === current ? 'page' : undefined }, icon(iconName, 16), h('span', { text: label }));
     const list = h('div', { class: 'switcher-popover', role: 'menu', hidden: true },
       navItem('/studio/dashboards', 'All dashboards', 'grid'),
       isAdmin ? navItem('/studio/admin', 'Administration', 'settings') : null,
+      // Monitoring and logs, for administrators and anyone given them on a
+      // dashboard; added once the list below says so.
+      operationsFlag === true ? navItem('/studio/operations', 'Operations', 'pulse') : null,
       h('hr'));
     const button = h('button', { type: 'button', class: 'switcher-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': name + '. Open the menu' }, h('span', { class: 'switcher-name', text: name }), icon('down', 16));
     const holder = h('div', { class: 'switcher' }, button, list);
@@ -664,8 +679,9 @@
       const note = h('p', { class: 'switcher-note', text: 'Loading…' });
       list.append(note);
       try {
-        const { dashboards } = await call('/studio/api/overview');
+        const { dashboards, operations } = await call('/studio/api/overview');
         note.remove();
+        if (operations && operationsFlag !== true) { operationsFlag = true; list.querySelector('hr').before(navItem('/studio/operations', 'Operations', 'pulse')); }
         list.append(...dashboards.filter(entry => !entry.archived && entry.path).map(entry => h('a', { role: 'menuitem', href: entry.path }, h('span', { text: entry.name }))));
       } catch { loaded = false; note.textContent = 'Couldn’t load your dashboards.'; }
     });
@@ -713,7 +729,7 @@
     for (const item of popovers) if (!item.popover.hidden) { item.close(); item.button.focus(); }
   });
   function pageChrome(current, user, ...body) {
-    return [topBar(current, user), h('div', { class: 'page-body' + (current === '/studio/dashboards' || current === '/studio/admin' ? '' : ' narrow') }, ...body)];
+    return [topBar(current, user), h('div', { class: 'page-body' + (['/studio/dashboards', '/studio/admin', '/studio/operations'].includes(current) ? '' : ' narrow') }, ...body)];
   }
   function section(title, description, ...children) {
     return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('div', {}, h('h2', { text: title }), description ? h('p', { class: 'small muted', text: description }) : null)), ...children);
@@ -1557,6 +1573,8 @@
     // decision, 26 Oct 2026). On a phone the page opens on that list, like iOS
     // Settings: tapping a section opens it, and Back returns to the list.
     const tabs = [['people', 'People', 'user'], ['groups', 'Groups', 'people'], ['access', 'Dashboard access', 'grid'], ['policies', 'Session policies', 'clock'], ['sign-in', 'Sign-in settings', 'lock'], ['appearance', 'Appearance', 'palette'], ['saved', 'Saved items', 'bookmark'], ['certificates', 'Trusted certificates', 'key'], ['backups', 'Backups', 'archive'], ['activity', 'Activity', 'shield']];
+    // Monitoring and logs settings (server/auth/ui/ops.js), next to Backups.
+    if (window.StudioOps) tabs.splice(tabs.findIndex(([key]) => key === 'backups'), 0, ['monitoring', 'Monitoring and logs', 'pulse']);
     const hashed = () => tabs.some(([key]) => key === location.hash.slice(1)) ? location.hash.slice(1) : null;
     let tab = hashed() ?? 'people';
     const narrow = window.matchMedia('(max-width: 760px)');
@@ -1619,7 +1637,7 @@
 
     function drawPanel() {
       say(message, '');
-      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, appearance: appearanceTab, saved: savedItemsPanel, certificates: trustedPanel, backups: backupsPanel, activity: activityTab };
+      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, appearance: appearanceTab, saved: savedItemsPanel, certificates: trustedPanel, backups: backupsPanel, activity: activityTab, monitoring: () => window.StudioOps.adminPanel() };
       put(panel, ...[].concat(builders[tab]()));
     }
 
@@ -1854,7 +1872,7 @@
         ...view.groups.map(item => ({ value: 'group:' + item.id, label: item.name, group: true })),
       ];
       const describe = subject => subject.startsWith('user:') ? { label: userName(subject.slice(5)), group: false } : { label: groupName(subject.slice(6)), group: true };
-      const [infoButton, callout] = infoToggle('access levels', [h('p', {}, h('strong', { text: 'View' }), ': open the dashboard and use its widgets.'), h('p', {}, h('strong', { text: 'Arrange' }), ': also move tiles, hide discovered services and change the theme.'), h('p', { text: 'Administrators can always open every dashboard. Only they change integration settings, raw files, custom CSS and JavaScript, imports and access.' })]);
+      const [infoButton, callout] = infoToggle('access levels', [h('p', {}, h('strong', { text: 'View' }), ': open the dashboard and use its widgets.'), h('p', {}, h('strong', { text: 'Arrange' }), ': also move tiles, hide discovered services and change the theme.'), h('p', { text: 'Administrators can always open every dashboard. Only they change integration settings, raw files, custom CSS and JavaScript, imports and access.' }), window.StudioOps ? h('p', {}, h('strong', { text: 'Monitoring and Logs' }), ': also see this dashboard’s monitors, incidents and metrics, or its logs, in Operations. Nothing from another dashboard is shown.') : null]);
       const groups = view.dashboards.filter(entry => !entry.archived).map(entry => {
         let grants = (view.grants[entry.id] ?? []).map(grant => ({ ...grant }));
         const box = notice();
@@ -1862,7 +1880,7 @@
         const unsaved = badge('Unsaved', 'warn');
         unsaved.hidden = true;
         const body = h('div', {});
-        const snapshot = list => JSON.stringify(list.map(grant => [grant.subject, grant.level]));
+        const snapshot = list => JSON.stringify(list.map(grant => [grant.subject, grant.level, Boolean(grant.monitoring), Boolean(grant.logs)]));
         // Marks the group when its list differs from what was last saved.
         function mark() {
           const dirty = snapshot(grants) !== snapshot(view.grants[entry.id] ?? []);
@@ -1877,7 +1895,11 @@
             const who = describe(grant.subject);
             const level = segmented({ value: grant.level, label: `Access for ${who.label}`, options: [['view', 'View'], ['arrange', 'Arrange']], onChange: option => { grant.level = option; mark(); } });
             const remove = h('button', { type: 'button', class: 'icon-button', 'aria-label': `Remove ${who.label}`, title: 'Remove', onclick: () => { grants.splice(index, 1); draw(); } }, icon('close', 16));
-            return h('div', { class: 'grant-row' }, avatar(who.label, who.group ? 'group' : 'person'), h('span', { class: 'grant-name', text: who.label }), level, remove);
+            // Monitoring and Logs for this dashboard only (owner direction,
+            // 6 Nov 2026): what Operations shows this person or group.
+            const ops = window.StudioOps ? h('div', { class: 'grant-ops' }, ...[['monitoring', 'Monitoring'], ['logs', 'Logs']].map(([key, text]) => h('label', { class: 'grant-op' },
+              toggle({ checked: Boolean(grant[key]), label: `${text} on ${entry.name} for ${who.label}`, onChange: on => { if (on) grant[key] = true; else delete grant[key]; mark(); } }), h('span', { text })))) : null;
+            return h('div', { class: 'grant-row' + (ops ? ' with-ops' : '') }, avatar(who.label, who.group ? 'group' : 'person'), h('span', { class: 'grant-name', text: who.label }), level, remove, ops);
           });
           const add = free.length ? h('label', { class: 'add-row' }, icon('plus', 17),
             h('select', { 'aria-label': `Add a person or group to ${entry.name}`, onchange: event => { if (event.target.value) { grants.push({ subject: event.target.value, level: 'view' }); draw(true); } } },
@@ -2363,12 +2385,17 @@
   // ---- Start ------------------------------------------------------------------
 
   const pages = { 'sign-in': signInPage, setup: setupPage, enroll: enrollPage, recover: recoverPage, recovery: recoveryPage, account: accountPage, admin: adminPage, dashboards: dashboardsPage };
+  // Operations (server/auth/ui/ops.js) uses the same building blocks, so both
+  // areas look and behave alike. It loads after this file and adds its page.
+  window.StudioUI = { h, put, render, notice, say, icon, group, row, value, toggle, segmented, navRow, actionRow, pill, badge, toolbar, dialogActions, failure, openDialog, confirmDialog, copyText, pageChrome, call, busy, when, ago, field, check, infoToggle, card, brand, go, params, addPage: (name, fn) => { pages[name] = fn; } };
+  document.addEventListener('DOMContentLoaded', () => run(), { once: true });
+  function run() {
   const start = pages[page];
   if (!start) return render(card(false, brand(), h('h1', { text: 'Page not found' })));
   // Until the main dashboard has an address, administrators are sent to the
   // Dashboards page, which asks for it.
   const addressFirst = async () => {
-    if (!['admin', 'account'].includes(page)) return false;
+    if (!['admin', 'account', 'operations'].includes(page)) return false;
     const view = await call('/studio/api/overview').catch(() => null);
     if (view?.mainNeedsAddress) { go('/studio/dashboards'); return true; }
     return false;
@@ -2377,4 +2404,5 @@
     if (error?.code === 'AUTH_REQUIRED') return go('/studio/auth/sign-in?next=' + encodeURIComponent(location.pathname));
     render(card(false, brand(), h('h1', { text: 'Something went wrong' }), h('div', { class: 'notice error', role: 'alert', text: error?.message ?? 'The page could not load.' }), h('button', { type: 'button', onclick: () => location.reload(), text: 'Try again' })));
   });
+  }
 })();

@@ -29,6 +29,7 @@ async function loadAssets() {
     return new Map([
       ['/studio/auth/assets/app.js', { body: await readFile(join(here, 'ui', 'app.js')), type: 'text/javascript; charset=utf-8' }],
       ['/studio/auth/assets/app.css', { body: await readFile(join(here, 'ui', 'app.css')), type: 'text/css; charset=utf-8' }],
+      ['/studio/auth/assets/ops.js', { body: await readFile(join(here, 'ui', 'ops.js')), type: 'text/javascript; charset=utf-8' }],
       ['/studio/auth/assets/webauthn.js', { body: webauthn, type: 'text/javascript; charset=utf-8' }],
     ]);
   })();
@@ -53,6 +54,7 @@ function shell(page, name) {
 <link rel="stylesheet" href="/studio/theme.css" id="studio-theme">
 <script src="/studio/auth/assets/webauthn.js" defer></script>
 <script src="/studio/auth/assets/app.js" defer></script>
+<script src="/studio/auth/assets/ops.js" defer></script>
 </head>
 <body data-page="${page}" data-deployment-name="${escapeHtml(name)}">
 <main id="app" class="auth-main" aria-live="polite"><p class="auth-loading">Loading…</p></main>
