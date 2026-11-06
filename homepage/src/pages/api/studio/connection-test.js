@@ -2,6 +2,7 @@ import { performance } from "perf_hooks";
 
 import { serviceProxy } from "pages/api/services/proxy";
 import { withAuth } from "utils/auth";
+import { substituteEnvironmentVars } from "utils/config/config";
 import { connectionTest, connectionTestResult, TEST_GROUP } from "utils/config/connection-test.mjs";
 import { resolveWidgetConnection } from "utils/config/studio-connections.mjs";
 import { captureResponse, fromController } from "utils/studio/internal";
@@ -35,7 +36,7 @@ async function handler(req, res) {
   const type = draft.type === "calendar" ? "ical" : draft.type;
   const definition = widgets[type];
   if (!definition) return res.status(400).json({ error: "This widget type can't be tested." });
-  const widget = resolveWidgetConnection(draft);
+  const widget = withReferences(resolveWidgetConnection(draft));
   const endpoint = firstEndpoint(definition);
   const { res: captured, result } = captureResponse();
   const request = {
@@ -56,6 +57,20 @@ async function handler(req, res) {
     return res.status(200).json({ ok: false, kind: "unreachable", message: "The address didn't answer in time." });
   const ms = performance.now() - started;
   return res.status(200).json(connectionTestResult({ status: result.status, body: result.body, ms }));
+}
+
+// The widget as the real one is loaded: services.yaml's {{HOMEPAGE_VAR_…}}
+// and {{HOMEPAGE_FILE_…}} references (a key in a Docker secret) are filled
+// in when the file is read, so the test fills them in too. Strings only;
+// keys and structure stay as sent. A secret file usually ends in a line
+// break, which the YAML reader drops from a plain value, so this does too.
+export function withReferences(value) {
+  if (typeof value === "string")
+    return value.includes("{{") ? substituteEnvironmentVars(value).replace(/[\r\n]+$/, "") : value;
+  if (Array.isArray(value)) return value.map(withReferences);
+  if (value && typeof value === "object")
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, withReferences(entry)]));
+  return value;
 }
 
 // Host check and native sign-in first, like every other route.

@@ -1,3 +1,7 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { connectionTest, connectionTestResult, TEST_GROUP } from "utils/config/connection-test.mjs";
@@ -16,7 +20,7 @@ vi.mock("widgets/widgets", () => ({
   },
 }));
 
-import handler, { firstEndpoint } from "pages/api/studio/connection-test";
+import handler, { firstEndpoint, withReferences } from "pages/api/studio/connection-test";
 import { fromController } from "utils/studio/internal";
 
 function createRes() {
@@ -75,6 +79,38 @@ describe("Test connection endpoint", () => {
     await handler(request({ widget: { type: "sonarr", url: "https://tv.example.org", key: "k" } }), res);
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ ok: true, kind: "ok", message: expect.stringMatching(/^Connected in \d+ ms\.$/) });
+  });
+
+  it("fills in Docker-secret and variable references like the real widget (owner T8, 6 Nov)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "studio-test-"));
+    const secret = join(dir, "netbird_key");
+    writeFileSync(secret, "s3cret-from-file\n");
+    vi.stubEnv("HOMEPAGE_FILE_TEST_NETBIRD_KEY", secret);
+    vi.stubEnv("HOMEPAGE_VAR_TEST_NETBIRD_HOST", "vpn.example.org");
+    serviceProxy.mockImplementation(async (req, res) => {
+      expect(connectionTest.getStore().widget).toEqual({
+        type: "sonarr",
+        url: "https://vpn.example.org",
+        key: "s3cret-from-file",
+        fields: ["online"],
+      });
+      res.status(200).send({});
+    });
+    const res = createRes();
+    await handler(
+      request({
+        widget: {
+          type: "sonarr",
+          url: "https://{{HOMEPAGE_VAR_TEST_NETBIRD_HOST}}",
+          key: "{{HOMEPAGE_FILE_TEST_NETBIRD_KEY}}",
+          fields: ["online"],
+        },
+      }),
+      res,
+    );
+    expect(serviceProxy).toHaveBeenCalledOnce();
+    expect(res.body.ok).toBe(true);
+    expect(withReferences({ plain: "no {braces}", n: 3 })).toEqual({ plain: "no {braces}", n: 3 });
   });
 
   it("refuses an unknown widget type", async () => {
