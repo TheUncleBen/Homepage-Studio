@@ -50,7 +50,8 @@ export async function statusCheck({ check, address }) {
   }
   if (check === "ping") {
     const host = url ? url.hostname : text;
-    if (!host || !/^[A-Za-z0-9.:[\]-]{1,253}$/.test(host))
+    // A leading "-" would read as an option to the ping command.
+    if (!host || host.startsWith("-") || !/^[A-Za-z0-9.:[\]-]{1,253}$/.test(host))
       return { ok: false, kind: "address", message: "Enter a host name or address to ping." };
     const answer = await ping.probe(host.replace(/^\[|\]$/g, ""));
     const ms = Number(answer?.time);
@@ -124,7 +125,8 @@ async function handler(req, res) {
 // The widget as the real one is loaded: services.yaml's {{HOMEPAGE_VAR_…}}
 // and {{HOMEPAGE_FILE_…}} references (a key in a Docker secret) are filled
 // in when the file is read, so the test fills them in too. Strings only;
-// keys and structure stay as sent. A secret file usually ends in a line
+// keys and structure stay as sent. The controller only sends a reference
+// with the address a saved widget already uses it for (server/index.mjs). A secret file usually ends in a line
 // break, which the YAML reader drops from a plain value, so this does too.
 export function withReferences(value) {
   if (typeof value === "string")

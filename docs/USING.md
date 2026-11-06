@@ -413,6 +413,10 @@ you edit. Only administrators can see or change them.
 now and says in plain words whether it worked, for example *Connected in
 42 ms.*, *The service refused the key or login. Check them.* or *The
 address's certificate isn't trusted by Studio.*
+A key kept as a Docker secret or variable (`{{HOMEPAGE_FILE_...}}`,
+`{{HOMEPAGE_VAR_...}}`) is only filled in for the address the saved widget
+already uses, so a test never sends it anywhere new; to test a new address,
+save it first or type the key in.
 
 ### How a widget looks
 

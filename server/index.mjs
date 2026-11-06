@@ -1,6 +1,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import fs, { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createConfigStore, ConfigError, MAX_IMPORT_BYTES } from './config.mjs';
@@ -757,6 +758,15 @@ function createDashboardHandlers(options = {}) {
           const match = typeof change.widget[field] === 'string' && /^\{\{STUDIO_CONNECTION_([A-F0-9]{16})_[A-Z]+\}\}$/.exec(change.widget[field]);
           if (match && change.widget.url !== placeholder(match[1], 'url')) return json(res, 200, { ok: false, kind: 'address', message: 'A saved key is only sent to its own connection’s address. Choose that connection for the address too.' });
         }
+        // The same for a Docker secret or variable reference ({{HOMEPAGE_FILE_…}},
+        // {{HOMEPAGE_VAR_…}}): it is only filled in for the address a saved
+        // widget already sends it to, so a test can't carry it anywhere new.
+        const references = Object.entries(change.widget).filter(([field, value]) => field !== 'url' && /\{\{HOMEPAGE_(FILE|VAR)_/.test(JSON.stringify(value ?? null)));
+        if (references.length) {
+          const saved = ((await store.load()).serviceWidgets || []).map(entry => entry.config).filter(config => config && typeof config === 'object' && config.url === change.widget.url);
+          const allowed = references.every(([field, value]) => saved.some(config => JSON.stringify(config[field] ?? null) === JSON.stringify(value ?? null)));
+          if (!allowed) return json(res, 200, { ok: false, kind: 'address', message: 'A secret or variable reference is only sent to the address it is saved with. Save the widget with this address first, or type the key in to test it.' });
+        }
         return json(res, 200, await rendererTest(req, dashboard, change.widget));
       }
       // Saved connections (server/connections.mjs). Administrators only, like
@@ -859,10 +869,12 @@ export function createStudioServer(options = {}) {
   const internalToken = options.internalToken ?? randomBytes(32).toString('hex');
   // Trusted certificates (server/trusted-certificates.mjs): workers load the
   // bundle at start, so a change starts them again.
-  let trustBundle = false;
-  const trusted = createTrustedCertificates({ stateRoot, onChange: async () => { trustBundle = await trusted.prepare(); await rendererPool?.drainAll?.(); } });
-  const trustReady = trusted.prepare().then((ready) => { trustBundle = ready; }, (error) => console.error('Trusted certificates could not be prepared:', error.code || error.message));
-  rendererPool ||= createRendererPool({ configRoot, stateRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision, workerEnv: () => ({ STUDIO_INTERNAL_TOKEN: internalToken, ...(trustBundle ? { NODE_EXTRA_CA_CERTS: trusted.bundlePath } : {}) }) });
+  // A worker decides at spawn from the bundle on disk, and the pool starts
+  // again once the bundle is first written, so a worker spawned before then
+  // (or from a previous run's bundle) never keeps a stale trust list.
+  const trusted = createTrustedCertificates({ stateRoot, onChange: async () => { await rendererPool?.drainAll?.(); } });
+  const trustReady = trusted.prepare().then(() => (rendererPool?.workerCount ? rendererPool.drainAll?.() : undefined), (error) => console.error('Trusted certificates could not be prepared:', error.code || error.message));
+  rendererPool ||= createRendererPool({ configRoot, stateRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision, workerEnv: () => ({ STUDIO_INTERNAL_TOKEN: internalToken, ...(existsSync(trusted.bundlePath) ? { NODE_EXTRA_CA_CERTS: trusted.bundlePath } : {}) }) });
   // Studio sign-in (owner direction, 23 Oct 2026). On by default; STUDIO_AUTH=off
   // returns to external access control only.
   const deploymentName = readDeploymentName(options.deploymentName ?? process.env.STUDIO_DEPLOYMENT_NAME);

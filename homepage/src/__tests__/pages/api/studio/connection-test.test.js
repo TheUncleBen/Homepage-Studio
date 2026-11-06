@@ -174,6 +174,11 @@ describe("Check now (status address before saving)", () => {
     expect(probe).toHaveBeenCalledWith("nas.example.org");
   });
 
+  it("never pings a host that would read as an option", async () => {
+    for (const address of ["-c999", "-f"]) expect((await statusCheck({ check: "ping", address })).kind).toBe("address");
+    expect(probe).not.toHaveBeenCalled();
+  });
+
   it("refuses addresses it shouldn't check", async () => {
     for (const address of ["ftp://x.example.org", "https://user:pw@x.example.org", "not an address"])
       expect((await statusCheck({ check: "web", address })).kind).toBe("address");

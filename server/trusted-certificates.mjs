@@ -83,10 +83,11 @@ export function createTrustedCertificates({ stateRoot, deploymentFile = process.
 
   async function writeBundle(added, deployment) {
     const pems = [...added, ...deployment.certificates].map(entry => entry.pem);
-    if (!pems.length) { await fs.rm(bundle, { force: true }); return; }
+    if (!pems.length) { await fs.rm(bundle, { force: true }); return false; }
     const temp = `${bundle}.${process.pid}.tmp`;
     await fs.writeFile(temp, pems.join(''), { mode: 0o600 });
     await fs.rename(temp, bundle);
+    return true;
   }
 
   async function list() {
@@ -103,8 +104,11 @@ export function createTrustedCertificates({ stateRoot, deploymentFile = process.
     const temp = `${file}.${process.pid}.tmp`;
     await fs.writeFile(temp, `${JSON.stringify({ certificates: added }, null, 2)}\n`, { mode: 0o600 });
     await fs.rename(temp, file);
-    await writeBundle(added, await readDeployment());
-    await onChange?.();
+    // onChange runs inside the add or remove task, so it is told whether the
+    // bundle has anything in it rather than asking prepare(), which would
+    // wait on this same queue for ever.
+    const hasBundle = await writeBundle(added, await readDeployment());
+    await onChange?.({ hasBundle });
   }
 
   return {
@@ -114,10 +118,7 @@ export function createTrustedCertificates({ stateRoot, deploymentFile = process.
     // can change between starts). Returns whether there is anything in it.
     async prepare() {
       return serial(async () => {
-        const added = await readAdded();
-        const deployment = await readDeployment();
-        await writeBundle(added, deployment);
-        return added.length + deployment.certificates.length > 0;
+        return writeBundle(await readAdded(), await readDeployment());
       });
     },
     // For controller-side code that makes its own TLS connections (for
