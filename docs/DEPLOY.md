@@ -655,6 +655,12 @@ Both add to the public authorities; they don't replace them. Dashboards
 restart their workers after a change, which takes a few seconds. Add the
 certificate *authority*, not the service's own certificate.
 
+What uses them today: the web and certificate monitors you add in
+Operations ([MONITORING.md](MONITORING.md)). Widgets, **Test connection** and
+cards' status checks still accept any certificate, as Homepage does, so the
+list doesn't change them yet; whether they should check certificates is a
+pending choice.
+
 ## Monitoring and logs
 
 Nothing to deploy: monitoring, metrics and logs are part of Studio and turn
