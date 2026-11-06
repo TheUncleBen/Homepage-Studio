@@ -1342,15 +1342,23 @@
       }
       const status = h('p', { class: 'muted', text: 'Studio is restarting to restore it. This page continues when it’s back.' });
       openDialog('Restoring', () => h('div', { class: 'stack center' }, h('div', { class: 'spinner', 'aria-hidden': 'true' }), status)).addEventListener('cancel', event => event.preventDefault());
+      // Each check gives up after a few seconds: behind a reverse proxy or a
+      // Swarm service a request to a stopped Studio can hang for a minute.
+      // The new Studio is told apart from the old one by its start id.
       let wentDown = false;
+      let late = false;
       const started = Date.now();
       const poll = async () => {
-        let up = false;
-        try { up = (await fetch('/studio/live', { cache: 'no-store' })).ok; } catch {}
-        if (!up) wentDown = true;
-        if (up && (wentDown || Date.now() - started > 20000)) { status.textContent = 'Restored. Sign in again.'; return setTimeout(() => go('/studio/auth/sign-in?next=%2Fstudio%2Fadmin%23backups'), 800); }
-        if (Date.now() - started > 180000) { status.textContent = 'Studio hasn’t come back yet. Check that its container restarted, then reload this page.'; return; }
-        setTimeout(poll, 1500);
+        let live = null;
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), 4000);
+        try { const response = await fetch('/studio/live', { cache: 'no-store', signal: abort.signal }); if (response.ok) live = await response.json(); } catch {}
+        clearTimeout(timer);
+        if (!live) wentDown = true;
+        const fresh = live && (staged.start ? live.start !== staged.start : (wentDown || Date.now() - started > 20000));
+        if (fresh) { status.textContent = 'Restored. Sign in again.'; return setTimeout(() => go('/studio/auth/sign-in?next=%2Fstudio%2Fadmin%23backups'), 800); }
+        if (!late && Date.now() - started > 180000) { late = true; status.textContent = 'Studio is taking longer than usual to come back. Check that its container restarted; this page keeps waiting.'; }
+        setTimeout(poll, late ? 5000 : 1500);
       };
       setTimeout(poll, 1500);
     }
@@ -1399,11 +1407,82 @@
     return holder;
   }
 
+  // Trusted certificates (server/trusted-certificates.mjs; owner decision,
+  // 6 Nov 2026): your own certificate authority, so widgets, Test connection
+  // and status checks can reach services behind your local proxy.
+  const shortDate = iso => new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  function trustedPanel() {
+    const holder = h('div', { class: 'stack' });
+    const message = notice();
+    let view = null;
+    async function load(success) {
+      try { view = await call('/studio/api/trusted-certificates'); draw(); if (success) say(message, success, 'ok'); }
+      catch (error) { failure(message, error); }
+    }
+    const expired = item => Date.parse(item.notAfter) < Date.now();
+    const detailOf = item => [item.authority ? 'Certificate authority' : 'Certificate', `${expired(item) ? 'expired' : 'expires'} ${shortDate(item.notAfter)}`].join(' · ');
+    function manage(item) {
+      openDialog(item.name, close => {
+        const box = notice();
+        const remove = item.source === 'added'
+          ? actionRow('Stop trusting it', { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog(`Stop trusting ${item.name}?`, 'Widgets whose services use a certificate from it stop connecting until it is added again. Dashboards start their widgets again to apply this.', 'Stop trusting', async () => { view = await call('/studio/api/trusted-certificates', { action: 'remove', id: item.id }); draw(); say(message, `${item.name} is no longer trusted.`, 'ok'); }); } })
+          : null;
+        return h('div', { class: 'stack' },
+          group({}, row('Kind', value(item.authority ? 'Certificate authority' : 'Certificate')), item.issuer && item.issuer !== item.name ? row('Issued by', value(item.issuer)) : null, row('Valid', value(`${shortDate(item.notBefore)} to ${shortDate(item.notAfter)}`)), item.addedBy ? row('Added by', value(item.addedBy)) : null, row('Fingerprint (SHA-256)', value(item.fingerprint, true), { stacked: true })),
+          item.source === 'deployment' ? h('p', { class: 'muted', text: 'This one comes from the file named by STUDIO_TRUSTED_CERTIFICATES_FILE (for example a Docker secret). Change it there.' }) : group({}, remove),
+          box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Done' })));
+      });
+    }
+    function addDialog() {
+      openDialog('Add a trusted certificate', close => {
+        const box = notice();
+        const text = h('textarea', { rows: 8, class: 'mono', spellcheck: 'false', placeholder: '-----BEGIN CERTIFICATE-----', 'aria-label': 'Certificate (PEM)' });
+        const input = h('input', { type: 'file', accept: '.pem,.crt,.cer,application/x-pem-file,application/x-x509-ca-cert', hidden: true });
+        const choose = pill('Choose a file', { iconName: 'upload', onclick: () => input.click() });
+        input.addEventListener('change', async () => {
+          const file = input.files?.[0];
+          input.value = '';
+          if (!file) return;
+          if (file.size > 64 * 1024) return say(box, 'That file is too large for a certificate.');
+          text.value = await file.text();
+        });
+        const save = h('button', { type: 'submit', class: 'primary', text: 'Trust it' });
+        const form = h('form', { class: 'stack' },
+          h('p', { class: 'lede', text: 'Add your own certificate authority’s certificate: the one your browser or devices already trust for your local services. Never the private key.' }),
+          group({}, row('Certificate', text, { stacked: true, info: 'Text that starts with -----BEGIN CERTIFICATE-----. Several in one file are fine. Your proxy’s admin page or your CA software can export it, usually as a .pem or .crt file.' })),
+          toolbar(choose, input), box,
+          dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
+        form.addEventListener('submit', event => {
+          event.preventDefault();
+          busy(save, 'Adding…', async () => {
+            try {
+              view = await call('/studio/api/trusted-certificates', { action: 'add', pem: text.value });
+              close(); draw();
+              say(message, 'Trusted. Dashboards start their widgets again to use it, so give them a moment.', 'ok');
+            } catch (error) { failure(box, error); }
+          });
+        });
+        return form;
+      });
+    }
+    function draw() {
+      const items = view?.certificates ?? [];
+      put(holder, message,
+        view?.deploymentError ? h('p', { class: 'notice warn', role: 'alert', text: view.deploymentError }) : null,
+        group({ title: 'Trusted certificates', aside: items.length ? String(items.length) : null, info: 'Studio trusts the usual public certificate authorities. Add your own here when your services use certificates from it, for example behind a local reverse proxy. Studio never trusts a certificate just because a service presents it.' },
+          items.length ? items.map(item => navRow({ leading: icon('lock', 18), title: item.name, badges: [item.source === 'deployment' ? badge('Deployment', 'accent') : null, expired(item) ? badge('Expired', 'danger') : null], detail: detailOf(item), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'Only the usual public authorities.' })),
+        toolbar(pill('Add certificate', { primary: true, iconName: 'plus', onclick: addDialog })));
+    }
+    put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
+    load();
+    return holder;
+  }
+
   async function adminPage() {
     // With sign-in off, Administration only holds the dashboards' default look.
     const overview = await call('/studio/api/overview');
     if (!overview.authEnabled) {
-      render(...pageChrome('/studio/admin', null, h('div', { class: 'admin-plain' }, h('h1', { text: 'Administration' }), await platformAppearance(), backupsPanel())));
+      render(...pageChrome('/studio/admin', null, h('div', { class: 'admin-plain' }, h('h1', { text: 'Administration' }), await platformAppearance(), trustedPanel(), backupsPanel())));
       return;
     }
     let view = await api('admin/overview');
@@ -1413,7 +1492,7 @@
     // The sections, as a list down the side like macOS System Settings (owner
     // decision, 26 Oct 2026). On a phone the page opens on that list, like iOS
     // Settings: tapping a section opens it, and Back returns to the list.
-    const tabs = [['people', 'People', 'user'], ['groups', 'Groups', 'people'], ['access', 'Dashboard access', 'grid'], ['policies', 'Session policies', 'clock'], ['sign-in', 'Sign-in settings', 'lock'], ['appearance', 'Appearance', 'palette'], ['backups', 'Backups', 'archive'], ['activity', 'Activity', 'shield']];
+    const tabs = [['people', 'People', 'user'], ['groups', 'Groups', 'people'], ['access', 'Dashboard access', 'grid'], ['policies', 'Session policies', 'clock'], ['sign-in', 'Sign-in settings', 'lock'], ['appearance', 'Appearance', 'palette'], ['certificates', 'Trusted certificates', 'key'], ['backups', 'Backups', 'archive'], ['activity', 'Activity', 'shield']];
     const hashed = () => tabs.some(([key]) => key === location.hash.slice(1)) ? location.hash.slice(1) : null;
     let tab = hashed() ?? 'people';
     const narrow = window.matchMedia('(max-width: 760px)');
@@ -1476,7 +1555,7 @@
 
     function drawPanel() {
       say(message, '');
-      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, appearance: appearanceTab, backups: backupsPanel, activity: activityTab };
+      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, appearance: appearanceTab, certificates: trustedPanel, backups: backupsPanel, activity: activityTab };
       put(panel, ...[].concat(builders[tab]()));
     }
 

@@ -9,6 +9,7 @@ import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute, sharedPublic } from './dashboards.mjs';
 import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug, archiveDeletesAt, archiveRetentionOf } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
+import { createTrustedCertificates, TrustError } from './trusted-certificates.mjs';
 import { starterFiles, starterChoices, starterLayout } from './starters.mjs';
 import { createHistoryStore, retentionDays } from './history.mjs';
 import { createHash, randomBytes } from 'node:crypto';
@@ -36,6 +37,9 @@ import { atLeast, requiredLevel } from './auth/access.mjs';
 
 const base = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const studioVersion = (await readFile(join(base, 'VERSION'), 'utf8')).trim();
+// Changes every time the process starts, so a page waiting for a restart can
+// tell the new Studio from the old one still answering.
+const startId = randomBytes(8).toString('hex');
 if (!studioVersion) throw new Error('VERSION must identify this Studio build.');
 const hopHeaders = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 export const NATIVE_PROTOCOL = 1;
@@ -603,7 +607,7 @@ function createDashboardHandlers(options = {}) {
     try {
       checkRequest(req);
       const path = req.url.split('?')[0];
-      if ((path === '/studio/health' || path === '/studio/live') && req.method === 'GET') return json(res, 200, { status: 'ok', check: 'liveness', version: studioVersion });
+      if ((path === '/studio/health' || path === '/studio/live') && req.method === 'GET') return json(res, 200, { status: 'ok', check: 'liveness', version: studioVersion, start: startId });
       if (path === '/studio/ready' && req.method === 'GET') return await readiness(req, res, dashboard);
       if (path === '/studio/config-ready' && req.method === 'GET') return await readiness(req, res, dashboard, true);
       if (!path.startsWith('/studio/')) await prepareNative();
@@ -844,7 +848,12 @@ export function createStudioServer(options = {}) {
   // this token; browsers can't send it because every x-studio-* header they
   // send is dropped before proxying.
   const internalToken = options.internalToken ?? randomBytes(32).toString('hex');
-  rendererPool ||= createRendererPool({ configRoot, stateRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision, workerEnv: { STUDIO_INTERNAL_TOKEN: internalToken } });
+  // Trusted certificates (server/trusted-certificates.mjs): workers load the
+  // bundle at start, so a change starts them again.
+  let trustBundle = false;
+  const trusted = createTrustedCertificates({ stateRoot, onChange: async () => { trustBundle = await trusted.prepare(); await rendererPool?.drainAll?.(); } });
+  const trustReady = trusted.prepare().then((ready) => { trustBundle = ready; }, (error) => console.error('Trusted certificates could not be prepared:', error.code || error.message));
+  rendererPool ||= createRendererPool({ configRoot, stateRoot, appRoot: rendererDir, allowedHosts: options.allowedHosts, buildRevision: options.buildRevision, workerEnv: () => ({ STUDIO_INTERNAL_TOKEN: internalToken, ...(trustBundle ? { NODE_EXTRA_CA_CERTS: trusted.bundlePath } : {}) }) });
   // Studio sign-in (owner direction, 23 Oct 2026). On by default; STUDIO_AUTH=off
   // returns to external access control only.
   const deploymentName = readDeploymentName(options.deploymentName ?? process.env.STUDIO_DEPLOYMENT_NAME);
@@ -1343,6 +1352,25 @@ export function createStudioServer(options = {}) {
         if (auth && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
         return json(res, 200, { ...(await platform.update(await readBody(req))), backgroundChoices: BACKGROUND_CHOICES, baseChoices: BASE_CHOICES });
       }
+      // Trusted certificates (owner decision, 6 Nov 2026), for administrators.
+      // Adding or removing one changes what every widget trusts, so it needs
+      // a recent sign-in.
+      if (path === '/studio/api/trusted-certificates') {
+        if (!isAdmin) return forbidden(res, 'Only administrators can manage trusted certificates.');
+        await trustReady;
+        if (req.method === 'GET') return json(res, 200, await trusted.list());
+        if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST for trusted certificates.' });
+        if (auth && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
+        const change = await readBody(req, 96 * 1024);
+        try {
+          if (change?.action === 'add') return json(res, 200, await trusted.add(change.pem, current?.user?.username));
+          if (change?.action === 'remove' && typeof change.id === 'string') return json(res, 200, await trusted.remove(change.id));
+        } catch (error) {
+          if (error instanceof TrustError) return json(res, error.status, { error: error.message, code: error.code });
+          throw error;
+        }
+        return json(res, 400, { error: 'Unknown trusted certificate action.', code: 'INVALID_TRUST_ACTION' });
+      }
       // Full backups (server/backups.mjs), for administrators. Everything but
       // the list needs a recent sign-in: a backup holds every secret Studio has.
       if (path === '/studio/api/backups' || path.startsWith('/studio/api/backups/')) {
@@ -1374,7 +1402,7 @@ export function createStudioServer(options = {}) {
           if (change.confirmed !== true) return json(res, 400, { error: 'Confirm the restore first.', code: 'CONFIRMATION_REQUIRED' });
           const staged = await backups.stageRestore(change.name);
           console.log(`Studio restore: ${staged.name} staged${current?.user ? ' by ' + current.user.username : ''}; restarting to apply it.`);
-          json(res, 202, { ...staged, restarting: Boolean(options.onRestoreStaged) });
+          json(res, 202, { ...staged, restarting: Boolean(options.onRestoreStaged), start: startId });
           options.onRestoreStaged?.();
           return;
         }

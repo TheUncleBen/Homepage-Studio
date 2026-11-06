@@ -141,7 +141,7 @@ export function createRendererPool({
       record.child = childProcess.spawn(process.execPath, [workerScript], {
         cwd: appRoot,
         env: {
-          ...process.env, ...workerEnv,
+          ...process.env, ...(typeof workerEnv === 'function' ? workerEnv() : workerEnv),
           NODE_ENV: 'production', HOSTNAME: '127.0.0.1', PORT: String(port),
           HOMEPAGE_CONFIG_DIR: record.configDir, HOMEPAGE_ALLOWED_HOSTS: hosts.join(','),
           STUDIO_DASHBOARD_ID: record.id, STUDIO_DASHBOARD_BASE_PATH: record.basePath,
@@ -250,6 +250,19 @@ export function createRendererPool({
         if (!record) return {};
         current.delete(id); record.draining = true;
         return { stopping: record.refs ? undefined : stop(record) };
+      });
+      await result.stopping;
+    },
+    // Every worker starts again on its next request (a changed environment,
+    // such as trusted certificates). Leased workers stop on their last release.
+    async drainAll() {
+      const result = await serial(() => {
+        const stopping = [];
+        for (const [id, record] of [...current]) {
+          current.delete(id); record.draining = true;
+          if (!record.refs) stopping.push(stop(record));
+        }
+        return { stopping: Promise.all(stopping) };
       });
       await result.stopping;
     },
