@@ -1527,10 +1527,11 @@
       if (filter !== 'all' && !present.some(([kind]) => kind === filter)) filter = 'all';
       const shown = items.filter(item => filter === 'all' || item.kind === filter);
       const iconOf = kind => SAVED_KINDS.find(entry => entry[0] === kind)?.[2] ?? 'grid';
-      put(holder, message,
-        present.length > 1 ? segmented({ label: 'Show', value: filter, options: [['all', 'All'], ...present.map(([kind, label]) => [kind, label])], onChange: next => { filter = next; draw(); } }) : null,
-        group({ title, aside: items.length ? String(items.length) : null, info },
-          shown.length ? shown.map(item => navRow({ leading: icon(iconOf(item.kind), 18), title: item.name, badges: [badge(SAVED_KINDS.find(entry => entry[0] === item.kind)?.[1].replace(/s$/, '') ?? '')], detail: detailOf(item), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: admin ? 'Nobody has saved anything yet.' : 'Nothing saved yet. Widgets, looks, connections and images you keep for yourself in the editor appear here.' })));
+      const list = group({ title, aside: items.length ? String(items.length) : null, info },
+        shown.length ? shown.map(item => navRow({ leading: icon(iconOf(item.kind), 18), title: item.name, badges: [badge(SAVED_KINDS.find(entry => entry[0] === item.kind)?.[1].replace(/s$/, '') ?? '')], detail: detailOf(item), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: admin ? 'Nobody has saved anything yet.' : 'Nothing saved yet. Widgets, looks, connections and images you keep for yourself in the editor appear here.' }));
+      // The filter belongs to this list: under its heading, above its rows.
+      if (present.length > 1) list.insertBefore(h('div', { class: 'group-filter' }, segmented({ label: 'Show', value: filter, options: [['all', 'All'], ...present.map(([kind, label]) => [kind, label])], onChange: next => { filter = next; draw(); } })), list.querySelector(':scope > .group-body'));
+      put(holder, message, list);
     }
     put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
     refresh(load);

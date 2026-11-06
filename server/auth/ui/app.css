@@ -375,6 +375,7 @@ input[type="color"] { width: 44px; min-height: 40px; padding: 2px; border-radius
 .group-head h2 { margin: 0; overflow: hidden; color: var(--muted); font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
 .group-aside { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--muted); font-size: 0.8125rem; white-space: nowrap; }
 .group-aside .pill { min-height: 28px; padding: 0 12px; font-size: 0.8125rem; }
+.group-filter { margin: 0 0 8px; }
 .group-body { margin: 0; padding: 0; overflow: hidden; border-radius: 14px; background: var(--surface); list-style: none; }
 dialog .group-body { background: var(--raised); }
 .group-body > * + *, .group-body > div > :is(.item-row, .grant-row, .add-row, .empty-row) + * { border-top: 1px solid var(--line); }
