@@ -68,7 +68,11 @@ async function setMode(page, mode) {
 
 test('card text stays readable in light, dark and Follow device modes while status colours and explicit CSS keep control', async ({ page, request }, testInfo) => {
   await page.route('**/api/services/proxy?**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"value":41}' }));
-  // Studio cards check each service once, by its site monitor (Web address).
+  // Studio's monitoring engine checks cards on the server (D6) and can't reach
+  // these made-up addresses, so its result would race the colours compared
+  // here. Report it as unavailable: each card then makes its own check, by
+  // its site monitor (Web address), which this test answers.
+  await page.route('**/studio/api/panel-status', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"available":false,"panels":{}}' }));
   await page.route('**/api/siteMonitor?**', route => {
     const up = new URL(route.request().url()).searchParams.get('serviceName') === 'Up link';
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(up ? { status: 200, latency: 12 } : { status: 503, latency: 12 }) });
