@@ -219,9 +219,50 @@ each call renders one widget once.
 ### Status checks
 
 A service's status dot uses its own `siteMonitor` or `ping` when it has one.
-When it has none, Studio asks for a check of the service's own address
-instead (`fallback=1` on `/api/siteMonitor` and `/api/ping`). A widget's
-**Status** can be set to web address, ping or off.
+When it has none, Studio checks the service's own address instead. A
+widget's **Status** can be set to web address, ping or off.
+
+Each card with a status check has a card monitor (`card:<dashboard>:<panel>`)
+in the observability engine. The controller's collector asks the
+dashboard's renderer which address each card checks
+(`/api/studio/status-targets`, internal token only, resolved exactly like
+`siteMonitor` and `ping` with `fallback=1`) and keeps the card monitors in
+step. Cards read `/<dashboard>/studio/api/panel-status`, which answers each
+panel's state, timing and an error-class sentence (never a raw error), so
+every browser shows the same status. When the engine is not available, or
+a panel has no monitor yet, the card checks for itself as before.
+
+## Monitoring and logs
+
+Native monitoring, metrics and logs ([MONITORING.md](MONITORING.md),
+[LOGS.md](LOGS.md)) run inside the application image; no external platform
+is a runtime dependency.
+
+- `server/observability/controller.mjs` is the controller side: the
+  `/studio/api/ops/*` API, push heartbeats (`/studio/push/<token>`), HTTPS log
+  intake (`/studio/ingest/logs`), card-monitor sync, redaction secrets and the
+  pipes from the controller's console, worker output and sign-in audit.
+- `engine.mjs` runs in a worker thread (restarted with backoff by `host.mjs`):
+  the check scheduler (`checks.mjs`, `monitors.mjs`), incidents, notifications
+  (`notify.mjs`), metrics, Docker reads (`docker.mjs`), syslog (`syslog.mjs`)
+  and the log writer (`ingest.mjs`, `storage.mjs`). Definitions, secrets and
+  trusted CAs are replayed to a restarted engine.
+- `query-worker.mjs` answers log searches in another worker thread with
+  read-only connections and a time budget, so a long search never delays
+  checks or writes.
+- Storage is `node:sqlite` under `/app/state/observability/`: `main.db`
+  (monitor state, check results and rollups, incidents, metrics, segment
+  index, personal details) and day-sized log segments with FTS5 in `logs/`
+  and `audit/`. Retention drops whole segments; a disk budget removes the
+  oldest first. The folder is outside backups and restores.
+
+Access is per dashboard. A grant in Dashboard access may carry `monitoring`
+and `logs`; `principal.operations(id)` answers them and administrators have
+both everywhere. Every query is limited to the caller's scopes in the
+controller, and `security` and `audit` events (restricted) are for
+administrators only. With sign-in off, `/studio/operations`, the ops API,
+intake and client error reports answer 404; card monitors and push URLs keep
+working. Redaction runs before an event reaches storage.
 
 ### Built-in logos
 

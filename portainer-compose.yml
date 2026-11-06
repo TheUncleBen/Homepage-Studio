@@ -64,6 +64,12 @@ services:
       STUDIO_RENDERER_STARTUP_SECONDS: ${STUDIO_RENDERER_STARTUP_SECONDS:-30}
     # No published port: the reverse proxy reaches Studio as homepage_studio:3000
     # on the shared network (docs/DEPLOY-COMPOSE.md).
+    # Optional: receive syslog from routers and NAS boxes (docs/LOGS.md). Turn
+    # it on in Administration > Monitoring and logs, then remove the # from
+    # these lines, using the same port (default 5514).
+    # ports:
+    #   - "5514:5514/udp"
+    #   - "5514:5514/tcp"
     networks:
       proxy:
         aliases:

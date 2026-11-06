@@ -13,7 +13,7 @@ test('the image copies every homepage module the server imports', async () => {
   const dockerfile = await readFile(join(root, 'Dockerfile'), 'utf8');
   const copied = new Set([...dockerfile.matchAll(/^COPY (homepage\/src\/\S+\.mjs) /gm)].map(match => match[1]));
   const files = [];
-  for (const dir of ['server', 'server/auth']) {
+  for (const dir of ['server', 'server/auth', 'server/observability']) {
     for (const name of await readdir(join(root, dir))) if (name.endsWith('.mjs') && !name.endsWith('.test.mjs')) files.push(join(root, dir, name));
   }
   const needed = new Set();

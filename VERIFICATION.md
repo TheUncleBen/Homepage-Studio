@@ -7,7 +7,7 @@ see [candidate delivery](docs/CANDIDATES.md).
 
 ## Local checks
 
-Run these from a clean checkout. Node 22 or later is supported; CI uses Node 24.
+Run these from a clean checkout. Node 22.13 or later is supported (monitoring and logs use `node:sqlite`); CI uses Node 24.
 
 ```sh
 npm ci --ignore-scripts
@@ -183,6 +183,7 @@ image needs its own scan.
   `no-new-privileges`, which `docker stack deploy` does not support. A read-only
   root filesystem is not yet qualified.
 - Studio sign-in decides access, enforced in the controller with default deny; see [architecture](docs/ARCHITECTURE.md#address-and-trust-model) and [AUTHENTICATION.md](docs/AUTHENTICATION.md).
+- Monitoring and logs are covered by controller tests (`server/observability/*.test.mjs`: engine restarts, checks, availability, maintenance, incidents, the signed webhook, redaction, search, per-dashboard isolation, the sign-in-off lockdown) and native tests for the Investigate sheet and card status. Notification channels other than the signed webhook, Docker through a real socket proxy, and syslog from real devices need human testing.
 - Deleting an archived dashboard, by hand or after its retention time, removes
   its files, snapshots, saved widgets and sharing for good. Only a
   whole-deployment backup taken before then can bring it back.

@@ -559,6 +559,8 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
     workerOutput,
     auditEvent,
     async forgetDashboard(id) { cardTargets.delete(id); engine.forget('bound:' + id); try { await engine.call('dropDashboard', { id }); } catch {} await pushDefinitions().catch(() => {}); },
+    // A removed person's name and address leave the logs' personal details.
+    async forgetUser(userId) { try { await engine.call('forgetUser', { userId }, 10000); } catch {} },
     async health() { try { return await engine.call('health', null, 2000); } catch { return { status: 'unavailable' }; } },
     async stop() {
       for (const [name, original] of Object.entries(consoleOriginals)) console[name] = original;

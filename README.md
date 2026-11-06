@@ -98,6 +98,8 @@ piece can be swapped, and the guide links to the alternatives.
 | [AUTHENTICATION.md](docs/AUTHENTICATION.md) | Operators, administrators | Sign-in, the first administrator, inviting people, sharing dashboards, session policies, single sign-on with any OpenID Connect provider, email, recovery |
 | [REVERSE-PROXY.md](docs/REVERSE-PROXY.md) | Operators | What any proxy must pass through, Caddy, Traefik and nginx examples, a published port instead of the network, request limits, framing (showing a dashboard inside Home Assistant or another site) |
 | [OPERATIONS.md](docs/OPERATIONS.md) | Operators | Logs and health, backups and restore from Administration or the command line, snapshots and secrets, worker limits, integration secrets |
+| [MONITORING.md](docs/MONITORING.md) | Operators | Built-in monitors: card status, web, port, ping, DNS, certificate, push and Docker checks, incidents, notifications, maintenance, who sees what |
+| [LOGS.md](docs/LOGS.md) | Operators | Searching Studio's logs, secrets masking, sending logs over HTTPS or syslog, alerts, export and retention |
 | [UPGRADING.md](docs/UPGRADING.md) | Operators | Moving to a new version and going back |
 | [VERSIONS.md](docs/VERSIONS.md) | Operators | Candidates and official `YYYY.MM.DD` releases, what a bundle contains, how to check it |
 | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Operators | Symptoms and fixes, from a container that won't start to a page that says the dashboard isn't available |

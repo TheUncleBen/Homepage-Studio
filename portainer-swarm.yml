@@ -94,6 +94,19 @@ services:
       STUDIO_RENDERER_STARTUP_SECONDS: ${STUDIO_RENDERER_STARTUP_SECONDS:-30}
     # No published port: the reverse proxy reaches Studio as
     # <stack name>_studio:3000 on the shared network (docs/DEPLOY.md, step 8).
+    # Optional: receive syslog from routers and NAS boxes (docs/LOGS.md). Turn
+    # it on in Administration > Monitoring and logs, then remove the # from
+    # these lines, using the same port (default 5514). mode: host keeps each
+    # sender's own address, which Studio uses to tell senders apart.
+    # ports:
+    #   - target: 5514
+    #     published: 5514
+    #     protocol: udp
+    #     mode: host
+    #   - target: 5514
+    #     published: 5514
+    #     protocol: tcp
+    #     mode: host
     networks:
       - proxy
     # Named volumes by default. Set STUDIO_CONFIG_PATH and STUDIO_STATE_PATH to

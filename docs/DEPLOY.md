@@ -655,6 +655,21 @@ Both add to the public authorities; they don't replace them. Dashboards
 restart their workers after a change, which takes a few seconds. Add the
 certificate *authority*, not the service's own certificate.
 
+## Monitoring and logs
+
+Nothing to deploy: monitoring, metrics and logs are part of Studio and turn
+on with sign-in. Two optional extras need the stack file:
+
+- **Syslog** from routers and NAS boxes: turn it on in Administration ›
+  Monitoring and logs, then remove the `#` from the `ports:` lines in
+  `portainer-swarm.yml` (keep `mode: host`). See [LOGS.md](LOGS.md#syslog).
+- **Docker monitors** read from the servers in a dashboard's `docker.yaml`.
+  Use a read-only Docker socket proxy rather than the socket itself; see
+  [MONITORING.md](MONITORING.md#docker).
+
+History and logs live in the state volume under `observability/` and are
+not part of Studio backups.
+
 ## Environment reference
 
 Everything the stack passes to Studio. `portainer.env.example` lists the same

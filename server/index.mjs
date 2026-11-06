@@ -934,7 +934,7 @@ export function createStudioServer(options = {}) {
   const personal = createPersonalStore({ stateRoot });
   // Saved widgets for Everyone (server/library.mjs), saved by administrators.
   const sharedLibrary = createLibrary({ dir: stateRoot, file: SHARED_LIBRARY_FILE, looks: false });
-  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent, onUserRemoved: userId => personal.removeUser(userId), onAudit: (event, user) => observability?.auditEvent(event, user) }) : null;
+  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent, onUserRemoved: async userId => { await personal.removeUser(userId); await observability?.forgetUser(userId); }, onAudit: (event, user) => observability?.auditEvent(event, user) }) : null;
   // Administration's name for the deployment, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
   const platform = createPlatformStore({ configRoot });

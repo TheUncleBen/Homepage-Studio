@@ -70,7 +70,12 @@ Every page, dashboards and administration alike, has the same bar:
 - On Studio's own pages (Dashboards, My account, Administration), the logo and
   the deployment's name. On a dashboard, that dashboard's logo and name.
 - The name opens Studio's menu: **All dashboards**, **Administration** for
-  administrators, then every dashboard you can open, to jump straight to one.
+  administrators, **Operations** (monitors, incidents and logs) for
+  administrators and anyone given Monitoring or Logs on a dashboard, then
+  every dashboard you can open, to jump straight to one. With Monitoring or
+  Logs on a dashboard you can also right-click or long-press a widget and
+  choose **Investigate** ([MONITORING.md](MONITORING.md),
+  [LOGS.md](LOGS.md)).
 - **Search** on a dashboard: the centred *Start typing…* bar (it narrows
   before your page tabs fold into *more*; an icon on phones, with **Cancel**
   to close it), <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd>, or just start
