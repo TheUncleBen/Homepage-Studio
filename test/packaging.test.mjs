@@ -87,10 +87,16 @@ test('the exact application health command is independent of a broken dashboard 
   await fs.mkdir(path.join(rendererDir, '.next/static'), { recursive: true });
   await fs.mkdir(path.join(rendererDir, 'public'));
   for (const name of ['server.js', '.next/BUILD_ID', '.next/build-manifest.json']) await fs.writeFile(path.join(rendererDir, name), '{}');
-  const { server, initialization } = createStudioServer({ ...dirs, rendererDir, upstream, allowedHosts: host, auth: 'off' });
+  const { server, initialization, shutdown } = createStudioServer({ ...dirs, rendererDir, upstream, allowedHosts: host, auth: 'off' });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    await initialization.catch(() => {});
+    // Stops the monitoring engine and its workers too, or the test process never exits.
+    await shutdown({ graceMs: 0 }).catch(() => {});
+  });
   await initialization;
   const port = server.address().port;
   const dockerfile = await fs.readFile(path.join(root, 'Dockerfile'), 'utf8');
