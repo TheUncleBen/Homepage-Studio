@@ -71,11 +71,13 @@ Every page, dashboards and administration alike, has the same bar:
   the deployment's name. On a dashboard, that dashboard's logo and name.
 - The name opens Studio's menu: **All dashboards**, **Administration** for
   administrators, then every dashboard you can open, to jump straight to one.
-- **Search** on a dashboard (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> +
-  <kbd>K</kbd>, or just start typing). It finds every widget, service and
-  bookmark on every page, says which page each is on, and offers a web search
-  with your own search engine (Google unless you choose another in **My
-  account → Search**). It replaces Homepage's Quick Launch.
+- **Search** on a dashboard: the centred *Start typing…* bar (an icon on
+  phones), <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd>, or just start
+  typing. It finds every widget, service and bookmark on every page, says
+  which page each is on, and offers a web search with your own search engine
+  (Google unless you choose another in **My account → Search**). A result
+  opens in this tab unless you choose **New tab** under **My account →
+  Search**. It replaces Homepage's Quick Launch.
 - Your account menu: **My account** and **Sign out**.
 
 The deployment's name is `STUDIO_DEPLOYMENT_NAME` (default *Homepage
@@ -349,12 +351,16 @@ used after a manual change.
 
 ## Changing what a panel shows
 
-In the editor, a panel's **edit** button opens its dialog. The widget is drawn
-at the top at its real desktop size, on the board's own grid; drag its
-corner (or focus the corner and use the arrow keys) to change that size,
-never below the smallest the widget needs. A widget in a stack keeps the
-stack's size. Under the widget, its **Name** stays at the top and the rest is
-in sections, one open at a time, each with a short summary when closed:
+In the editor, a panel's **edit** button opens its dialog. On a screen at
+least 900 px wide the dialog opens as a panel down the right, beside the
+board: the board keeps its layout, the widget's own card shows your changes
+as you make them, and you resize it on the board as usual. On narrower
+screens the dialog opens over the board with the widget drawn at the top at
+its real desktop size, on the board's own grid; drag its corner (or focus
+the corner and use the arrow keys) to change that size, never below the
+smallest the widget needs. A widget in a stack keeps the stack's size. Its
+**Name** stays at the top and the rest is in sections, each with a short
+summary when closed; open as many as you like at once:
 
 | Section | What it holds |
 | --- | --- |
@@ -411,8 +417,18 @@ address's certificate isn't trusted by Studio.*
 ### How a widget looks
 
 The widget at the top of the dialog is a live preview. **Look** sets its
-background, colour, edge, corners, header and size of the hero number;
-**Status** chooses the check (web address, ping or off) and how it shows;
+background, colour, edge, corners, header and size of the hero number, and
+**Columns** for the value boxes: **Auto** spreads them evenly for the card's
+size (six values make 3 × 2, not 4 and 2) and redoes it as the card is
+resized; 1 to 4 keeps that many columns while each box still fits.
+An integration's **Logo** and **Description** are set here too.
+**Status** chooses the check (web address, ping or off) and how it shows.
+Its **Address** starts from the widget's Connection address (or its link),
+shown greyed as *From the Connection*; type another to check that instead.
+**Check now** runs the check before you save and says, for example,
+*Up · 42 ms*. An integration's **Docker server** and **Docker container**
+are under **Status** as well; with both set, the card shows whether the
+container is running;
 **Behaviour** sets refresh, what a click does and **Show on**: the layouts (Desktop, Tablet, Phone) the widget appears on. While you edit a layout, widgets it leaves out are shown faded with "Not shown on this layout".
 A choice that matches the dashboard's default is not stored, so changing the
 default in **Dashboard settings → Widget defaults** changes every widget that
@@ -480,6 +496,21 @@ widget, bringing the saved connections it uses. **Manage saved widgets**
 there renames or deletes them. Their settings and keys stay on the server;
 the browser only gets their names and types. A dashboard's own saved widgets
 are copied when it is duplicated, and travel with its export.
+
+### Your saved items and everyone's
+
+**My account → Saved** lists everything you keep for yourself (**Just me**):
+saved widgets, looks, connections, logos and backgrounds. Each row says what
+it is and, for a connection or an image, the dashboards that use a copy of
+it. Open one to rename or delete it. Deleting yours never breaks a
+dashboard: a connection or image used there was copied to it. Keys are never
+shown.
+
+Administrators also have **Administration → Saved items**: every person's
+own items with their owner, each dashboard's and Everyone's, with who saved
+them. Widgets and looks can be renamed or deleted there. A dashboard's own
+connections and images are listed without actions: change them in that
+dashboard's settings, which checks what uses them first.
 
 ## Configuration files
 

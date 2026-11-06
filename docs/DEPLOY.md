@@ -333,6 +333,7 @@ is optional and works unset; the comments in the file explain each line.
 | `STUDIO_DEPLOYMENT_NAME` | Optional: the name shown next to the logo, on the sign-in page, in tab titles, in email and in passkey prompts (default `Homepage Studio`) |
 | `STUDIO_TRUSTED_PROXIES` | Recommended: the subnet from step 2, for example `10.0.10.0/24`. Remove the `# ` in front of the line |
 | `STUDIO_NETWORK_NAME` | Only if your network isn't called `homepage-studio` |
+| `STUDIO_TRUSTED_CERTIFICATES_FILE` | (unset) | A PEM file inside the container with your own certificate authorities, such as a Docker secret ([Trusted certificates](#trusted-certificates)) |
 | `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | Only for host directories (step 3) |
 | `STUDIO_ADMIN_USERNAME` | Recommended: the first administrator's username, for example `admin`. Its password is the `studio_admin_password` secret. Leave it unset if that secret says `off` |
 | `STUDIO_ADMIN_EMAIL` | Optional: that administrator's email. Once you link the account to your identity provider (step 10) it follows the provider's email |
@@ -630,6 +631,29 @@ documentation. The container runs as UID 1000 without capabilities, so a
 mounted socket must be readable by that user; a Docker socket proxy reached
 over the network (the `host`/`port` form in `docker.yaml`) avoids mounting the
 socket at all.
+
+## Trusted certificates
+
+If your services' certificates come from your own certificate authority, for
+example a local CA behind Nginx Proxy Manager, Studio needs that authority to
+reach them over `https://`. Studio never trusts a certificate just because a
+service presents it; you add the authority once:
+
+- **Administration → Trusted certificates → Add certificate**: paste the CA
+  certificate (PEM, the text between `-----BEGIN CERTIFICATE-----` and
+  `-----END CERTIFICATE-----`) and choose **Trust it**. The list shows each
+  one's name and expiry; open one for its issuer, validity and SHA-256
+  fingerprint, or to remove it. Studio keeps them in the state volume, so
+  **Administration → Backups** carry them.
+- Or a file: put the PEM (one or more certificates) in a Docker secret, add
+  that secret to the stack's `studio` service, and set
+  `STUDIO_TRUSTED_CERTIFICATES_FILE` to its path, such as
+  `/run/secrets/studio_trusted_certificates`. These are listed in
+  Administration as coming from the deployment, without a remove button.
+
+Both add to the public authorities; they don't replace them. Dashboards
+restart their workers after a change, which takes a few seconds. Add the
+certificate *authority*, not the service's own certificate.
 
 ## Environment reference
 

@@ -29,6 +29,10 @@ services:
       STUDIO_ADMIN_EMAIL: ${STUDIO_ADMIN_EMAIL:-}
       # The proxy network's subnet, so logs and throttling see real addresses.
       STUDIO_TRUSTED_PROXIES: ${STUDIO_TRUSTED_PROXIES:-}
+      # Your own certificate authorities, as one PEM file inside the container
+      # (for example a Docker secret you add), for widgets and status checks
+      # whose services use them. Or add them in Administration (docs/DEPLOY.md).
+      STUDIO_TRUSTED_CERTIFICATES_FILE: ${STUDIO_TRUSTED_CERTIFICATES_FILE:-}
       # Single sign-on with an identity provider (docs/IDP-OTHERS.md;
       # Authentik example: docs/IDP-AUTHENTIK.md). Issuer and client ID
       # turn it on; the client secret is the studio_oidc_client_secret file.
