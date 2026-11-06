@@ -203,7 +203,7 @@ async function mountBoard({
     if (mode === "edit")
       await waitFor(() => expect(screen.getByRole("button", { name: "Done", exact: true })).toBeEnabled());
     else if (mode === "settings") await screen.findByLabelText(/Tab title/);
-    else await waitFor(() => expect(screen.getByRole("button", { name: "Search" })).toBeEnabled());
+    else await waitFor(() => expect(screen.getAllByRole("button", { name: "Search" })[0]).toBeEnabled());
   }
   return {
     ...view,
@@ -381,7 +381,7 @@ describe("Native board save and draft safety", () => {
   it("keeps startup controls unavailable until the first board response, then opens settings by itself", async () => {
     const gate = deferred();
     const { fetch, writer, interactions } = await mountBoard({ mode: "settings", firstBoardRead: gate.promise });
-    expect(screen.getByLabelText("Search")).toBeDisabled();
+    for (const search of screen.getAllByLabelText("Search")) expect(search).toBeDisabled();
     expect(interactions).toHaveBeenLastCalledWith(true);
     expect(fetch.mock.calls.some(([path]) => path === "/studio/api/state")).toBe(false);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -919,10 +919,11 @@ describe("Native board save and draft safety", () => {
     },
   );
 
-  it("names the search icon and its shortcut", async () => {
+  it("names the search bar, the phone icon and their shortcut", async () => {
     await mountBoard({ mode: "live" });
-    const search = screen.getByRole("button", { name: "Search" });
-    expect(search).toHaveAttribute("title", "Search (/ or Ctrl / ⌘ K)");
-    expect(search).toHaveAttribute("aria-keyshortcuts", "Control+K Meta+K");
+    const [bar, icon] = screen.getAllByRole("button", { name: "Search" });
+    expect(bar).toHaveTextContent("Start typing…");
+    expect(icon).toHaveAttribute("title", "Search (/ or Ctrl / ⌘ K)");
+    for (const search of [bar, icon]) expect(search).toHaveAttribute("aria-keyshortcuts", "Control+K Meta+K");
   });
 });

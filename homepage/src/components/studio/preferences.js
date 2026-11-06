@@ -8,7 +8,7 @@ export const PREFERENCE_DEFAULTS = Object.freeze({
   searchSuggestions: true,
   searchDescriptions: true,
   searchAddresses: true,
-  searchOpens: "new",
+  searchOpens: "same",
   mode: "dashboard",
   motion: "system",
   clock: "dashboard",

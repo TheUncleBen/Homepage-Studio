@@ -122,18 +122,35 @@ export default function StudioTopBar({ title, dashboardId, logo, access, onSearc
   const isAdmin = !access?.authEnabled || user?.role === "admin";
   const name = user ? user.displayName || user.username : "";
   return (
-    <header className="studio-topbar">
-      <a className="studio-brand" href={DASHBOARDS_PAGE} aria-label="All dashboards">
-        <img className="studio-brand-logo" src={logo || STUDIO_LOGO} alt="" width={30} height={30} />
-      </a>
-      <DashboardSwitcher name={title} currentId={dashboardId} isAdmin={isAdmin} />
-      {/* A dashboard's page tabs. Studio's own pages have none. */}
-      {children}
+    <header className={`studio-topbar${onSearch ? " studio-topbar-search" : ""}`}>
+      <div className="studio-top-start">
+        <a className="studio-brand" href={DASHBOARDS_PAGE} aria-label="All dashboards">
+          <img className="studio-brand-logo" src={logo || STUDIO_LOGO} alt="" width={30} height={30} />
+        </a>
+        <DashboardSwitcher name={title} currentId={dashboardId} isAdmin={isAdmin} />
+        {/* A dashboard's page tabs. Studio's own pages have none. */}
+        {children}
+      </div>
+      {/* Search (F2): a centred bar on wider screens, the icon on phones. */}
+      {onSearch && (
+        <button
+          type="button"
+          className="studio-search-bar"
+          aria-label="Search"
+          aria-keyshortcuts="Control+K Meta+K"
+          title="Search this dashboard and the web (or just start typing, / or Ctrl / ⌘ K)"
+          disabled={searchDisabled}
+          onClick={onSearch}
+        >
+          <StudioIcon name="search" size={16} />
+          <span>Start typing…</span>
+        </button>
+      )}
       <nav className="studio-top-actions" aria-label="Studio">
         {onSearch && (
           <button
             type="button"
-            className="studio-icon-button"
+            className="studio-icon-button studio-search-icon"
             aria-label="Search"
             aria-keyshortcuts="Control+K Meta+K"
             title="Search (/ or Ctrl / ⌘ K)"

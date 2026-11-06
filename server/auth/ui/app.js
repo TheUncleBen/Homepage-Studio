@@ -964,7 +964,7 @@
       const box = notice();
       const ENGINES = [['google', 'Google'], ['duckduckgo', 'DuckDuckGo'], ['bing', 'Bing'], ['brave', 'Brave'], ['startpage', 'Startpage'], ['kagi', 'Kagi'], ['custom', 'Custom']];
       const SUGGESTS = new Set(['google', 'duckduckgo', 'bing', 'brave']);
-      const DEFAULTS = { searchEngine: 'google', searchSuggestions: true, searchDescriptions: true, searchAddresses: true, searchOpens: 'new', mode: 'dashboard', motion: 'system', language: 'dashboard', clock: 'dashboard', temperature: 'dashboard' };
+      const DEFAULTS = { searchEngine: 'google', searchSuggestions: true, searchDescriptions: true, searchAddresses: true, searchOpens: 'same', mode: 'dashboard', motion: 'system', language: 'dashboard', clock: 'dashboard', temperature: 'dashboard' };
       const read = key => preferences[key] ?? DEFAULTS[key];
       async function save(change) {
         const next = { ...preferences, ...change };
@@ -993,7 +993,7 @@
         if (SUGGESTS.has(engine)) rows.push(switchRow('Suggestions', 'searchSuggestions', 'Show suggestions from your search engine as you type.'));
         rows.push(switchRow('Descriptions', 'searchDescriptions', 'Also find widgets by their description.'));
         rows.push(switchRow('Addresses', 'searchAddresses', 'Offer to open a web address you type.'));
-        rows.push(row('Open results', segmented({ label: 'Open results', value: read('searchOpens'), options: [['new', 'New tab'], ['same', 'This tab']], onChange: choice => save({ searchOpens: choice }) })));
+        rows.push(row('Open results', segmented({ label: 'Open results', value: read('searchOpens'), options: [['same', 'This tab'], ['new', 'New tab']], onChange: choice => save({ searchOpens: choice }) })));
         return group({ title: 'Search', info: 'Search opens with / or Ctrl K on any dashboard, or when you start typing. It finds widgets on every page and searches the web with your engine.' }, rows);
       }
       // Each language named in itself, so anyone can find their own.
