@@ -31,6 +31,7 @@ let ca;
 
 // ---- Storage, with monitoring kept alive when history can't be written ----
 let storage = null, db;
+const REMOVED_PERSON = 'removed person';
 try {
   if (!hasFts5()) throw Object.assign(new Error('SQLite FTS5 is missing'), { code: 'OBSERVABILITY_FTS5_MISSING' });
   selfTest(dir);
@@ -256,8 +257,10 @@ async function syncSyslog() {
   syslogConfig = key;
   if (!wanted) return;
   try {
-    syslog = createSyslogServer({ port: wanted.port, udp: wanted.udp, tcp: wanted.tcp, onError: error => { health.syslog = `Syslog can't listen on port ${wanted.port}: ${error.code ?? error.message}`; log({ source_type: 'syslog', source_id: 'listener', category: 'application', severity: 3, event_type: 'syslog.listen-failed', message: health.syslog }); }, onMessage: (parsed, address) => {
-      const source = defs.sources.find(item => item.kind === 'syslog' && item.address === address);
+    // Read the sender list on each check, so senders added later are allowed.
+    const senderOf = address => defs.sources.find(item => item.kind === 'syslog' && item.address === address);
+    syslog = createSyslogServer({ port: wanted.port, udp: wanted.udp, tcp: wanted.tcp, allow: address => Boolean(senderOf(address)), onRefused: () => { unknownSenders++; }, onError: error => { health.syslog = `Syslog can't listen on port ${wanted.port}: ${error.code ?? error.message}`; log({ source_type: 'syslog', source_id: 'listener', category: 'application', severity: 3, event_type: 'syslog.listen-failed', message: health.syslog }); }, onMessage: (parsed, address) => {
+      const source = senderOf(address);
       if (!source) { unknownSenders++; return; }
       log({ source_type: 'syslog', source_id: source.id, scope: source.scope, resource: source.resource || source.name, category: 'infrastructure', severity: parsed.severity, ts: parsed.ts, event_type: 'syslog.message', message: parsed.message, fields: { host: parsed.host, app: parsed.app, facility: parsed.facility } });
     } });
@@ -323,7 +326,7 @@ function retention() {
 // ---- Views for the controller's API ----
 function monitorSummary(monitor, { withBars = false } = {}) {
   const state = monitoring.state(monitor.id);
-  const out = { id: monitor.id, name: monitor.name, scope: monitor.scope, type: monitor.type, card: Boolean(monitor.card), panel: monitor.panel ?? null, tags: monitor.tags ?? [], paused: Boolean(effective(monitor).paused), interval: monitor.interval, target: targetText(monitor), state: state?.state ?? 'unknown', since: state?.since ?? null, lastCheck: state?.last_check ?? null, ms: state?.last_ms ?? null, code: state?.last_code ?? null, errorClass: state?.last_class ?? null, message: state?.last_message ?? null, certExpires: state?.cert_expires ?? null, incident: state?.incident_id ?? null, warning: state?.details?.warning ?? null };
+  const out = { id: monitor.id, name: monitor.name, scope: monitor.scope, type: monitor.type, card: Boolean(monitor.card), panel: monitor.panel ?? null, tags: monitor.tags ?? [], paused: Boolean(effective(monitor).paused), interval: monitor.interval, target: targetText(monitor), state: state?.state ?? 'unknown', since: state?.since ?? null, lastCheck: state?.last_check ?? null, ms: state?.last_ms ?? null, code: state?.last_code ?? null, errorClass: state?.last_class ?? null, message: clean(state?.last_message ?? null), certExpires: state?.cert_expires ?? null, incident: state?.incident_id ?? null, warning: state?.details?.warning ?? null };
   if (withBars) {
     const since = Date.now() - 24 * 3600e3;
     const hours = db.all('SELECT start, up, down, maint, unknown FROM check_hour WHERE monitor_id = ? AND start >= ? ORDER BY start', monitor.id, since - 3600e3);
@@ -332,9 +335,18 @@ function monitorSummary(monitor, { withBars = false } = {}) {
   }
   return out;
 }
+// Stored check text passes the redactor on the way out too, so a secret
+// saved after the check ran is masked as well (security review M1).
+const clean = text => (text === null || text === undefined ? text : redactor.text(String(text)));
+const cleanIncident = incident => ({ ...incident, cause: clean(incident.cause) });
+// A web address without its user info and query (which can carry keys).
+function safeUrl(value) {
+  try { const url = new URL(value); return `${url.protocol}//${url.host}${url.pathname}`; }
+  catch { return clean(value); }
+}
 function targetText(monitor) {
   switch (monitor.type) {
-    case 'http': return monitor.http.url;
+    case 'http': return clean(safeUrl(monitor.http.url));
     case 'tcp': return `${monitor.tcp.host}:${monitor.tcp.port}`;
     case 'ping': return monitor.ping.host;
     case 'dns': return `${monitor.dns.name} (${monitor.dns.recordType})`;
@@ -382,7 +394,8 @@ const handlers = {
     const monitor = monitoring.byId(id);
     if (!monitor || !visible(scopes, monitor.scope)) return null;
     const history = monitoring.history(id);
-    const incidents = db.all('SELECT * FROM incident WHERE monitor_id = ? ORDER BY opened DESC LIMIT 20', id);
+    history.recent = history.recent.map(item => ({ ...item, message: clean(item.message) }));
+    const incidents = db.all('SELECT * FROM incident WHERE monitor_id = ? ORDER BY opened DESC LIMIT 20', id).map(cleanIncident);
     return { monitor: monitorSummary(monitor), history, incidents, series: metrics.list([monitor.scope]).filter(series => series.resource === `monitor:${id}` || series.resource === `container:${id}`) };
   },
   overview({ scopes, admin }) {
@@ -401,16 +414,16 @@ const handlers = {
       if (health.storage !== 'ok' || health.reason) attention.push({ kind: 'storage', name: 'Studio', text: health.reason });
       if (health.syslog) attention.push({ kind: 'syslog', name: 'Syslog', text: health.syslog });
     }
-    return { counts, total: list.length, incidents: open.map(incident => ({ ...incident, monitorState: monitoring.state(incident.monitor_id)?.state ?? null })), attention: attention.slice(0, 20), health: admin ? studioHealth() : undefined };
+    return { counts, total: list.length, incidents: open.map(incident => ({ ...cleanIncident(incident), monitorState: monitoring.state(incident.monitor_id)?.state ?? null })), attention: attention.slice(0, 20), health: admin ? studioHealth() : undefined };
   },
   incidents({ scopes, open = false, limit = 100 }) {
     const rows = db.all(`SELECT * FROM incident ${open ? 'WHERE closed IS NULL' : ''} ORDER BY opened DESC LIMIT ?`, Math.min(500, limit * 3)).filter(row => visible(scopes, row.scope)).slice(0, limit);
-    return { incidents: rows };
+    return { incidents: rows.map(cleanIncident) };
   },
   incident({ id, scopes }) {
     const incident = db.get('SELECT * FROM incident WHERE id = ?', id);
     if (!incident || !visible(scopes, incident.scope)) return null;
-    return { incident, timeline: db.all('SELECT ts, kind, text, actor FROM incident_event WHERE incident_id = ? ORDER BY ts, seq', id), monitor: monitoring.byId(incident.monitor_id) ? monitorSummary(monitoring.byId(incident.monitor_id)) : null };
+    return { incident: cleanIncident(incident), timeline: db.all('SELECT ts, kind, text, actor FROM incident_event WHERE incident_id = ? ORDER BY ts, seq', id).map(item => ({ ...item, text: clean(item.text) })), monitor: monitoring.byId(incident.monitor_id) ? monitorSummary(monitoring.byId(incident.monitor_id)) : null };
   },
   ack({ id, actor, scopes }) {
     const incident = db.get('SELECT * FROM incident WHERE id = ?', id);
@@ -461,7 +474,19 @@ const handlers = {
     const result = await checkContainer(createDockerClient(server), monitor.docker);
     return { monitor: monitorSummary(monitor), available: !result.cls || result.cls !== 'permission', result, series: metrics.list([monitor.scope]).filter(series => series.resource === `container:${id}`) };
   },
-  forgetUser({ userId }) { db.run('UPDATE personal SET ip = NULL, username = NULL WHERE user_id = ?', userId); return { ok: true }; },
+  forgetUser({ userId, names = [] }) {
+    db.run('UPDATE personal SET ip = NULL, username = NULL WHERE user_id = ?', userId);
+    const wanted = [...new Set(names.filter(name => typeof name === 'string' && name.trim()).map(name => name.trim()))];
+    if (!wanted.length) return { ok: true, changed: 0 };
+    const marks = wanted.map(() => '?').join(', ');
+    db.run(`UPDATE incident SET ack_by = ? WHERE ack_by IN (${marks})`, REMOVED_PERSON, ...wanted);
+    db.run(`UPDATE incident_event SET text = ? WHERE kind = 'ack' AND actor IN (${marks})`, `${REMOVED_PERSON} is looking into it`, ...wanted);
+    db.run(`UPDATE incident_event SET actor = ? WHERE actor IN (${marks})`, REMOVED_PERSON, ...wanted);
+    ingest?.flush(); // events still queued are written first, then rewritten
+    let changed = 0;
+    if (storage) for (const stream of Object.values(storage.streams)) changed += stream.forgetNames(wanted, REMOVED_PERSON);
+    return { ok: true, changed };
+  },
   health: () => studioHealth(),
   // The engine ends once it has answered; the host restarts it unless stopping.
   async stop() { await shutdown(); setTimeout(() => process.exit(0), 50); return { ok: true }; },

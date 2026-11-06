@@ -131,6 +131,35 @@ function createStream(dir, main, stream, journal) {
       const db = openDatabase(join(folder, row.file), { journal });
       try { db.run("INSERT INTO event_fts (event_fts, rank) VALUES ('merge', 64)"); } finally { db.close(); }
     },
+    // A removed person (security review L1): their events keep what happened
+    // but name "removed person" instead of them, in the actor and in the
+    // message Studio wrote, and the search index is kept in step.
+    forgetNames(names, replacement) {
+      if (!names.length) return 0;
+      const escaped = names.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      const pattern = new RegExp(`(?<![\\p{L}\\p{N}_.-])(?:${escaped.join('|')})(?![\\p{L}\\p{N}_.-])`, 'gu');
+      let changed = 0;
+      for (const row of main.all('SELECT seq, file FROM segment WHERE stream = ? ORDER BY seq', stream)) {
+        const own = current?.seq === row.seq;
+        if (!own && !fs.existsSync(join(folder, row.file))) continue;
+        const db = own ? current.db : openDatabase(join(folder, row.file), { journal });
+        try {
+          const rows = db.all(`SELECT rid, message, event_type, error_class, resource, fields, actor FROM event WHERE actor IN (${names.map(() => '?').join(', ')})`, ...names);
+          if (!rows.length) continue;
+          db.transaction(() => {
+            for (const event of rows) {
+              const before = { ...event, fields: JSON.parse(event.fields || '{}') };
+              const after = { ...before, message: event.message.replace(pattern, replacement), actor: replacement };
+              db.run("INSERT INTO event_fts (event_fts, rowid, text) VALUES ('delete', ?, ?)", event.rid, searchText(before));
+              db.run('UPDATE event SET message = ?, actor = ? WHERE rid = ?', after.message, after.actor, event.rid);
+              db.run('INSERT INTO event_fts (rowid, text) VALUES (?, ?)', event.rid, searchText(after));
+              changed++;
+            }
+          });
+        } finally { if (!own) db.close(); }
+      }
+      return changed;
+    },
     close() { if (current) { current.db.close(); main.run('UPDATE segment SET bytes = ? WHERE stream = ? AND seq = ?', fileSize(current.path), stream, current.seq); current = null; } },
   };
 }

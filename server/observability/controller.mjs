@@ -8,7 +8,8 @@ import { constants, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEngineHost, createQueryHost } from './host.mjs';
 import { createDefinitions, cleanMonitor, cleanMaintenance, cleanChannel, cleanView, cleanSource, cleanAlert, cleanSettings, publicChannel, publicMonitor, hashToken, newToken, DefinitionError } from './definitions.mjs';
-import { STUDIO_SCOPE, SCOPE, severityLabel } from './model.mjs';
+import { STUDIO_SCOPE, SCOPE, SECRET_FIELD, severityLabel } from './model.mjs';
+import { createHash } from 'node:crypto';
 import { CLASS_SENTENCES } from '../../homepage/src/utils/studio/error-classes.mjs';
 import { resolveEnvironmentVariables } from '../../homepage/src/utils/config/environment.mjs';
 import { loadYaml } from '../../homepage/src/utils/config/yaml-parser.mjs';
@@ -61,6 +62,27 @@ export async function dockerServer(configDir, name) {
 
 // Secrets that must never appear in a stored log line, with the words that
 // replace them (plan 7.4).
+// Keys typed into a dashboard's widget settings (services.yaml, widgets.yaml),
+// after HOMEPAGE_VAR/FILE substitution, so a widget's key is masked even
+// when an error message repeats it (security review M2).
+async function widgetSecrets(configDir, add) {
+  for (const file of ['services.yaml', 'widgets.yaml']) {
+    let text;
+    try { text = await fs.readFile(join(configDir, file), 'utf8'); } catch { continue; }
+    if (text.length > 2 * 1024 * 1024) continue;
+    let value;
+    try { value = loadYaml(resolveEnvironmentVariables(text, Object.entries(process.env), readEnvironmentFile, { maxBytes: 4 * 1024 * 1024 })); } catch { continue; }
+    const walk = (node, depth) => {
+      if (!node || typeof node !== 'object' || depth > 12) return;
+      for (const [key, inner] of Object.entries(node)) {
+        if (typeof inner === 'string' && SECRET_FIELD.test(key)) add(inner, `widget ${key}`);
+        else if (inner && typeof inner === 'object') walk(inner, depth + 1);
+      }
+    };
+    walk(value, 0);
+  }
+}
+
 function secretValues(authConfig) {
   const out = new Map();
   const add = (value, label) => { if (typeof value === 'string' && value.length >= 6) out.set(value, label); };
@@ -74,6 +96,8 @@ function secretValues(authConfig) {
   walk(authConfig ?? {}, 'sign-in ');
   for (const [key, value] of Object.entries(process.env)) {
     if (key.startsWith('HOMEPAGE_VAR_') || /^(STUDIO|HOMEPAGE)_.*(SECRET|PASSWORD|TOKEN|KEY)$/.test(key)) add(value, key);
+    // A Docker secret read through HOMEPAGE_FILE_*: its contents.
+    if (key.startsWith('HOMEPAGE_FILE_') && value) { try { add(readEnvironmentFile(value).trim(), key); } catch {} }
   }
   return out;
 }
@@ -97,7 +121,7 @@ export function parseWorkerLine(raw, stream) {
   return { severity: stream === 'stderr' ? 4 : 6, label: null, message: line };
 }
 
-export function createObservability({ stateRoot, configRoot, signIn, authConfig = null, smtp = null, siteName = () => 'Homepage Studio', publicOrigin = null, trusted = null, listDashboards, connectionsOf = async () => [], now = () => Date.now() }) {
+export function createObservability({ stateRoot, configRoot, signIn, authConfig = null, smtp = null, siteName = () => 'Homepage Studio', publicOrigin = null, trusted = null, listDashboards, connectionsOf = async () => [], personalConnections = async () => [], now = () => Date.now() }) {
   const dir = join(stateRoot, OBSERVABILITY_DIR);
   const definitions = createDefinitions({ stateRoot });
   const engineLog = event => console.error(`Monitoring and logs: ${event.message}`);
@@ -127,13 +151,22 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
     const defs = await definitions.read();
     for (const channel of defs.channels) for (const field of ['url', 'token', 'secret', 'password']) if (channel[field]) list.set(channel[field], `${channel.name} ${field}`);
     for (const monitor of defs.monitors) for (const header of monitor.http?.headers ?? []) list.set(header.value, `${monitor.name} header`);
+    const add = (value, label) => { if (typeof value === 'string' && value.length >= 6) list.set(value, label); };
+    const addConnection = connection => { for (const field of ['key', 'password']) add(connection.secrets?.[field], `${connection.name} ${field}`); };
     for (const entry of await dashboardsList()) {
-      for (const connection of await connectionsOf(entry).catch(() => [])) {
-        for (const field of ['key', 'password']) if (connection.secrets?.[field]) list.set(connection.secrets[field], `${connection.name} ${field}`);
-      }
+      for (const connection of await connectionsOf(entry).catch(() => [])) addConnection(connection);
+      await widgetSecrets(dashboardConfigDir(configRoot, entry.id), add).catch(() => {});
     }
-    await engine.set('secrets', { list: [...list.entries()].filter(([value]) => typeof value === 'string' && value.length >= 6) });
+    // Each person's own saved connections too.
+    for (const connection of await personalConnections().catch(() => [])) addConnection(connection);
+    const entries = [...list.entries()].filter(([value]) => typeof value === 'string' && value.length >= 6);
+    // Sent again only when something changed (this runs every minute).
+    const digest = createHash('sha256').update(JSON.stringify(entries)).digest('hex');
+    if (digest === secretsDigest && engine.running) return;
+    secretsDigest = digest;
+    await engine.set('secrets', { list: entries });
   }
+  let secretsDigest = null;
   async function pushCa() {
     if (!trusted) return;
     try { const { ca } = await trusted.caOptions(); await engine.set('ca', { pem: ca }); } catch {}
@@ -199,6 +232,13 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
       if (route === 'access' && method === 'GET') {
         return json(res, 200, { admin, dashboards: access.dashboards, monitoring: admin || access.monitoring.length > 0, logs: admin || access.logs.length > 0, siteName: siteName() });
       }
+      // People with Monitoring see where a web check goes (host and port),
+      // not its path; administrators see the address without user info or
+      // query (security review M1).
+      const forViewer = summary => {
+        if (admin || !summary || summary.type !== 'http' || !summary.target) return summary;
+        try { return { ...summary, target: new URL(summary.target).host }; } catch { return { ...summary, target: null }; }
+      };
       // ---- Monitoring ----
       if (route === 'overview' && method === 'GET') {
         needMonitoring();
@@ -207,7 +247,7 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
       if (route === 'monitors' && method === 'GET') {
         needMonitoring();
         const result = await engine.call('monitors', { scopes: narrowed(access.monitoring, query.get('dashboard')) });
-        return json(res, 200, result);
+        return json(res, 200, { ...result, monitors: result.monitors.map(forViewer) });
       }
       let match = /^monitors\/([^/]+)(?:\/(check|history))?$/.exec(route);
       if (match) {
@@ -216,6 +256,7 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
         if (match[2] === 'check' && method === 'POST') return answer(await engine.call('checkNow', { id, scopes: access.monitoring }));
         if (!match[2] && method === 'GET') {
           const result = await engine.call('monitor', { id, scopes: access.monitoring });
+          if (result) result.monitor = forViewer(result.monitor);
           if (result && admin) {
             const defs = await definitions.read();
             const saved = defs.monitors.find(item => item.id === id);
@@ -233,7 +274,7 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
       if (match) {
         needMonitoring();
         const id = match[1];
-        if (!match[2] && method === 'GET') return answer(await engine.call('incident', { id, scopes: access.monitoring }));
+        if (!match[2] && method === 'GET') { const result = await engine.call('incident', { id, scopes: access.monitoring }); if (result?.monitor) result.monitor = forViewer(result.monitor); return answer(result); }
         if (match[2] === 'ack' && method === 'POST') return answer(await engine.call('ack', { id, actor, scopes: access.monitoring }));
         if (match[2] === 'note' && method === 'POST') {
           const body = await readBody(req, 8 * 1024);
@@ -253,7 +294,7 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
         return json(res, 200, await engine.call('metricList', { scopes: narrowed(access.monitoring, query.get('dashboard')) }));
       }
       match = /^containers\/([^/]+)$/.exec(route);
-      if (match && method === 'GET') { needMonitoring(); return answer(await engine.call('container', { id: decodeURIComponent(match[1]), scopes: access.monitoring }, 20000)); }
+      if (match && method === 'GET') { needMonitoring(); const result = await engine.call('container', { id: decodeURIComponent(match[1]), scopes: access.monitoring }, 20000); if (result?.monitor) result.monitor = forViewer(result.monitor); return answer(result); }
 
       // ---- Logs ----
       if (route.startsWith('logs/') && method === 'GET') {
@@ -281,7 +322,8 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
           return answer(await queries.call('context', { id: String(query.get('id') ?? '').slice(0, 40), stream, seq, scopes: access.logs, restricted: admin }, 15000));
         }
       }
-      if (route === 'views' && method === 'GET') { needLogs(); return json(res, 200, { views: (await definitions.read()).views }); }
+      // Saved searches can name any dashboard or resource: administrators only.
+      if (route === 'views' && method === 'GET') { needAdmin(); return json(res, 200, { views: (await definitions.read()).views }); }
 
       // ---- Settings (Administration › Monitoring and logs) ----
       if (route === 'config' && method === 'GET') {
@@ -556,11 +598,14 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
     accessOf,
     log,
     captureConsole,
+    // After a connection or widget key changes, and from the collector.
+    async refreshSecrets() { await pushSecrets().catch(error => console.error('Monitoring and logs could not update its secret list:', error.code || error.message)); },
     workerOutput,
     auditEvent,
     async forgetDashboard(id) { cardTargets.delete(id); engine.forget('bound:' + id); try { await engine.call('dropDashboard', { id }); } catch {} await pushDefinitions().catch(() => {}); },
     // A removed person's name and address leave the logs' personal details.
-    async forgetUser(userId) { try { await engine.call('forgetUser', { userId }, 10000); } catch {} },
+    // names: the person's username and display name, as events stored them.
+    async forgetUser(userId, names = []) { try { await engine.call('forgetUser', { userId, names }, 60000); } catch (error) { console.error('Monitoring and logs could not remove a person from the logs:', error.code || error.message); } },
     async health() { try { return await engine.call('health', null, 2000); } catch { return { status: 'unavailable' }; } },
     async stop() {
       for (const [name, original] of Object.entries(consoleOriginals)) console[name] = original;

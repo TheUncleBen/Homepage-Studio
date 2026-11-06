@@ -50,8 +50,17 @@ export function searchText(event) {
   return words.join(' ');
 }
 
+// Fields whose names say they hold a secret keep no value at all (security
+// review M2), at any depth.
+export const SECRET_FIELD = /^(?:key|auth|(?:.*[_-]?)?(?:password|passwd|passphrase|secret|token|apikey|api[_-]key|authorization|cookie|credentials?))$/i;
+function hideSecretFields(value, depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 8) return value;
+  if (Array.isArray(value)) return value.map(item => hideSecretFields(item, depth + 1));
+  return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, SECRET_FIELD.test(key) && inner !== null && inner !== '' ? '[redacted]' : hideSecretFields(inner, depth + 1)]));
+}
 function cleanFields(fields, redact) {
   if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return {};
+  fields = hideSecretFields(fields);
   const out = {};
   let count = 0, size = 0;
   for (const [key, raw] of Object.entries(fields)) {

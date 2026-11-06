@@ -231,8 +231,9 @@ export function createMonitoring({ db, definitions, runCheck, onEvent = () => {}
     const started = pushes.get(monitor.id)?.started;
     pushes.delete(monitor.id);
     const ms = started ? t - started : undefined;
-    const ok = signal === 'ok' || signal === '0';
-    const result = ok ? { ok: true, ms } : { ok: false, ms, cls: 'assertion', message: signal === 'fail' ? 'The job reported a failure' : `The job ended with status ${signal}` };
+    // The push address sends up (the default) or down; ok and 0 mean up too.
+    const ok = ['up', 'ok', '0'].includes(signal);
+    const result = ok ? { ok: true, ms } : { ok: false, ms, cls: 'assertion', message: ['down', 'fail'].includes(signal) ? 'The job reported a failure' : `The job ended with status ${signal}` };
     apply({ ...monitor, failures: 1 }, result, t);
     if (body) onEvent({ source_type: 'monitor', source_id: monitor.id, scope: monitor.scope, resource: monitor.name, category: 'monitoring', severity: ok ? 6 : 3, event_type: ok ? 'push.ok' : 'push.failed', message: String(body).slice(0, 10240) });
     return { ok: true };

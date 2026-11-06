@@ -462,10 +462,10 @@
           onClick: () => { queryInput.value = `group:${item.fingerprint}`; groupToggle.querySelector('[role=radio]')?.click(); },
         })) : [emptyRow('No events match.')]));
       }
-      // Saved searches; administrators save them for everyone.
+      // Saved searches, shared between administrators.
       const views = h('select', { 'aria-label': 'Saved searches', class: 'ops-views', hidden: true, onchange: event => { const view = savedViews.find(item => item.id === event.target.value); if (view) { queryInput.value = view.query; range = view.range in Object.fromEntries(RANGES) ? view.range : '1h'; window_ = null; search(); } event.target.value = ''; } });
       let savedViews = [];
-      ops('views').then(data => { savedViews = data.views; put(views, h('option', { value: '', text: savedViews.length ? 'Saved searches' : 'No saved searches' }), savedViews.map(item => h('option', { value: item.id, text: item.name }))); views.hidden = !savedViews.length; }).catch(() => { views.hidden = true; });
+      if (admin) ops('views').then(data => { savedViews = data.views; put(views, h('option', { value: '', text: savedViews.length ? 'Saved searches' : 'No saved searches' }), savedViews.map(item => h('option', { value: item.id, text: item.name }))); views.hidden = !savedViews.length; }).catch(() => { views.hidden = true; });
       const saveView = admin ? h('button', { type: 'button', class: 'small-button', text: 'Save search', onclick: () => saveViewDialog() }) : null;
       function saveViewDialog() {
         openDialog('Save this search', close => {

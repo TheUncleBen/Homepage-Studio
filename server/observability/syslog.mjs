@@ -34,24 +34,43 @@ export function parseSyslog(raw, now = Date.now()) {
 }
 
 // The listener. onMessage(parsed, senderAddress) is called for each message.
-export function createSyslogServer({ port, udp = true, tcp = true, host = '0.0.0.0', onMessage, onError = () => {} }) {
+// allow(address) is asked before anything is read: datagrams and TCP
+// connections from other addresses are dropped at once, and onRefused counts
+// them, so an unlisted host can't hold the connection slots.
+export function createSyslogServer({ port, udp = true, tcp = true, host = '0.0.0.0', allow = () => true, onRefused = () => {}, onMessage, onError = () => {} }) {
   const sockets = [];
   const clean = address => String(address).replace(/^::ffff:/, '');
   if (udp) {
-    const socket = dgram.createSocket({ type: 'udp6', ipv6Only: false });
-    socket.on('message', (buffer, info) => { if (buffer.length <= MAX_MESSAGE * 2) onMessage(parseSyslog(buffer.toString('utf8')), clean(info.address)); });
-    socket.on('error', onError);
-    socket.bind(port, host === '0.0.0.0' ? '::' : host);
-    sockets.push({ close: () => new Promise(resolve => socket.close(() => resolve())) });
+    let socket = null;
+    const onDatagram = (buffer, info) => {
+      const address = clean(info.address);
+      if (!allow(address)) return onRefused(address);
+      if (buffer.length <= MAX_MESSAGE * 2) onMessage(parseSyslog(buffer.toString('utf8')), address);
+    };
+    // Both address families on one socket where the host has IPv6; IPv4 only
+    // where it doesn't (many containers).
+    const bind = (type, address) => {
+      socket = dgram.createSocket(type === 'udp6' ? { type, ipv6Only: false } : type);
+      socket.on('message', onDatagram);
+      socket.once('error', error => {
+        if (type === 'udp6' && error.code === 'EAFNOSUPPORT') { socket.close(); return bind('udp4', '0.0.0.0'); }
+        onError(error);
+      });
+      socket.once('listening', () => { socket.removeAllListeners('error'); socket.on('error', onError); });
+      socket.bind(port, address);
+    };
+    if (host === '0.0.0.0') bind('udp6', '::'); else bind(net.isIPv6(host) ? 'udp6' : 'udp4', host);
+    sockets.push({ close: () => new Promise(resolve => { try { socket.close(() => resolve()); } catch { resolve(); } }) });
   }
   if (tcp) {
     const open = new Set();
     const server = net.createServer({ allowHalfOpen: false }, connection => {
+      const address = clean(connection.remoteAddress);
+      if (!allow(address)) { onRefused(address); return connection.destroy(); }
       if (open.size >= MAX_CONNECTIONS) return connection.destroy();
       open.add(connection);
       connection.on('close', () => open.delete(connection));
       connection.setTimeout(300000, () => connection.destroy());
-      const address = clean(connection.remoteAddress);
       let buffer = Buffer.alloc(0);
       connection.on('data', chunk => {
         buffer = Buffer.concat([buffer, chunk]);

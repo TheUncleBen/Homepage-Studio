@@ -20,8 +20,10 @@ Monitoring is described in [MONITORING.md](MONITORING.md).
   **Logs** for them (or a group they belong to) in Administration › Dashboard
   access, under that dashboard. They never see another dashboard's events,
   Studio's own events, or sign-in and audit events.
-- Personal details in events (a person's address and username) are kept
-  apart and removed after 30 days, or when the person is removed.
+- Events name the person who acted for as long as the events are kept. A
+  person's network address is kept apart and removed after 30 days. When an
+  administrator removes a person, their events and incident notes name them
+  as "removed person" instead.
 
 ## Searching
 
@@ -45,7 +47,8 @@ the most common severities, sources, resources and problems; click one to add
 it to the search. Open an event to see all its fields, the events around it
 (**Show surrounding**) or others like it (**Find similar**). **Similar
 together** groups events that differ only in numbers, ids and addresses.
-Administrators can save a search for everyone.
+Administrators can save a search; saved searches are shared between
+administrators.
 
 Repeated identical events within a few seconds are stored once with a count
 (×12), so a noisy service does not bury everything else.
@@ -53,10 +56,13 @@ Repeated identical events within a few seconds are stored once with a count
 ## Secrets
 
 Studio masks secrets before an event is stored: Studio's own keys and
-passwords, `HOMEPAGE_VAR_*` values, saved connection keys, notification
-channel secrets, monitor header values, and anything that looks like a
-token, password or key in a URL or a `key=value` pair. A masked value is
-gone; it cannot be recovered from the log.
+passwords, `HOMEPAGE_VAR_*` values, the contents of `HOMEPAGE_FILE_*` files,
+saved connection keys (each dashboard's and each person's own), keys and
+passwords typed into widget settings, notification channel secrets, monitor
+header values, the value of any event field named like a secret (`password`,
+`token`, `api_key`, …), and anything that looks like a token, password or
+key in a URL or a `key=value` pair. A newly saved key is masked from then
+on. A masked value is gone; it cannot be recovered from the log.
 
 ## Sending logs to Studio
 

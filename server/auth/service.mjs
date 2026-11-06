@@ -1253,9 +1253,14 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     async remove(current, body) {
       requireAdmin(current);
       if (body?.id === current.user.id) fail("You can't delete your own account.", 'SELF_DELETE', 409);
+      let removed = null, names = [];
       await store.mutate(data => {
         const before = data.users.length;
+        removed = data.users.find(user => user.id === body?.id) ?? null;
         data.users = data.users.filter(user => user.id !== body?.id);
+        // The names their events carry, except any someone else still goes by.
+        const taken = new Set(data.users.flatMap(user => [user.username, user.displayName]).filter(Boolean));
+        names = [removed?.username, removed?.displayName].filter(name => name && !taken.has(name));
         if (data.users.length === before) fail('That user no longer exists.', 'NOT_FOUND', 404);
         data.invites = data.invites.filter(item => item.userId !== body.id);
         for (const id of Object.keys(data.grants)) data.grants[id] = data.grants[id].filter(grant => grant.subject !== 'user:' + body.id);
@@ -1263,7 +1268,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       });
       await store.sessions.remove(item => item.userId === body.id);
       // Their own images and preferences go with the account.
-      await onUserRemoved(body.id);
+      await onUserRemoved(body.id, { names });
       await audit('user-deleted', { userId: body.id, by: current.user.id }, current);
       return admin.overview(current);
     },

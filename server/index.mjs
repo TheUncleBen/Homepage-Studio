@@ -458,6 +458,9 @@ function createDashboardHandlers(options = {}) {
     const editor = req.url.startsWith('/studio/');
     if ((editor || req.url.startsWith('/api/')) && !isAuthNavigation(req.method, req.url.split('?')[0])) {
       if (['cross-site', 'same-site'].includes(req.headers['sec-fetch-site'])) throw Object.assign(new Error('Open this request from your dashboard.'), { status: 403 });
+      // Push heartbeats and HTTPS log intake come from scripts and other
+      // servers, with their own token, never from the editor.
+      if (/^\/studio\/(?:push\/[A-Za-z0-9_-]{16,64}|ingest\/logs)$/.test(req.url.split('?')[0])) return;
       if (req.headers.origin) {
         let origin;
         try { origin = new URL(req.headers.origin); } catch { throw Object.assign(new Error('Invalid request origin.'), { status: 403 }); }
@@ -826,8 +829,9 @@ function createDashboardHandlers(options = {}) {
       if (path === '/studio/api/connections' && req.method === 'POST') {
         const change = await readBody(req, 64 * 1024);
         if (!change || typeof change !== 'object' || Object.keys(change).some((key) => !CONNECTION_KEYS.includes(key))) throw new ConnectionError('Send a connection change.');
-        if (change.action === 'add') return json(res, 200, { connection: publicConnection(await connections.add(change, { by: req.studioActor })) });
-        if (change.action === 'update') return json(res, 200, { connection: publicConnection(await connections.update(change.id, change)) });
+        // A new key is masked in the logs from now on.
+        if (change.action === 'add') { const added = await connections.add(change, { by: req.studioActor }); await options.onSecretsChanged?.(); return json(res, 200, { connection: publicConnection(added) }); }
+        if (change.action === 'update') { const updated = await connections.update(change.id, change); await options.onSecretsChanged?.(); return json(res, 200, { connection: publicConnection(updated) }); }
         if (change.action === 'delete') {
           await connections.remove(change.id, { usedBy: (await connectionUsageOf())(change.id) });
           return json(res, 200, { removed: true });
@@ -934,7 +938,7 @@ export function createStudioServer(options = {}) {
   const personal = createPersonalStore({ stateRoot });
   // Saved widgets for Everyone (server/library.mjs), saved by administrators.
   const sharedLibrary = createLibrary({ dir: stateRoot, file: SHARED_LIBRARY_FILE, looks: false });
-  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent, onUserRemoved: async userId => { await personal.removeUser(userId); await observability?.forgetUser(userId); }, onAudit: (event, user) => observability?.auditEvent(event, user) }) : null;
+  const auth = authConfig.enabled && !authConfig.blocked ? createAuthService({ config: authConfig, stateRoot, listDashboards: async () => (await registryForAuth()).dashboards, mailAccent: async () => (await platform.read()).accent, onUserRemoved: async (userId, removed = {}) => { await personal.removeUser(userId); await observability?.forgetUser(userId, removed.names ?? []); }, onAudit: (event, user) => observability?.auditEvent(event, user) }) : null;
   // Administration's name for the deployment, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
   const platform = createPlatformStore({ configRoot });
@@ -957,6 +961,7 @@ export function createStudioServer(options = {}) {
       stateRoot, configRoot, signIn: Boolean(auth), authConfig, smtp: authConfig.smtp ?? null, siteName, trusted,
       publicOrigin: authConfig.origin ? String(authConfig.origin) : (options.publicOrigin || process.env.STUDIO_PUBLIC_ORIGIN || null),
       listDashboards: async () => (await registryForAuth()).dashboards,
+      personalConnections: () => personal.allConnections(),
       connectionsOf: entry => forDashboard(entry).connections.list(),
     });
   }
@@ -977,7 +982,7 @@ export function createStudioServer(options = {}) {
   function forDashboard(entry) {
     let handler = handlers.get(entry.id);
     if (!handler) {
-      handler = createDashboardHandlers({ ...options, onIntegration: event => observability?.log(event), internalToken, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
+      handler = createDashboardHandlers({ ...options, onIntegration: event => observability?.log(event), onSecretsChanged: () => observability?.refreshSecrets(), internalToken, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
       handlers.set(entry.id, handler);
     }
     // Only immutable-id storage is retained. Each request carries its own
@@ -1198,8 +1203,9 @@ export function createStudioServer(options = {}) {
     }
     if (path !== '/studio/api/my-connections') return json(res, 404, { error: 'This editor endpoint does not exist.' });
     if (!change || typeof change !== 'object' || Object.keys(change).some(key => !CONNECTION_KEYS.includes(key))) throw new ConnectionError('Send a connection change.');
-    if (change.action === 'add') return json(res, 200, { connection: publicConnection(await mine.add(change, { by: current.user.username })) });
-    if (change.action === 'update') return json(res, 200, { connection: publicConnection(await mine.update(change.id, change)) });
+    // A new key is masked in the logs from now on.
+    if (change.action === 'add') { const added = await mine.add(change, { by: current.user.username }); await observability?.refreshSecrets(); return json(res, 200, { connection: publicConnection(added) }); }
+    if (change.action === 'update') { const updated = await mine.update(change.id, change); await observability?.refreshSecrets(); return json(res, 200, { connection: publicConnection(updated) }); }
     // Dashboards that use it keep their own copy.
     if (change.action === 'delete') { await mine.remove(change.id); return json(res, 200, { removed: true }); }
     throw new ConnectionError('Choose add, update or delete.');
@@ -1685,6 +1691,8 @@ export function createStudioServer(options = {}) {
           catch (error) { collectFailed(Object.assign(new Error('status'), { code: 'CARD_MONITORS_' + (error.code || 'FAILED') })); }
         }
       }
+      // Keys typed into widget settings since the last round are masked too.
+      if (observability) await observability.refreshSecrets();
       if (!failed) reported.clear();
     } catch (error) { collectFailed(error); }
     finally { collecting = false; }

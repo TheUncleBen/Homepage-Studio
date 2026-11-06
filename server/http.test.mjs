@@ -86,13 +86,15 @@ async function setup(t, serverOptions = {}) {
   // address written ahead; the others set it through the API.
   if (serverOptions.beforeServer) await seedMainAddress(configDir);
   await serverOptions.beforeServer?.({ configDir, stateDir });
-  const { server, store, initialization } = createStudioServer({ configDir, stateDir, upstream: `http://127.0.0.1:${upstreamPort}`, allowedHosts: HOST, auth: 'off', ...serverOptions });
+  const { server, store, initialization, shutdown } = createStudioServer({ configDir, stateDir, upstream: `http://127.0.0.1:${upstreamPort}`, allowedHosts: HOST, auth: 'off', ...serverOptions });
   const port = await listen(server);
   if (!serverOptions.beforeServer) await addressMainDashboard({ port, host: HOST, origin: serverOptions.publicOrigin ?? ORIGIN });
   t.after(async () => {
     await close(server);
     await close(upstream);
     await initialization;
+    // Stops the monitoring engine too, so nothing writes to the folder below.
+    await shutdown({ graceMs: 0 }).catch(() => {});
     await fs.rm(directory, { recursive: true, force: true });
   });
 

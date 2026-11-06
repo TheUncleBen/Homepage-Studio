@@ -85,10 +85,14 @@ export async function runHttp(config, { timeoutMs, ca, family = 'auto' } = {}) {
   const headers = Object.fromEntries((config.headers ?? []).map(header => [header.name, header.value]));
   const accept = config.card ? code => code <= 403 : acceptsStatus(config.accept);
   let url = config.url, method = config.card ? 'HEAD' : config.method ?? 'GET';
+  // Custom headers (an Authorization, say) go only to the address's own
+  // origin; a redirect elsewhere gets none, as browsers and curl do.
+  let origin = null;
+  try { origin = new URL(config.url).origin; } catch {}
   try {
     let answer;
     for (let hop = 0; ; hop++) {
-      answer = await request(url, { method, headers, body: method === 'POST' ? config.body : undefined, timeoutMs, agentOptions, family, signal: deadline });
+      answer = await request(url, { method, headers: new URL(url).origin === origin ? headers : {}, body: method === 'POST' ? config.body : undefined, timeoutMs, agentOptions, family, signal: deadline });
       if (config.card && method === 'HEAD' && answer.status > 403) { method = 'GET'; continue; }
       const location = answer.headers.location;
       if ((config.followRedirects !== false || config.card) && answer.status >= 300 && answer.status < 400 && location && hop < 5) {

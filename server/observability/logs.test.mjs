@@ -48,6 +48,8 @@ test('secrets never reach storage, and audit events stay administrator-only', as
   env.redactor.setSecrets(new Map([['s3cr3t-api-key-value', 'Sonarr key']]));
   env.ingest.add({ message: 'GET https://host.example.org/api?apikey=abcdef123456&x=1 failed with key s3cr3t-api-key-value', severity: 'error' });
   env.ingest.add({ message: 'Authorization: Bearer abcdefghijklmnop', severity: 'warning' });
+  // Fields named like secrets keep no value, however deep (review M2).
+  env.ingest.add({ message: 'structured', severity: 'info', fields: { password: 'hunter2hunter2', api_key: 'K3Y-VALUE-998', nested: { token: 'tok-123456789' }, code: 200 } });
   env.ingest.add({ message: 'sign-in-failed', event_type: 'auth.sign-in-failed', category: 'security', source_type: 'audit', fields: { ip: '192.0.2.4', username: 'admni' } });
   env.ingest.flush();
   const found = env.query.search({ query: '', ...range(env.now), scopes: null, restricted: true }).events;
@@ -56,6 +58,8 @@ test('secrets never reach storage, and audit events stay administrator-only', as
   assert.ok(!text.includes('abcdef123456'));
   assert.ok(!text.includes('abcdefghijklmnop'));
   assert.ok(text.includes('[secret: Sonarr key]'));
+  for (const leaked of ['hunter2hunter2', 'K3Y-VALUE-998', 'tok-123456789']) assert.ok(!text.includes(leaked), leaked);
+  assert.equal(found.find(event => event.message === 'structured').fields.code, 200);
   assert.equal(env.query.search({ query: 's3cr3t', ...range(env.now), scopes: null, restricted: true }).events.length, 0);
   const audit = found.find(event => event.event_type === 'auth.sign-in-failed');
   assert.equal(audit.restricted, true);

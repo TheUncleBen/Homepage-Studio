@@ -116,9 +116,11 @@ it never starts, stops or changes containers.
 
 Do not give Studio the Docker socket itself. Point `docker.yaml` at a
 read-only socket proxy that allows only what Studio reads: containers,
-events, info and version, plus services and tasks on Swarm. Any proxy that
-can do this works; check its own documentation for the exact settings, pin
-its image, and keep it on a network only Studio can reach. For example,
+events, info and version, plus services and tasks on Swarm. Turn off POST
+and every other write method on the proxy, so nothing that reaches it can
+start, stop or change containers. Any proxy that can do this works; check
+its own documentation for the exact settings, pin its image, and keep it on
+a network only Studio can reach. For example,
 `docker.yaml`:
 
 ```yaml

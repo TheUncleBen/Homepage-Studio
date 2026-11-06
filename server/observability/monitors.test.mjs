@@ -106,6 +106,27 @@ test('the HTTP check: accepted codes, keyword, JSON value, card rule, timeout', 
   assert.equal((await runHttp({ url: 'http://127.0.0.1:1/' }, { timeoutMs: 2000 })).cls, 'refused');
 });
 
+test('custom headers go only to the address\'s own origin, never to a redirect elsewhere', async t => {
+  const seen = [];
+  const other = http.createServer((req, res) => { seen.push({ at: 'other', auth: req.headers.authorization ?? null }); res.end('ok'); });
+  await new Promise(resolve => other.listen(0, '127.0.0.1', resolve));
+  const otherBase = `http://127.0.0.1:${other.address().port}`;
+  const home = http.createServer((req, res) => {
+    seen.push({ at: 'home' + req.url, auth: req.headers.authorization ?? null });
+    if (req.url === '/same') { res.writeHead(302, { location: '/final' }); return res.end(); }
+    if (req.url === '/away') { res.writeHead(302, { location: otherBase + '/landing' }); return res.end(); }
+    res.end('ok');
+  });
+  await new Promise(resolve => home.listen(0, '127.0.0.1', resolve));
+  t.after(() => { for (const server of [home, other]) { server.closeAllConnections(); server.close(); } });
+  const base = `http://127.0.0.1:${home.address().port}`;
+  const headers = [{ name: 'Authorization', value: 'Bearer secret-token' }];
+  assert.equal((await runHttp({ url: base + '/same', headers }, { timeoutMs: 2000 })).ok, true);
+  assert.deepEqual(seen.splice(0), [{ at: 'home/same', auth: 'Bearer secret-token' }, { at: 'home/final', auth: 'Bearer secret-token' }]);
+  assert.equal((await runHttp({ url: base + '/away', headers }, { timeoutMs: 2000 })).ok, true);
+  assert.deepEqual(seen.splice(0), [{ at: 'home/away', auth: 'Bearer secret-token' }, { at: 'other', auth: null }]);
+});
+
 test('TCP, ping parsing and helpers', async t => {
   const server = net.createServer(socket => socket.end());
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

@@ -153,8 +153,18 @@ test('each person sees only the dashboards given to them; export and settings st
   // Heartbeats: a known token is accepted, an unknown one looks like a missing page.
   assert.equal((await request('/studio/push/' + home.json.token)).status, 200);
   assert.equal((await request('/studio/push/' + 'x'.repeat(32))).status, 404);
+  // A ping keeps the monitor up; ?status=down (here by POST, as a script
+  // sends it, without the editor header) brings it down.
+  const monitorState = async () => (await request('/studio/api/ops/monitors/' + home.json.item.id, { cookie: admin.cookie })).json.monitor.state;
+  assert.equal(await eventually(async () => (await monitorState()) === 'up'), true, 'a heartbeat leaves the push monitor up');
+  const failed = await request('/studio/push/' + home.json.token + '?status=down', { method: 'POST', body: JSON.stringify({ msg: 'disk full' }), headers: { 'content-type': 'application/json' } });
+  assert.equal(failed.status, 200, failed.text);
+  assert.equal(await eventually(async () => (await monitorState()) === 'down'), true, '?status=down brings it down');
+  assert.equal((await request('/studio/push/' + home.json.token)).status, 200);
+  assert.equal(await eventually(async () => (await monitorState()) === 'up'), true, 'the next heartbeat brings it back up');
   // Log intake with each source's token.
-  const send = (token, message) => post('/studio/ingest/logs', { events: [{ message, level: 'error' }] }, { headers: { authorization: 'Bearer ' + token } });
+  // As documented: a plain POST with the token, no editor header or Origin.
+  const send = (token, message) => request('/studio/ingest/logs', { method: 'POST', body: JSON.stringify({ events: [{ message, level: 'error' }] }), headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token } });
   assert.equal((await send(source.json.token, 'lab only failure')).status, 202);
   assert.equal((await send(homeSource.json.token, 'home only failure')).status, 202);
   assert.equal((await send('y'.repeat(32), 'nobody')).status, 401);
@@ -172,6 +182,15 @@ test('each person sees only the dashboards given to them; export and settings st
   assert.deepEqual(dashboardAccess.json.operations, { monitoring: true, logs: true });
   assert.equal(dashboardAccess.json.operationsMenu, true);
 
+  // A check address with credentials never reaches a viewer whole.
+  const router = await post('/studio/api/ops/config', { kind: 'monitor', action: 'save', item: { name: 'Router', scope: 'default', type: 'http', interval: 600, http: { url: 'http://admin:RouterPass99@127.0.0.1:1/status?apikey=SECRETKEY123' } } }, { cookie: admin.cookie });
+  assert.equal(router.status, 200, router.text);
+  const seenByMember = (await request('/studio/api/ops/monitors/' + router.json.item.id, { cookie: member.cookie })).json.monitor;
+  assert.equal(seenByMember.target, '127.0.0.1:1');
+  const seenByAdmin = (await request('/studio/api/ops/monitors/' + router.json.item.id, { cookie: admin.cookie })).json.monitor;
+  assert.equal(seenByAdmin.target, 'http://127.0.0.1:1/status');
+  for (const text of [JSON.stringify(seenByMember), (await request('/studio/api/ops/monitors', { cookie: member.cookie })).text]) assert.doesNotMatch(text, /RouterPass99|SECRETKEY123/);
+  await post('/studio/api/ops/config', { kind: 'monitor', action: 'delete', id: router.json.item.id }, { cookie: admin.cookie });
   const monitors = await request('/studio/api/ops/monitors', { cookie: member.cookie });
   assert.deepEqual(monitors.json.monitors.map(item => item.name), ['Home backup']);
   assert.equal((await request('/studio/api/ops/monitors/' + labMonitor.json.item.id, { cookie: member.cookie })).status, 404, 'another dashboard\'s monitor looks missing');
@@ -182,7 +201,7 @@ test('each person sees only the dashboards given to them; export and settings st
 
   // Logs: Home's events only, never Lab's, Studio's or sign-in events.
   const search = async (cookie, q = '') => (await request('/studio/api/ops/logs/search?range=1h&q=' + encodeURIComponent(q), { cookie })).json;
-  const seen = await eventually(async () => { const result = await search(member.cookie, 'failure'); return result.events?.length ? result : null; });
+  const seen = await eventually(async () => { const result = await search(member.cookie, 'only failure'); return result.events?.length ? result : null; });
   assert.deepEqual(seen.events.map(event => event.message), ['home only failure']);
   const all = await search(member.cookie);
   assert.ok(all.events.every(event => event.scope === 'default'), 'nothing from another dashboard or Studio');
@@ -197,6 +216,10 @@ test('each person sees only the dashboards given to them; export and settings st
 
   // Settings and export are for administrators.
   assert.equal((await request('/studio/api/ops/config', { cookie: member.cookie })).status, 403);
+  const view = await post('/studio/api/ops/config', { kind: 'view', action: 'save', item: { name: 'Lab errors', query: 'dashboard:' + lab + ' severity:error', range: '1h' } }, { cookie: admin.cookie });
+  assert.equal(view.status, 200, view.text);
+  assert.equal((await request('/studio/api/ops/views', { cookie: member.cookie })).status, 403, 'saved searches can name other dashboards');
+  assert.equal((await request('/studio/api/ops/views', { cookie: admin.cookie })).json.views.length, 1);
   assert.equal((await post('/studio/api/ops/config', { kind: 'monitor', action: 'delete', id: home.json.item.id }, { cookie: member.cookie })).status, 403);
   assert.equal((await request('/studio/api/ops/logs/export?range=1h', { cookie: member.cookie })).status, 403);
   const exported = await request('/studio/api/ops/logs/export?range=1h&format=csv', { cookie: admin.cookie });
@@ -215,6 +238,57 @@ test('each person sees only the dashboards given to them; export and settings st
   assert.equal(typeof panels.json.panels, 'object');
 });
 
+test('keys saved after start, personal keys, widget keys and file secrets are masked in the logs', async t => {
+  const context = await setup(t);
+  const { request, post, stateDir } = context;
+  const admin = await createAdmin(context);
+  const source = await post('/studio/api/ops/config', { kind: 'source', action: 'save', item: { name: 'Home app', kind: 'https', scope: 'default' } }, { cookie: admin.cookie });
+  assert.equal(source.status, 200, source.text);
+
+  // A widget key typed into services.yaml and a Docker-style secret file.
+  const configDir = path.join(path.dirname(stateDir), 'config');
+  await fs.writeFile(path.join(configDir, 'services.yaml'), '- Media:\n    - Plex:\n        href: http://plex.test\n        widget:\n          type: plex\n          url: http://plex.test\n          key: WIDGETKEY-4242\n');
+  const secretFile = path.join(path.dirname(stateDir), 'file-secret');
+  await fs.writeFile(secretFile, 'FILESECRET-5151\n');
+  process.env.HOMEPAGE_FILE_TEST_SECRET = secretFile;
+  t.after(() => { delete process.env.HOMEPAGE_FILE_TEST_SECRET; });
+
+  // A shared connection saved now, and a personal one; each save refreshes the list.
+  const shared = await post('/studio/api/connections', { action: 'add', name: 'Late', url: 'http://late.test', key: 'LATECONNKEY-777' }, { cookie: admin.cookie });
+  assert.equal(shared.status, 200, shared.text);
+  const personal = await post('/studio/api/my-connections', { action: 'add', name: 'Mine', url: 'http://mine.test', key: 'PERSONALKEY-888' }, { cookie: admin.cookie });
+  assert.equal(personal.status, 200, personal.text);
+
+  const sent = await request('/studio/ingest/logs', { method: 'POST', body: JSON.stringify({ events: [{ message: 'leak LATECONNKEY-777 PERSONALKEY-888 WIDGETKEY-4242 FILESECRET-5151', level: 'error' }] }), headers: { 'content-type': 'application/json', authorization: 'Bearer ' + source.json.token } });
+  assert.equal(sent.status, 202, sent.text);
+  const found = await eventually(async () => { const result = (await request('/studio/api/ops/logs/search?range=1h&q=leak', { cookie: admin.cookie })).json; return result.events?.length ? result : null; });
+  const message = found.events[0].message;
+  for (const value of ['LATECONNKEY-777', 'PERSONALKEY-888', 'WIDGETKEY-4242', 'FILESECRET-5151']) assert.doesNotMatch(message, new RegExp(value), `${value} is masked`);
+});
+
+test('removing a person takes their name out of the logs and incidents', async t => {
+  const context = await setup(t);
+  const { request, post } = context;
+  const admin = await createAdmin(context);
+  const member = await inviteMember(context, admin.cookie, 'carol');
+  await post('/studio/auth/admin/grants', { dashboardId: 'default', grants: [{ subject: 'user:' + member.invited.id, level: 'view', monitoring: true, logs: true }] }, { cookie: admin.cookie });
+  // Carol acknowledges an incident on a push monitor that reported a failure.
+  const monitor = await post('/studio/api/ops/config', { kind: 'monitor', action: 'save', item: { name: 'Nightly job', scope: 'default', type: 'push', push: { period: 3600 } } }, { cookie: admin.cookie });
+  await request('/studio/push/' + monitor.json.token + '?status=down');
+  const incident = await eventually(async () => (await request('/studio/api/ops/incidents', { cookie: member.cookie })).json?.incidents?.[0]);
+  assert.ok(incident, 'an incident opened');
+  assert.equal((await post('/studio/api/ops/incidents/' + incident.id + '/ack', {}, { cookie: member.cookie })).status, 200);
+  const search = async q => (await request('/studio/api/ops/logs/search?range=1h&q=' + encodeURIComponent(q), { cookie: admin.cookie })).json.events ?? [];
+  assert.ok((await eventually(async () => (await search('actor:carol')).length >= 2)), 'her sign-up and acknowledgement name her');
+
+  assert.equal((await post('/studio/auth/admin/delete', { id: member.invited.id }, { cookie: admin.cookie })).status, 200);
+  assert.equal((await eventually(async () => (await search('actor:carol')).length === 0)), true, 'no event names her as actor');
+  assert.equal((await search('carol')).length, 0, 'nor in the words of any message');
+  assert.ok((await search('removed person')).length >= 2, 'what happened is kept');
+  const timeline = (await request('/studio/api/ops/incidents/' + incident.id, { cookie: admin.cookie })).json;
+  assert.doesNotMatch(JSON.stringify(timeline), /carol|Member/, 'the incident timeline no longer names her');
+});
+
 test('with sign-in off, Operations, export and log intake are closed', async t => {
   const context = await setup(t, { auth: 'off' });
   const { request, post } = context;
@@ -224,6 +298,7 @@ test('with sign-in off, Operations, export and log intake are closed', async t =
   }
   assert.notEqual((await request('/studio/operations', { headers: html })).status, 200);
   assert.equal((await post('/studio/ingest/logs', { message: 'x' }, { headers: { authorization: 'Bearer ' + 'z'.repeat(32) } })).status, 404);
+  assert.equal((await request('/studio/ingest/logs', { method: 'POST', body: '{"message":"x"}', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + 'z'.repeat(32) } })).status, 404, 'a script without the editor header gets the same 404');
   assert.equal((await post('/studio/api/client-errors', { errors: [{ message: 'x' }] })).status, 404);
   const registry = await request('/studio/api/dashboards');
   await post('/studio/api/dashboards', { revision: registry.json.revision, action: 'update', id: 'default', name: 'Main dashboard', slug: 'home' });

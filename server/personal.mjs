@@ -138,6 +138,15 @@ export function createPersonalStore({ stateRoot }) {
   }
   return {
     forUser,
+    // Everyone's own saved connections, secrets included: only for masking
+    // them in Studio's logs (server/observability).
+    async allConnections() {
+      let ids = [];
+      try { ids = (await fs.readdir(root)).filter(name => USER_ID.test(name)); } catch { return []; }
+      const out = [];
+      for (const id of ids) out.push(...await forUser(id).connections.list().catch(() => []));
+      return out;
+    },
     // Removes everything a deleted account kept.
     async removeUser(userId) {
       const dir = dirFor(userId);
