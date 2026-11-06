@@ -1509,7 +1509,7 @@
         const copied = ['connection', 'logo', 'background'].includes(item.kind);
         const remove = actionRow(`Delete this ${one}`, { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog(`Delete ${item.name}?`, copied ? 'Dashboards that use a copy of it keep theirs.' : item.kind === 'widget' ? 'Widgets already placed from it stay on their dashboards.' : 'Widgets that use this look keep it.', 'Delete', () => refresh(() => change({ action: 'delete', ...target(item) }), `${item.name} is deleted.`)); } });
         const form = h('form', { class: 'stack' },
-          group({}, row('Name', name), item.detail ? row(item.kind === 'connection' ? 'Address' : item.kind === 'widget' ? 'Type' : 'Size', value(item.detail)) : null, admin ? row('Kept', value(where(item))) : null, used(item) ? row('Used', value(used(item))) : null, item.updatedAt ? row('Saved', value(shortDate(item.updatedAt))) : null),
+          group({}, row('Name', canChange ? name : value(item.name)), item.detail ? row(item.kind === 'connection' ? 'Address' : item.kind === 'widget' ? 'Type' : 'Size', value(item.detail)) : null, admin ? row('Kept', value(where(item))) : null, used(item) ? row('Used', value(used(item))) : null, item.updatedAt ? row('Saved', value(shortDate(item.updatedAt))) : null),
           canChange ? group({}, remove) : h('p', { class: 'muted', text: 'Manage this dashboard’s connections and images in its Dashboard settings, where Studio checks which widgets use them first.' }),
           box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Done' }), save));
         form.addEventListener('submit', event => {
