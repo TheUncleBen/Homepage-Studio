@@ -14,6 +14,35 @@ the volumes and follow [docs/DEPLOY.md](docs/DEPLOY.md) from the start. Studio
 carries no conversions for data from earlier candidates, and the upgrade notes
 in older entries below are history only.
 
+### Built-in monitoring and logs; a docked widget editor, saved items and filler widgets
+
+- **Monitoring** ([docs/MONITORING.md](docs/MONITORING.md)). Every card with
+  a status check gets its own monitor, so every browser shows the same status.
+  Administrators add web, port, ping, DNS, certificate, push (heartbeat),
+  Docker and group monitors, with incidents, **I'm on it**, notes,
+  maintenance windows and notifications (email, webhook, ntfy, Gotify,
+  Discord, Slack, Teams, Telegram, Pushover, Matrix, Home Assistant,
+  Apprise). Nothing else to run beside Studio.
+- **Logs** ([docs/LOGS.md](docs/LOGS.md)). One searchable log of Studio,
+  each dashboard's widgets, monitors, sign-in and administration events, and
+  anything your apps send over HTTPS or devices send by syslog. Secrets are
+  masked before storage; administrators can export and set alerts.
+- **Operations**, from the name menu, for administrators and for people an
+  administrator gives **Monitoring** or **Logs** on a dashboard (Dashboard
+  access). Each dashboard's monitors and logs stay separate. With sign-in off
+  Operations, export and log intake are switched off.
+- **Investigate**: right-click or long-press a widget (also inside a stack)
+  to see its status check and latest log entries.
+- **Docked widget editor** beside the board on wide screens; **Saved items**
+  under My account and Administration; Studio's own heading, note, picture
+  and spacer widgets; **Show on** desktop, tablet or phone per widget.
+- **Search** in the top bar; results open in the same tab by default.
+- Status checks use the widget's own connection address, with **Check now**;
+  value boxes in a balanced grid or a chosen number of columns.
+- **Trusted certificates** can be stored in Administration. Monitors use
+  them for web and certificate checks; widgets don't use them yet (that
+  waits on an owner decision).
+
 ### A layout per size, a sectioned widget dialog, saved widgets and looks
 
 - **A layout for each size.** Tablet and phone layouts are made from desktop
