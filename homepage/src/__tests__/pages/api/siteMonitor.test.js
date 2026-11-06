@@ -62,7 +62,7 @@ describe("pages/api/siteMonitor", () => {
     httpProxy.mockResolvedValueOnce([200]);
     const res = createMockRes();
     await handler({ query: { groupName: "g", serviceName: "s", fallback: "1" } }, res);
-    expect(httpProxy).toHaveBeenCalledWith("https://app.example.com", { method: "HEAD" });
+    expect(httpProxy).toHaveBeenCalledWith("https://app.example.com", { method: "HEAD", cookieJar: false });
     expect(res.statusCode).toBe(200);
 
     const plain = createMockRes();
@@ -85,7 +85,7 @@ describe("pages/api/siteMonitor", () => {
 
     await handler(req, res);
 
-    expect(httpProxy).toHaveBeenCalledWith("http://example.com", { method: "HEAD" });
+    expect(httpProxy).toHaveBeenCalledWith("http://example.com", { method: "HEAD", cookieJar: false });
     expect(res.statusCode).toBe(200);
     expect(res.body.status).toBe(200);
     expect(res.body.latency).toBe(10);
@@ -101,8 +101,8 @@ describe("pages/api/siteMonitor", () => {
 
     await handler(req, res);
 
-    expect(httpProxy).toHaveBeenNthCalledWith(1, "http://example.com", { method: "HEAD" });
-    expect(httpProxy).toHaveBeenNthCalledWith(2, "http://example.com");
+    expect(httpProxy).toHaveBeenNthCalledWith(1, "http://example.com", { method: "HEAD", cookieJar: false });
+    expect(httpProxy).toHaveBeenNthCalledWith(2, "http://example.com", { cookieJar: false });
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ status: 200, latency: 10 });
   });

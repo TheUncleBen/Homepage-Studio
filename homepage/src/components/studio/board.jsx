@@ -9,6 +9,7 @@ import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm, wid
 import CardBackground from "./card-background";
 import { ChartFullView, chartRanges } from "./card-chart";
 import { canRefresh, refreshCards, resolvedBehaviour, resolvedLook, useCardTheme } from "./card-look";
+import { enableClientErrors } from "./client-errors.mjs";
 import { ConnectionsEditor } from "./connections";
 import ContentEditor, { ContentPicker, duplicateEntry } from "./content-editor";
 import { dashboardPath } from "./dashboard-path.mjs";
@@ -44,6 +45,7 @@ import {
   updatePage,
 } from "./geometry.mjs";
 import StudioIcon from "./icons";
+import InvestigateSheet from "./investigate";
 import {
   centreInRow,
   followDesktop,
@@ -55,7 +57,7 @@ import {
   sizeProjection,
   sizeView,
 } from "./layouts.mjs";
-import { CHART_SHOWS, needsHistory, readLook, statusColours } from "./look.mjs";
+import { CHART_SHOWS, needsHistory, readLook, showsOn, statusColours } from "./look.mjs";
 import Menu from "./menu";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
@@ -124,6 +126,23 @@ const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const uuid = () => globalThis.crypto?.randomUUID?.() || `stack-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 // One stable React parent owns every native host for its entire board lifetime.
 // Stack shells are siblings; a membership change never reparents native content.
+// Wide enough to dock the widget editor beside the board and still leave the
+// board about 900px (480px panel + 20px gap); narrower screens keep the
+// full-height sheet. Matches the media query in studio.css.
+const DOCK_QUERY = "(min-width: 1400px)";
+function useWideScreen() {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const query = typeof window !== "undefined" && window.matchMedia ? window.matchMedia(DOCK_QUERY) : null;
+    if (!query) return undefined;
+    const update = () => setWide(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+  return wide;
+}
+
 export function PanelLayer({
   board,
   data,
@@ -151,6 +170,8 @@ export function PanelLayer({
   onLongPress,
   renderNative,
   toolsShown = null,
+  offLayout = null,
+  liveDraft = null,
 }) {
   const stackByPanel = new Map(board.stacks.flatMap((stack) => stack.panelIds.map((id) => [id, stack])));
   // Keep DOM sibling order independent of geometry. Moving an existing iframe
@@ -159,7 +180,12 @@ export function PanelLayer({
   const panels = board.panels;
   return (
     <div className="studio-panel-layer">
-      {panels.map((panel) => {
+      {panels.map((shown) => {
+        // The widget being edited in the docked editor shows its draft.
+        const live = liveDraft?.panel?.id === shown.id ? liveDraft : null;
+        const panel = live
+          ? { ...shown, look: live.panel.look, behaviour: live.panel.behaviour, title: live.panel.title }
+          : shown;
         const stack = stackByPanel.get(panel.id);
         const unitId = stack?.id || panel.id;
         const selectedId = stack
@@ -195,6 +221,8 @@ export function PanelLayer({
             onLongPress={onLongPress}
             renderNative={renderNative}
             toolsShown={!stack && toolsShown === panel.id}
+            offLayout={offLayout?.has(panel.id) || false}
+            override={live?.override || null}
           />
         );
       })}
@@ -256,11 +284,11 @@ function ShortcutsSheet({ editing, pages }) {
   );
 }
 
-// Widgets a phone leaves out (behaviour "On phones: Hide"), dropped from the
-// board before it is projected. A stack keeps its other members.
-export function withoutPhoneHidden(board, settings) {
+// Widgets a layout leaves out (behaviour "Show on"), dropped from the board
+// before it is projected. A stack keeps its other members.
+export function withoutHiddenOn(board, settings, size) {
   const hidden = new Set(
-    board.panels.filter((panel) => resolvedBehaviour(settings, panel).phones === "hide").map((panel) => panel.id),
+    board.panels.filter((panel) => !showsOn(resolvedBehaviour(settings, panel).showOn, size)).map((panel) => panel.id),
   );
   if (!hidden.size) return board;
   return {
@@ -335,10 +363,14 @@ export default function StudioBoard({
   // Until the answer arrives every control shows but stays disabled; a failed
   // or unexpected answer leaves only viewing. With sign-in off Studio answers admin.
   const accessLoading = !access && !accessError;
+  // Widget failures go to this dashboard's logs, with sign-in on.
+  useEffect(() => enableClientErrors(access?.authEnabled), [access?.authEnabled]);
   const level = ["view", "arrange", "admin"].includes(access?.level) ? access.level : accessLoading ? "admin" : "view";
   const isAdmin = level === "admin";
   const canArrange = isAdmin || level === "arrange";
   const [draft, setDraft] = useState(null);
+  // The widget whose Investigate sheet is open.
+  const [investigating, setInvestigating] = useState(null);
   const [draftSource, setDraftSource] = useState(null);
   // The editor page is always in editing; it is left by navigating away.
   const editing = editorPage && canArrange;
@@ -500,10 +532,25 @@ export default function StudioBoard({
   // widgets on other pages don't poll their services.
   // The size being shown: the screen's own, or in the editor the one picked
   // in its size switch. A tablet or phone view carries that size's layout.
-  const layoutSize = editing && editSize ? editSize : sizeForWidth(width);
+  // The editor docked beside the board narrows it; the layout being edited
+  // stays the one chosen before it opened.
+  const wideScreen = useWideScreen();
+  const docked = Boolean(wideScreen && modal?.type === "content" && modal.panel);
+  // (The panel takes min(480px, 42vw) plus a 20px gap; see studio.css.)
+  const dockWidth = docked && typeof window !== "undefined" ? Math.min(480, window.innerWidth * 0.42) + 20 : 0;
+  const layoutSize = editing && editSize ? editSize : sizeForWidth(width + dockWidth);
+  // The live dashboard lays a size out without the widgets it leaves out
+  // (Show on), so a generated tablet or phone layout closes up around them
+  // rather than keeping their gap (review M6).
   const board = useMemo(
-    () => sizeView(pageBoard(wholeBoard, currentPage), layoutSize),
-    [wholeBoard, currentPage, layoutSize],
+    () =>
+      sizeView(
+        editing
+          ? pageBoard(wholeBoard, currentPage)
+          : withoutHiddenOn(pageBoard(wholeBoard, currentPage), settings, layoutSize),
+        layoutSize,
+      ),
+    [wholeBoard, currentPage, layoutSize, editing, settings],
   );
   // The page's own background, or the dashboard's (Appearance).
   const cardTheme = useCardTheme();
@@ -539,11 +586,23 @@ export default function StudioBoard({
     });
     return () => element.removeEventListener("touchmove", preserveManipulation);
   }, []);
-  // On a phone, the live dashboard leaves out widgets set to hide on phones.
-  // The editor keeps them so they can still be arranged.
+  // The live dashboard leaves out widgets not shown on this layout. The
+  // editor keeps them, faded, so they can still be found and turned back on.
   const projection = useMemo(
-    () => sizeProjection(!editing && layoutSize === "phone" ? withoutPhoneHidden(board, settings) : board, layoutSize),
+    () => sizeProjection(editing ? board : withoutHiddenOn(board, settings, layoutSize), layoutSize),
     [board, layoutSize, editing, settings],
+  );
+  // While editing: the widgets this layout leaves out (shown faded).
+  const offLayout = useMemo(
+    () =>
+      editing
+        ? new Set(
+            board.panels
+              .filter((panel) => !showsOn(resolvedBehaviour(settings, panel).showOn, layoutSize))
+              .map((panel) => panel.id),
+          )
+        : null,
+    [board, settings, editing, layoutSize],
   );
   const gap = gapOf(settings);
   const geometry = useMemo(
@@ -686,6 +745,19 @@ export default function StudioBoard({
       setDiscardAction(() => action);
     } else action();
   };
+  // A widget's editor docks beside the board on wide screens (T26): the real
+  // card shows the draft as it changes.
+  const [liveDraft, setLiveDraft] = useState(null);
+  const editedId = docked ? modal.panel.id : null;
+  useEffect(() => {
+    if (!editedId) return;
+    // Bring the card being edited into view beside the panel.
+    requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-panel-id="${CSS.escape(editedId)}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: "auto" }),
+    );
+  }, [editedId]);
   const closeModal = () => {
     if (discardAction) setDiscardAction(null);
     else requestEditorAction(dismissEditor);
@@ -933,7 +1005,13 @@ export default function StudioBoard({
       if (!(await flushArrangement())) return;
       setModal({ type: "discovery", panel });
       setEditorData(null);
-    } else if (isAdmin) openEditor("content", { panel });
+    } else if (isAdmin) {
+      // With the editor docked the board stays usable: editing another widget
+      // switches the panel to it, asking first about unsaved changes.
+      if (modal?.type === "content" && modal.panel?.id === panel.id) return;
+      if (modal) requestEditorAction(() => openEditor("content", { panel }));
+      else openEditor("content", { panel });
+    }
   };
   const editStack = (stack) => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
@@ -1668,7 +1746,8 @@ export default function StudioBoard({
     );
   };
   const openUnitMenu = async (id, pointer, from) => {
-    if (controlsDisabled || modal || saveInFlight.current || nativeRefreshLock.current) return;
+    // Docked, the board beside the editor keeps its widget menu (review R2).
+    if (controlsDisabled || (modal && !docked) || saveInFlight.current || nativeRefreshLock.current) return;
     const element = canvas.current?.querySelector(
       `[data-panel-id="${CSS.escape(id)}"]:not([aria-hidden]), [data-stack-shell-id="${CSS.escape(id)}"]`,
     );
@@ -1678,9 +1757,27 @@ export default function StudioBoard({
     const menu = { id, x, y, from: from || document.activeElement };
     // Only for naming the widget type in "Use this look on every … widget".
     const catalog = await loadCatalog().catch(() => null);
-    setUnitMenu({ ...menu, items: unitMenuItems(id, menu, catalog) });
+    const items = unitMenuItems(id, menu, catalog);
+    if (items.length) setUnitMenu({ ...menu, items });
   };
+  // Investigate (observability plan 9.4): people with Monitoring or Logs on
+  // this dashboard, administrators included, open a sheet about the widget.
+  // While viewing it is the widget menu's only item, so the menu is offered
+  // only to them. Operations checks access again on the server.
+  const canInvestigate = Boolean(access?.dashboard?.id && (access?.operations?.monitoring || access?.operations?.logs));
+  const investigateItem = (panel) =>
+    canInvestigate && {
+      id: "investigate",
+      icon: "pulse",
+      label: "Investigate",
+      onSelect: () => setInvestigating(panel),
+    };
   const unitMenuItems = (id, menu, catalog) => {
+    // With the editor docked, an action that opens another editor asks
+    // about its unsaved changes first; the widget being edited keeps its
+    // look and its Delete in the editor, so they aren't offered twice.
+    const guarded = (action) => () => (modal ? requestEditorAction(action) : action());
+    const beingEdited = docked && modal?.panel?.id === id;
     const panel = wholeBoard.panels.find((item) => item.id === id);
     const stack = wholeBoard.stacks.find((item) => item.id === id);
     const otherPages = pages.filter((page) => page.id !== currentPage);
@@ -1703,13 +1800,21 @@ export default function StudioBoard({
           else if (next !== boardRef.current) changeBoard(next);
         },
       };
+    // While viewing, a stack offers Investigate for the widget it shows.
+    if (stack && !editing) {
+      const shownId =
+        controllers.current.get(stack.id)?.getSnapshot().activeId || active[stack.id] || stack.panelIds[0];
+      const shown = wholeBoard.panels.find((item) => item.id === shownId);
+      return shown ? [investigateItem(shown)].filter(Boolean) : [];
+    }
     if (stack)
       return [
-        { id: "edit", icon: "edit", label: "Edit stack", onSelect: () => editStack(stack) },
+        { id: "edit", icon: "edit", label: "Edit stack", onSelect: guarded(() => editStack(stack)) },
         centreItem,
         moveItem,
       ];
     if (!panel) return [];
+    if (!editing) return [investigateItem(panel)].filter(Boolean);
     const discovered = Boolean(panel.nativeLocator?.discovered);
     const canChange = isAdmin && !discovered;
     const sameType = wholeBoard.panels.filter((item) => panelType(item) === panelType(panel));
@@ -1728,7 +1833,7 @@ export default function StudioBoard({
         icon: "copy",
         label: "Duplicate",
         shortcut: "Ctrl D",
-        onSelect: () => openEditor("content", { panel, duplicate: true }),
+        onSelect: guarded(() => openEditor("content", { panel, duplicate: true })),
       },
       "-",
       { id: "copy-look", icon: "paint", label: "Copy look", shortcut: "Ctrl Alt C", onSelect: () => copyLook(panel) },
@@ -1766,6 +1871,7 @@ export default function StudioBoard({
         shortcut: "R",
         onSelect: () => refreshNow([panel.id]),
       },
+      investigateItem(panel),
       centreItem,
       moveItem,
       href && {
@@ -1785,8 +1891,28 @@ export default function StudioBoard({
       },
     ]
       .filter(Boolean)
+      .filter(
+        (item) =>
+          !(beingEdited && ["edit", "copy-look", "paste-look", "delete"].includes(item.id)) &&
+          !(docked && item.id === "look-everywhere"),
+      )
       .filter((item, index, list) => item !== "-" || (index > 0 && index < list.length - 1 && list[index - 1] !== "-"));
   };
+  // While viewing, the menu key (or Shift F10) on a focused widget opens
+  // its menu for people who can investigate it.
+  useEffect(() => {
+    if (editing || !canInvestigate) return undefined;
+    const key = (event) => {
+      if (event.defaultPrevented || modal || overlayOpen || unitMenu) return;
+      if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+      const id = document.activeElement?.closest?.("[data-panel-id]")?.dataset.panelId;
+      if (!id) return;
+      event.preventDefault();
+      openUnitMenu(id, null, document.activeElement);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  });
   // Widget keys while editing act on the one selected widget, or the
   // focused one: E edits, Delete deletes, Ctrl D duplicates, Ctrl Alt C and
   // V copy and paste its look, and the menu key opens its menu.
@@ -1949,7 +2075,7 @@ export default function StudioBoard({
 
   return (
     <main
-      className={`studio-app${editing ? " studio-edit-mode" : ""}${editing && selection.length ? " studio-has-bulk" : ""}`}
+      className={`studio-app${editing ? " studio-edit-mode" : ""}${editing && selection.length ? " studio-has-bulk" : ""}${docked ? " studio-docked-editing" : ""}`}
       data-glass={(pageBackground && settings?.studioTheme?.glass) || undefined}
       style={Object.fromEntries(
         Object.entries(statusColours(settings)).map(([key, colour]) => [`--studio-status-${key}`, colour]),
@@ -2355,6 +2481,8 @@ export default function StudioBoard({
           ))}
         </div>
         <PanelLayer
+          offLayout={offLayout}
+          liveDraft={docked ? liveDraft : null}
           board={board}
           data={renderedNativeData}
           geometry={geometry}
@@ -2381,7 +2509,7 @@ export default function StudioBoard({
           onSelect={select}
           onManipulate={manipulate}
           onUnitKey={unitKey}
-          onLongPress={editing ? openUnitMenu : undefined}
+          onLongPress={editing || canInvestigate ? openUnitMenu : undefined}
           overlayOpen={overlayOpen}
           toolsShown={editing ? toolsShown : null}
         />
@@ -2401,7 +2529,7 @@ export default function StudioBoard({
               onActive={onActive}
               registerController={registerController}
               onEdit={editStack}
-              onLongPress={editing ? openUnitMenu : undefined}
+              onLongPress={editing || canInvestigate ? openUnitMenu : undefined}
               onManipulate={manipulate}
               onUnitKey={unitKey}
               onStackDrag={(offset) => onStackDrag(stack.id, offset)}
@@ -2416,6 +2544,24 @@ export default function StudioBoard({
           </div>
         )}
       </div>
+      {/* While viewing, the widget menu holds only Investigate. */}
+      {unitMenu && !editing && !unitMenu.pages && (
+        <Menu
+          anchor={unitMenu}
+          label="Widget actions"
+          returnFocus={unitMenu.from}
+          onClose={() => setUnitMenu(null)}
+          items={unitMenu.items}
+        />
+      )}
+      {investigating && (
+        <InvestigateSheet
+          panel={investigating}
+          dashboardId={access?.dashboard?.id}
+          operations={access?.operations ?? {}}
+          onClose={() => setInvestigating(null)}
+        />
+      )}
       {fullView && (
         <FullViewHost
           panel={fullView}
@@ -2468,6 +2614,7 @@ export default function StudioBoard({
       )}
       {modal && (
         <StudioDialog
+          docked={docked}
           title={modalTitles[modal.type]}
           onClose={closeModal}
           onBack={
@@ -2707,6 +2854,13 @@ export default function StudioBoard({
                   onSaved={savedContent}
                   onCancel={closeModal}
                   onReload={reloadEditor}
+                  docked={docked}
+                  onLiveDraft={docked ? setLiveDraft : undefined}
+                  beforeSave={
+                    docked
+                      ? async () => ((await flushArrangement()) ? latestEnvelope.current?.revision : null)
+                      : undefined
+                  }
                   onDuplicate={(entry) => requestEditorAction(() => setModal({ type: "content", entry }))}
                   onDelete={
                     isAdmin

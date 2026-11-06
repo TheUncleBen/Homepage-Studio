@@ -28,6 +28,24 @@ export function dashboardLevel(data, user, dashboardId) {
   return best;
 }
 
+// Operations access for one dashboard (owner direction, 6 Nov 2026): an
+// administrator turns on Monitoring and Logs per grant, so each dashboard's
+// monitors, metrics and logs are seen only by those given them there. A
+// person needs at least View on the dashboard too. Administrators see all.
+export function dashboardOperations(data, user, dashboardId) {
+  const none = { monitoring: false, logs: false };
+  if (!user || user.disabled) return none;
+  if (user.role === 'admin') return { monitoring: true, logs: true };
+  const subjects = new Set(['user:' + user.id, ...userGroupIds(data, user).map(id => 'group:' + id)]);
+  const out = { ...none };
+  for (const grant of data.grants[dashboardId] ?? []) {
+    if (!subjects.has(grant.subject)) continue;
+    if (grant.monitoring === true) out.monitoring = true;
+    if (grant.logs === true) out.logs = true;
+  }
+  return out;
+}
+
 // A user's own policy wins. Otherwise the strictest value of each setting
 // across their groups' policies applies, and the default fills the rest.
 export function effectivePolicy(data, user) {
@@ -75,9 +93,11 @@ export function landingDashboard(data, user, dashboards) {
 // Required level for a dashboard-relative request. Anything under
 // /studio/ that is not listed needs an administrator (default deny).
 // /studio/api/history: a chart's collected numbers, the same values its card shows.
-const VIEW_GET = new Set(['/studio/api/board', '/studio/api/access', '/studio/catalog.json', '/studio/logo', '/studio/api/preferences', '/studio/api/history']);
+// /studio/api/panel-status: the cards' status dots, from their monitors.
+const VIEW_GET = new Set(['/studio/api/board', '/studio/api/access', '/studio/catalog.json', '/studio/logo', '/studio/api/preferences', '/studio/api/history', '/studio/api/panel-status']);
 // Anyone who can open a dashboard keeps their own preferences.
-const VIEW_POST = new Set(['/studio/api/preferences']);
+// /studio/api/client-errors: a widget that failed in a viewer's browser.
+const VIEW_POST = new Set(['/studio/api/preferences', '/studio/api/client-errors']);
 // /studio/api/history/probe: the formats of a widget's numbers, for the look's Show as choice.
 // /studio/api/undo and /redo: a person's own editing steps (keyed to their sign-in and role).
 const ARRANGE_POST = new Set(['/studio/api/history/probe', '/studio/api/board', '/studio/api/undo', '/studio/api/redo', '/studio/api/discovery-visibility', '/studio/api/appearance', '/studio/api/logo', '/studio/api/images', '/studio/api/images/delete', '/studio/api/my-images', '/studio/api/my-images/delete', '/studio/api/my-images/use', '/studio/api/library', '/studio/api/library/use']);
@@ -116,7 +136,9 @@ export function validGrantList(list, data) {
   const groups = new Set(data.groups.map(group => 'group:' + group.id));
   const seen = new Set();
   for (const grant of list) {
-    if (!grant || typeof grant !== 'object' || Object.keys(grant).some(key => !['subject', 'level'].includes(key))) return false;
+    if (!grant || typeof grant !== 'object' || Object.keys(grant).some(key => !['subject', 'level', 'monitoring', 'logs'].includes(key))) return false;
+    if (grant.monitoring !== undefined && typeof grant.monitoring !== 'boolean') return false;
+    if (grant.logs !== undefined && typeof grant.logs !== 'boolean') return false;
     if (!GRANT_LEVELS.includes(grant.level) || typeof grant.subject !== 'string' || seen.has(grant.subject)) return false;
     if (!users.has(grant.subject) && !groups.has(grant.subject)) return false;
     seen.add(grant.subject);

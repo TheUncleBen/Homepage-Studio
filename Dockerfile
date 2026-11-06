@@ -60,6 +60,7 @@ COPY package.json LICENSE VERSION upstream.lock.json ./
 COPY homepage/LICENSE ./homepage/LICENSE
 COPY homepage/src/utils/config/environment.mjs ./homepage/src/utils/config/environment.mjs
 COPY homepage/src/utils/config/yaml-parser.mjs ./homepage/src/utils/config/yaml-parser.mjs
+COPY homepage/src/utils/studio/error-classes.mjs ./homepage/src/utils/studio/error-classes.mjs
 COPY homepage/src/components/studio/appearance.mjs ./homepage/src/components/studio/appearance.mjs
 COPY homepage/src/components/studio/look.mjs ./homepage/src/components/studio/look.mjs
 COPY homepage/src/components/studio/geometry.mjs ./homepage/src/components/studio/geometry.mjs

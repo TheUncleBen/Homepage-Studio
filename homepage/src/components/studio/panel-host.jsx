@@ -42,6 +42,7 @@ export function useCardPresentation(panel, data, onEdit, onFullView) {
     () => ({
       id: panel.id,
       layout: look.layout,
+      columns: look.columns,
       values: look.values,
       header: look.header,
       description: look.description,
@@ -140,6 +141,11 @@ export default function PanelHost({
   renderNative: RenderNative = NativePanel,
   // On phones, the widget last tapped while editing shows its controls.
   toolsShown = false,
+  // While editing: this layout leaves the widget out (Show on).
+  offLayout = false,
+  // While its editor is docked beside the board: what the editor has typed
+  // so far (name, logo, values), drawn on the real card.
+  override = null,
 }) {
   const nativeContent = useRef(null);
   const slide = useRef(null);
@@ -307,7 +313,7 @@ export default function PanelHost({
   useEffect(() => () => slideAnimation.current?.cancel(), []);
   return (
     <section
-      className={`studio-panel${stack ? " studio-stacked-panel" : ""}${selected ? " studio-selected" : ""}${toolsShown ? " studio-tools-shown" : ""}${moving ? " studio-moving" : ""}${!presented ? " studio-inactive" : ""}${!active ? " studio-noninteractive" : ""}`}
+      className={`studio-panel${stack ? " studio-stacked-panel" : ""}${selected ? " studio-selected" : ""}${toolsShown ? " studio-tools-shown" : ""}${moving ? " studio-moving" : ""}${!presented ? " studio-inactive" : ""}${!active ? " studio-noninteractive" : ""}${offLayout ? " studio-off-layout" : ""}`}
       data-panel-id={panel.id}
       data-panel-kind={panel.kind}
       {...attributes}
@@ -428,7 +434,7 @@ export default function PanelHost({
           }}
         >
           <CardLookContext.Provider value={card}>
-            <RenderNative panel={panel} data={data} />
+            <RenderNative panel={panel} data={data} {...(override ? { override } : {})} />
           </CardLookContext.Provider>
         </div>
         {!editing && !stale && <Freshness panelId={panel.id} title={panel.title} />}

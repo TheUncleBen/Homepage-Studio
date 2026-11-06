@@ -30,7 +30,9 @@ const MAX_BACKUP_FILES = 20000;
 const NAME = /^studio-backup-\d{8}-\d{6}(?:-(?:uploaded|before-restore))?(?:-\d+)?\.json\.gz$/;
 // Never part of a backup: the backups, a staged restore, sessions and the
 // one-time recovery link (a restore signs everyone out), and temporary files.
-const SKIPPED_STATE = new Set([BACKUP_DIR, RESTORE_MARKER, 'auth/sessions.json', 'auth/recovery.json']);
+// Monitoring history and logs (server/observability) stay out of backups and
+// are kept through a restore; their settings (observability.json) are backed up.
+const SKIPPED_STATE = new Set([BACKUP_DIR, RESTORE_MARKER, 'auth/sessions.json', 'auth/recovery.json', 'observability']);
 const SKIPPED_CONFIG = new Set(['logs']);
 const base = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -200,7 +202,7 @@ export async function applyPendingRestore({ configRoot, stateRoot, buildRevision
   try { before = await store.create('before-restore'); }
   catch (error) { log.error(`Studio restore: ${request.name} was not restored: what is there now couldn't be saved first (${error.message})`); return null; }
   const roots = { config: configRoot, state: stateRoot };
-  const keep = { config: SKIPPED_CONFIG, state: new Set([BACKUP_DIR]) };
+  const keep = { config: SKIPPED_CONFIG, state: new Set([BACKUP_DIR, 'observability']) };
   try {
     await clear(configRoot, keep.config); await clear(stateRoot, keep.state);
     await writeFiles(roots, backup.files);

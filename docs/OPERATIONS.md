@@ -31,7 +31,12 @@ docker service logs --tail 100 homepage_studio                                  
 docker compose --project-name homepage --file portainer-compose.yml logs --tail 100 studio  # Compose
 ```
 
-Studio logs to the container's standard output.
+Studio logs to the container's standard output. With sign-in on, the same
+messages, each dashboard worker's output, monitor changes and sign-in events
+are also searchable in Operations › Logs ([LOGS.md](LOGS.md)), and Studio
+checks your services itself ([MONITORING.md](MONITORING.md)).
+`/studio/application-ready` includes an `observability` object with the
+engine's status; a stopped engine never fails the health check.
 
 Health endpoints, all `GET`, all answered with JSON. Call them on the exact
 public origin (Studio refuses any other host):
@@ -60,6 +65,7 @@ and three retries.
 | `/app/state` | The main dashboard's layout and stacks, its journal and its snapshots (`backups/`); sign-in settings, people and sessions (`auth/`); Studio backups (`studio-backups/`) |
 | `/app/config/dashboards/<id>/` | Each other dashboard's nine native files |
 | `/app/state/dashboards/<id>/` | Each other dashboard's layout, discovery state, journal and snapshots |
+| `/app/state/observability/` | Monitoring history, incidents, metrics and logs. Not included in Studio backups, and left as it is by a restore |
 
 `<id>` is the dashboard's permanent identity, a UUID. Renaming a dashboard or
 changing its address never moves its files.

@@ -66,4 +66,20 @@ describe("top bar", () => {
     expect(screen.getByRole("menuitem", { name: "My account" })).toHaveAttribute("href", "/studio/account");
     expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
   });
+
+  it("offers Operations to people the server says may use it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ operations: true, dashboards: [] }) })),
+    );
+    render(
+      <StudioTopBar
+        title="Kitchen"
+        dashboardId="b"
+        access={{ authEnabled: true, level: "view", user: { displayName: "Sam", role: "member" } }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Kitchen. Open the menu" }));
+    expect(await screen.findByRole("menuitem", { name: "Operations" })).toHaveAttribute("href", "/studio/operations");
+  });
 });

@@ -46,3 +46,21 @@ describe("card values", () => {
     expect(container.querySelector(".studio-values-below .studio-fold-item")).toBeTruthy();
   });
 });
+
+describe("balanced value boxes (U7)", () => {
+  it("spreads boxes evenly over the fewest rows that fit", async () => {
+    const { balancedColumns } = await import("./card-values");
+    expect(balancedColumns(6, 4)).toBe(3);
+    expect(balancedColumns(5, 4)).toBe(3);
+    expect(balancedColumns(4, 4)).toBe(4);
+    expect(balancedColumns(7, 3)).toBe(3);
+    expect(balancedColumns(2, 6)).toBe(2);
+    expect(balancedColumns(9, 1)).toBe(1);
+  });
+  it("keeps a chosen number of columns while the boxes fit", async () => {
+    const { balancedColumns } = await import("./card-values");
+    expect(balancedColumns(6, 4, "2")).toBe(2);
+    expect(balancedColumns(6, 3, "4")).toBe(3);
+    expect(balancedColumns(2, 4, "4")).toBe(2);
+  });
+});

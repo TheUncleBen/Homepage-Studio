@@ -249,6 +249,19 @@ export const mailMessages = (site) => {
         ],
       }),
     }),
+    // Monitoring notifications (Operations): what changed, in one card.
+    monitor: ({ title, lines, link }) => ({
+      subject: titleCase(title),
+      text: `${title}\n\n${lines.join("\n")}\n\n${link ? `Open in Operations: ${link}\n\n` : ""}${site}\n`,
+      html: layout({
+        site,
+        footer: `You receive this because an administrator of ${escape(site)} added this address to a monitoring notification channel.`,
+        preview: lines[0] ?? title,
+        title,
+        paragraphs: lines.map(escape),
+        button: link ? { href: link, label: "Open in Operations" } : undefined,
+      }),
+    }),
     alert: ({ name, title, event, link }) => ({
       subject: `Security Alert: ${titleCase(title)}`,
       text: `Hello ${name},\n\n${event}\n\n${link ? `Review your account: ${link}\n\n` : ""}If this wasn't you, contact your ${site} administrator straight away.\n\n${site}\n`,

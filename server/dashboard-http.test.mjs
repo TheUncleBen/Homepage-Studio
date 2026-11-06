@@ -13,7 +13,7 @@ import { dashboardConfigDir, dashboardStateDir, DASHBOARD_REGISTRY_FILE } from '
 import { addressMainDashboard } from './fixtures/main-address.mjs';
 // The main dashboard lives at /home. Its own addresses (native API, editor
 // API, native data) move with it; Studio-wide addresses stay at the root.
-const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview|platform)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview|platform|trusted-certificates)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
 
 
 const HOST = 'dashboards.example.test:3000';
@@ -58,6 +58,7 @@ async function fixture(t) {
       return { origin: natives.get(entry.id).origin, release() { if (!released) { released = true; leases--; releases++; } } };
     },
     async drain(id) { drains.push(id); },
+    async drainAll() { drains.push('*'); },
     async close() { closes++; },
   };
   const app = createStudioServer({ configDir, stateDir, rendererDir, rendererPool: pool, allowedHosts: HOST, buildRevision: BUILD, auth: 'off', archiveSweepMs: 0 });
@@ -466,4 +467,78 @@ test('an archived dashboard is deleted for good when its name is typed, and its 
   assert.equal((await f.mutate({ action: 'retention', days: 30 })).status, 200);
   const registryFile = JSON.parse(await fs.readFile(path.join(f.configDir, DASHBOARD_REGISTRY_FILE), 'utf8'));
   assert.equal(Object.hasOwn(registryFile, 'archiveRetention'), false);
+});
+
+// Option audit against 6a93f66: an integration widget's Docker container was
+// set on its service's own tile, which round 4 folded into the widget. It is
+// changed with the widget again.
+test('an integration widget keeps its Docker server and container', async t => {
+  const f = await fixture(t);
+  const current = await f.state();
+  const added = await f.post('/studio/api/service-widget', { revision: current.revision, action: 'add', newService: { name: 'Media' }, service: { href: 'https://media.example.test', server: 'my-docker', container: 'jellyfin' }, type: 'jellyfin', config: { url: 'https://media.example.test', key: 'k' } });
+  assert.equal(added.status, 200, added.text);
+  const widget = added.json.serviceWidgets.find(item => item.type === 'jellyfin');
+  const service = added.json.services.find(item => item.id === widget.serviceId);
+  assert.equal(service.config.server, 'my-docker');
+  assert.equal(service.config.container, 'jellyfin');
+  const cleared = await f.post('/studio/api/service-widget', { revision: added.json.revision, action: 'update', id: widget.id, service: { server: null, container: null }, config: {} });
+  assert.equal(cleared.status, 200, cleared.text);
+  const after = cleared.json.services.find(item => item.id === widget.serviceId);
+  assert.equal(after.config.server, undefined);
+  assert.equal(after.config.container, undefined);
+  const refused = await f.post('/studio/api/service-widget', { revision: cleared.json.revision, action: 'update', id: widget.id, service: { showStats: true }, config: {} });
+  assert.equal(refused.status, 422);
+  assert.match(refused.text, /Docker container can change with it/);
+});
+
+// Security review of 1a936b1 (H1): adding or removing a trusted certificate
+// once waited on itself for ever. Through the real server and its onChange.
+test('a trusted certificate is added, listed and removed, and workers start again each time', async t => {
+  const f = await fixture(t);
+  const ca = await fs.readFile(new URL('./fixtures/example-ca.pem', import.meta.url), 'utf8');
+  const bundle = path.join(f.stateDir, 'trusted-certificates.pem');
+  const added = await f.post('/studio/api/trusted-certificates', { action: 'add', pem: ca });
+  assert.equal(added.status, 200, added.text);
+  assert.equal(added.json.certificates.length, 1);
+  assert.equal(added.json.certificates[0].source, 'added');
+  assert.equal(added.json.certificates[0].pem, undefined);
+  assert.ok(f.drains.includes('*'));
+  assert.equal(await fs.readFile(bundle, 'utf8'), ca.replace(/\r\n/g, '\n').trim() + '\n');
+  const listed = await f.request('/studio/api/trusted-certificates');
+  assert.equal(listed.status, 200, listed.text);
+  assert.deepEqual(listed.json.certificates.map(entry => entry.id), [added.json.certificates[0].id]);
+  f.drains.length = 0;
+  const removed = await f.post('/studio/api/trusted-certificates', { action: 'remove', id: added.json.certificates[0].id });
+  assert.equal(removed.status, 200, removed.text);
+  assert.deepEqual(removed.json.certificates, []);
+  assert.deepEqual(f.drains, ['*']);
+  await assert.rejects(fs.access(bundle));
+  // The queue is free again: another add answers too.
+  const again = await f.post('/studio/api/trusted-certificates', { action: 'add', pem: ca });
+  assert.equal(again.status, 200, again.text);
+});
+
+// Security review of 1a936b1 (L2): a Docker secret or variable reference is
+// only filled in for the address a saved widget already sends it to.
+test('Test connection only fills in a secret reference for the address it is saved with', async t => {
+  const f = await fixture(t);
+  const current = await f.state();
+  const saved = await f.post('/studio/api/service-widget', { revision: current.revision, action: 'add', newService: { name: 'Media' }, service: { href: 'https://media.example.test' }, type: 'jellyfin', config: { url: 'https://media.example.test', key: '{{HOMEPAGE_FILE_JELLYFIN_KEY}}' } });
+  assert.equal(saved.status, 200, saved.text);
+  const elsewhere = await f.post('/studio/api/connection-test', { widget: { type: 'jellyfin', url: 'https://collector.example.test', key: '{{HOMEPAGE_FILE_JELLYFIN_KEY}}' } });
+  assert.equal(elsewhere.status, 200, elsewhere.text);
+  assert.equal(elsewhere.json.kind, 'address');
+  assert.match(elsewhere.json.message, /only sent to the address it is saved with/);
+  const variable = await f.post('/studio/api/connection-test', { widget: { type: 'jellyfin', url: 'https://collector.example.test', key: '{{HOMEPAGE_VAR_KEY}}' } });
+  assert.equal(variable.json.kind, 'address');
+  // A reference inside the address is held to the same rule.
+  for (const url of ['https://collector.example.test/{{HOMEPAGE_FILE_DB_PASSWORD}}', 'https://{{HOMEPAGE_VAR_SECRET}}.collector.example.test/']) {
+    const inAddress = await f.post('/studio/api/connection-test', { widget: { type: 'customapi', url } });
+    assert.equal(inAddress.json.kind, 'address', url);
+  }
+  const own = await f.post('/studio/api/connection-test', { widget: { type: 'jellyfin', url: 'https://media.example.test', key: '{{HOMEPAGE_FILE_JELLYFIN_KEY}}' } });
+  assert.equal(own.status, 200, own.text);
+  assert.notEqual(own.json.kind, 'address');
+  const typed = await f.post('/studio/api/connection-test', { widget: { type: 'jellyfin', url: 'https://collector.example.test', key: 'typed-in' } });
+  assert.notEqual(typed.json.kind, 'address');
 });

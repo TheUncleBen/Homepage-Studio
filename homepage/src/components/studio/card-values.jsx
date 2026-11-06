@@ -24,12 +24,22 @@ function useFold(count, least = 1, content = "") {
   const ref = useRef(null);
   const [shown, setShown] = useState(count);
   const [epoch, setEpoch] = useState(0);
+  // Set while a fresh measure waits for every value to show again, so the
+  // fold below doesn't act on the old count in the same pass (a size or
+  // font change would otherwise fold everything: review M7).
+  const remeasure = useRef(false);
   useIsoLayoutEffect(() => {
+    remeasure.current = true;
     // Measure afresh at the card's usual spacing.
     ref.current?.closest(".studio-native-content")?.removeAttribute("data-tight");
+    ref.current?.removeAttribute("data-bare");
     setShown(count);
   }, [count, epoch, content]);
   useIsoLayoutEffect(() => {
+    if (remeasure.current) {
+      if (shown !== count) return;
+      remeasure.current = false;
+    }
     const list = ref.current;
     const clip = list?.closest(".studio-native-content");
     if (!list || !clip) return;
@@ -46,9 +56,20 @@ function useFold(count, least = 1, content = "") {
       clip.setAttribute("data-tight", "");
       bottoms = measure();
       if (all()) return;
+      let fitting = bottoms.filter((bottom) => bottom <= limit + 0.5).length;
+      // Under a hero, when not even one row fits below its rule, the row
+      // goes without the rule (as "+N more" alone would) and often fits:
+      // the band shows values rather than only the hint (review M7).
+      if (!fitting && least === 0) {
+        list.setAttribute("data-bare", "");
+        bottoms = measure();
+        if (all()) return;
+        fitting = bottoms.filter((bottom) => bottom <= limit + 0.5).length;
+        if (!fitting) list.removeAttribute("data-bare");
+      }
       // Keep every value that fits; the check below folds one more while the
       // "+N more" hint (in the last free column of a row) doesn't fit too.
-      setShown(Math.max(least, bottoms.filter((bottom) => bottom <= limit + 0.5).length));
+      setShown(Math.max(least, fitting));
       return;
     }
     // Folded: the values left can reflow (a narrower row, a wrapped line), so
@@ -77,15 +98,50 @@ function useFold(count, least = 1, content = "") {
       observer.disconnect();
     };
   }, []);
-  return { ref, shown };
+  return { ref, shown, epoch };
 }
 
-function Folded({ className, items, slot, arranged, content }) {
-  const { ref, shown } = useFold(items.length, slot === "below" ? 0 : 1, content);
+// Columns for n boxes (U7): Auto uses as few rows as fit, then spreads the
+// boxes evenly over them (6 boxes, room for 4: 3 by 2). A chosen number is
+// kept while each box still fits; past that the boxes balance as for Auto.
+export function balancedColumns(n, room, chosen = "auto") {
+  if (n <= 0 || room <= 0) return 1;
+  const fit = Math.max(1, room);
+  const wanted = Number(chosen);
+  if (Number.isInteger(wanted) && wanted > 0 && wanted <= fit) return Math.min(wanted, n) || 1;
+  const rows = Math.ceil(n / fit);
+  return Math.ceil(n / rows);
+}
+
+// How many boxes of the slot's smallest width fit across the list.
+const BOX = { quiet: [72, 8], below: [76, 18] };
+function useRoom(ref, slot, epoch) {
+  const [room, setRoom] = useState(0);
+  useIsoLayoutEffect(() => {
+    const box = BOX[slot];
+    const width = ref.current?.clientWidth || 0;
+    if (!box || !width) return;
+    setRoom(Math.max(1, Math.floor((width + box[1]) / (box[0] + box[1]))));
+  }, [slot, epoch]);
+  return room;
+}
+
+function Folded({ className, items, slot, arranged, content, columns }) {
+  // The grid is worked out for every value (not only those that fit), so
+  // folding never changes it; the fold measures again when it changes.
+  const [grid, setGrid] = useState(0);
+  const { ref, shown, epoch } = useFold(items.length, slot === "below" ? 0 : 1, `${content}#${grid}`);
   const hidden = items.length - shown;
+  // A table keeps its own rows (columns null).
+  const room = useRoom(ref, columns === null ? null : slot, epoch);
+  const wanted = room && columns !== null ? balancedColumns(items.length, room, columns || "auto") : 0;
+  useIsoLayoutEffect(() => {
+    if (wanted !== grid) setGrid(wanted);
+  }, [wanted, grid]);
+  const style = grid ? { gridTemplateColumns: `repeat(${grid}, minmax(0, 1fr))` } : undefined;
   return (
     // Nothing left below the hero: the hint alone, without the rule.
-    <div ref={ref} className={className} data-empty={items.length > 0 && shown === 0 ? "" : undefined}>
+    <div ref={ref} className={className} style={style} data-empty={items.length > 0 && shown === 0 ? "" : undefined}>
       {items.map((item, index) => (
         <div key={item.key} className="studio-fold-item" hidden={index >= shown}>
           <ValueSlotContext.Provider
@@ -168,6 +224,7 @@ export default function CardValues({ card, items: children }) {
         className={`studio-values ${show === "table" ? "studio-values-table" : "studio-values-quiet"}`}
         items={visible}
         slot="quiet"
+        columns={show === "table" ? null : card.columns}
         arranged={arranged}
         content={content}
       />
@@ -190,7 +247,14 @@ export default function CardValues({ card, items: children }) {
       {trend && <Trend history={card.history} field={hero.key} trend={card.trend} />}
       {charted && <CardChart card={card} onOpen={CHART_SHOWS.includes(show) ? card.onFullView : undefined} />}
       {!charted && rest.length > 0 && (
-        <Folded className="studio-values-below" items={rest} slot="below" arranged={arranged} content={content} />
+        <Folded
+          className="studio-values-below"
+          items={rest}
+          slot="below"
+          columns={card.columns}
+          arranged={arranged}
+          content={content}
+        />
       )}
     </div>
   );

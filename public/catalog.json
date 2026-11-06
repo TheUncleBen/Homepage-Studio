@@ -17351,6 +17351,74 @@
       "description": "A line of text, such as a welcome."
     },
     {
+      "type": "heading",
+      "name": "Heading",
+      "docs": "",
+      "fields": [
+        {
+          "key": "text",
+          "label": "Text",
+          "type": "string",
+          "valueTypes": [
+            "string"
+          ],
+          "exampleValue": "Media",
+          "sensitive": false
+        },
+        {
+          "key": "text_size",
+          "label": "Text size",
+          "type": "string",
+          "valueTypes": [
+            "string"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "choices": [
+            "xs",
+            "sm",
+            "md",
+            "lg",
+            "xl",
+            "2xl",
+            "3xl",
+            "4xl"
+          ],
+          "defaultChoice": "xl",
+          "choiceLabels": {
+            "xs": "Extra small",
+            "sm": "Small",
+            "md": "Medium",
+            "lg": "Large",
+            "xl": "Extra large",
+            "2xl": "2× large",
+            "3xl": "3× large",
+            "4xl": "4× large"
+          }
+        }
+      ],
+      "defaults": {},
+      "example": "- heading:\n    text: Media\n    text_size: xl",
+      "examples": [
+        "- heading:\n    text: Media\n    text_size: xl"
+      ],
+      "documentationStatus": "studio",
+      "coverage": "Made by Studio. Every setting it has is in the dialog.",
+      "sources": [
+        {
+          "path": "homepage/src/components/studio/fillers.jsx",
+          "url": "https://github.com/theuncleben/homepage-studio/blob/main/homepage/src/components/studio/fillers.jsx"
+        }
+      ],
+      "guide": [
+        {
+          "type": "p",
+          "text": "A title for a row of widgets. For a title that stands on the page, without a card, set Edge to None in Look. Align in Look centres it."
+        }
+      ],
+      "description": "A title for a row of widgets."
+    },
+    {
       "type": "kubernetes",
       "name": "Kubernetes",
       "docs": "https://gethomepage.dev/widgets/info/kubernetes/",
@@ -17554,6 +17622,76 @@
         }
       ],
       "description": "Longhorn storage use, in total or per node."
+    },
+    {
+      "type": "note",
+      "name": "Note",
+      "docs": "",
+      "fields": [
+        {
+          "key": "text",
+          "label": "Text",
+          "type": "string",
+          "valueTypes": [
+            "string"
+          ],
+          "exampleValue": "Guest Wi-Fi: Garden\nhttps://wiki.example.org",
+          "sensitive": false,
+          "editor": "multiline",
+          "description": "Plain text. Line breaks are kept, and web addresses (https://…) become links. Nothing in it is read as HTML."
+        },
+        {
+          "key": "text_size",
+          "label": "Text size",
+          "type": "string",
+          "valueTypes": [
+            "string"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "choices": [
+            "xs",
+            "sm",
+            "md",
+            "lg",
+            "xl",
+            "2xl",
+            "3xl",
+            "4xl"
+          ],
+          "defaultChoice": "sm",
+          "choiceLabels": {
+            "xs": "Extra small",
+            "sm": "Small",
+            "md": "Medium",
+            "lg": "Large",
+            "xl": "Extra large",
+            "2xl": "2× large",
+            "3xl": "3× large",
+            "4xl": "4× large"
+          }
+        }
+      ],
+      "defaults": {},
+      "example": "- note:\n    text: |\n      Guest Wi-Fi: Garden\n      https://wiki.example.org",
+      "examples": [
+        "- note:\n    text: |\n      Guest Wi-Fi: Garden\n      https://wiki.example.org"
+      ],
+      "documentationStatus": "studio",
+      "coverage": "Made by Studio. Every setting it has is in the dialog.",
+      "sources": [
+        {
+          "path": "homepage/src/components/studio/fillers.jsx",
+          "url": "https://github.com/theuncleben/homepage-studio/blob/main/homepage/src/components/studio/fillers.jsx"
+        }
+      ],
+      "guide": [
+        {
+          "type": "p",
+          "text": "Text you write yourself, such as a reminder, the guest Wi-Fi or on-call numbers. Everyone who can see the dashboard can read it, so keep passwords and keys out of it."
+        }
+      ],
+      "description": "Text you write yourself, with links."
     },
     {
       "type": "openmeteo",
@@ -17799,6 +17937,75 @@
           "reference": "{{HOMEPAGE_FILE_OPENWEATHERMAP_API_KEY}}"
         }
       ]
+    },
+    {
+      "type": "picture",
+      "name": "Picture",
+      "docs": "",
+      "fields": [
+        {
+          "key": "image",
+          "label": "Picture",
+          "type": "string",
+          "valueTypes": [
+            "string"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "editor": "picture",
+          "description": "One of this dashboard’s backgrounds. Upload a new one here."
+        },
+        {
+          "key": "fit",
+          "label": "Fit",
+          "type": "string",
+          "valueTypes": [
+            "string"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "choices": [
+            "fill",
+            "fit"
+          ],
+          "defaultChoice": "fill",
+          "choiceLabels": {
+            "fill": "Fill the card",
+            "fit": "Show it whole"
+          }
+        },
+        {
+          "key": "alt",
+          "label": "Description",
+          "type": "string",
+          "valueTypes": [
+            "string"
+          ],
+          "exampleValue": null,
+          "sensitive": false,
+          "description": "What the picture shows, for screen readers. Leave empty for a decorative picture."
+        }
+      ],
+      "defaults": {},
+      "example": "- picture:\n    image: /studio/api/images/0123456789abcdef01234567\n    fit: fill",
+      "examples": [
+        "- picture:\n    image: /studio/api/images/0123456789abcdef01234567\n    fit: fill"
+      ],
+      "documentationStatus": "studio",
+      "coverage": "Made by Studio. Every setting it has is in the dialog.",
+      "sources": [
+        {
+          "path": "homepage/src/components/studio/fillers.jsx",
+          "url": "https://github.com/theuncleben/homepage-studio/blob/main/homepage/src/components/studio/fillers.jsx"
+        }
+      ],
+      "guide": [
+        {
+          "type": "p",
+          "text": "One picture, from the same library as card and page backgrounds. Removing it from the library asks first while this widget uses it."
+        }
+      ],
+      "description": "One picture from your uploads."
     },
     {
       "type": "resources",
@@ -18144,6 +18351,32 @@
         }
       ],
       "description": "A search box for the web search engine you choose."
+    },
+    {
+      "type": "spacer",
+      "name": "Spacer",
+      "docs": "",
+      "fields": [],
+      "defaults": {},
+      "example": "- spacer: {}",
+      "examples": [
+        "- spacer: {}"
+      ],
+      "documentationStatus": "studio",
+      "coverage": "Made by Studio. Every setting it has is in the dialog.",
+      "sources": [
+        {
+          "path": "homepage/src/components/studio/fillers.jsx",
+          "url": "https://github.com/theuncleben/homepage-studio/blob/main/homepage/src/components/studio/fillers.jsx"
+        }
+      ],
+      "guide": [
+        {
+          "type": "p",
+          "text": "Holds space so the widgets around it stay where you put them. It is only visible while editing. Use Show on to keep it in one layout, such as Desktop."
+        }
+      ],
+      "description": "Empty space that holds a layout in place."
     },
     {
       "type": "stocks",

@@ -15,7 +15,7 @@ const MAX_BODY = 64 * 1024;
 
 // Pages that need no session; everything else in the auth UI does.
 const PUBLIC_PAGES = new Set(['/studio/auth/sign-in', '/studio/auth/setup', '/studio/auth/enroll', '/studio/auth/recover', '/studio/auth/recovery']);
-const SIGNED_IN_PAGES = new Set(['/studio/dashboards', '/studio/account', '/studio/admin']);
+const SIGNED_IN_PAGES = new Set(['/studio/dashboards', '/studio/account', '/studio/admin', '/studio/operations']);
 // Images also come from the icon CDN Homepage uses, for the tile icons in the
 // Dashboards page's previews (server/dashboard-preview.mjs).
 export const AUTH_PAGE_POLICY = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
@@ -29,6 +29,7 @@ async function loadAssets() {
     return new Map([
       ['/studio/auth/assets/app.js', { body: await readFile(join(here, 'ui', 'app.js')), type: 'text/javascript; charset=utf-8' }],
       ['/studio/auth/assets/app.css', { body: await readFile(join(here, 'ui', 'app.css')), type: 'text/css; charset=utf-8' }],
+      ['/studio/auth/assets/ops.js', { body: await readFile(join(here, 'ui', 'ops.js')), type: 'text/javascript; charset=utf-8' }],
       ['/studio/auth/assets/webauthn.js', { body: webauthn, type: 'text/javascript; charset=utf-8' }],
     ]);
   })();
@@ -53,6 +54,7 @@ function shell(page, name) {
 <link rel="stylesheet" href="/studio/theme.css" id="studio-theme">
 <script src="/studio/auth/assets/webauthn.js" defer></script>
 <script src="/studio/auth/assets/app.js" defer></script>
+<script src="/studio/auth/assets/ops.js" defer></script>
 </head>
 <body data-page="${page}" data-deployment-name="${escapeHtml(name)}">
 <main id="app" class="auth-main" aria-live="polite"><p class="auth-loading">Loading…</p></main>
@@ -129,7 +131,7 @@ export function isPublicAuthPath(path) {
   return PUBLIC_PAGES.has(path) || path.startsWith('/studio/auth/assets/') || path === '/studio/auth/state' || /^\/studio\/auth\/(password|second-factor(\/passkey|\/email)?|passkey\/(options|verify)|setup\/(start|resume)|invite\/(details|start)|enroll\/(totp\/start|totp\/confirm|passkey\/options|passkey\/verify|finish)|recover\/(request|details|finish)|recovery\/redeem|oidc\/(start|callback|backchannel-logout)|sign-out)$/.test(path);
 }
 
-export function createAuthRoutes(auth, { listDashboards, preferences }) {
+export function createAuthRoutes(auth, { listDashboards, preferences, saved }) {
   async function handle(req, res, current) {
     const url = new URL(req.url, auth.config.origin);
     const path = url.pathname;
@@ -166,6 +168,11 @@ export function createAuthRoutes(auth, { listDashboards, preferences }) {
       if (method === 'GET' && path === '/studio/auth/account/preferences') {
         if (!current) return json(res, 401, { error: 'Sign in first.', code: 'AUTH_REQUIRED' });
         return json(res, 200, { preferences: await preferences.read(current.user.id), languages: LANGUAGES });
+      }
+      // Your own saved items (server/saved-items.mjs), on the account page.
+      if (method === 'GET' && path === '/studio/auth/account/saved') {
+        if (!current) return json(res, 401, { error: 'Sign in first.', code: 'AUTH_REQUIRED' });
+        return json(res, 200, await saved.list(current.user.id));
       }
       if (method === 'GET' && path === '/studio/auth/dashboards') {
         if (!current) return json(res, 401, { error: 'Sign in first.', code: 'AUTH_REQUIRED' });
@@ -223,6 +230,7 @@ export function createAuthRoutes(auth, { listDashboards, preferences }) {
         '/studio/auth/account/unlink': () => auth.account.unlink(signedIn()),
         '/studio/auth/account/default-dashboard': () => auth.account.defaultDashboard(signedIn(), body),
         '/studio/auth/account/preferences': async () => ({ preferences: await preferences.write(signedIn().user.id, body?.preferences) }),
+        '/studio/auth/account/saved': () => saved.change(signedIn().user.id, body),
         '/studio/auth/account/link/confirm': () => auth.account.linkConfirm(req, res, signedIn()),
         '/studio/auth/account/link/cancel': () => auth.account.linkCancel(signedIn()),
         '/studio/auth/claim/password': () => auth.passwordStep(req, body, { intent: 'claim', current: signedIn() }),
@@ -246,7 +254,8 @@ export function createAuthRoutes(auth, { listDashboards, preferences }) {
       return json(res, 200, await route());
     } catch (error) {
       // Preference checks (server/personal.mjs) explain themselves too.
-      const known = error instanceof AuthError || error?.name === 'PreferenceError';
+      // So do saved items (server/saved-items.mjs and the stores it uses).
+      const known = error instanceof AuthError || ['PreferenceError', 'SavedItemsError', 'LibraryError', 'ConnectionError', 'ImageError'].includes(error?.name);
       const status = known ? error.status : 500;
       if (error.retryAfter && !res.headersSent) res.setHeader('retry-after', String(error.retryAfter));
       if (!known) console.error('Sign-in request failed:', error.code || error.name);

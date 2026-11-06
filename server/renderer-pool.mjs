@@ -65,6 +65,9 @@ export function createRendererPool({
   configRoot, stateRoot, appRoot, workerScript, allowedHosts = process.env.HOMEPAGE_ALLOWED_HOSTS,
   buildRevision = process.env.STUDIO_BUILD_REVISION || 'unreleased',
   maxWorkers, idleMs, startupMs, workerEnv = {},
+  // Each line a dashboard's worker writes, for Studio's logs (Operations ›
+  // Logs). The lines still reach the container's own output unchanged.
+  onOutput = null,
 } = {}) {
   configRoot = resolve(configRoot);
   appRoot = resolve(appRoot);
@@ -141,7 +144,7 @@ export function createRendererPool({
       record.child = childProcess.spawn(process.execPath, [workerScript], {
         cwd: appRoot,
         env: {
-          ...process.env, ...workerEnv,
+          ...process.env, ...(typeof workerEnv === 'function' ? workerEnv() : workerEnv),
           NODE_ENV: 'production', HOSTNAME: '127.0.0.1', PORT: String(port),
           HOMEPAGE_CONFIG_DIR: record.configDir, HOMEPAGE_ALLOWED_HOSTS: hosts.join(','),
           STUDIO_DASHBOARD_ID: record.id, STUDIO_DASHBOARD_BASE_PATH: record.basePath,
@@ -153,8 +156,25 @@ export function createRendererPool({
           STUDIO_BUILD_REVISION: buildRevision, HOMEPAGE_AUTH_ENABLED: 'false',
           HOMEPAGE_MCP_ALLOW_WRITE: 'false', NEXT_TELEMETRY_DISABLED: '1', LOG_TARGETS: 'stdout',
         },
-        stdio: ['ignore', 'inherit', 'inherit'],
+        stdio: onOutput ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'inherit', 'inherit'],
       });
+      if (onOutput) {
+        for (const [stream, target] of [[record.child.stdout, process.stdout], [record.child.stderr, process.stderr]]) {
+          let pending = '';
+          stream.on('data', chunk => {
+            target.write(chunk);
+            pending += chunk.toString('utf8');
+            let index;
+            while ((index = pending.indexOf('\n')) >= 0) {
+              const line = pending.slice(0, index);
+              pending = pending.slice(index + 1);
+              if (line.trim()) { try { onOutput(record.id, target === process.stderr ? 'stderr' : 'stdout', line); } catch {} }
+            }
+            if (pending.length > 64 * 1024) pending = '';
+          });
+          stream.on('error', () => {});
+        }
+      }
       record.exit = new Promise(resolveExit => {
         const exited = () => { record.exited = true; remove(record); resolveExit(); };
         record.child.once('exit', exited);
@@ -250,6 +270,19 @@ export function createRendererPool({
         if (!record) return {};
         current.delete(id); record.draining = true;
         return { stopping: record.refs ? undefined : stop(record) };
+      });
+      await result.stopping;
+    },
+    // Every worker starts again on its next request (a changed environment,
+    // such as trusted certificates). Leased workers stop on their last release.
+    async drainAll() {
+      const result = await serial(() => {
+        const stopping = [];
+        for (const [id, record] of [...current]) {
+          current.delete(id); record.draining = true;
+          if (!record.refs) stopping.push(stop(record));
+        }
+        return { stopping: Promise.all(stopping) };
       });
       await result.stopping;
     },

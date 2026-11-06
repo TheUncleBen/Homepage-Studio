@@ -1,8 +1,8 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import useSWR from "swr";
 
 import { studioRequest } from "./api.mjs";
-import { Group, Row, Segmented } from "./ui";
+import { Group, Row, Segmented, revealForm } from "./ui";
 
 // Saved connections (server/connections.mjs): a service address and its key,
 // typed once, named, and reused on any widget. A widget that uses one holds
@@ -182,6 +182,12 @@ export function ConnectionTest({ value }) {
 export function ConnectionSave({ value, keys, onChange, onSaved }) {
   const { personal, dashboard, reload } = useSavedConnections();
   const [form, setForm] = useState(null);
+  const formBox = useRef(null);
+  // The form opens at the foot of the Connection section: bring it into view.
+  const formOpen = Boolean(form);
+  useEffect(() => {
+    if (formOpen) revealForm(formBox.current);
+  }, [formOpen]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const nameId = useId();
@@ -231,7 +237,7 @@ export function ConnectionSave({ value, keys, onChange, onSaved }) {
       </div>
     );
   return (
-    <div className="studio-connection-form" role="group" aria-label="Save as a connection">
+    <div className="studio-connection-form" role="group" aria-label="Save as a connection" ref={formBox}>
       <Row label="Name" htmlFor={nameId}>
         <input
           id={nameId}

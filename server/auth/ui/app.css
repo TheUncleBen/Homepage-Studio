@@ -204,7 +204,7 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 label, .label { display: grid; gap: 6px; font-weight: 550; }
 .field { display: grid; gap: 6px; }
 .hint { font-weight: 400; color: var(--muted); font-size: 0.875rem; }
-input[type="text"], input[type="password"], input[type="email"], input[type="number"], input[type="url"], input:not([type]), select, textarea {
+input[type="text"], input[type="password"], input[type="email"], input[type="number"], input[type="url"], input[type="search"], input[type="time"], input:not([type]), select, textarea {
   width: 100%;
   font: inherit;
   color: var(--text);
@@ -273,7 +273,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .notice:empty { display: none; }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-strong); font-size: 0.75rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .badge.accent { border-color: var(--accent); color: var(--text); }
-.badge.danger { border-color: var(--danger-line); color: var(--danger-text); }
+.badge.danger { border-color: var(--danger-line); background: var(--danger-bg); color: var(--danger-text); }
 .badge.warn { border-color: var(--warn-line); color: var(--warn-text); }
 
 /* Lists and tables */
@@ -375,6 +375,7 @@ input[type="color"] { width: 44px; min-height: 40px; padding: 2px; border-radius
 .group-head h2 { margin: 0; overflow: hidden; color: var(--muted); font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
 .group-aside { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--muted); font-size: 0.8125rem; white-space: nowrap; }
 .group-aside .pill { min-height: 28px; padding: 0 12px; font-size: 0.8125rem; }
+.group-filter { margin: 0 0 8px; }
 .group-body { margin: 0; padding: 0; overflow: hidden; border-radius: 14px; background: var(--surface); list-style: none; }
 dialog .group-body { background: var(--raised); }
 .group-body > * + *, .group-body > div > :is(.item-row, .grant-row, .add-row, .empty-row) + * { border-top: 1px solid var(--line); }
@@ -392,6 +393,9 @@ dialog .group-body { background: var(--raised); }
 .row-detail { color: var(--muted); font-size: 0.8125rem; }
 .row-item.attention .row-detail { color: var(--warn-text); }
 .row-control { display: grid; justify-items: stretch; min-width: 0; }
+.address-input { display: flex; align-items: center; min-width: 0; }
+.address-prefix { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.row-control .address-input input { flex: 1 1 auto; min-width: 4ch; }
 .row-control > :is(.switch, .segmented, .pill, .row-value) { justify-self: end; }
 .row-item.stacked .row-control > .segmented { justify-self: start; flex-wrap: wrap; }
 .row-value { color: var(--muted); text-align: right; overflow-wrap: anywhere; }
@@ -579,3 +583,95 @@ dialog { overflow-y: auto; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
 /* A row that depends on the choice above it (Rule 1), indented under it. */
 .row-item.dependent { padding-left: 16px; box-shadow: inset 2px 0 0 var(--line-strong, var(--line)); }
+
+/* Operations (server/auth/ui/ops.js). Status is shown by shape and words as
+   well as colour: circle up, triangle down, diamond failing or can't check,
+   square maintenance or paused, ring not checked yet. */
+.ops-state { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.ops-shape { flex: none; display: inline-block; width: 12px; height: 12px; background: currentColor; }
+.ops-circle { border-radius: 50%; }
+.ops-triangle { clip-path: polygon(50% 4%, 100% 96%, 0 96%); width: 14px; height: 13px; }
+.ops-diamond { transform: rotate(45deg) scale(0.82); border-radius: 2px; }
+.ops-square { border-radius: 2px; transform: scale(0.85); }
+.ops-ring { border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 2px currentColor; }
+.ops-up { color: var(--ok-text); }
+.ops-down { color: var(--danger-text); }
+.ops-pending, .ops-unreachable { color: var(--warn-text); }
+.ops-maintenance, .ops-paused, .ops-unknown { color: var(--muted); }
+.ops-state[role="img"] { flex: none; width: 16px; justify-content: center; }
+.ops-count { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 650; color: var(--text); }
+.ops-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; font-size: 1.0625rem; }
+.ops-back { display: inline-flex; align-items: center; gap: 2px; justify-self: start; min-height: 32px; margin: -6px 0 -10px -6px; padding: 4px 8px 4px 2px; border: 0; border-radius: 8px; background: transparent; color: var(--accent); font: inherit; font-size: 0.9375rem; font-weight: 550; }
+.ops-back:hover { border: 0; background: var(--raised); }
+.ops-filter, .ops-views { min-height: 34px; width: auto; max-width: 14rem; padding-block: 4px; font-size: 0.875rem; }
+.ops-search { width: auto; flex: 1 1 12rem; min-height: 34px; }
+.ops-wrap, .nav-text > small.ops-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ops-long .row-main, .ops-long .row-main:has(> .row-control > .row-value) { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 10px 0; }
+.ops-long .row-control > .row-value { justify-self: start; text-align: left; }
+.ops-avail[data-count="1"] { grid-template-columns: minmax(0, 1fr); }
+.ops-avail[data-count="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ops-avail[data-count="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ops-pad { padding: 12px 16px; }
+.ops-avail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 14px 16px; text-align: center; }
+.ops-avail strong { display: block; font-size: 1.125rem; font-variant-numeric: tabular-nums; }
+.ops-avail small { color: var(--muted); }
+.ops-bars { display: block; width: 100%; height: 28px; }
+.ops-bar-up { fill: var(--ok-line); }
+.ops-bar-down { fill: var(--danger-line); }
+.ops-bar-partial { fill: var(--warn-line); }
+.ops-bar-maint { fill: var(--line-strong); }
+.ops-bar-none { fill: var(--line); }
+.ops-chart { display: grid; gap: 8px; }
+.ops-line { display: block; width: 100%; height: 120px; }
+.ops-line path { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ops-chart-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--muted); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.ops-searchbar { display: grid; gap: 10px; }
+.ops-query-row { display: flex; align-items: center; gap: 8px; }
+.ops-query { flex: 1; min-width: 0; min-height: 40px; }
+.ops-histogram { display: block; width: 100%; height: 72px; }
+.ops-histogram rect { cursor: pointer; }
+.ops-hist { fill: var(--accent); opacity: 0.7; }
+.ops-hist-warn { fill: var(--warn-line); }
+.ops-hist-error { fill: var(--danger-line); }
+.ops-histogram rect:hover { opacity: 1; filter: brightness(1.15); }
+.ops-facets { display: grid; gap: 8px; }
+.ops-facets:empty, .ops-status:empty { display: none; }
+.ops-facet { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ops-facet-label { min-width: 5.5rem; color: var(--muted); font-size: 0.8125rem; font-weight: 600; }
+.ops-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--raised); color: var(--text); font-size: 0.8125rem; font-weight: 600; }
+.ops-chip small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.ops-chip:hover { border: 0; background: var(--accent-soft); }
+.ops-chip[aria-pressed="true"] { background: var(--accent-solid); color: var(--accent-contrast); }
+.ops-days { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 6px; }
+.ops-event + .ops-event { border-top: 1px solid var(--line); }
+.ops-event-row { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 44px; padding: 10px 16px; border: 0; border-radius: 0; background: transparent; color: var(--text); font-weight: 400; text-align: left; justify-content: flex-start; }
+.ops-event-row:hover { border: 0; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.ops-event-row[aria-expanded="true"] { background: var(--accent-soft); }
+.ops-event-row > .badge { flex: none; margin-top: 1px; }
+.ops-event-time { flex: none; color: var(--muted); font-size: 0.8125rem; padding-top: 2px; }
+.ops-event-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.ops-event-meta { color: var(--muted); font-size: 0.75rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops-event-meta:empty { display: none; }
+.ops-event-message { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; font-size: 0.8125rem; }
+.ops-event-detail { display: grid; gap: 10px; padding: 4px 16px 14px; background: var(--accent-soft); }
+.ops-event-detail .facts dt { color: var(--muted); }
+.ops-more { justify-self: center; margin: 12px auto 0; display: flex; }
+.ops-context { max-height: 60vh; overflow-y: auto; }
+.ops-context-row { align-items: flex-start; gap: 8px; min-height: 0; }
+.ops-context-row.current { background: var(--accent-soft); }
+.ops-note { display: grid; gap: 8px; padding: 12px 16px; }
+.ops-note textarea { min-height: 3.5rem; }
+.ops-note button { justify-self: end; }
+.grant-row.with-ops { flex-wrap: wrap; }
+.grant-ops { display: flex; flex-wrap: wrap; gap: 6px 18px; flex-basis: 100%; padding: 2px 0 4px 46px; }
+.grant-op { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.8125rem; font-weight: 600; cursor: pointer; }
+@media (max-width: 560px) {
+  .ops-avail:not([data-count="1"]) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ops-event-row { flex-wrap: wrap; }
+  .ops-event-text { flex-basis: 100%; }
+  .ops-facet-label { min-width: 100%; }
+  .ops-filter, .ops-views { max-width: 100%; }
+}
+.ops-name { flex-basis: 100%; font-size: 1.25rem; }
+/* On a phone the section title already names the monitor or incident. */
+@media (max-width: 760px) { .ops-name { display: none; } }

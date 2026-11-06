@@ -41,7 +41,7 @@ test('native content focus, offscreen position and Search suspend the remaining 
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', firstId);
 
   await page.clock.fastForward(500);
-  await page.getByRole('navigation', { name: 'Studio', exact: true }).getByRole('button', { name: 'Search', exact: true }).click();
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
   const find = page.getByRole('combobox', { name: 'Search this dashboard and the web', exact: true });
   await expect(find).toBeVisible();
   await expect(stack.locator('.studio-playback-status')).toHaveText('Waiting');

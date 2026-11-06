@@ -188,6 +188,63 @@ body {
   gap: 4px;
   align-items: center;
 }
+.studio-top-start {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* With search: start and actions share what the centred bar leaves. */
+.studio-topbar-search .studio-top-actions {
+  flex: 1 1 0;
+  justify-content: flex-end;
+}
+/* Wide rather than short when there is room (F2), but it gives way to the
+   page tabs before they fold into "more": the start needs
+   --studio-start-need (pages.jsx) on each side of the centred bar. */
+.studio-search-bar {
+  flex: 0 1 clamp(240px, calc(100% - 2 * var(--studio-start-need, 0px) - 24px), min(44%, 560px));
+  min-width: 200px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 8px 0 13px;
+  border: 1px solid var(--studio-line);
+  border-radius: 10px;
+  background: var(--studio-input, var(--studio-raised));
+  color: var(--studio-muted);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: text;
+}
+.studio-search-bar:hover:not(:disabled) {
+  border-color: var(--studio-line-strong);
+}
+.studio-search-bar:focus-visible {
+  outline: 2px solid var(--studio-accent);
+  outline-offset: 2px;
+}
+.studio-search-bar > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-icon-button.studio-search-icon {
+  display: none;
+}
+@media (max-width: 680px) {
+  .studio-search-bar {
+    display: none;
+  }
+  .studio-icon-button.studio-search-icon {
+    display: inline-flex;
+  }
+}
 .studio-account-menu {
   position: relative;
 }
@@ -2027,17 +2084,10 @@ body {
   font-weight: 500;
   white-space: nowrap;
 }
-.studio-segmented > button[aria-checked="true"] {
+.studio-segmented > button:is([aria-checked="true"], [aria-pressed="true"]) {
   background: var(--studio-surface);
   box-shadow: 0 1px 4px #0003;
   font-weight: 600;
-}
-.studio-config-form > .studio-segmented {
-  display: flex;
-  margin: 0 0 20px;
-}
-.studio-config-form > .studio-segmented > button {
-  flex: 1;
 }
 .studio-row-control > :is(.studio-segmented, .studio-switch) {
   justify-self: end;
@@ -2194,6 +2244,10 @@ body {
 .studio-item-actions {
   margin-top: 30px;
 }
+/* First in its own section (Management), it needs no gap above it (B6). */
+.studio-section-body > .studio-item-actions:first-child {
+  margin-top: 0;
+}
 /* .studio-action-row resets its border, so a row after another keeps its separator here. */
 .studio-group-body > * + .studio-action-row {
   border-top: 1px solid var(--studio-line);
@@ -2289,7 +2343,8 @@ body {
   grid-template-columns: minmax(0, 1fr) 32px;
 }
 .studio-pair input,
-.studio-json-input {
+.studio-json-input,
+.studio-textarea-input {
   width: 100%;
   min-height: 40px;
   padding: 8px 10px;
@@ -2530,11 +2585,6 @@ body {
 .studio-row:focus-within {
   box-shadow: inset 3px 0 0 var(--studio-focus);
 }
-.studio-config-form > .studio-segmented {
-  width: fit-content;
-  min-width: 15rem;
-  margin: 0 auto 20px;
-}
 
 /* ---- Pages: tabs in the top bar ------------------------------------------ */
 .studio-topbar:has(.studio-pages) .studio-switcher {
@@ -2724,6 +2774,11 @@ body {
   margin: 0 0 12px;
 }
 @media (max-width: 680px) {
+  /* The page tabs wrap to their own row under the top bar, so the start
+     group's items join the top bar's own row. */
+  .studio-top-start {
+    display: contents;
+  }
   .studio-topbar:has(.studio-pages) {
     flex-wrap: wrap;
     height: auto;
@@ -3105,6 +3160,12 @@ body {
 .studio-status-pending .studio-status-dot {
   opacity: 0.4;
 }
+/* Maintenance and paused checks: a grey square, so it isn't read as up or down. */
+.studio-status-maintenance .studio-status-dot,
+.studio-status-paused .studio-status-dot {
+  border-radius: 2px;
+  background: var(--studio-muted);
+}
 /* A card whose check fails turns to the alert look by itself. */
 .studio-panel:has(.studio-card[data-alert]) {
   border-color: var(--studio-status-problem, #c4554d);
@@ -3195,6 +3256,11 @@ body {
 }
 .studio-native-content[data-tight] .studio-values-below {
   padding-top: 5px;
+}
+/* Values without the rule, when the band is too short for it (card-values.jsx). */
+.studio-native-content .studio-values-below[data-bare] {
+  border-top: 0;
+  padding-top: 0;
 }
 .studio-native-content .studio-values-below[data-empty] {
   /* Only "+N more" is left: no rule, and it tucks up beside the hero's label. */
@@ -3603,8 +3669,15 @@ svg.studio-chart-gauge {
   background: color-mix(in srgb, var(--card-text) 6%, transparent);
   text-align: center;
 }
+/* A long value (an IP address) shrinks to fit its box before it is cut
+   short, and never runs out of it (owner T8 on 65f724c). */
+.studio-value-quiet {
+  container-type: inline-size;
+  overflow: hidden;
+}
 .studio-value-quiet .studio-value-number {
-  font-size: 15px;
+  max-width: 100%;
+  font-size: clamp(11px, 13cqi, 15px);
   font-weight: 600;
 }
 .studio-value-quiet .studio-value-label {
@@ -4297,10 +4370,11 @@ svg.studio-chart-gauge {
 }
 
 /* Search over every page and the web (search.jsx). */
+/* Opens where the top bar's search sits, as if the bar grew. */
 .studio-find {
   position: fixed;
   inset: 0;
-  margin: 12vh auto auto;
+  margin: 10px auto auto;
   width: min(640px, calc(100vw - 32px));
   max-height: min(560px, calc(100dvh - 24vh));
   padding: 0;
@@ -4351,6 +4425,17 @@ svg.studio-chart-gauge {
   box-shadow: inset 0 0 0 1px var(--studio-line);
   color: var(--studio-muted);
   font: 11px/1.4 inherit;
+}
+.studio-find-cancel {
+  display: none;
+}
+@media (pointer: coarse) {
+  .studio-find-esc {
+    display: none;
+  }
+  .studio-find-cancel {
+    display: inline-flex;
+  }
 }
 .studio-find-results {
   overflow: auto;
@@ -4685,6 +4770,29 @@ svg.studio-chart-gauge {
 .studio-saved-look-name-edit input {
   flex: 1 1 160px;
   min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--studio-line);
+  border-radius: 9px;
+  background: var(--studio-input);
+  color: var(--studio-text);
+  font: inherit;
+  font-size: 14px;
+}
+/* The name takes the whole line, who can use it the next one across the full
+   width as the dialog's other choices, then the buttons (review M8). */
+.studio-saved-look-name input {
+  flex-basis: 100%;
+}
+.studio-saved-look-name .studio-segmented {
+  display: flex;
+  flex: 1 1 100%;
+}
+.studio-saved-look-name .studio-segmented > button {
+  flex: 1 1 0;
+}
+.studio-saved-look-name > .studio-button {
+  flex: 1 1 0;
 }
 .studio-saved-look-ask {
   padding: 10px 12px;
@@ -4734,6 +4842,12 @@ svg.studio-chart-gauge {
 .studio-connection-result.studio-failed {
   color: var(--studio-danger-text);
 }
+/* Brought into view when opened (ui.jsx revealForm): clear of the dialog's
+   sticky header and footer. */
+.studio-save-as,
+.studio-connection-form {
+  scroll-margin: 96px 0 96px;
+}
 .studio-connection-form {
   border-top: 1px solid var(--studio-line);
   padding-bottom: 12px;
@@ -4755,6 +4869,10 @@ svg.studio-chart-gauge {
 .studio-connection-form .studio-row-control > input {
   flex: 1;
   min-width: 0;
+}
+.studio-dialog-docked .studio-connection-form .studio-row-control > .studio-segmented {
+  display: flex;
+  flex: 1 1 auto;
 }
 .studio-connection-form .studio-row-control > button {
   flex: none;
@@ -4796,6 +4914,7 @@ svg.studio-chart-gauge {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin: 0 0 16px;
 }
 .studio-status-colour {
   display: inline-flex;
@@ -5085,6 +5204,143 @@ svg.studio-chart-gauge {
 .studio-datetime-4xl {
   font-size: 44px;
 }
+/* Studio's fillers (fillers.jsx). */
+.studio-filler {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.studio-filler-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.studio-panel[data-align="centre"] .studio-filler-text {
+  text-align: center;
+}
+/* A heading shrinks to fit a one-row card rather than being cut off. */
+.studio-filler-heading {
+  height: 100%;
+  container-type: size;
+}
+.studio-filler-heading .studio-filler-text {
+  font-size: min(1em, 80cqh);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.studio-native-content:has(> .studio-filler-heading),
+.studio-native-content:has(> .studio-filler-spacer) {
+  padding-block: 4px;
+}
+.studio-filler-note {
+  justify-content: flex-start;
+}
+.studio-filler-note .studio-filler-text {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+.studio-filler-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 2px;
+}
+.studio-filler-note a:hover {
+  text-decoration-color: currentColor;
+}
+.studio-filler-note-xs {
+  font-size: 12px;
+}
+.studio-filler-note-sm {
+  font-size: 14px;
+}
+.studio-filler-note-md {
+  font-size: 15px;
+}
+.studio-filler-note-lg {
+  font-size: 17px;
+}
+.studio-filler-note-xl {
+  font-size: 20px;
+}
+.studio-filler-note-2xl {
+  font-size: 24px;
+}
+.studio-filler-note-3xl {
+  font-size: 28px;
+}
+.studio-filler-note-4xl {
+  font-size: 32px;
+}
+.studio-textarea-input {
+  min-height: 110px;
+  resize: vertical;
+  line-height: 1.45;
+}
+/* A picture fills its card, edge to edge. */
+.studio-native-content:has(> .studio-filler-picture) {
+  padding: 0;
+  overflow: hidden;
+}
+.studio-filler-picture {
+  height: 100%;
+}
+.studio-filler-picture img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.studio-filler-picture-empty {
+  align-items: center;
+  padding: 12px;
+  color: var(--card-muted-text);
+  font-size: 13px;
+  text-align: center;
+}
+.studio-filler-picture-empty p {
+  margin: 0;
+}
+/* An empty note or picture says what to do only while editing; viewers of
+   the dashboard see nothing there (review M4, R1). */
+.studio-app:not(.studio-edit-mode) .studio-panel:has(.studio-filler-hint) {
+  visibility: hidden;
+}
+/* A heading with no edge and the plain fill stands on the page itself. */
+.studio-panel[data-edge="none"][data-fill="plain"]:has(.studio-filler-heading) {
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+}
+.studio-edit-mode .studio-panel[data-edge="none"][data-fill="plain"]:has(.studio-filler-heading) {
+  border: 1px dashed var(--studio-line);
+}
+/* A spacer is empty space on the page; while editing it shows where it is. */
+.studio-filler-spacer > span {
+  color: var(--card-muted-text);
+  font-size: 12px;
+  text-align: center;
+}
+.studio-app:not(.studio-edit-mode) .studio-panel:has(.studio-filler-spacer) {
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+}
+.studio-app:not(.studio-edit-mode)
+  .studio-panel:has(.studio-filler-spacer)
+  > .studio-panel-slide
+  > :not(.studio-native-content),
+.studio-app:not(.studio-edit-mode) .studio-filler-spacer > span {
+  display: none;
+}
+.studio-edit-mode .studio-panel:has(.studio-filler-spacer) {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+}
 /* Phone: a widget-dialog choice keeps its options on one line, sharing the
    width; a long option wraps inside its own button rather than pushing the
    last one to a line of its own. */
@@ -5289,4 +5545,159 @@ svg.studio-chart-gauge {
   flex-direction: column;
   width: 100%;
   min-width: 0;
+}
+
+/* ---- Show on: a widget this layout leaves out, while editing ------------- */
+.studio-edit-mode .studio-panel.studio-off-layout > .studio-panel-slide {
+  opacity: 0.4;
+  filter: grayscale(0.6);
+}
+.studio-edit-mode .studio-panel.studio-off-layout::after {
+  content: "Not shown on this layout";
+  position: absolute;
+  inset: auto 8px 8px auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--studio-raised);
+  border: 1px solid var(--studio-line-strong);
+  color: var(--studio-text);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ---- Status address: derived or own, with Check now ---------------------- */
+.studio-status-address {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+}
+.studio-status-from {
+  margin-top: -4px;
+  font-size: 12px;
+}
+.studio-status-address .studio-status-check {
+  justify-content: flex-start;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 10px;
+  margin: 6px 0 8px;
+  font-size: 13px;
+}
+.studio-status-check > .studio-button {
+  flex: none;
+}
+.studio-status-address .studio-connection-result:empty {
+  display: none;
+}
+
+/* ---- Widget editor docked beside the board (T26) ------------------------ */
+/* Wide screens: a panel down the right; the board stays visible and its own
+   card shows the draft. Narrower screens keep the centred, full-height sheet.
+   Docked only where the board keeps about 900px beside the panel (the
+   board's DOCK_QUERY), so desktop cards never reflow into broken words. */
+@media (min-width: 1400px) {
+  .studio-dialog.studio-dialog-docked {
+    inset: 0 0 0 auto;
+    margin: 0;
+    width: min(480px, 42vw);
+    height: 100dvh;
+    max-height: 100dvh;
+    border-width: 0 0 0 1px;
+    border-radius: 0;
+    box-shadow: -18px 0 60px #0006;
+  }
+  .studio-dialog.studio-dialog-docked::backdrop {
+    background: transparent;
+    backdrop-filter: none;
+  }
+  .studio-app.studio-docked-editing {
+    padding-right: calc(min(480px, 42vw) + 20px);
+  }
+  /* The top bar spans the window: undo the right padding's shift. */
+  .studio-app.studio-docked-editing .studio-topbar {
+    margin-left: calc(50% + (min(480px, 42vw) - 20px) / 2 - 50vw);
+  }
+}
+/* The docked panel is phone-narrow, so its rows are laid out as on a phone:
+   the label above, a choice across the full width on one line (B6). */
+.studio-dialog-docked .studio-row-main {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
+  padding: 9px 0 2px;
+}
+.studio-dialog-docked .studio-row-label {
+  color: var(--studio-muted);
+  font-size: 13px;
+}
+.studio-dialog-docked .studio-row-main:not(:has(.studio-row-control > :is(input, select, .studio-input-line))) {
+  padding-bottom: 10px;
+}
+.studio-dialog-docked .studio-row-control > .studio-segmented {
+  flex-wrap: nowrap;
+  justify-self: stretch;
+  margin-bottom: 8px;
+}
+.studio-dialog-docked .studio-row-control > .studio-segmented > button {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  white-space: normal;
+  line-height: 1.15;
+}
+.studio-dialog-docked .studio-row-main:has(> .studio-row-control > .studio-switch:only-child) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 0;
+}
+.studio-dialog-docked .studio-row-main:has(> .studio-row-control > .studio-switch:only-child) .studio-row-label {
+  color: inherit;
+  font-size: inherit;
+}
+/* In the docked panel a value's name gets its own line; its controls wrap
+   below it instead of squeezing the name. */
+.studio-dialog-docked .studio-value-list input {
+  flex-basis: calc(100% - 44px);
+}
+.studio-dialog-docked .studio-value-list .studio-segmented {
+  flex-wrap: nowrap;
+}
+.studio-dialog.studio-dialog-docked .studio-value-list > li {
+  display: flex;
+  padding: 8px 12px;
+}
+
+/* Investigate (components/studio/investigate.jsx). Words as well as colour. */
+.studio-investigate {
+  display: grid;
+  gap: 16px;
+}
+.studio-investigate-state {
+  font-weight: 650;
+}
+.studio-investigate-down,
+.studio-investigate-pending,
+.studio-investigate-unreachable {
+  color: var(--studio-danger-text);
+}
+.studio-investigate-up {
+  color: var(--studio-status-good, #3fb27f);
+}
+.studio-investigate-event {
+  display: grid;
+  gap: 2px;
+  padding: 10px 16px;
+}
+.studio-investigate-meta {
+  color: var(--studio-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.studio-investigate-message {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
 }

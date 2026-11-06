@@ -331,13 +331,17 @@ const INFO_WIDGET_NAMES = {
   datetime: 'Date & Time',
   glances: 'Glances',
   greeting: 'Greeting',
+  heading: 'Heading',
   kubernetes: 'Kubernetes',
   logo: 'Logo',
   longhorn: 'Longhorn',
+  note: 'Note',
   openmeteo: 'Open-Meteo',
   openweathermap: 'OpenWeatherMap',
+  picture: 'Picture',
   resources: 'Resources',
   search: 'Search',
+  spacer: 'Spacer',
   stocks: 'Stocks',
   unifi_console: 'UniFi Controller',
   weatherapi: 'WeatherAPI',
@@ -393,6 +397,10 @@ export function boardSources({ services, serviceWidgets, infoWidgets, bookmarks 
 export const NEW_PANEL_SIZE = Object.freeze({ w: 6, h: 2 });
 export const NEW_WIDGET_SIZE = Object.freeze({ w: 6, h: 4 });
 export function newPanelSize(source) {
+  // A heading starts as one row as wide as the widget row it names; a note
+  // has room for a few lines.
+  if (source.kind === 'informationWidget' && source.nativeLocator?.type === 'heading') return { w: 12, h: 1 };
+  if (source.kind === 'informationWidget' && source.nativeLocator?.type === 'note') return { w: 6, h: 3 };
   const base = source.kind === 'serviceWidget' ? NEW_WIDGET_SIZE : NEW_PANEL_SIZE;
   const minimum = panelMinimum(source);
   return { w: Math.max(base.w, minimum.w), h: Math.max(base.h, minimum.h) };
@@ -421,6 +429,9 @@ export function reconcileBoard(sources, previous, { pageId } = {}) {
     const panel = { ...source, pageId: old?.pageId ?? target };
     if (old?.look) panel.look = old.look;
     if (old?.behaviour) panel.behaviour = old.behaviour;
+    // A new heading reads as a section title on the page, not a card: no
+    // fill and no edge (its Look can still add them).
+    if (!old && source.kind === 'informationWidget' && source.nativeLocator?.type === 'heading') panel.look = { fill: 'plain', edge: 'none' };
     if (!position) {
       placement ??= placementIndex(occupied, columnsOfPage(pages.find((page) => page.id === target)));
       position = placement.next(newPanelSize(source));

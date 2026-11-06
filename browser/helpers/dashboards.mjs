@@ -33,9 +33,18 @@ export async function privateUpstreamFixture() {
   const users = ['Alpha', 'Beta'].map(name => ({ name, token: `fixture-${name.toLowerCase()}-${suffix}`, cookie: `session-${name.toLowerCase()}-${suffix}` }));
   const calls = [];
   const violations = [];
+  const probes = [];
   const server = createServer((request, response) => {
     const user = users.find(entry => request.headers.authorization === `Bearer ${entry.token}`);
     const cookies = request.headers.cookie || '';
+    // A card's status check (B3 on 65f724c) asks the widget's own address
+    // without any credentials; it gets a 401, as a real API would answer.
+    // Credentials that belong to nobody, or another address, are violations.
+    if (!request.headers.authorization && !cookies && request.url === '/private-metrics') {
+      probes.push(request.method);
+      response.writeHead(401, { 'content-type': 'application/json' }).end('{"error":"Sign in"}');
+      return;
+    }
     if (!user || request.url !== '/private-metrics') {
       violations.push('Unexpected upstream authorization or address');
       response.writeHead(403, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'Unexpected fixture request' }));
@@ -54,7 +63,7 @@ export async function privateUpstreamFixture() {
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '0.0.0.0', resolve); });
   const host = process.env.STUDIO_BROWSER_FIXTURE_HOST || '127.0.0.1';
   return {
-    users, calls, violations, url: `http://${host}:${server.address().port}/private-metrics`,
+    users, calls, violations, probes, url: `http://${host}:${server.address().port}/private-metrics`,
     async close() { server.closeAllConnections(); await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())); },
   };
 }

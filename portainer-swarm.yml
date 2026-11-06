@@ -59,6 +59,10 @@ services:
       STUDIO_ADMIN_EMAIL: ${STUDIO_ADMIN_EMAIL:-}
       # The proxy network's subnet, so logs and throttling see real addresses.
       STUDIO_TRUSTED_PROXIES: ${STUDIO_TRUSTED_PROXIES:-}
+      # Your own certificate authorities, as one PEM file inside the container
+      # (for example a Docker secret you add), for widgets and status checks
+      # whose services use them. Or add them in Administration (docs/DEPLOY.md).
+      STUDIO_TRUSTED_CERTIFICATES_FILE: ${STUDIO_TRUSTED_CERTIFICATES_FILE:-}
       # Single sign-on with an identity provider (docs/IDP-OTHERS.md;
       # Authentik example: docs/IDP-AUTHENTIK.md). Issuer and client ID
       # turn it on; the client secret is the studio_oidc_client_secret secret.
@@ -90,6 +94,19 @@ services:
       STUDIO_RENDERER_STARTUP_SECONDS: ${STUDIO_RENDERER_STARTUP_SECONDS:-30}
     # No published port: the reverse proxy reaches Studio as
     # <stack name>_studio:3000 on the shared network (docs/DEPLOY.md, step 8).
+    # Optional: receive syslog from routers and NAS boxes (docs/LOGS.md). Turn
+    # it on in Administration > Monitoring and logs, then remove the # from
+    # these lines, using the same port (default 5514). mode: host keeps each
+    # sender's own address, which Studio uses to tell senders apart.
+    # ports:
+    #   - target: 5514
+    #     published: 5514
+    #     protocol: udp
+    #     mode: host
+    #   - target: 5514
+    #     published: 5514
+    #     protocol: tcp
+    #     mode: host
     networks:
       - proxy
     # Named volumes by default. Set STUDIO_CONFIG_PATH and STUDIO_STATE_PATH to

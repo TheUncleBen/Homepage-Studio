@@ -5,8 +5,10 @@ import { BackgroundAdjust, BackgroundGrid, familyOf, FILL_FAMILIES } from "./bac
 import { PALETTE, partsFormat } from "./card-chart";
 import { useCardTheme } from "./card-look";
 import ColourField from "./colour-field";
+import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
 import { CHART_SHOWS, exactColour, setOverride } from "./look.mjs";
+import ShowOn from "./show-on";
 import { Group, Row, Segmented, Switch } from "./ui";
 
 // Which parts of the widget dialog apply to each kind of widget (Rule 1: only
@@ -387,33 +389,79 @@ function SavedLooks({ saved = [], look, onApply, onChange, personal, usage, onUp
 // A row that only exists for the choice above it, drawn indented under it.
 // Where the status check goes: the service's site monitor address (web) or
 // ping host. Empty uses the service's own link.
+// The status address (T35, U8): empty means derived, from the widget's
+// Connection or its link, shown greyed; typing one overrides it. Check now
+// runs the card's own check on it before saving.
 function StatusAddress({ check, address }) {
   const id = useId();
+  const [result, setResult] = useState(null);
   const ping = check === "ping";
-  let host = "";
-  try {
-    host = address.href ? new URL(address.href).hostname : "";
-  } catch {
-    host = "";
+  const own = (ping ? address.ping : address.web) || "";
+  const derived = address.fallback?.address || address.href || "";
+  const from = address.fallback?.from || "link";
+  const saved = /^\{\{STUDIO_CONNECTION_/.test(derived);
+  let shown = derived;
+  if (saved) shown = "The saved connection's address";
+  else if (ping && derived) {
+    try {
+      shown = new URL(derived).hostname;
+    } catch {
+      shown = derived;
+    }
   }
+  const target = own || derived;
+  const run = async () => {
+    setResult({ busy: true });
+    try {
+      setResult(await address.onCheck(check, target));
+    } catch (failure) {
+      setResult({ ok: false, message: failure.message });
+    }
+  };
   return (
     <Row
       label="Address"
       htmlFor={id}
       info={
         ping
-          ? "The host to ping. Leave it empty to ping the host of the widget's link."
-          : "The address to check, often a health page. Leave it empty to check the widget's link."
+          ? "The host to ping. Left empty, it's the host of the widget's Connection address, or of its link."
+          : "The address to check, often a health page. Left empty, it's the widget's Connection address, or its link."
       }
     >
-      <input
-        id={id}
-        value={ping ? address.ping : address.web}
-        inputMode={ping ? "text" : "url"}
-        autoComplete="off"
-        placeholder={(ping ? host : address.href) || (ping ? "host.example.org" : "https://service.example.org/health")}
-        onChange={(event) => address.onChange(check, event.target.value.trim())}
-      />
+      <div className="studio-status-address">
+        <div className="studio-input-line">
+          <input
+            id={id}
+            value={ping ? address.ping : address.web}
+            inputMode={ping ? "text" : "url"}
+            autoComplete="off"
+            aria-describedby={`${id}-from`}
+            placeholder={shown || (ping ? "host.example.org" : "https://service.example.org/health")}
+            onChange={(event) => {
+              setResult(null);
+              address.onChange(check, event.target.value.trim());
+            }}
+          />
+        </div>
+        {/* Where an empty address comes from, right under the field; then
+            Check now and its answer on one line (review L1). */}
+        <span id={`${id}-from`} className="studio-muted studio-status-from">
+          {own ? "Your own address" : derived ? `From the ${from}` : "Nothing to check yet"}
+        </span>
+        {address.onCheck && target && (
+          <div className="studio-inline-actions studio-status-check">
+            <button type="button" className="studio-button studio-quiet" disabled={result?.busy} onClick={run}>
+              {result?.busy ? "Checking…" : "Check now"}
+            </button>
+            <p
+              className={`studio-connection-result${result && !result.busy ? (result.ok ? " studio-ok" : " studio-failed") : ""}`}
+              role="status"
+            >
+              {result && !result.busy ? result.message : ""}
+            </p>
+          </div>
+        )}
+      </div>
     </Row>
   );
 }
@@ -659,7 +707,14 @@ function ValueList({
   const { t } = useTranslation();
   const synced = Boolean(onNativeFields && choices.length);
   const fields = synced ? withNativeValues(reported, choices, prefix) : reported;
-  const absent = new Set(fields.filter((field) => field.absent).map((field) => field.field));
+  // A value the widget isn't drawing yet shows as hidden, unless its fields
+  // list (the draft) already asks for it: "Below" is the default and isn't
+  // stored, so without this a value just shown went straight back to hidden
+  // (owner T8 on 65f724c: values stuck hidden until fields was typed in YAML).
+  const asked = new Set(
+    (nativeFields || []).map((key) => (String(key).includes(".") ? String(key) : `${prefix}.${key}`)),
+  );
+  const absent = new Set(fields.filter((field) => field.absent && !asked.has(field.field)).map((field) => field.field));
   // Widgets name their values with translation keys (adguard.queries).
   const rows = arrangeValues(fields, values).map((row) => ({
     ...row,
@@ -894,6 +949,13 @@ export default function LookEditor({
   lookUsage,
   onUpdateLookUsers,
   statusAddress,
+  // An integration widget's Docker container ({ server, container, onChange }),
+  // kept on the entry around it like its logo (6a93f66 had it on that entry's
+  // own tile).
+  docker,
+  // An integration widget's own logo and description ({ icon, description,
+  // onIcon, onDescription }), shown with the header that draws them.
+  identity,
   // The widget's own fields list and its choices (board 27): the Values list
   // shows every choice and keeps that list in sync.
   nativeValues,
@@ -967,6 +1029,15 @@ export default function LookEditor({
                   />
                 </Dependent>
               )}
+              <Dependent>
+                <Choice
+                  label="Columns"
+                  value={effective.columns}
+                  onChange={(value) => setLook("columns", value)}
+                  options={[["auto", "Auto"], ...["1", "2", "3", "4"].map((count) => [count, count])]}
+                  info={`How the value boxes${effective.layout === "hero" ? " below the hero" : ""} line up. Auto balances them for the card's size (6 values: 3 by 2, not 4 and 2). A number keeps that many columns while the boxes still fit, then balances. The order comes from Values.`}
+                />
+              </Dependent>
             </>
           )}
           <Choice
@@ -1100,6 +1171,19 @@ export default function LookEditor({
                   ["hidden", "None"],
                 ]}
               />
+              {identity && (effective.header === "logo-name" || effective.header === "logo") && (
+                <Dependent>
+                  <Row label="Logo" htmlFor={`${showId}-logo`}>
+                    <IconField
+                      id={`${showId}-logo`}
+                      label="logo"
+                      value={identity.icon || ""}
+                      onChange={identity.onIcon}
+                      emptyText="No logo"
+                    />
+                  </Row>
+                </Dependent>
+              )}
               {named && (
                 <Dependent>
                   <Choice
@@ -1111,6 +1195,20 @@ export default function LookEditor({
                       ["hide", "Hide"],
                     ]}
                   />
+                </Dependent>
+              )}
+              {identity && named && effective.description !== "hide" && (
+                <Dependent>
+                  <Row label="Description text" htmlFor={`${showId}-description`}>
+                    <input
+                      id={`${showId}-description`}
+                      type="text"
+                      value={identity.description || ""}
+                      onChange={(event) => identity.onDescription(event.target.value)}
+                      placeholder="A line under the name"
+                      maxLength={200}
+                    />
+                  </Row>
                 </Dependent>
               )}
             </>
@@ -1152,7 +1250,7 @@ export default function LookEditor({
               ["ping", "Ping"],
               ["off", "Off"],
             ]}
-            info="Web address asks the service's site monitor, or its address when it has none. Ping uses its ping host, or the address's host."
+            info="Web address checks the status address when one is set, otherwise the widget's Connection address or its link. Ping uses the same address's host."
           />
           {acts.status !== "off" && (
             <Dependent>
@@ -1191,6 +1289,45 @@ export default function LookEditor({
                 />
               )}
             </Dependent>
+          )}
+          {docker && (
+            <>
+              <Row
+                label="Docker server"
+                htmlFor={`${showId}-docker-server`}
+                info="The Docker server's name from docker.yaml. With a container, the card shows whether it is running."
+              >
+                <input
+                  id={`${showId}-docker-server`}
+                  type="text"
+                  value={docker.server || ""}
+                  onChange={(event) => docker.onChange("server", event.target.value)}
+                  placeholder={docker.servers?.[0] || "my-docker"}
+                  maxLength={200}
+                  autoComplete="off"
+                  list={docker.servers?.length ? `${showId}-docker-servers` : undefined}
+                />
+                {/* docker.yaml's servers as choices; any name can still be typed (review L2). */}
+                {docker.servers?.length > 0 && (
+                  <datalist id={`${showId}-docker-servers`}>
+                    {docker.servers.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                )}
+              </Row>
+              <Row label="Docker container" htmlFor={`${showId}-docker-container`}>
+                <input
+                  id={`${showId}-docker-container`}
+                  type="text"
+                  value={docker.container || ""}
+                  onChange={(event) => docker.onChange("container", event.target.value)}
+                  placeholder="container name"
+                  maxLength={200}
+                  autoComplete="off"
+                />
+              </Row>
+            </>
           )}
         </Group>
       )}
@@ -1278,16 +1415,13 @@ export default function LookEditor({
               ]}
             />
           )}
-          <Choice
-            label="On phones"
-            value={acts.phones}
-            onChange={(value) => setBehaviour("phones", value)}
-            options={[
-              ["show", "Show"],
-              ["hide", "Hide"],
-            ]}
-            info="Hide keeps the widget off screens narrower than a tablet. It stays in place everywhere else."
-          />
+          <Row
+            label="Show on"
+            info="The layouts this widget appears on. While editing, a layout shows the widgets it leaves out faded, so you can turn them back on."
+          >
+            <MixedNote value={acts.showOn} />
+            <ShowOn value={acts.showOn} onChange={(value) => setBehaviour("showOn", value)} />
+          </Row>
           {show.values && (
             <>
               <Choice

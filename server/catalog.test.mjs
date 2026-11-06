@@ -161,7 +161,7 @@ test('registry-only implementations and undocumented WeatherAPI are labeled expl
 });
 
 test('generated full catalog keeps every pinned registered type exactly once', () => {
-  assert.equal(shipped.service.length,170);assert.equal(shipped.info.length,14);
+  assert.equal(shipped.service.length,170);assert.equal(shipped.info.length,18);
   for(const kind of ['service','info']){assert.equal(new Set(shipped[kind].map(item=>item.type)).size,shipped[kind].length);assert.ok(shipped[kind].every(item=>item.coverage&&item.documentationStatus));}
   assert.match(shipped.schemaNotice,/not runtime integration tests/);
 });
@@ -254,4 +254,23 @@ test('setup guidance keeps the page prose and leaves out examples, images and li
     { type: 'note', tone: 'warning', blocks: [{ type: 'p', text: 'Not **proxied**.' }] },
     { type: 'code', text: 'uhttpd -m "<pass>"' },
   ]);
+});
+
+// Owner feedback T8 on 65f724c (U6): Studio's own fillers, where Homepage has
+// nothing. They are marked as Studio's and never claim Homepage's documentation.
+test('Studio fillers are in the catalog as Studio-made, with their dialog settings', () => {
+  for (const source of [catalog, shipped]) {
+    const fillers = source.info.filter(item => item.documentationStatus === 'studio');
+    assert.deepEqual(fillers.map(item => item.type).sort(), ['heading', 'note', 'picture', 'spacer']);
+    for (const item of fillers) {
+      assert.equal(item.docs, '');
+      assert.ok(item.guide?.length && item.description);
+      assert.ok(item.sources.every(entry => !entry.url.includes('gethomepage/homepage')));
+    }
+  }
+  assert.equal(field('note', 'text', 'info').editor, 'multiline');
+  assert.equal(field('picture', 'image', 'info').editor, 'picture');
+  assert.deepEqual(field('picture', 'fit', 'info').choices, ['fill', 'fit']);
+  assert.equal(field('heading', 'text_size', 'info').defaultChoice, 'xl');
+  assert.deepEqual(widget('spacer', 'info').fields, []);
 });

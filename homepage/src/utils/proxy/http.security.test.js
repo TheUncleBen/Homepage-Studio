@@ -184,6 +184,20 @@ describe("native HTTP proxy credential boundaries", () => {
     expect(JSON.parse(data).cookie).toBeUndefined();
   });
 
+  it("neither sends nor keeps jar cookies when a status check opts out", async () => {
+    const origin = await serve((req, res) => {
+      res.writeHead(200, { "content-type": "application/json", "set-cookie": "later=SET_BY_CHECK; Path=/" });
+      res.end(JSON.stringify(req.headers));
+    });
+    const { addCookieToJar } = await import("./cookie-jar");
+    addCookieToJar(`${origin}/api`, { "set-cookie": "session=PRIVATE_COOKIE; Path=/" });
+    const { httpProxy } = await import("./http");
+    const [, , data] = await httpProxy(`${origin}/api`, { cookieJar: false });
+    expect(JSON.parse(data).cookie).toBeUndefined();
+    const [, , again] = await httpProxy(`${origin}/api`);
+    expect(JSON.parse(again).cookie).toBe("session=PRIVATE_COOKIE");
+  });
+
   it.each(["POST", "GET"])(
     "does not replay a %s request body to another origin on a preserving redirect",
     async (method) => {

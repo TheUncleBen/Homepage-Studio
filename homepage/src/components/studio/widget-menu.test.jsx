@@ -36,7 +36,7 @@ const twoPages = {
   stacks: [],
 };
 
-async function mount({ board = twoPages, mode = "live", envelope = {} } = {}) {
+async function mount({ board = twoPages, mode = "live", envelope = {}, accessValue = null } = {}) {
   let state = { revision: "r1", configurationRevision: CONFIG, board: structuredClone(board), ...envelope };
   const writes = [];
   const fetch = vi.fn(async (path, options) => {
@@ -47,7 +47,18 @@ async function mount({ board = twoPages, mode = "live", envelope = {} } = {}) {
       const { newDiscoveredIds: _saved, ...rest } = state;
       state = { ...rest, revision: `r${writes.length + 1}`, ...(body.board ? { board: body.board } : {}) };
       value = state;
-    } else if (path === "/studio/api/access") value = { authEnabled: false, level: "admin", user: null };
+    } else if (path === "/studio/api/access") value = accessValue ?? { authEnabled: false, level: "admin", user: null };
+    else if (path.endsWith("/studio/api/panel-status"))
+      value = {
+        available: true,
+        panels: {
+          clock: { state: "down", since: Date.now() - 60000, text: "Connection refused · check the address and port" },
+        },
+      };
+    else if (path.startsWith("/studio/api/ops/logs/search"))
+      value = {
+        events: [{ id: "e1", ts: Date.now(), severity: 3, message: "clock: Down · Connection refused", repeat: 3 }],
+      };
     else value = state;
     return { ok: true, status: 200, json: async () => value };
   });
@@ -65,7 +76,7 @@ async function mount({ board = twoPages, mode = "live", envelope = {} } = {}) {
     </SWRConfig>,
   );
   if (mode === "edit") await waitFor(() => expect(screen.getByRole("button", { name: "Done" })).toBeEnabled());
-  else await waitFor(() => expect(screen.getByRole("button", { name: "Search" })).toBeEnabled());
+  else await waitFor(() => expect(screen.getAllByRole("button", { name: "Search" })[0]).toBeEnabled());
   return { ...view, writes };
 }
 
@@ -298,5 +309,81 @@ describe("Deleting one widget", () => {
     const toast = (await screen.findByText("weather deleted")).closest(".studio-toast");
     expect(await within(toast).findByRole("button", { name: "Undo" })).toBeEnabled();
     expect(screen.getByRole("toolbar", { name: "Editing" }).querySelector("[aria-label='Undo']")).toBeEnabled();
+  });
+});
+
+describe("Investigate", () => {
+  const viewer = (operations) => ({
+    authEnabled: true,
+    level: "view",
+    user: { displayName: "Sam", username: "sam", role: "member" },
+    dashboard: { id: "default" },
+    operations,
+  });
+
+  it("is the only item while viewing, for people with Monitoring or Logs, and opens a sheet", async () => {
+    await mount({ accessValue: viewer({ monitoring: true, logs: true }) });
+    const menu = await menuFor("clock");
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Investigate"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Investigate" }));
+    const sheet = await screen.findByRole("dialog", { name: /clock: what’s happening/ });
+    expect(await within(sheet).findByText("Down")).toBeInTheDocument();
+    expect(within(sheet).getByText("Connection refused · check the address and port")).toBeInTheDocument();
+    expect(await within(sheet).findByText("clock: Down · Connection refused")).toBeInTheDocument();
+    expect(within(sheet).getByRole("link", { name: "Open in Operations" })).toHaveAttribute(
+      "href",
+      `/studio/operations#monitor/${encodeURIComponent("card:default:clock")}`,
+    );
+  });
+
+  it("goes to the widget's logs when the card has no status check", async () => {
+    await mount({ accessValue: viewer({ monitoring: false, logs: true }) });
+    fireEvent.click(within(await menuFor("weather")).getByRole("menuitem", { name: "Investigate" }));
+    const sheet = await screen.findByRole("dialog", { name: /weather: what’s happening/ });
+    expect(within(sheet).queryByText("Status check")).toBeNull();
+    expect(within(sheet).getByRole("link", { name: "Show in Logs" }).getAttribute("href")).toBe(
+      `/studio/operations#logs?${new URLSearchParams({ q: "dashboard:default panel:weather" })}`,
+    );
+  });
+
+  it("is offered for the widget a stack is showing", async () => {
+    const stacked = {
+      ...twoPages,
+      panels: [panel("clock", "home", 0), panel("weather", "home", 0), panel("plex", "media", 0)],
+      stacks: [
+        {
+          id: "s1",
+          panelIds: ["clock", "weather"],
+          rect: { x: 0, y: 0, w: 8, h: 6 },
+          playback: {
+            mode: "manual",
+            intervalMs: 10000,
+            manualHoldMs: 30000,
+            transition: "horizontal",
+            transitionDurationMs: 250,
+            loop: true,
+          },
+        },
+      ],
+    };
+    await mount({ board: stacked, accessValue: viewer({ monitoring: true, logs: true }) });
+    const menu = await menuFor("clock");
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Investigate"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Investigate" }));
+    expect(await screen.findByRole("dialog", { name: /clock: what’s happening/ })).toBeInTheDocument();
+  });
+
+  it("is not offered to viewers without Monitoring or Logs", async () => {
+    await mount({ accessValue: viewer({ monitoring: false, logs: false }) });
+    fireEvent.contextMenu(screen.getByTestId("native-clock"));
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 });

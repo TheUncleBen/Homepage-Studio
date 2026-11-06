@@ -351,3 +351,20 @@ describe("Accessible configuration views and field errors", () => {
     expect(yaml).not.toHaveAttribute("aria-describedby");
   });
 });
+
+describe("Studio filler settings (U6)", () => {
+  it("edits a note's text on several lines", () => {
+    render(
+      <Fixture
+        initial={{}}
+        fields={[{ key: "text", label: "Text", type: "string", valueTypes: ["string"], editor: "multiline" }]}
+      />,
+    );
+    const box = screen.getByRole("textbox", { name: "Text" });
+    expect(box.tagName).toBe("TEXTAREA");
+    fireEvent.change(box, { target: { value: "Guest Wi-Fi: Garden\nhttps://wiki.example.org" } });
+    expect(JSON.parse(screen.getByTestId("config-value").textContent)).toEqual({
+      text: "Guest Wi-Fi: Garden\nhttps://wiki.example.org",
+    });
+  });
+});

@@ -7,6 +7,7 @@ import { resolvedBehaviour, resolvedLook, widgetFields } from "./card-look";
 import ConfigForm, { LINK_FIELDS, SERVICE_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
+import { isFiller } from "./fillers";
 import {
   gridColumns,
   mergePage,
@@ -25,7 +26,7 @@ import StudioIcon from "./icons";
 import { SCOPE_LABEL, useLibrary } from "./library";
 import LookEditor, { lookOnly, lookSections, lookSummaries, sameLook, valuesPartShown } from "./look-editor";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
-import { ActionRow, Group, Row, Section, Segmented } from "./ui";
+import { ActionRow, Group, revealForm, Row, Section, Segmented } from "./ui";
 
 import { SettingsContext } from "utils/contexts/settings";
 
@@ -105,8 +106,14 @@ function SaveAsWidget({ library, defaultName, panelId, changed, onDone }) {
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(null);
   const id = useId();
+  const box = useRef(null);
   const scopes = library.scopes;
   const chosen = scope ?? (scopes.includes("dashboard") ? "dashboard" : scopes[0]);
+  // The form opens under the actions, often below the fold: bring it into
+  // view and start in its name.
+  useEffect(() => {
+    if (library.loaded) revealForm(box.current);
+  }, [library.loaded]);
   if (!library.loaded) return <p className="studio-muted">Loading…</p>;
   if (saved)
     return (
@@ -118,7 +125,7 @@ function SaveAsWidget({ library, defaultName, panelId, changed, onDone }) {
       </p>
     );
   return (
-    <div className="studio-save-as">
+    <div className="studio-save-as" ref={box}>
       <ErrorMessage error={error} />
       <Row label="Name" htmlFor={id}>
         <input id={id} maxLength={60} value={name} onChange={(event) => setName(event.target.value)} />
@@ -183,9 +190,11 @@ function hostOf(value) {
   }
 }
 
-// What a widget's card takes from the entry it lives in: its link and
-// status check (its name is the entry's name).
-const WIDGET_SERVICE_KEYS = ["href", "siteMonitor", "ping"];
+// What a widget's card takes from the entry it lives in: its link, status
+// check, logo and description (its name is the entry's name).
+const WIDGET_SERVICE_KEYS = ["href", "siteMonitor", "ping", "icon", "description", "server", "container"];
+// Check now in the Status setting: the card's own check, on the draft address.
+const statusCheckNow = (check, address) => studioRequest("/studio/api/connection-test", { status: { check, address } });
 function widgetService(config = {}) {
   return Object.fromEntries(
     WIDGET_SERVICE_KEYS.map((key) => [key, typeof config[key] === "string" ? config[key] : ""]),
@@ -219,6 +228,9 @@ export function duplicateEntry(panel, state, catalog) {
     },
   };
 }
+
+// Studio's fillers have no app logo; each has its own symbol.
+const FILLER_ICONS = { heading: "heading", note: "note", picture: "image", spacer: "maximize" };
 
 const ENDPOINT = {
   service: "service",
@@ -414,7 +426,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, in
     ...(catalog.info || []).map((item) => ({
       ...item,
       kind: "informationWidget",
-      icon: "clock",
+      icon: FILLER_ICONS[item.type] || "clock",
     })),
     ...(catalog.service || []).map((item) => ({
       ...item,
@@ -441,6 +453,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, in
   // The app's own logo from the bundled set, when one matches its name.
   const logoOf = (entry) => {
     if (!logos || (entry.kind !== "serviceWidget" && entry.kind !== "informationWidget")) return null;
+    if (entry.kind === "informationWidget" && isFiller(entry.type)) return null;
     const keys = [entry.type, entry.name].map((text) =>
       String(text || "")
         .toLowerCase()
@@ -571,6 +584,15 @@ export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, in
   );
 }
 
+// Sends the docked editor's draft to the board as it changes.
+function LiveDraft({ value, onChange }) {
+  useEffect(() => {
+    const [panel, override] = JSON.parse(value);
+    onChange({ panel, override });
+  }, [value, onChange]);
+  return null;
+}
+
 export default function ContentEditor({
   state,
   catalog,
@@ -585,6 +607,13 @@ export default function ContentEditor({
   renderPreview,
   startDeleting = false,
   onDelete,
+  // Docked beside the board (T26): the board's own card shows the draft
+  // through onLiveDraft, so the dialog has no preview of its own.
+  docked = false,
+  onLiveDraft,
+  // Docked, the board beside it can change and save while the dialog is
+  // open: settle that first, then save on the board's latest revision.
+  beforeSave,
 }) {
   const kind = panel?.kind || entry.kind;
   // The widget's own look and behaviour live on the board, not in its YAML.
@@ -603,7 +632,8 @@ export default function ContentEditor({
   // widget in a stack takes the stack's size, so it has none of its own here.
   const initialRect = boardPanel && !stacked ? boardPanel.rect : null;
   const [rect, setRect] = useState(initialRect);
-  const rectChanged = Boolean(initialRect) && (rect.w !== initialRect.w || rect.h !== initialRect.h);
+  // Docked, the widget is resized on the board itself, which saves it.
+  const rectChanged = !docked && Boolean(initialRect) && (rect.w !== initialRect.w || rect.h !== initialRect.h);
   // The formats of this widget's numbers (from Studio's collector), so Show
   // as offers only the charts its data supports.
   const { data: chartProbe } = useSWR(
@@ -668,16 +698,18 @@ export default function ContentEditor({
   const [deleting, setDeleting] = useState(startDeleting);
   const sizeNoteId = useId();
   const [savingAs, setSavingAs] = useState(false);
-  // One section open at a time (board 24). A new item opens on its settings;
-  // an existing one opens with everything summarised.
-  const [openSection, setOpenSection] = useState(startDeleting ? "manage" : panel ? null : "settings");
+  // Sections stay open until closed, so Values and Look can be open together
+  // (F7, 6 Nov 2026: less back and forth; was one at a time, board 24). A new
+  // item opens on its settings; an existing one opens with everything summarised.
+  const [openSections, setOpenSections] = useState(startDeleting ? ["manage"] : panel ? [] : ["settings"]);
   // Saved looks and widgets are read once Look or Management first opens.
   const [libraryWanted, setLibraryWanted] = useState(false);
-  if ((openSection === "look" || openSection === "manage") && !libraryWanted) setLibraryWanted(true);
+  if ((openSections.includes("look") || openSections.includes("manage")) && !libraryWanted) setLibraryWanted(true);
   const library = useLibrary(Boolean(boardPanel) && libraryWanted);
   const sectionProps = (id) => ({
-    open: openSection === id,
-    onToggle: () => setOpenSection((current) => (current === id ? null : id)),
+    open: openSections.includes(id),
+    onToggle: () =>
+      setOpenSections((current) => (current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id])),
   });
   const deleteConfirm = useRef(null);
   const keepButton = useRef(null);
@@ -795,20 +827,50 @@ export default function ContentEditor({
             (item) => item.id !== boardPanel.id && item.look && sameLook(lookOnly(item.look), saved),
           ).length,
         onUpdateLookUsers: (from, to) => setLookSwaps((current) => [...current, { from, to }]),
+        // An integration widget's logo and description live on the entry
+        // around it (owner T8/T30 on 65f724c: lost with that entry in round 4).
+        identity:
+          kind === "serviceWidget"
+            ? {
+                icon: service.icon,
+                description: service.description,
+                onIcon: (value) => setService({ ...service, icon: value || "" }),
+                onDescription: (value) => setService({ ...service, description: value }),
+              }
+            : undefined,
+        docker:
+          kind === "serviceWidget"
+            ? {
+                server: service.server,
+                container: service.container,
+                servers: Array.isArray(state?.dockerServers) ? state.dockerServers : [],
+                onChange: (key, value) => setService({ ...service, [key]: value }),
+              }
+            : undefined,
         statusAddress:
           kind === "serviceWidget"
             ? {
                 web: service.siteMonitor,
                 ping: service.ping,
                 href: service.href,
+                // Derived (T35): the Connection address, else the link.
+                fallback:
+                  /^https?:\/\//i.test(draft.url || "") || /^\{\{STUDIO_CONNECTION_/.test(draft.url || "")
+                    ? { address: draft.url, from: "Connection" }
+                    : service.href
+                      ? { address: service.href, from: "link" }
+                      : null,
                 onChange: (check, value) =>
                   setService({ ...service, [check === "ping" ? "ping" : "siteMonitor"]: value || "" }),
+                onCheck: statusCheckNow,
               }
             : kind === "service"
               ? {
                   web: typeof draft.siteMonitor === "string" ? draft.siteMonitor : "",
                   ping: typeof draft.ping === "string" ? draft.ping : "",
                   href: typeof draft.href === "string" ? draft.href : "",
+                  fallback: typeof draft.href === "string" && draft.href ? { address: draft.href, from: "link" } : null,
+                  onCheck: statusCheckNow,
                   onChange: (check, value) => {
                     const key = check === "ping" ? "ping" : "siteMonitor";
                     const next = { ...draft };
@@ -863,7 +925,7 @@ export default function ContentEditor({
         kind === "serviceWidget" && "link",
         sections.link && "on click",
         sections.values && "refresh",
-        "on phones",
+        "which layouts show it",
       ])
     : "Where the card's name takes you";
   if (!boardPanel) summaries.status = hostOf(service?.href);
@@ -880,16 +942,18 @@ export default function ContentEditor({
     setError(null);
     setPending(true);
     try {
+      const revision = beforeSave ? await beforeSave() : state.revision;
+      if (!revision) throw new Error("The arrangement beside this dialog could not be saved. Try again.");
       const contentChanged =
         action !== "update" || name !== initialName || serviceChanged || editorDraftChanged(initial, draft);
       // A look-only change saves the arrangement; with content it travels
       // along so both commit together.
       if (!contentChanged && lookChanged) {
-        await onSaved(await studioRequest("/studio/api/board", { revision: state.revision, board: nextBoard() }));
+        await onSaved(await studioRequest("/studio/api/board", { revision, board: nextBoard() }));
         return;
       }
       const body = {
-        revision: state.revision,
+        revision,
         action,
         ...(source ? { id: source.id } : {}),
         config: patchFromDraft(initial, draft),
@@ -917,6 +981,28 @@ export default function ContentEditor({
   };
   const requiresName = kind === "service" || kind === "bookmark" || kind === "serviceWidget";
   const disabled = !valid || pending || (requiresName && !name.trim());
+  // What the card shows while editing: in the preview, or on the board itself
+  // when the editor is docked.
+  const previewPanel = boardPanel
+    ? {
+        ...boardPanel,
+        ...(rect && !docked ? { rect } : {}),
+        look,
+        behaviour,
+        title: kind === "service" || kind === "bookmark" ? name || boardPanel.title : boardPanel.title,
+      }
+    : null;
+  // A link's name, address, description and icon show as they are typed.
+  const previewOverride =
+    kind === "service" || kind === "bookmark"
+      ? { name: name || boardPanel?.title, href: draft.href, description: draft.description, icon: draft.icon }
+      : kind === "serviceWidget"
+        ? { icon: service.icon, description: service.description, ...(draftFields ? { fields: draftFields } : {}) }
+        : // Studio's fillers fetch nothing, so their text and picture show as typed.
+          kind === "informationWidget" && isFiller(source?.type || entry?.type)
+          ? { options: draft }
+          : null;
+  const liveKey = docked && previewPanel && onLiveDraft ? JSON.stringify([previewPanel, previewOverride]) : null;
   return (
     <form
       onSubmit={(event) => {
@@ -924,24 +1010,16 @@ export default function ContentEditor({
         submit();
       }}
     >
-      <div className={`studio-dialog-body${boardPanel && renderPreview ? " studio-widget-layout" : ""}`}>
-        {boardPanel && renderPreview && (
+      {liveKey && <LiveDraft value={liveKey} onChange={onLiveDraft} />}
+      <div className={`studio-dialog-body${boardPanel && renderPreview && !docked ? " studio-widget-layout" : ""}`}>
+        {boardPanel && renderPreview && !docked && (
           <aside className="studio-look-preview" aria-label="Preview">
             <span className="studio-look-preview-label" aria-hidden="true">
               Preview
             </span>
             {renderPreview(
-              {
-                ...boardPanel,
-                ...(rect ? { rect } : {}),
-                look,
-                behaviour,
-                title: kind === "service" || kind === "bookmark" ? name || boardPanel.title : boardPanel.title,
-              },
-              // A link's name, address, description and icon show as they are typed.
-              kind === "service" || kind === "bookmark"
-                ? { name: name || boardPanel.title, href: draft.href, description: draft.description, icon: draft.icon }
-                : null,
+              previewPanel,
+              previewOverride,
               rect && (
                 <ResizeCorner
                   rect={rect}
@@ -994,6 +1072,9 @@ export default function ContentEditor({
                   value={draft}
                   onChange={setDraft}
                   fields={fields}
+                  emptyNote={
+                    (source?.type || entry?.type) === "spacer" ? "Nothing to set up. Size it on the board." : undefined
+                  }
                   knownKeys={hiddenKeys}
                   onValidity={setValid}
                   sectioned
@@ -1158,11 +1239,19 @@ export default function ContentEditor({
               )}
               {guided && (
                 <Section
-                  title={guideName ? `Setting up ${guideName}` : "Setting it up"}
+                  title={
+                    selectedEntry?.documentationStatus === "studio"
+                      ? `About ${guideName}`
+                      : guideName
+                        ? `Setting up ${guideName}`
+                        : "Setting it up"
+                  }
                   detail={
-                    selectedEntry?.secrets?.length
-                      ? `What ${guideName || "it"} needs and how to name its secrets`
-                      : `What ${guideName || "it"} needs`
+                    selectedEntry?.documentationStatus === "studio"
+                      ? "What it's for"
+                      : selectedEntry?.secrets?.length
+                        ? `What ${guideName || "it"} needs and how to name its secrets`
+                        : `What ${guideName || "it"} needs`
                   }
                   {...sectionProps("guide")}
                 >

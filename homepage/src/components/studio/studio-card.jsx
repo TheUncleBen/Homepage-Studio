@@ -2,6 +2,7 @@ import { useTranslation } from "next-i18next/pages";
 import { useContext } from "react";
 import useSWR from "swr";
 
+import { studioRequest } from "./api.mjs";
 import { StatusHistory } from "./card-chart";
 import { CardLookContext } from "./card-look";
 import { usePreferences } from "./preferences";
@@ -19,16 +20,41 @@ const TARGETS = { same: "_self", new: "_blank" };
 const downSince = new Map();
 
 // The check behind a card's status: the service's own siteMonitor or ping
-// when set, otherwise its address (fallback=1) when the widget asks for one.
-function useStatus(service, groupName, check) {
+// when set, otherwise its widget's Connection address or its link
+// (fallback=1) when the card asks for one.
+//
+// Studio's monitoring engine runs that check on the server for every card
+// (owner decision D6), so every browser shows the same status and history.
+// One request a dashboard serves all its cards. A card the engine doesn't
+// check yet (just added) makes the check itself until it does.
+function cardMonitorStatus(panel) {
+  if (!panel) return null;
+  if (panel.state === "up") return { state: "up", ms: panel.ms ?? undefined, since: panel.since };
+  if (panel.state === "down" || panel.state === "unreachable")
+    return { state: "down", code: panel.code ?? undefined, text: panel.text ?? undefined, since: panel.since };
+  if (panel.state === "maintenance" || panel.state === "paused") return { state: panel.state };
+  return { state: "pending" };
+}
+function useStatus(service, groupName, check, connected = false, panelId = null) {
   const kind = statusKind(check);
-  const has = kind === "ping" ? service.ping || service.href : service.siteMonitor || service.href;
-  const key =
-    kind && has && groupName && service.name
-      ? `/api/${kind}?${new URLSearchParams({ groupName, serviceName: service.name, fallback: "1" })}`
-      : null;
+  // An integration widget's Connection address is used when nothing else is
+  // set (utils/studio/status-address); the browser never sees that address.
+  const has = (kind === "ping" ? service.ping : service.siteMonitor) || service.href || connected;
+  const usable = Boolean(kind && has && groupName && service.name);
+  const { data: monitored, error: monitoredError } = useSWR(
+    usable && panelId ? "/studio/api/panel-status" : null,
+    studioRequest,
+    { refreshInterval: 30000, dedupingInterval: 10000 },
+  );
+  const fromMonitor = monitored?.available ? cardMonitorStatus(monitored.panels?.[panelId]) : null;
+  const own = usable && (!panelId || monitoredError || (monitored && !fromMonitor));
+  const key = own
+    ? `/api/${kind}?${new URLSearchParams({ groupName, serviceName: service.name, fallback: "1" })}`
+    : null;
   const { data, error } = useSWR(key, { refreshInterval: 30000 });
-  if (!key) return null;
+  if (!usable) return null;
+  if (fromMonitor) return fromMonitor;
+  if (!key) return { state: "pending" };
   if (error || data?.error) return { state: "down", text: "Error" };
   if (!data) return { state: "pending" };
   return statusFrom(kind, data);
@@ -37,19 +63,25 @@ function useStatus(service, groupName, check) {
 function StatusMark({ status, show }) {
   const { t } = useTranslation();
   if (!status) return null;
+  // Under a millisecond (a ping on the local network) says so, not "0 ms".
+  const time = !Number.isFinite(status.ms)
+    ? ""
+    : status.ms < 1
+      ? `<${t("common.ms", { value: 1, style: "unit", unit: "millisecond", maximumFractionDigits: 0 })}`
+      : t("common.ms", { value: status.ms, style: "unit", unit: "millisecond", maximumFractionDigits: 0 });
   const label =
     status.state === "pending"
       ? "Checking…"
-      : status.state === "down"
-        ? `Down${status.code ? ` (${status.code})` : ""}`
-        : `Up · ${t("common.ms", { value: status.ms, style: "unit", unit: "millisecond", maximumFractionDigits: 0 })}`;
+      : status.state === "maintenance"
+        ? "Maintenance"
+        : status.state === "paused"
+          ? "Not checked (paused)"
+          : status.state === "down"
+            ? `Down${status.code ? ` (${status.code})` : ""}`
+            : `Up${time ? ` · ${time}` : ""}`;
   return (
     <span className={`studio-card-status studio-status-${status.state}`} title={label} role="img" aria-label={label}>
-      {show === "time" && status.state === "up" && (
-        <span className="studio-status-text">
-          {t("common.ms", { value: status.ms, style: "unit", unit: "millisecond", maximumFractionDigits: 0 })}
-        </span>
-      )}
+      {show === "time" && status.state === "up" && time && <span className="studio-status-text">{time}</span>}
       {show === "updown" && status.state === "up" && <span className="studio-status-text">Up</span>}
       {status.state === "down" && <span className="studio-status-text">{status.code ? "Down" : "Offline"}</span>}
       <span className="studio-status-dot" aria-hidden="true" />
@@ -107,10 +139,12 @@ export function CardHead({ icon, name, description, note, href, card, status, ex
 
 // A service tile: its logo, name and status. With nothing else to show it
 // stays one compact row; when its check fails it says so in words.
-export function ServiceCard({ service, groupName, children }) {
+// connected: an integration widget's card, whose Connection address the
+// status check can use.
+export function ServiceCard({ service, groupName, children, connected = false }) {
   const card = useContext(CardLookContext);
   const settings = useContext(SettingsContext)?.settings;
-  const status = useStatus(service, groupName, card.statusCheck);
+  const status = useStatus(service, groupName, card.statusCheck, connected, card.id ?? null);
   const { clock } = usePreferences();
   const { i18n } = useTranslation();
   const statusStyle = service.statusStyle ?? settings?.statusStyle ?? "dot";
@@ -125,11 +159,12 @@ export function ServiceCard({ service, groupName, children }) {
   const key = `${groupName}\u0000${service.name}`;
   if (down && !downSince.has(key)) downSince.set(key, new Date());
   if (status?.state === "up") downSince.delete(key);
-  const since = downSince.get(key);
+  // The engine knows when it went down; a card's own check only since this page opened.
+  const since = down && Number.isFinite(status.since) ? new Date(status.since) : downSince.get(key);
   // A down service says so in place of its description, so even a compact
   // card shows why it is red.
   const note = down
-    ? `${status.code ? `Answered ${status.code}` : "No answer"}${since ? ` since ${since.toLocaleTimeString(i18n.language || [], { hour: "2-digit", minute: "2-digit", ...(clock !== "dashboard" ? { hour12: clock === "12" } : {}) })}` : ""}`
+    ? `${status.code ? `Answered ${status.code}` : status.text && status.text !== "Error" ? status.text : "No answer"}${since ? ` since ${since.toLocaleTimeString(i18n.language || [], { hour: "2-digit", minute: "2-digit", ...(clock !== "dashboard" ? { hour12: clock === "12" } : {}) })}` : ""}`
     : null;
   // Status history takes the place of an integration's own values.
   const body = card.show === "status" && card.statusCheck !== "off" ? <StatusHistory card={card} /> : children;
@@ -157,7 +192,7 @@ export function ServiceCard({ service, groupName, children }) {
 // An integration widget, under its service's logo and name.
 export function WidgetCard({ service, widget, groupName }) {
   return (
-    <ServiceCard service={service} groupName={groupName}>
+    <ServiceCard service={service} groupName={groupName} connected={typeof widget?.type === "string"}>
       <ServiceWidget widget={widget} service={service} />
     </ServiceCard>
   );

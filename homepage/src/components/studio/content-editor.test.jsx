@@ -180,6 +180,34 @@ describe("widget look in the widget dialog", () => {
     vi.unstubAllGlobals();
   });
 
+  it("docked beside the board, sends the draft to the board's own card instead of a preview", async () => {
+    vi.stubGlobal("fetch", ok());
+    const onLiveDraft = vi.fn();
+    render(
+      <ContentEditor
+        state={{ revision: "r1", services: [], groups: [], bookmarks: [bookmark] }}
+        catalog={{ service: [], info: [] }}
+        panel={board.panels[0]}
+        wholeBoard={board}
+        renderPreview={() => <output data-testid="preview" />}
+        docked
+        onLiveDraft={onLiveDraft}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+        onReload={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("preview")).toBeNull();
+    await vi.waitFor(() => expect(onLiveDraft).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: /^Look/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Round" }));
+    await vi.waitFor(() =>
+      expect(onLiveDraft.mock.lastCall[0].panel.look).toEqual(expect.objectContaining({ corners: "round" })),
+    );
+    expect(onLiveDraft.mock.lastCall[0].panel.id).toBe(board.panels[0].id);
+  });
+
   it("shows the link as it is typed in the preview", () => {
     renderBookmark(ok());
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Docs site" } });
@@ -291,7 +319,7 @@ describe("widget dialog sections", () => {
       />,
     );
 
-  it("opens one section at a time and summarises the closed ones", () => {
+  it("keeps sections open together until closed, and summarises the closed ones", () => {
     renderBookmark();
     const details = screen.getByRole("button", { name: /^Details/ });
     const look = screen.getByRole("button", { name: /^Look/ });
@@ -305,9 +333,12 @@ describe("widget dialog sections", () => {
     expect(look).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("radiogroup", { name: "Fill" })).toBeInTheDocument();
     fireEvent.click(page);
+    // Look stays open beside Page (F7: less back and forth).
+    expect(look).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Page")).toHaveValue("media");
+    fireEvent.click(look);
     expect(look).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("radiogroup", { name: "Fill" })).toBeNull();
-    expect(screen.getByLabelText("Page")).toHaveValue("media");
     // Name stays outside the sections, always shown.
     expect(screen.getByLabelText("Name")).toBeVisible();
   });
@@ -392,7 +423,7 @@ describe("widget dialog sections", () => {
     const guide = screen.getByRole("button", { name: /^Setting up Custom API/ });
     expect(guide).toHaveTextContent("how to name its secrets");
     fireEvent.click(guide);
-    expect(connection).toHaveAttribute("aria-expanded", "false");
+    expect(connection).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("Turn on the API.")).toBeVisible();
   });
 

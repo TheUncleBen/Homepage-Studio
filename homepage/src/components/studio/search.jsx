@@ -15,6 +15,8 @@ const KIND_LABEL = {
   informationWidget: "Information widget",
 };
 const LIMIT = 8;
+// Leaving the dashboard in this tab, kept apart so tests can watch it.
+export const navigation = { assign: (href) => window.location.assign(href) };
 
 // Everything on the dashboard that can be found: every widget, service and
 // bookmark on every page, with its page.
@@ -144,7 +146,7 @@ export default function StudioSearch({ board, data, query, onQuery, onClose, onS
     input.current?.setSelectionRange(length, length);
   }, []);
   const open = (href) => {
-    if (preferences.searchOpens === "same") window.location.assign(href);
+    if (preferences.searchOpens !== "new") navigation.assign(href);
     else window.open(href, "_blank", "noopener,noreferrer");
   };
   const choose = (result) => {
@@ -195,7 +197,11 @@ export default function StudioSearch({ board, data, query, onQuery, onClose, onS
             }
           }}
         />
-        <kbd>Esc</kbd>
+        {/* A keyboard closes it with Esc; a touch screen with Cancel (review L6). */}
+        <kbd className="studio-find-esc">Esc</kbd>
+        <button type="button" className="studio-text-button studio-find-cancel" onClick={onClose}>
+          Cancel
+        </button>
       </div>
       <div id={listId} role="listbox" aria-label="Results" className="studio-find-results">
         {found.length > 0 && (

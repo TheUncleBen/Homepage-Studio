@@ -607,6 +607,7 @@
     down: 'm6 9 6 6 6-6',
     grip: 'M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01',
     grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+    bookmark: 'M6 3h12v18l-6-4.5L6 21Z',
     settings: 'M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4',
     check: 'm5 12 4 4L19 6',
     info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 11v6M12 7.5h.01',
@@ -629,6 +630,16 @@
     clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5l3 2',
     lock: 'M6 11h12v10H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
     palette: 'M12 3a9 9 0 0 0 0 18c1.1 0 1.5-.8 1.5-1.6 0-1.2-1-1.6-1-2.6 0-.9.7-1.3 1.6-1.3H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5ZM7.5 11h.01M10 7.5h.01M15 7.5h.01',
+    pulse: 'M3 12h4l3-8 4 16 3-8h4',
+    search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM20 20l-4-4',
+    bell: 'M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9M10 20.5a2.2 2.2 0 0 0 4 0',
+    alert: 'M10.3 4 2 18.5A2 2 0 0 0 3.7 21.5h16.6A2 2 0 0 0 22 18.5L13.7 4a2 2 0 0 0-3.4 0ZM12 9.5v4M12 17.5h.01',
+    list: 'M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01',
+    refresh: 'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7',
+    pause: 'M8 5v14M16 5v14',
+    play: 'm7 4 13 8-13 8Z',
+    server: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
+    wrench: 'M14.5 6.5a4 4 0 0 0 5 5L21 13l-8 8-3-3 6.5-6.5M14.5 6.5 9 1M14.5 6.5l-8 8L3 18l3 3 3.5-3.5',
   };
   function icon(name, size = 17) {
     const ns = 'http://www.w3.org/2000/svg';
@@ -644,11 +655,16 @@
   // The name at the top left opens Studio's one navigation menu: All
   // dashboards, Administration for administrators, then the dashboards this
   // person can open.
+  // Whether the name menu offers Operations (from /studio/api/overview).
+  let operationsFlag = null;
   function switcher(name, current, isAdmin) {
     const navItem = (href, label, iconName) => h('a', { role: 'menuitem', href, 'aria-current': href === current ? 'page' : undefined }, icon(iconName, 16), h('span', { text: label }));
     const list = h('div', { class: 'switcher-popover', role: 'menu', hidden: true },
       navItem('/studio/dashboards', 'All dashboards', 'grid'),
       isAdmin ? navItem('/studio/admin', 'Administration', 'settings') : null,
+      // Monitoring and logs, for administrators and anyone given them on a
+      // dashboard; added once the list below says so.
+      operationsFlag === true ? navItem('/studio/operations', 'Operations', 'pulse') : null,
       h('hr'));
     const button = h('button', { type: 'button', class: 'switcher-button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': name + '. Open the menu' }, h('span', { class: 'switcher-name', text: name }), icon('down', 16));
     const holder = h('div', { class: 'switcher' }, button, list);
@@ -663,8 +679,9 @@
       const note = h('p', { class: 'switcher-note', text: 'Loading…' });
       list.append(note);
       try {
-        const { dashboards } = await call('/studio/api/overview');
+        const { dashboards, operations } = await call('/studio/api/overview');
         note.remove();
+        if (operations && operationsFlag !== true) { operationsFlag = true; list.querySelector('hr').before(navItem('/studio/operations', 'Operations', 'pulse')); }
         list.append(...dashboards.filter(entry => !entry.archived && entry.path).map(entry => h('a', { role: 'menuitem', href: entry.path }, h('span', { text: entry.name }))));
       } catch { loaded = false; note.textContent = 'Couldn’t load your dashboards.'; }
     });
@@ -712,7 +729,7 @@
     for (const item of popovers) if (!item.popover.hidden) { item.close(); item.button.focus(); }
   });
   function pageChrome(current, user, ...body) {
-    return [topBar(current, user), h('div', { class: 'page-body' + (current === '/studio/dashboards' || current === '/studio/admin' ? '' : ' narrow') }, ...body)];
+    return [topBar(current, user), h('div', { class: 'page-body' + (['/studio/dashboards', '/studio/admin', '/studio/operations'].includes(current) ? '' : ' narrow') }, ...body)];
   }
   function section(title, description, ...children) {
     return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('div', {}, h('h2', { text: title }), description ? h('p', { class: 'small muted', text: description }) : null)), ...children);
@@ -904,6 +921,8 @@
     if (params.get('error')) say(message, ERRORS[params.get('error')] ?? "That didn't complete. Try again.");
     if (params.get('link') === 'confirm' && !view.pendingLink) say(message, 'That link request expired. Start again below.');
     if (params.has('linked') || params.has('error') || params.has('recovered') || params.has('confirmed') || params.has('link')) history.replaceState(null, '', location.pathname);
+    // Built once, so redrawing the page keeps its list and filter.
+    const savedSection = savedItemsView({ title: 'Saved', info: 'What you keep for yourself (Just me): saved widgets, looks, connections, logos and backgrounds. Dashboards that use a copy keep it when you delete yours.', load: () => api('account/saved'), change: body => api('account/saved', body) });
     function draw() {
       const user = view.user;
       const factors = user.factors;
@@ -916,7 +935,9 @@
       ];
       if (view.pendingLink) parts.push(linkConfirmSection(view.pendingLink));
       if (view.recovery) parts.push(h('div', { class: 'notice warn', text: 'You signed in with a command-line recovery link. This session ends when you close the browser. Add a passkey or authenticator app now if you lost yours.' }));
-      parts.push(profileSection(user), defaultDashboardSection(user), preferencesSection());
+      // Saved sits after Search, before the longer Display list (review L7).
+      const [searchPart, ...displayParts] = preferencesSection();
+      parts.push(profileSection(user), defaultDashboardSection(user), searchPart, savedSection, ...displayParts);
       if (local) parts.push(securitySection(user, factors), passkeySection(factors));
       if (view.oidc) parts.push(linkSection(user));
       parts.push(sessionsSection(), policySection());
@@ -964,7 +985,7 @@
       const box = notice();
       const ENGINES = [['google', 'Google'], ['duckduckgo', 'DuckDuckGo'], ['bing', 'Bing'], ['brave', 'Brave'], ['startpage', 'Startpage'], ['kagi', 'Kagi'], ['custom', 'Custom']];
       const SUGGESTS = new Set(['google', 'duckduckgo', 'bing', 'brave']);
-      const DEFAULTS = { searchEngine: 'google', searchSuggestions: true, searchDescriptions: true, searchAddresses: true, searchOpens: 'new', mode: 'dashboard', motion: 'system', language: 'dashboard', clock: 'dashboard', temperature: 'dashboard' };
+      const DEFAULTS = { searchEngine: 'google', searchSuggestions: true, searchDescriptions: true, searchAddresses: true, searchOpens: 'same', mode: 'dashboard', motion: 'system', language: 'dashboard', clock: 'dashboard', temperature: 'dashboard' };
       const read = key => preferences[key] ?? DEFAULTS[key];
       async function save(change) {
         const next = { ...preferences, ...change };
@@ -993,7 +1014,7 @@
         if (SUGGESTS.has(engine)) rows.push(switchRow('Suggestions', 'searchSuggestions', 'Show suggestions from your search engine as you type.'));
         rows.push(switchRow('Descriptions', 'searchDescriptions', 'Also find widgets by their description.'));
         rows.push(switchRow('Addresses', 'searchAddresses', 'Offer to open a web address you type.'));
-        rows.push(row('Open results', segmented({ label: 'Open results', value: read('searchOpens'), options: [['new', 'New tab'], ['same', 'This tab']], onChange: choice => save({ searchOpens: choice }) })));
+        rows.push(row('Open results', segmented({ label: 'Open results', value: read('searchOpens'), options: [['same', 'This tab'], ['new', 'New tab']], onChange: choice => save({ searchOpens: choice }) })));
         return group({ title: 'Search', info: 'Search opens with / or Ctrl K on any dashboard, or when you start typing. It finds widgets on every page and searches the web with your engine.' }, rows);
       }
       // Each language named in itself, so anyone can find their own.
@@ -1342,15 +1363,23 @@
       }
       const status = h('p', { class: 'muted', text: 'Studio is restarting to restore it. This page continues when it’s back.' });
       openDialog('Restoring', () => h('div', { class: 'stack center' }, h('div', { class: 'spinner', 'aria-hidden': 'true' }), status)).addEventListener('cancel', event => event.preventDefault());
+      // Each check gives up after a few seconds: behind a reverse proxy or a
+      // Swarm service a request to a stopped Studio can hang for a minute.
+      // The new Studio is told apart from the old one by its start id.
       let wentDown = false;
+      let late = false;
       const started = Date.now();
       const poll = async () => {
-        let up = false;
-        try { up = (await fetch('/studio/live', { cache: 'no-store' })).ok; } catch {}
-        if (!up) wentDown = true;
-        if (up && (wentDown || Date.now() - started > 20000)) { status.textContent = 'Restored. Sign in again.'; return setTimeout(() => go('/studio/auth/sign-in?next=%2Fstudio%2Fadmin%23backups'), 800); }
-        if (Date.now() - started > 180000) { status.textContent = 'Studio hasn’t come back yet. Check that its container restarted, then reload this page.'; return; }
-        setTimeout(poll, 1500);
+        let live = null;
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), 4000);
+        try { const response = await fetch('/studio/live', { cache: 'no-store', signal: abort.signal }); if (response.ok) live = await response.json(); } catch {}
+        clearTimeout(timer);
+        if (!live) wentDown = true;
+        const fresh = live && (staged.start ? live.start !== staged.start : (wentDown || Date.now() - started > 20000));
+        if (fresh) { status.textContent = 'Restored. Sign in again.'; return setTimeout(() => go('/studio/auth/sign-in?next=%2Fstudio%2Fadmin%23backups'), 800); }
+        if (!late && Date.now() - started > 180000) { late = true; status.textContent = 'Studio is taking longer than usual to come back. Check that its container restarted; this page keeps waiting.'; }
+        setTimeout(poll, late ? 5000 : 1500);
       };
       setTimeout(poll, 1500);
     }
@@ -1399,11 +1428,141 @@
     return holder;
   }
 
+  // Trusted certificates (server/trusted-certificates.mjs; owner decision,
+  // 6 Nov 2026): your own certificate authority, so widgets, Test connection
+  // and status checks can reach services behind your local proxy.
+  const shortDate = iso => new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  function trustedPanel() {
+    const holder = h('div', { class: 'stack' });
+    const message = notice();
+    let view = null;
+    async function load(success) {
+      try { view = await call('/studio/api/trusted-certificates'); draw(); if (success) say(message, success, 'ok'); }
+      catch (error) { failure(message, error); }
+    }
+    const expired = item => Date.parse(item.notAfter) < Date.now();
+    const detailOf = item => [item.authority ? 'Certificate authority' : 'Certificate', `${expired(item) ? 'expired' : 'expires'} ${shortDate(item.notAfter)}`].join(' · ');
+    function manage(item) {
+      openDialog(item.name, close => {
+        const box = notice();
+        const remove = item.source === 'added'
+          ? actionRow('Stop trusting it', { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog(`Stop trusting ${item.name}?`, 'Widgets whose services use a certificate from it stop connecting until it is added again. Dashboards start their widgets again to apply this.', 'Stop trusting', async () => { view = await call('/studio/api/trusted-certificates', { action: 'remove', id: item.id }); draw(); say(message, `${item.name} is no longer trusted.`, 'ok'); }); } })
+          : null;
+        return h('div', { class: 'stack' },
+          group({}, row('Kind', value(item.authority ? 'Certificate authority' : 'Certificate')), item.issuer && item.issuer !== item.name ? row('Issued by', value(item.issuer)) : null, row('Valid', value(`${shortDate(item.notBefore)} to ${shortDate(item.notAfter)}`)), item.addedBy ? row('Added by', value(item.addedBy)) : null, row('Fingerprint (SHA-256)', value(item.fingerprint, true), { stacked: true })),
+          item.source === 'deployment' ? h('p', { class: 'muted', text: 'This one comes from the file named by STUDIO_TRUSTED_CERTIFICATES_FILE (for example a Docker secret). Change it there.' }) : group({}, remove),
+          box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Done' })));
+      });
+    }
+    function addDialog() {
+      openDialog('Add a trusted certificate', close => {
+        const box = notice();
+        const text = h('textarea', { rows: 8, class: 'mono', spellcheck: 'false', placeholder: '-----BEGIN CERTIFICATE-----', 'aria-label': 'Certificate (PEM)' });
+        const input = h('input', { type: 'file', accept: '.pem,.crt,.cer,application/x-pem-file,application/x-x509-ca-cert', hidden: true });
+        const choose = pill('Choose a file', { iconName: 'upload', onclick: () => input.click() });
+        input.addEventListener('change', async () => {
+          const file = input.files?.[0];
+          input.value = '';
+          if (!file) return;
+          if (file.size > 64 * 1024) return say(box, 'That file is too large for a certificate.');
+          text.value = await file.text();
+        });
+        const save = h('button', { type: 'submit', class: 'primary', text: 'Trust it' });
+        const form = h('form', { class: 'stack' },
+          h('p', { class: 'lede', text: 'Add your own certificate authority’s certificate: the one your browser or devices already trust for your local services. Never the private key.' }),
+          group({}, row('Certificate', text, { stacked: true, info: 'Text that starts with -----BEGIN CERTIFICATE-----. Several in one file are fine. Your proxy’s admin page or your CA software can export it, usually as a .pem or .crt file.' })),
+          toolbar(choose, input), box,
+          dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
+        form.addEventListener('submit', event => {
+          event.preventDefault();
+          busy(save, 'Adding…', async () => {
+            try {
+              view = await call('/studio/api/trusted-certificates', { action: 'add', pem: text.value });
+              close(); draw();
+              say(message, 'Trusted. Dashboards start their widgets again to use it, so give them a moment.', 'ok');
+            } catch (error) { failure(box, error); }
+          });
+        });
+        return form;
+      });
+    }
+    function draw() {
+      const items = view?.certificates ?? [];
+      put(holder, message,
+        view?.deploymentError ? h('p', { class: 'notice warn', role: 'alert', text: view.deploymentError }) : null,
+        group({ title: 'Trusted certificates', aside: items.length ? String(items.length) : null, info: 'Studio trusts the usual public certificate authorities. Add your own here when your services use certificates from it, for example behind a local reverse proxy. Studio never trusts a certificate just because a service presents it.' },
+          items.length ? items.map(item => navRow({ leading: icon('lock', 18), title: item.name, badges: [item.source === 'deployment' ? badge('Deployment', 'accent') : null, expired(item) ? badge('Expired', 'danger') : null], detail: detailOf(item), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'Only the usual public authorities.' })),
+        toolbar(pill('Add certificate', { primary: true, iconName: 'plus', onclick: addDialog })));
+    }
+    put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
+    load();
+    return holder;
+  }
+
+  // Saved items (server/saved-items.mjs): My account › Saved for your own,
+  // Administration › Saved items for everyone's. A filter by kind, then one
+  // row per item; tapping it opens rename and delete (owner T8, 6 Nov 2026).
+  const SAVED_KINDS = [['widget', 'Widgets', 'grid'], ['look', 'Looks', 'palette'], ['connection', 'Connections', 'key'], ['logo', 'Logos', 'layout'], ['background', 'Backgrounds', 'layout']];
+  const SAVED_ONE = { widget: 'saved widget', look: 'saved look', connection: 'saved connection', logo: 'logo', background: 'background' };
+  function savedItemsView({ title, info, load, change, admin = false }) {
+    const holder = h('div', { class: 'stack' });
+    const message = notice();
+    let items = null;
+    let filter = 'all';
+    async function refresh(work, success) {
+      try { items = (await work()).items; draw(); if (success) say(message, success, 'ok'); }
+      catch (error) { failure(message, error); }
+    }
+    const where = item => admin ? [item.place.type === 'person' ? `${item.owner}’s, Just me` : item.place.type === 'everyone' ? 'Everyone' : item.place.name, item.place.type !== 'person' && item.owner ? `saved by ${item.owner}` : null].filter(Boolean).join(' · ') : null;
+    const used = item => Array.isArray(item.usedOn) ? (item.usedOn.length ? `Copied to ${item.usedOn.join(', ')}` : 'Not used on a dashboard') : null;
+    const detailOf = item => [item.detail, where(item), used(item)].filter(Boolean).join(' · ');
+    const target = item => ({ kind: item.kind, id: item.id, ...(admin ? { place: item.place.type === 'everyone' ? { type: 'everyone' } : { type: item.place.type, id: item.place.id } } : {}) });
+    function manage(item) {
+      const one = SAVED_ONE[item.kind];
+      openDialog(item.name, close => {
+        const box = notice();
+        const canChange = !admin || item.canChange;
+        const name = h('input', { type: 'text', maxlength: 80, value: item.name, disabled: !canChange });
+        const save = h('button', { type: 'submit', class: 'primary', text: 'Save name', hidden: true });
+        name.addEventListener('input', () => { save.hidden = !name.value.trim() || name.value.trim() === item.name; });
+        const copied = ['connection', 'logo', 'background'].includes(item.kind);
+        const remove = actionRow(`Delete this ${one}`, { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog(`Delete ${item.name}?`, copied ? 'Dashboards that use a copy of it keep theirs.' : item.kind === 'widget' ? 'Widgets already placed from it stay on their dashboards.' : 'Widgets that use this look keep it.', 'Delete', () => refresh(() => change({ action: 'delete', ...target(item) }), `${item.name} is deleted.`)); } });
+        const form = h('form', { class: 'stack' },
+          group({}, row('Name', canChange ? name : value(item.name)), item.detail ? row(item.kind === 'connection' ? 'Address' : item.kind === 'widget' ? 'Type' : 'Size', value(item.detail)) : null, admin ? row('Kept', value(where(item))) : null, used(item) ? row('Used', value(used(item))) : null, item.updatedAt ? row('Saved', value(shortDate(item.updatedAt))) : null),
+          canChange ? group({}, remove) : h('p', { class: 'muted', text: 'Manage this dashboard’s connections and images in its Dashboard settings, where Studio checks which widgets use them first.' }),
+          box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Done' }), save));
+        form.addEventListener('submit', event => {
+          event.preventDefault();
+          busy(save, 'Saving…', async () => {
+            try { items = (await change({ action: 'rename', name: name.value.trim(), ...target(item) })).items; close(); draw(); say(message, 'Renamed.', 'ok'); }
+            catch (error) { failure(box, error); }
+          });
+        });
+        return form;
+      });
+    }
+    function draw() {
+      const present = SAVED_KINDS.filter(([kind]) => items.some(item => item.kind === kind));
+      if (filter !== 'all' && !present.some(([kind]) => kind === filter)) filter = 'all';
+      const shown = items.filter(item => filter === 'all' || item.kind === filter);
+      const iconOf = kind => SAVED_KINDS.find(entry => entry[0] === kind)?.[2] ?? 'grid';
+      const list = group({ title, aside: items.length ? String(items.length) : null, info },
+        shown.length ? shown.map(item => navRow({ leading: icon(iconOf(item.kind), 18), title: item.name, badges: [badge(SAVED_KINDS.find(entry => entry[0] === item.kind)?.[1].replace(/s$/, '') ?? '')], detail: detailOf(item), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: admin ? 'Nobody has saved anything yet.' : 'Nothing saved yet. Widgets, looks, connections and images you keep for yourself in the editor appear here.' }));
+      // The filter belongs to this list: under its heading, above its rows.
+      if (present.length > 1) list.insertBefore(h('div', { class: 'group-filter' }, segmented({ label: 'Show', value: filter, options: [['all', 'All'], ...present.map(([kind, label]) => [kind, label])], onChange: next => { filter = next; draw(); } })), list.querySelector(':scope > .group-body'));
+      put(holder, message, list);
+    }
+    put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
+    refresh(load);
+    return holder;
+  }
+  const savedItemsPanel = () => savedItemsView({ title: 'Saved items', admin: true, info: 'Everything people saved: their own (Just me), each dashboard’s and Everyone’s, with who saved it. Keys are never shown.', load: () => call('/studio/api/saved-items'), change: body => call('/studio/api/saved-items', body) });
+
   async function adminPage() {
     // With sign-in off, Administration only holds the dashboards' default look.
     const overview = await call('/studio/api/overview');
     if (!overview.authEnabled) {
-      render(...pageChrome('/studio/admin', null, h('div', { class: 'admin-plain' }, h('h1', { text: 'Administration' }), await platformAppearance(), backupsPanel())));
+      render(...pageChrome('/studio/admin', null, h('div', { class: 'admin-plain' }, h('h1', { text: 'Administration' }), await platformAppearance(), savedItemsPanel(), trustedPanel(), backupsPanel())));
       return;
     }
     let view = await api('admin/overview');
@@ -1413,7 +1572,9 @@
     // The sections, as a list down the side like macOS System Settings (owner
     // decision, 26 Oct 2026). On a phone the page opens on that list, like iOS
     // Settings: tapping a section opens it, and Back returns to the list.
-    const tabs = [['people', 'People', 'user'], ['groups', 'Groups', 'people'], ['access', 'Dashboard access', 'grid'], ['policies', 'Session policies', 'clock'], ['sign-in', 'Sign-in settings', 'lock'], ['appearance', 'Appearance', 'palette'], ['backups', 'Backups', 'archive'], ['activity', 'Activity', 'shield']];
+    const tabs = [['people', 'People', 'user'], ['groups', 'Groups', 'people'], ['access', 'Dashboard access', 'grid'], ['policies', 'Session policies', 'clock'], ['sign-in', 'Sign-in settings', 'lock'], ['appearance', 'Appearance', 'palette'], ['saved', 'Saved items', 'bookmark'], ['certificates', 'Trusted certificates', 'key'], ['backups', 'Backups', 'archive'], ['activity', 'Activity', 'shield']];
+    // Monitoring and logs settings (server/auth/ui/ops.js), next to Backups.
+    if (window.StudioOps) tabs.splice(tabs.findIndex(([key]) => key === 'backups'), 0, ['monitoring', 'Monitoring and logs', 'pulse']);
     const hashed = () => tabs.some(([key]) => key === location.hash.slice(1)) ? location.hash.slice(1) : null;
     let tab = hashed() ?? 'people';
     const narrow = window.matchMedia('(max-width: 760px)');
@@ -1476,7 +1637,7 @@
 
     function drawPanel() {
       say(message, '');
-      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, appearance: appearanceTab, backups: backupsPanel, activity: activityTab };
+      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, appearance: appearanceTab, saved: savedItemsPanel, certificates: trustedPanel, backups: backupsPanel, activity: activityTab, monitoring: () => window.StudioOps.adminPanel() };
       put(panel, ...[].concat(builders[tab]()));
     }
 
@@ -1711,7 +1872,7 @@
         ...view.groups.map(item => ({ value: 'group:' + item.id, label: item.name, group: true })),
       ];
       const describe = subject => subject.startsWith('user:') ? { label: userName(subject.slice(5)), group: false } : { label: groupName(subject.slice(6)), group: true };
-      const [infoButton, callout] = infoToggle('access levels', [h('p', {}, h('strong', { text: 'View' }), ': open the dashboard and use its widgets.'), h('p', {}, h('strong', { text: 'Arrange' }), ': also move tiles, hide discovered services and change the theme.'), h('p', { text: 'Administrators can always open every dashboard. Only they change integration settings, raw files, custom CSS and JavaScript, imports and access.' })]);
+      const [infoButton, callout] = infoToggle('access levels', [h('p', {}, h('strong', { text: 'View' }), ': open the dashboard and use its widgets.'), h('p', {}, h('strong', { text: 'Arrange' }), ': also move tiles, hide discovered services and change the theme.'), h('p', { text: 'Administrators can always open every dashboard. Only they change integration settings, raw files, custom CSS and JavaScript, imports and access.' }), window.StudioOps ? h('p', {}, h('strong', { text: 'Monitoring and Logs' }), ': also see this dashboard’s monitors, incidents and metrics, or its logs, in Operations. Nothing from another dashboard is shown.') : null]);
       const groups = view.dashboards.filter(entry => !entry.archived).map(entry => {
         let grants = (view.grants[entry.id] ?? []).map(grant => ({ ...grant }));
         const box = notice();
@@ -1719,7 +1880,7 @@
         const unsaved = badge('Unsaved', 'warn');
         unsaved.hidden = true;
         const body = h('div', {});
-        const snapshot = list => JSON.stringify(list.map(grant => [grant.subject, grant.level]));
+        const snapshot = list => JSON.stringify(list.map(grant => [grant.subject, grant.level, Boolean(grant.monitoring), Boolean(grant.logs)]));
         // Marks the group when its list differs from what was last saved.
         function mark() {
           const dirty = snapshot(grants) !== snapshot(view.grants[entry.id] ?? []);
@@ -1734,7 +1895,11 @@
             const who = describe(grant.subject);
             const level = segmented({ value: grant.level, label: `Access for ${who.label}`, options: [['view', 'View'], ['arrange', 'Arrange']], onChange: option => { grant.level = option; mark(); } });
             const remove = h('button', { type: 'button', class: 'icon-button', 'aria-label': `Remove ${who.label}`, title: 'Remove', onclick: () => { grants.splice(index, 1); draw(); } }, icon('close', 16));
-            return h('div', { class: 'grant-row' }, avatar(who.label, who.group ? 'group' : 'person'), h('span', { class: 'grant-name', text: who.label }), level, remove);
+            // Monitoring and Logs for this dashboard only (owner direction,
+            // 6 Nov 2026): what Operations shows this person or group.
+            const ops = window.StudioOps ? h('div', { class: 'grant-ops' }, ...[['monitoring', 'Monitoring'], ['logs', 'Logs']].map(([key, text]) => h('label', { class: 'grant-op' },
+              toggle({ checked: Boolean(grant[key]), label: `${text} on ${entry.name} for ${who.label}`, onChange: on => { if (on) grant[key] = true; else delete grant[key]; mark(); } }), h('span', { text })))) : null;
+            return h('div', { class: 'grant-row' + (ops ? ' with-ops' : '') }, avatar(who.label, who.group ? 'group' : 'person'), h('span', { class: 'grant-name', text: who.label }), level, remove, ops);
           });
           const add = free.length ? h('label', { class: 'add-row' }, icon('plus', 17),
             h('select', { 'aria-label': `Add a person or group to ${entry.name}`, onchange: event => { if (event.target.value) { grants.push({ subject: event.target.value, level: 'view' }); draw(true); } } },
@@ -1945,15 +2110,11 @@
       const starters = !entry && !source ? view.starters || [] : [];
       const starter = starters.length ? h('select', {}, [h('option', { value: '', text: 'Blank' }), ...starters.map(choice => h('option', { value: choice.id, text: choice.name }))]) : null;
       const save = h('button', { type: 'submit', class: 'primary', text: entry ? 'Save' : source ? 'Duplicate' : 'Create dashboard' });
-      const addressRow = row('Address', slug, { detail: ' ', info: 'Lowercase letters, numbers and hyphens.' + (entry ? ' Changing it breaks bookmarks to the old address.' : '') });
+      const addressRow = row('Address', addressInput(slug), { info: 'Lowercase letters, numbers and hyphens.' + (entry ? ' Changing it breaks bookmarks to the old address.' : '') });
       const form = h('form', { class: 'stack' },
         group({}, row('Name', name), addressRow, starter ? row('Start with', starter, { info: 'Blank, or links to common apps at placeholder addresses you change, plus a clock and the weather.' }) : null),
         source && view.authEnabled ? group({}, row('Share it with the same people', copyAccess, { info: `The copy gets the same sharing as ${source.name}.` })) : null,
         box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
-      // The full address, as people will type it, under the label.
-      const preview = addressRow.querySelector('.row-detail');
-      const showAddress = () => { preview.textContent = `${location.host}/${slug.value || '…'}`; };
-      slug.addEventListener('input', showAddress); showAddress();
       form.addEventListener('submit', event => {
         event.preventDefault();
         busy(save, 'Saving…', async () => {
@@ -2134,6 +2295,17 @@
       previewSizer?.observe(holder);
       return holder;
     }
+    // An address field reads as the address being typed: the fixed part
+    // (this host and a slash) sits in front of the slug, on the same line
+    // (owner T2 on 65f724c: a preview under the label read as a second field).
+    function addressInput(slug) {
+      // The field is named Address, as its row says; the host before it is
+      // read as its description.
+      const prefix = h('span', { class: 'address-prefix', 'aria-hidden': 'true', text: `${location.host}/` });
+      slug.setAttribute('aria-label', 'Address');
+      slug.setAttribute('aria-describedby', ensureId(prefix));
+      return h('div', { class: 'address-input' }, prefix, slug);
+    }
     // A new deployment's main dashboard has no address until the first
     // administrator picks one; nothing else on this page works until then.
     function askMainAddress() {
@@ -2143,15 +2315,12 @@
         const box = notice();
         const slug = h('input', { type: 'text', maxlength: 64, required: true, spellcheck: 'false', autocapitalize: 'off', value: view.suggestedSlug });
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save address' });
-        const addressRow = row('Address', slug, { detail: ' ', info: 'Lowercase letters, numbers and hyphens. You can change it later from the Dashboards page.' });
+        const addressRow = row('Address', addressInput(slug), { info: 'Lowercase letters, numbers and hyphens. You can change it later from the Dashboards page.' });
         const form = h('form', { class: 'stack' },
           h('p', { class: 'lede', text: `${main.name} needs an address before anyone can open it.` }),
           group({}, addressRow), box, dialogActions(
             // The dialog stays open until an address is saved, so it carries its own way out.
             view.authEnabled ? h('button', { type: 'button', text: 'Sign out', onclick: event => signOut(event.currentTarget) }) : null, save));
-        const preview = addressRow.querySelector('.row-detail');
-        const showAddress = () => { preview.textContent = `${location.host}/${slug.value || '…'}`; };
-        slug.addEventListener('input', showAddress); showAddress();
         form.addEventListener('submit', event => {
           event.preventDefault();
           busy(save, 'Saving…', async () => {
@@ -2216,12 +2385,17 @@
   // ---- Start ------------------------------------------------------------------
 
   const pages = { 'sign-in': signInPage, setup: setupPage, enroll: enrollPage, recover: recoverPage, recovery: recoveryPage, account: accountPage, admin: adminPage, dashboards: dashboardsPage };
+  // Operations (server/auth/ui/ops.js) uses the same building blocks, so both
+  // areas look and behave alike. It loads after this file and adds its page.
+  window.StudioUI = { h, put, render, notice, say, icon, group, row, value, toggle, segmented, navRow, actionRow, pill, badge, toolbar, dialogActions, failure, openDialog, confirmDialog, copyText, pageChrome, call, busy, when, ago, field, check, infoToggle, card, brand, go, params, addPage: (name, fn) => { pages[name] = fn; } };
+  document.addEventListener('DOMContentLoaded', () => run(), { once: true });
+  function run() {
   const start = pages[page];
   if (!start) return render(card(false, brand(), h('h1', { text: 'Page not found' })));
   // Until the main dashboard has an address, administrators are sent to the
   // Dashboards page, which asks for it.
   const addressFirst = async () => {
-    if (!['admin', 'account'].includes(page)) return false;
+    if (!['admin', 'account', 'operations'].includes(page)) return false;
     const view = await call('/studio/api/overview').catch(() => null);
     if (view?.mainNeedsAddress) { go('/studio/dashboards'); return true; }
     return false;
@@ -2230,4 +2404,5 @@
     if (error?.code === 'AUTH_REQUIRED') return go('/studio/auth/sign-in?next=' + encodeURIComponent(location.pathname));
     render(card(false, brand(), h('h1', { text: 'Something went wrong' }), h('div', { class: 'notice error', role: 'alert', text: error?.message ?? 'The page could not load.' }), h('button', { type: 'button', onclick: () => location.reload(), text: 'Try again' })));
   });
+  }
 })();

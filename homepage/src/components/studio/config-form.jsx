@@ -8,6 +8,7 @@ import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
 import { isObject } from "./native-adapter.mjs";
 import { Disclosure, Group, Row, Segmented, Switch } from "./ui";
+import { IMAGE_REFERENCE, imageReference, UploadedImages } from "./uploaded-images";
 
 export const LINK_FIELDS = [
   { key: "href", label: "Destination URL", type: "string" },
@@ -216,6 +217,28 @@ function Field({ field, value, onChange, onError }) {
         ]}
       />
     );
+  else if (field.editor === "picture" && kind === "string")
+    control = (
+      <UploadedImages
+        kind="background"
+        value={IMAGE_REFERENCE.exec(text)?.[1]}
+        onPick={(picked) => update(imageReference(picked))}
+      />
+    );
+  else if (field.editor === "multiline" && kind === "string")
+    control = (
+      <textarea
+        id={id}
+        className="studio-textarea-input"
+        value={text}
+        onChange={(event) => update(event.target.value)}
+        rows={5}
+        maxLength={4000}
+        placeholder={placeholder}
+        aria-invalid={Boolean(error)}
+        aria-describedby={describedBy}
+      />
+    );
   else if (field.icon && kind === "string")
     control = <IconField id={id} label={label} value={text} onChange={(next) => update(next)} />;
   else if (flatObject)
@@ -289,7 +312,12 @@ function Field({ field, value, onChange, onError }) {
     <Row
       label={label}
       htmlFor={
-        (choiceList && choiceOptions.length <= 4) || kind === "boolean" || flatObject || flatList || field.icon
+        (choiceList && choiceOptions.length <= 4) ||
+        kind === "boolean" ||
+        flatObject ||
+        flatList ||
+        field.icon ||
+        field.editor === "picture"
           ? undefined
           : id
       }
@@ -300,6 +328,7 @@ function Field({ field, value, onChange, onError }) {
         flatObject ||
         flatList ||
         field.icon ||
+        ["picture", "multiline"].includes(field.editor) ||
         field.valueTypes?.length > 1
       }
       className={error ? "studio-row-invalid" : ""}
@@ -593,6 +622,8 @@ export default function ConfigForm({
   connections = false,
   // Inside the widget dialog's Connection section, which already names it.
   sectioned = false,
+  // What to say when there is nothing to fill in (a Spacer).
+  emptyNote = "This widget is set up in YAML.",
 }) {
   const [tab, setTab] = useState("fields");
   // Whether a saved connection fills the address and key (connections.jsx).
@@ -733,7 +764,7 @@ export default function ConfigForm({
               {options.map(fieldRow)}
             </Group>
           )}
-          {!shown.length && <p className="studio-empty-note">This widget is set up in YAML.</p>}
+          {!shown.length && <p className="studio-empty-note">{emptyNote}</p>}
           {additional.length > 0 && (
             <Group title="More options" info="These options have no control here. Change them in YAML.">
               {additional.map((key) => (

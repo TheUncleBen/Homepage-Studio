@@ -185,13 +185,17 @@ Every widget Studio can add, generated from Homepage 2.7.0's own documentation. 
 | [Date & Time](info-datetime.md) | — | 3 |
 | [Glances](info-glances.md) | Service URL, Username, Password | 14 |
 | [Greeting](info-greeting.md) | — | 2 |
+| [Heading](info-heading.md) | — | 2 |
 | [Kubernetes](info-kubernetes.md) | — | 2 |
 | [Logo](info-logo.md) | — | 1 |
 | [Longhorn](info-longhorn.md) | — | 5 |
+| [Note](info-note.md) | — | 2 |
 | [Open-Meteo](info-openmeteo.md) | — | 7 |
 | [OpenWeatherMap](info-openweathermap.md) | — | 8 |
+| [Picture](info-picture.md) | — | 3 |
 | [Resources](info-resources.md) | — | 13 |
 | [Search](info-search.md) | Service URL | 6 |
+| [Spacer](info-spacer.md) | — | 0 |
 | [Stocks](info-stocks.md) | — | 4 |
 | [UniFi Controller](info-unifi_console.md) | Service URL, Username, Password, API key | 5 |
 | [WeatherAPI](info-weatherapi.md) | — | YAML only |

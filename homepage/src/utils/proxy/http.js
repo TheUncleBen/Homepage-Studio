@@ -64,6 +64,12 @@ function transportError(error) {
 }
 
 function addCookieHandler(url, params) {
+  // A status check (siteMonitor) asks without credentials: it neither sends
+  // nor keeps the cookies an integration's own requests collected.
+  if (params.cookieJar === false) {
+    delete params.cookieJar;
+    return () => {};
+  }
   let jarCookie = setCookieHeader(url, params);
   let sourceUrl = url.toString();
   let hasBody = Boolean(params.body);

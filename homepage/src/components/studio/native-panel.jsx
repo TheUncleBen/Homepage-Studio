@@ -2,6 +2,7 @@ import { memo, useContext } from "react";
 
 import CardDateTime from "./card-datetime";
 import { CardLookContext } from "./card-look";
+import Filler, { isFiller } from "./fillers";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import { usePreferences, withDisplayPreferences } from "./preferences";
 import { BookmarkCard, ServiceCard, WidgetCard } from "./studio-card";
@@ -12,8 +13,9 @@ import ServiceItem from "components/services/item";
 import ServiceWidget from "components/services/widget";
 import InformationWidget from "components/widgets/widget";
 
-// override: unsaved link fields (name, address, description, icon) for the
-// edit dialog's preview.
+// override: unsaved link fields (name, address, description, icon), or an
+// integration widget's logo, description and fields, for the edit dialog's
+// preview.
 export default memo(function NativePanel({ panel, data, override }) {
   const resolved = withOverride(resolveNativePanel(panel, data), override);
   const card = useContext(CardLookContext);
@@ -34,7 +36,9 @@ export default memo(function NativePanel({ panel, data, override }) {
           <WidgetCard service={resolved.service} widget={resolved.widget} groupName={resolved.groupName} />
         )}
         {resolved.kind === "informationWidget" &&
-          (resolved.widget.type === "datetime" ? (
+          (isFiller(resolved.widget.type) ? (
+            <Filler widget={resolved.widget} />
+          ) : resolved.widget.type === "datetime" ? (
             <CardDateTime options={withDisplayPreferences(resolved.widget, preferences).options ?? {}} />
           ) : (
             <InformationWidget widget={withDisplayPreferences(resolved.widget, preferences)} style="clean" />
@@ -50,9 +54,12 @@ export default memo(function NativePanel({ panel, data, override }) {
         </ul>
       )}
       {resolved.kind === "serviceWidget" && <ServiceWidget widget={resolved.widget} service={resolved.service} />}
-      {resolved.kind === "informationWidget" && (
-        <InformationWidget widget={withDisplayPreferences(resolved.widget, preferences)} style="clean" />
-      )}
+      {resolved.kind === "informationWidget" &&
+        (isFiller(resolved.widget.type) ? (
+          <Filler widget={resolved.widget} />
+        ) : (
+          <InformationWidget widget={withDisplayPreferences(resolved.widget, preferences)} style="clean" />
+        ))}
       {resolved.kind === "bookmark" && (
         <ul className="studio-native-list">
           <BookmarkItem bookmark={resolved.bookmark} />
@@ -67,5 +74,22 @@ function withOverride(resolved, override) {
   // The draft is the whole link, so a field it leaves out is shown as gone.
   if (resolved.kind === "service") return { ...resolved, service: { ...resolved.service, ...override } };
   if (resolved.kind === "bookmark") return { ...resolved, bookmark: { ...resolved.bookmark, ...override } };
+  // An integration widget: its unsaved logo and description, and the values
+  // its fields list asks for, so the preview shows a value as soon as it is
+  // shown (owner T8 on 65f724c), not only after saving.
+  if (resolved.kind === "serviceWidget") {
+    const { fields, ...service } = override;
+    return {
+      ...resolved,
+      service: { ...resolved.service, ...service },
+      widget: fields ? { ...resolved.widget, fields } : resolved.widget,
+    };
+  }
+  // A Studio filler: its unsaved settings (text, size, picture).
+  if (resolved.kind === "informationWidget" && override.options)
+    return {
+      ...resolved,
+      widget: { ...resolved.widget, options: { ...override.options, index: resolved.widget.options?.index } },
+    };
   return resolved;
 }

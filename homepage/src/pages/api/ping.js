@@ -3,6 +3,7 @@ import { promise as ping } from "ping";
 import { withAuth } from "utils/auth";
 import { getServiceItem } from "utils/config/service-helpers";
 import createLogger from "utils/logger";
+import { statusFallback } from "utils/studio/status-address";
 
 const logger = createLogger("ping");
 
@@ -17,12 +18,10 @@ export async function pingCheck(req, res) {
     });
   }
 
-  // Studio pings the host of a service's own address when it has no ping of
-  // its own and the widget asks for a ping check (fallback=1).
+  // Studio pings the host of the widget's Connection address, else the
+  // service's link, when it has no ping of its own (fallback=1).
   let pingHostOrURL = serviceItem.ping;
-  if (!pingHostOrURL && req.query.fallback === "1" && /^https?:\/\//i.test(serviceItem.href || "")) {
-    pingHostOrURL = serviceItem.href;
-  }
+  if (!pingHostOrURL && req.query.fallback === "1") pingHostOrURL = statusFallback(serviceItem);
 
   if (!pingHostOrURL) {
     logger.debug("No ping host specified");

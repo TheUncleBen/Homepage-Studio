@@ -149,6 +149,11 @@ read-only root filesystem isn't tested yet, so it isn't set.
   `HOMEPAGE_FILE_*` variable at it in your copy of the Compose file
   ([DEPLOY.md](DEPLOY.md#widget-api-keys-as-docker-secrets) explains the
   variables).
+- **Monitoring and logs.** Built in, with sign-in on. For syslog, turn it on
+  in Administration › Monitoring and logs and remove the `#` from the
+  `ports:` lines in `portainer-compose.yml` ([LOGS.md](LOGS.md#syslog)).
+  Docker monitors want a read-only socket proxy
+  ([MONITORING.md](MONITORING.md#docker)).
 
 ### No proxy in Docker?
 

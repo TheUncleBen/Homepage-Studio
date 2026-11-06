@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { withoutPhoneHidden } from "./board";
+import { withoutHiddenOn } from "./board";
 import LookEditor, { arrangeValues, showChoices, storedValues } from "./look-editor";
 import { BUILT_IN_BEHAVIOUR, BUILT_IN_LOOK } from "./look.mjs";
 
@@ -44,6 +44,28 @@ const whereIs = (label) => within(where(label)).getByRole("radio", { checked: tr
 const putIt = (label, text) => fireEvent.click(within(where(label)).getByRole("radio", { name: text }));
 
 describe("widget dialog look (Rule 1: only what can apply)", () => {
+  it("lets an integration widget pick its logo and write its description (owner T8/T30, 65f724c)", () => {
+    const onIcon = vi.fn();
+    const onDescription = vi.fn();
+    renderEditor({
+      look: { header: "logo-name" },
+      identity: { icon: "", description: "", onIcon, onDescription },
+    });
+    expect(screen.getByText("No logo")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(screen.getByRole("radio", { name: "Uploaded" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Description text"), { target: { value: "Edge firewall" } });
+    expect(onDescription).toHaveBeenCalledWith("Edge firewall");
+  });
+
+  it("hides the logo picker when the header draws no logo", () => {
+    renderEditor({
+      look: { header: "name" },
+      identity: { icon: "", description: "", onIcon: vi.fn(), onDescription: vi.fn() },
+    });
+    expect(screen.queryByText("No logo")).toBeNull();
+  });
+
   it("shows integration sections and hides colour rows until a fill needs them", () => {
     renderEditor();
     for (const name of ["Look", "Status", "Show", "Behaviour"])
@@ -150,26 +172,29 @@ describe("arranging values", () => {
   });
 });
 
-describe("hide on phones", () => {
+describe("show on each layout", () => {
   const board = {
     version: 3,
     columns: 24,
     panels: [
-      { id: "a", rect: { x: 0, y: 0, w: 6, h: 2 }, behaviour: { phones: "hide" } },
+      { id: "a", rect: { x: 0, y: 0, w: 6, h: 2 }, behaviour: { showOn: "desktop+tablet" } },
       { id: "b", rect: { x: 6, y: 0, w: 6, h: 2 } },
-      { id: "c", rect: { x: 0, y: 2, w: 6, h: 2 } },
+      { id: "c", rect: { x: 0, y: 2, w: 6, h: 2 }, behaviour: { showOn: "tablet" } },
     ],
     stacks: [{ id: "s", panelIds: ["a", "c"], rect: { x: 0, y: 2, w: 6, h: 2 } }],
   };
-  it("drops hidden widgets and keeps the rest of a stack", () => {
-    const shown = withoutPhoneHidden(board, {});
-    expect(shown.panels.map((panel) => panel.id)).toEqual(["b", "c"]);
-    expect(shown.stacks[0].panelIds).toEqual(["c"]);
+  it("drops widgets a layout leaves out and keeps the rest of a stack", () => {
+    const phone = withoutHiddenOn(board, {}, "phone");
+    expect(phone.panels.map((panel) => panel.id)).toEqual(["b"]);
+    expect(phone.stacks).toEqual([]);
+    const desktop = withoutHiddenOn(board, {}, "desktop");
+    expect(desktop.panels.map((panel) => panel.id)).toEqual(["a", "b"]);
+    expect(desktop.stacks[0].panelIds).toEqual(["a"]);
+    expect(withoutHiddenOn(board, {}, "tablet")).toBe(board);
   });
   it("follows the dashboard default", () => {
-    const shown = withoutPhoneHidden(board, { studioDefaults: { phones: "hide" } });
-    expect(shown.panels).toEqual([]);
-    expect(shown.stacks).toEqual([]);
+    const shown = withoutHiddenOn(board, { studioDefaults: { showOn: "phone" } }, "phone");
+    expect(shown.panels.map((panel) => panel.id)).toEqual(["b"]);
   });
 });
 
@@ -330,6 +355,49 @@ describe("status address", () => {
     renderEditor({ kind: "service", statusAddress: address, behaviour: { status: "ping" } });
     expect(screen.getByLabelText("Address").placeholder).toBe("nas.example.org");
   });
+
+  it("shows the Connection address as derived and checks it before saving", async () => {
+    const onCheck = vi.fn(async () => ({ ok: true, message: "Up · 42 ms" }));
+    const address = {
+      web: "",
+      ping: "",
+      href: "",
+      fallback: { address: "https://pf.example.org", from: "Connection" },
+      onChange: vi.fn(),
+      onCheck,
+    };
+    renderEditor({ kind: "serviceWidget", statusAddress: address });
+    expect(screen.getByLabelText("Address").placeholder).toBe("https://pf.example.org");
+    expect(screen.getByText("From the Connection")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+    expect(onCheck).toHaveBeenCalledWith("web", "https://pf.example.org");
+    expect(await screen.findByText("Up · 42 ms")).toBeTruthy();
+  });
+
+  it("never shows a saved connection's placeholder as text", () => {
+    const address = {
+      web: "",
+      ping: "",
+      fallback: { address: "{{STUDIO_CONNECTION_0123456789ABCDEF_URL}}", from: "Connection" },
+      onChange: vi.fn(),
+    };
+    renderEditor({ kind: "serviceWidget", statusAddress: address });
+    expect(screen.getByLabelText("Address").placeholder).toBe("The saved connection's address");
+  });
+});
+
+describe("Docker container (option audit against 6a93f66)", () => {
+  it("edits an integration widget's Docker server and container, even with no status check", () => {
+    const onChange = vi.fn();
+    renderEditor({
+      kind: "serviceWidget",
+      behaviour: { status: "off" },
+      docker: { server: "my-docker", container: "", onChange },
+    });
+    expect(screen.getByLabelText("Docker server").value).toBe("my-docker");
+    fireEvent.change(screen.getByLabelText("Docker container"), { target: { value: "jellyfin" } });
+    expect(onChange).toHaveBeenCalledWith("container", "jellyfin");
+  });
 });
 
 describe("exact colour", () => {
@@ -489,6 +557,12 @@ describe("one Values list for every value", () => {
     expect(whereIs("pfsense.disk")).toBe("Hidden");
     putIt("pfsense.wanIP", /^(Below|Shown)$/);
     expect(onChange).toHaveBeenCalledWith(["load", "memory", "temp", "wanStatus", "wanIP"]);
+  });
+
+  it("a value just shown stays shown before the widget draws it (owner T8, 65f724c)", () => {
+    renderEditor({ fields: pfsense, nativeValues: native(["load", "memory", "temp", "wanStatus", "wanIP"], vi.fn()) });
+    expect(whereIs("pfsense.wanIP")).toMatch(/^(Below|Shown)$/);
+    expect(whereIs("pfsense.disk")).toBe("Hidden");
   });
 
   it("hiding a value removes it from the fields list, and moving one reorders it", () => {

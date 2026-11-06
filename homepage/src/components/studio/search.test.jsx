@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PreferencesContext, searchEngine, viewedSettings, withDisplayPreferences } from "./preferences";
-import StudioSearch, { matchItems, searchableItems, typedAddress } from "./search";
+import StudioSearch, { matchItems, navigation, searchableItems, typedAddress } from "./search";
 
 vi.mock("components/resolvedicon", () => ({ default: () => null }));
 
@@ -164,11 +164,18 @@ describe("search dialog", () => {
     expect(options[1]).toHaveTextContent("Search Google for “vault”");
   });
 
-  it("opens a link in a new tab by default and goes to the page for a widget without one", () => {
+  it("opens a link in this tab by default, or a new tab when the person prefers", () => {
+    const assign = vi.spyOn(navigation, "assign").mockImplementation(() => {});
     const first = mount("vault");
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
-    expect(first.open).toHaveBeenCalledWith("https://vault.example.org", "_blank", "noopener,noreferrer");
+    expect(assign).toHaveBeenCalledWith("https://vault.example.org");
+    expect(first.open).not.toHaveBeenCalled();
     expect(first.onClose).toHaveBeenCalled();
+    cleanup();
+    const second = mount("vault", { searchOpens: "new" });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(second.open).toHaveBeenCalledWith("https://vault.example.org", "_blank", "noopener,noreferrer");
+    assign.mockRestore();
   });
 
   it("takes you to a widget's page when it has no link", () => {
@@ -178,7 +185,7 @@ describe("search dialog", () => {
   });
 
   it("searches the web with the person's engine and moves with the arrow keys", () => {
-    const { open } = mount("vault", { searchEngine: "duckduckgo" });
+    const { open } = mount("vault", { searchEngine: "duckduckgo", searchOpens: "new" });
     const box = screen.getByRole("combobox");
     fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "Enter" });

@@ -9,7 +9,7 @@ import {
   base32Encode, backupCode, backupCodeHash, emailCode, sealSecret, openSecret,
 } from './primitives.mjs';
 import { createAuthStore, AuthError, DEFAULT_POLICY, MAX_GROUPS } from './store.mjs';
-import { dashboardLevel, effectivePolicy, landingDashboard, userGroupIds, validGrantList, rank, GRANT_LEVELS } from './access.mjs';
+import { dashboardLevel, dashboardOperations, effectivePolicy, landingDashboard, userGroupIds, validGrantList, rank, GRANT_LEVELS } from './access.mjs';
 import { createPasskeys } from './webauthn.mjs';
 import { createMailer, describeMailError, mailMessages } from './mail.mjs';
 import { createOidc } from './oidc.mjs';
@@ -151,7 +151,7 @@ function activeAdmins(data) {
   return data.users.filter(user => !user.disabled && user.status === 'active' && effectiveRole(data, user, user.source === 'oidc' ? 'oidc' : 'local') === 'admin');
 }
 
-export function createAuthService({ config, stateRoot, now = () => Date.now(), listDashboards = async () => [], mailAccent, onUserRemoved = async () => {} }) {
+export function createAuthService({ config, stateRoot, now = () => Date.now(), listDashboards = async () => [], mailAccent, onUserRemoved = async () => {}, onAudit = () => {} }) {
   // The deployment's name: Administration's setting, else STUDIO_DEPLOYMENT_NAME.
   const siteName = () => (store.ready && store.read().settings.deploymentName) || config.deploymentName;
   const store = createAuthStore({ stateRoot });
@@ -411,6 +411,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     return {
       user, session, policy, ip: clientIp(req, { signedIn: true }),
       level: dashboardId => dashboardLevel(data, user, dashboardId),
+      operations: dashboardId => (dashboardLevel(data, user, dashboardId) === 'none' ? { monitoring: false, logs: false } : dashboardOperations(data, user, dashboardId)),
       landing: dashboards => landingDashboard(data, user, dashboards),
       fresh: () => time - session.authAt <= policy.stepUpMinutes * MINUTE,
     };
@@ -420,7 +421,10 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
   // address), so every event someone causes records where it came from.
   async function audit(type, fields = {}, source) {
     const ip = source?.socket ? clientIp(source) : source?.ip;
-    await store.audit({ type, ...fields, ...(ip ? { ip } : {}) });
+    const event = { type, ...fields, ...(ip ? { ip } : {}) };
+    await store.audit(event);
+    // Also to Studio's logs (Operations › Logs), as a restricted event.
+    try { onAudit(event, findUser(store.read(), fields.userId ?? fields.by)); } catch {}
   }
 
   // ---- Provider groups and roles -----------------------------------------
@@ -1249,9 +1253,14 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     async remove(current, body) {
       requireAdmin(current);
       if (body?.id === current.user.id) fail("You can't delete your own account.", 'SELF_DELETE', 409);
+      let removed = null, names = [];
       await store.mutate(data => {
         const before = data.users.length;
+        removed = data.users.find(user => user.id === body?.id) ?? null;
         data.users = data.users.filter(user => user.id !== body?.id);
+        // The names their events carry, except any someone else still goes by.
+        const taken = new Set(data.users.flatMap(user => [user.username, user.displayName]).filter(Boolean));
+        names = [removed?.username, removed?.displayName].filter(name => name && !taken.has(name));
         if (data.users.length === before) fail('That user no longer exists.', 'NOT_FOUND', 404);
         data.invites = data.invites.filter(item => item.userId !== body.id);
         for (const id of Object.keys(data.grants)) data.grants[id] = data.grants[id].filter(grant => grant.subject !== 'user:' + body.id);
@@ -1259,7 +1268,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       });
       await store.sessions.remove(item => item.userId === body.id);
       // Their own images and preferences go with the account.
-      await onUserRemoved(body.id);
+      await onUserRemoved(body.id, { names });
       await audit('user-deleted', { userId: body.id, by: current.user.id }, current);
       return admin.overview(current);
     },
@@ -1383,7 +1392,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       if (!dashboards.some(entry => entry.id === body?.dashboardId)) fail('That dashboard no longer exists.', 'NOT_FOUND', 404);
       await store.mutate(data => {
         if (!validGrantList(body.grants, data)) fail(`Share with existing users or groups, at ${GRANT_LEVELS.join(' or ')} level, once each.`, 'INVALID_GRANTS');
-        data.grants[body.dashboardId] = body.grants.map(grant => ({ subject: grant.subject, level: grant.level }));
+        data.grants[body.dashboardId] = body.grants.map(grant => ({ subject: grant.subject, level: grant.level, ...(grant.monitoring ? { monitoring: true } : {}), ...(grant.logs ? { logs: true } : {}) }));
       });
       await audit('access-changed', { dashboardId: body.dashboardId, by: current.user.id, count: body.grants.length }, current);
       return { grants: store.read().grants[body.dashboardId] };
@@ -1605,8 +1614,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
           const from = list.find(grant => grant.subject === 'user:' + merged.id);
           if (!from) continue;
           const to = list.find(grant => grant.subject === 'user:' + target.id);
-          if (to) { if (rank(from.level) > rank(to.level)) to.level = from.level; }
-          else list.push({ subject: 'user:' + target.id, level: from.level });
+          if (to) { if (rank(from.level) > rank(to.level)) to.level = from.level; if (from.monitoring) to.monitoring = true; if (from.logs) to.logs = true; }
+          else list.push({ subject: 'user:' + target.id, level: from.level, ...(from.monitoring ? { monitoring: true } : {}), ...(from.logs ? { logs: true } : {}) });
           draft.grants[id] = list.filter(grant => grant.subject !== 'user:' + merged.id);
         }
         target.groupIds = [...new Set([...(target.groupIds ?? []), ...(merged.groupIds ?? [])])];

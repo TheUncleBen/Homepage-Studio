@@ -53,7 +53,7 @@ test('Search freezes the remaining playback interval and resumes without a catch
   const snapshots = await studioApi(request, '/dashboard/studio/api/backups');
   await stack.getByRole('button', { name: 'Play slideshow', exact: true }).click();
   await page.clock.fastForward(500);
-  await page.getByRole('navigation', { name: 'Studio', exact: true }).getByRole('button', { name: 'Search', exact: true }).click();
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(stack.locator('.studio-playback-status')).toHaveText('Waiting');
   await page.clock.fastForward(60000);
   await expect(activePanel(page)).toHaveAttribute('data-panel-id', first);
