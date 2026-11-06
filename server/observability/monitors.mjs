@@ -40,7 +40,7 @@ export function availability(rows) {
   return up + down ? up / (up + down) : null;
 }
 
-export function createMonitoring({ db, definitions, runCheck, onEvent = () => {}, onTransition = () => {}, now = () => Date.now(), concurrency = 16, perHost = 2 }) {
+export function createMonitoring({ db, definitions, runCheck, onEvent = () => {}, onTransition = () => {}, onResult = () => {}, now = () => Date.now(), concurrency = 16, perHost = 2 }) {
   const states = new Map(); // monitor id → state record
   const bound = new Map(); // dashboard id → monitors derived from its cards
   const running = new Map(); // monitor id → host
@@ -140,6 +140,8 @@ export function createMonitoring({ db, definitions, runCheck, onEvent = () => {}
     // Next run: sooner while confirming a failure.
     due.set(monitor.id, ts + (record.state === 'pending' ? monitor.retryInterval : monitor.interval) * 1000);
     if (monitor.type !== 'group') refreshGroups(monitor, ts);
+    // Every result, not only changes: response times, certificate warnings.
+    try { onResult(monitor, result, ts); } catch (error) { onEvent({ source_type: 'studio', source_id: 'monitoring', category: 'application', severity: 4, event_type: 'monitor.result-failed', message: `Recording a result of ${monitor.name} failed: ${error.message}` }); }
     return record;
   }
 
@@ -283,7 +285,11 @@ export function createMonitoring({ db, definitions, runCheck, onEvent = () => {}
       const daily = db.all('SELECT start, up, down, maint, unknown, ms_sum, ms_n FROM check_day WHERE monitor_id = ? AND start >= ? ORDER BY start', id, dayStart(t) - (days - 1) * 86400e3);
       const hourly = db.all('SELECT start, up, down, maint, unknown, ms_sum, ms_n, ms_min, ms_max FROM check_hour WHERE monitor_id = ? AND start >= ? ORDER BY start', id, hourStart(t) - (hours - 1) * HOUR);
       const recent = db.all('SELECT ts, state, ms, code, error_class, message FROM check_result WHERE monitor_id = ? AND ts >= ? ORDER BY ts', id, t - Math.min(hours, 48) * HOUR);
-      return { daily, hourly, recent, availability: { day: availability(hourly.filter(row => row.start >= t - 24 * HOUR)), week: availability(daily.filter(row => row.start >= dayStart(t) - 6 * 86400e3)), month: availability(daily.filter(row => row.start >= dayStart(t) - 29 * 86400e3)), quarter: availability(daily) } };
+      // When checks began (to the hour), so a new monitor doesn't claim 90 days.
+      const hourFirst = db.get('SELECT MIN(start) AS t FROM check_hour WHERE monitor_id = ?', id)?.t ?? null;
+      const resultFirst = db.get('SELECT MIN(ts) AS t FROM check_result WHERE monitor_id = ?', id)?.t ?? null;
+      const first = hourFirst !== null && resultFirst !== null && resultFirst - hourFirst < HOUR ? resultFirst : hourFirst ?? db.get('SELECT MIN(start) AS t FROM check_day WHERE monitor_id = ?', id)?.t ?? null;
+      return { daily, hourly, recent, first, availability: { day: availability(hourly.filter(row => row.start >= t - 24 * HOUR)), week: availability(daily.filter(row => row.start >= dayStart(t) - 6 * 86400e3)), month: availability(daily.filter(row => row.start >= dayStart(t) - 29 * 86400e3)), quarter: availability(daily) } };
     },
     incidentEvent,
     localDay,

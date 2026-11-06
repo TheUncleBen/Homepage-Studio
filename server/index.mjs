@@ -118,7 +118,7 @@ function wantsHtmlPage(req) {
   if (/^\/(?:[^/]+\/)?(?:api|studio\/api)(?:\/|$)/.test(path)) return false;
   return String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html');
 }
-function renderUnavailablePage(status) {
+function renderUnavailablePage(status, { title = 'This dashboard isn&#39;t available', text = 'Its address may have changed, or it may have been archived. Choose the dashboard you need on the Dashboards page.' } = {}) {
   const code = Number(status) === 410 ? 410 : 404;
   return `<!doctype html>
 <html lang="en">
@@ -126,7 +126,7 @@ function renderUnavailablePage(status) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Dashboard unavailable</title>
+<title>${title}</title>
 <style>
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -143,8 +143,8 @@ a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
 <body>
 <main>
 <p class="status">Error ${code}</p>
-<h1>This dashboard isn&#39;t available</h1>
-<p>Its address may have changed, or it may have been archived. Choose the dashboard you need on the Dashboards page.</p>
+<h1>${title}</h1>
+<p>${text}</p>
 <a href="/studio/dashboards">Open Dashboards</a>
 </main>
 </body>
@@ -153,7 +153,9 @@ a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
 }
 function unavailablePage(req, res, status) {
   if (res.destroyed || res.writableEnded) return;
-  const page = renderUnavailablePage(status);
+  // Operations with sign-in off (monitoring and logs are signed-in only).
+  const operations = String(req.url || '').split('?')[0].replace(/\/$/, '') === '/studio/operations';
+  const page = renderUnavailablePage(status, operations ? { title: 'Operations needs Studio sign-in', text: 'Monitoring and logs are only available when Studio sign-in is on (see MONITORING.md in the documentation). Cards still show their status.' } : undefined);
   const policy = res.getHeader('content-security-policy');
   res.writeHead(status === 410 ? 410 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(page), 'content-security-policy': [].concat(policy ?? [], UNAVAILABLE_PAGE_POLICY), vary: 'Accept' });
   res.end(req.method === 'HEAD' ? undefined : page);

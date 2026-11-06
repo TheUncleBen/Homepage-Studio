@@ -350,6 +350,37 @@ describe("Investigate", () => {
     );
   });
 
+  it("is offered for the widget a stack is showing", async () => {
+    const stacked = {
+      ...twoPages,
+      panels: [panel("clock", "home", 0), panel("weather", "home", 0), panel("plex", "media", 0)],
+      stacks: [
+        {
+          id: "s1",
+          panelIds: ["clock", "weather"],
+          rect: { x: 0, y: 0, w: 8, h: 6 },
+          playback: {
+            mode: "manual",
+            intervalMs: 10000,
+            manualHoldMs: 30000,
+            transition: "horizontal",
+            transitionDurationMs: 250,
+            loop: true,
+          },
+        },
+      ],
+    };
+    await mount({ board: stacked, accessValue: viewer({ monitoring: true, logs: true }) });
+    const menu = await menuFor("clock");
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Investigate"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Investigate" }));
+    expect(await screen.findByRole("dialog", { name: /clock: what’s happening/ })).toBeInTheDocument();
+  });
+
   it("is not offered to viewers without Monitoring or Logs", async () => {
     await mount({ accessValue: viewer({ monitoring: false, logs: false }) });
     fireEvent.contextMenu(screen.getByTestId("native-clock"));

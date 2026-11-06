@@ -296,7 +296,9 @@ test('with sign-in off, Operations, export and log intake are closed', async t =
     const answer = await request(target);
     assert.equal(answer.status, 404, target);
   }
-  assert.notEqual((await request('/studio/operations', { headers: html })).status, 200);
+  const page = await request('/studio/operations', { headers: html });
+  assert.equal(page.status, 404);
+  assert.match(page.text, /Operations needs Studio sign-in/, 'says why, not that a dashboard is missing');
   assert.equal((await post('/studio/ingest/logs', { message: 'x' }, { headers: { authorization: 'Bearer ' + 'z'.repeat(32) } })).status, 404);
   assert.equal((await request('/studio/ingest/logs', { method: 'POST', body: '{"message":"x"}', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + 'z'.repeat(32) } })).status, 404, 'a script without the editor header gets the same 404');
   assert.equal((await post('/studio/api/client-errors', { errors: [{ message: 'x' }] })).status, 404);

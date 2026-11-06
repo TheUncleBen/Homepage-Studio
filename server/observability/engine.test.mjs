@@ -34,6 +34,10 @@ test('the engine runs monitors, keeps logs per dashboard and answers through the
     for (let i = 0; i < 40; i++) { overview = await host.call('overview', { scopes: ['default'], admin: false }); if (overview.counts.up === 1) break; await wait(100); }
     assert.equal(overview.total, 1, 'one dashboard sees only its own monitor');
     assert.equal(overview.counts.up, 1);
+    // Every successful check adds a response time point (UI review H1).
+    let series = [];
+    for (let i = 0; i < 40 && !series.length; i++) { series = (await host.call('metricList', { scopes: ['default'] })).series.filter(item => item.resource === 'monitor:a' && item.name === 'response_ms'); if (!series.length) await wait(100); }
+    assert.equal(series.length, 1, 'the response time series exists after one check');
     assert.equal(overview.health, undefined, 'non-admins do not get Studio health');
     const lab = await host.call('monitors', { scopes: ['11111111-1111-4111-8111-111111111111'] });
     assert.deepEqual(lab.monitors.map(item => item.id), ['b']);

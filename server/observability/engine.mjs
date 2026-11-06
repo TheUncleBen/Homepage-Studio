@@ -102,19 +102,15 @@ const monitoring = createMonitoring({
   onEvent: log,
   onTransition: change => {
     const { monitor, state, previous, result } = change;
-    if (result?.docker) docker.track(monitor, result.docker);
     notifyTransition(effective(monitor), previous, state, result);
   },
+  // Every check: response time series for charts, Docker details, certificate warnings.
+  onResult: (monitor, result) => {
+    if (Number.isFinite(result?.ms) && result.ok) metrics.record(monitor.scope, `monitor:${monitor.id}`, 'response_ms', result.ms, { label: 'Response time', unit: 'ms', format: 'duration' });
+    if (result?.docker) docker.track(monitor, result.docker);
+    certificateWarning(effective(monitor), result);
+  },
 });
-// Response time series for every check, for charts and resource pages.
-const applyOriginal = monitoring.apply;
-monitoring.apply = (monitor, result, ts) => {
-  const record = applyOriginal(monitor, result, ts);
-  if (Number.isFinite(result?.ms) && result.ok) metrics.record(monitor.scope, `monitor:${monitor.id}`, 'response_ms', result.ms, { label: 'Response time', unit: 'ms', format: 'duration' });
-  if (result?.docker) docker.track(monitor, result.docker);
-  certificateWarning(effective(monitor), result);
-  return record;
-};
 
 const dashboardName = scope => (scope === STUDIO_SCOPE ? 'Studio' : dashboards.get(scope)?.name ?? 'a dashboard');
 const timeText = ts => new Date(ts).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });

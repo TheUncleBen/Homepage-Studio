@@ -68,9 +68,9 @@ test('secrets never reach storage, and audit events stay administrator-only', as
   assert.equal(env.query.search({ query: '', ...range(env.now), scopes: null, restricted: false }).events.some(event => event.restricted), false);
 });
 
-test('repeats inside a minute fold into one row with a count; pages continue by cursor', async t => {
+test('identical repeats within seconds fold into one row with a count; pages continue by cursor', async t => {
   const env = await setup(t);
-  for (let i = 0; i < 30; i++) env.ingest.add({ message: `HTTP 401 calling widget ${i}`, resource: 'Sonarr', severity: 'error' });
+  for (let i = 0; i < 30; i++) env.ingest.add({ message: 'HTTP 401 calling widget', resource: 'Sonarr', severity: 'error' });
   for (let i = 0; i < 250; i++) { env.ingest.add({ message: `line ${i} unique ${'x'.repeat(i % 7)} ${String.fromCharCode(97 + (i % 26))}${i}`, source_type: 'renderer', source_id: 'r' + i }); env.tick(1); }
   env.ingest.flush();
   const grouped = env.query.search({ query: 'widget', ...range(env.now), scopes: null });
@@ -84,6 +84,24 @@ test('repeats inside a minute fold into one row with a count; pages continue by 
   assert.equal(new Set([...first.events, ...second.events].map(event => event.id)).size, 250);
   const hist = env.query.histogram({ query: '', ...range(env.now), scopes: null, buckets: 24 });
   assert.equal(hist.bars.reduce((sum, bar) => sum + bar.n, 0), 251);
+});
+
+test('events that differ only in numbers, or are minutes apart, stay separate rows (UI review H2)', async t => {
+  const env = await setup(t);
+  // Sent together, one a minute apart by their own time.
+  const base = env.now - 40 * 60e3;
+  for (let i = 0; i < 40; i++) env.ingest.add({ message: `Snapshot ${1003 + i} created`, resource: 'nas', ts: base + i * 60e3 });
+  for (let i = 0; i < 3; i++) env.ingest.add({ message: 'Backup finished', resource: 'nas', ts: base + i * 60e3 });
+  env.ingest.flush();
+  const snapshots = env.query.search({ query: 'snapshot', ...range(env.now), scopes: null, limit: 100 });
+  assert.equal(snapshots.events.length, 40);
+  assert.ok(snapshots.events.every(event => event.repeat === 1));
+  assert.equal(env.query.search({ query: '"Snapshot 1042"', ...range(env.now), scopes: null }).events.length, 1, 'a later one can be found');
+  assert.equal(env.query.search({ query: 'backup', ...range(env.now), scopes: null }).events.length, 3);
+  // Similar together still groups them by shape.
+  const groups = env.query.groups({ query: 'snapshot', ...range(env.now), scopes: null });
+  assert.equal(groups.groups.length, 1);
+  assert.equal(groups.groups[0].count, 40);
 });
 
 test('retention removes whole segments by age and never the one being written', async t => {
@@ -107,4 +125,17 @@ test('the search language: fields, phrases, negation and prefixes', () => {
   assert.equal(event.message, 'red and \\x07bell');
   assert.equal(event.severity, 4);
   assert.ok(Math.abs(event.ts - Date.now()) < 5000, 'times far from receipt use the receive time');
+});
+
+test('the renderer start-up banner is Studio debug output, not a dashboard event (UI review M4)', async () => {
+  const { parseWorkerLine } = await import('./controller.mjs');
+  for (const line of ['   ▲ Next.js 16.4.2', '   - Local:        http://127.0.0.1:38173', '   - Network:      http://10.0.0.5:38173', ' ✓ Ready in 0ms', ' ✓ Starting...']) {
+    const parsed = parseWorkerLine(line, 'stdout');
+    assert.equal(parsed.startup, true, line);
+    assert.equal(parsed.severity, 7);
+  }
+  const widget = parseWorkerLine('[2026-11-06T10:00:00.000Z] error: <httpProxy> Error calling http://plex', 'stdout');
+  assert.equal(widget.startup, undefined);
+  assert.equal(widget.label, 'httpProxy');
+  assert.equal(widget.severity, 3);
 });

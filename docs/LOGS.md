@@ -50,8 +50,9 @@ together** groups events that differ only in numbers, ids and addresses.
 Administrators can save a search; saved searches are shared between
 administrators.
 
-Repeated identical events within a few seconds are stored once with a count
-(×12), so a noisy service does not bury everything else.
+An event repeated word for word within ten seconds is stored once with a
+count (×12), so a noisy service does not bury everything else. Events that
+differ in any way, even only a number, are each kept.
 
 ## Secrets
 

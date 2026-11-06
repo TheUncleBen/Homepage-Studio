@@ -27,12 +27,28 @@
   }
   const SEVERITY = { 0: 'Critical', 1: 'Critical', 2: 'Critical', 3: 'Error', 4: 'Warning', 5: 'Notice', 6: 'Info', 7: 'Debug' };
   const severityBadge = n => badge(SEVERITY[n] ?? 'Info', n <= 3 ? 'danger' : n === 4 ? 'warn' : '');
-  const percent = v => (v === null || v === undefined ? '—' : `${(Math.floor(v * 10000) / 100).toFixed(v >= 0.9999 ? 0 : 2)}%`);
+  const percent = v => (v === null || v === undefined ? '—' : v <= 0 ? '0%' : `${(Math.floor(v * 10000) / 100).toFixed(v >= 0.9999 ? 0 : 2)}%`);
+  // Availability ranges the monitor has history for; the first longer one
+  // reads "Since <when>" and longer ones are left out (no 90-day claim for a
+  // monitor added today).
+  function availabilityRanges(a, first) {
+    const today = new Date().setHours(0, 0, 0, 0);
+    const ranges = [['24 hours', a.day, Date.now() - 86400e3], ['7 days', a.week, today - 6 * 86400e3], ['30 days', a.month, today - 29 * 86400e3], ['90 days', a.quarter, today - 89 * 86400e3]];
+    if (!Number.isFinite(first)) return [ranges[0]];
+    const out = [];
+    for (const [label, v, start] of ranges) {
+      if (first <= start + 3600e3) { out.push([label, v]); continue; }
+      out.push([`Since ${first >= today ? new Date(first).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(first).toLocaleDateString([], { day: 'numeric', month: 'short' })}`, v]);
+      break;
+    }
+    return out;
+  }
   const ms = v => (Number.isFinite(v) ? (v < 1 ? '<1 ms' : `${Math.round(v)} ms`) : '—');
   const bytes = n => (!Number.isFinite(n) ? '—' : n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : n >= 1048576 ? `${Math.round(n / 1048576)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
   const time = ts => (ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
   const shortTime = ts => new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const minutes = m => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`);
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const loading = () => h('p', { class: 'empty-row', text: 'Loading…' });
   const emptyRow = text => h('p', { class: 'empty-row', text });
   const svgNS = 'http://www.w3.org/2000/svg';
@@ -134,6 +150,7 @@
     const filterChoices = [['', admin ? 'Everything' : 'All my dashboards'], ...access.dashboards.map(entry => [entry.id, entry.name]), ...(admin ? [['studio', 'Studio only']] : [])];
     const filterSelect = filterChoices.length > 2 ? h('select', { class: 'ops-filter', 'aria-label': 'Show', onchange: event => { filter = event.target.value; try { localStorage.setItem('studio-ops-dashboard', filter); } catch {} drawPanel(); } }, filterChoices.map(([val, text]) => h('option', { value: val, text, selected: val === filter ? true : undefined }))) : null;
     let timer = null;
+    let monitorsState = null; // a state chosen on Overview
     const refreshEvery = (fn, msInterval) => { clearInterval(timer); timer = setInterval(() => { if (!document.hidden) fn(); }, msInterval); };
 
     function drawTabs() {
@@ -160,8 +177,9 @@
     function open(path) { location.hash = path; }
     function route() {
       const [section, ...rest] = location.hash.slice(1).split('/');
-      if (section === 'monitor' && rest[0]) { tab = 'monitors'; listing = false; drawTabs(); return monitorDetail(decodeURIComponent(rest.join('/'))); }
-      if (section === 'incident' && rest[0]) { tab = 'incidents'; listing = false; drawTabs(); return incidentDetail(rest[0]); }
+      // A detail page has one Back, to its section (its own ‹ Monitors / ‹ Incidents).
+      if (section === 'monitor' && rest[0]) { tab = 'monitors'; listing = false; drawTabs(); back.hidden = true; return monitorDetail(decodeURIComponent(rest.join('/'))); }
+      if (section === 'incident' && rest[0]) { tab = 'incidents'; listing = false; drawTabs(); back.hidden = true; return incidentDetail(rest[0]); }
       if (section.startsWith('logs') && access.logs) { tab = 'logs'; listing = false; drawTabs(); return drawPanel(); }
       if (tabs.some(([key]) => key === section)) { if (section !== tab || listing) { tab = section; listing = false; drawTabs(); } return drawPanel(); }
       if (!section && narrow.matches) { listing = true; drawTabs(); }
@@ -171,6 +189,7 @@
 
     function drawPanel() {
       clearInterval(timer);
+      back.hidden = false;
       say(message, '');
       const builders = { overview: overviewTab, monitors: monitorsTab, incidents: incidentsTab, logs: logsTab };
       put(panel, ...[].concat(builders[tab]()));
@@ -186,7 +205,7 @@
           const view = await ops('overview?' + withFilter({}));
           const counts = view.counts;
           const summary = group({ title: 'Monitors', aside: String(view.total) },
-            view.total ? ['down', 'unreachable', 'pending', 'up', 'maintenance', 'paused', 'unknown'].filter(key => counts[key]).map(key => h('div', { class: 'item-row' }, stateMark(key), h('span', { class: 'row-value ops-count', text: String(counts[key]) })))
+            view.total ? ['down', 'unreachable', 'pending', 'up', 'maintenance', 'paused', 'unknown'].filter(key => counts[key]).map(key => h('button', { type: 'button', class: 'nav-row', onclick: () => { monitorsState = key; select('monitors'); } }, h('span', { class: 'nav-text' }, stateMark(key)), h('span', { class: 'row-value ops-count', text: String(counts[key]) }), icon('chevron', 15)))
               : [emptyRow(admin ? 'No monitors yet. Cards with a status check are monitored by themselves; add others under Monitors.' : 'No monitors on your dashboards yet.')]);
           const incidents = group({ title: 'Down now', aside: String(view.incidents.length) },
             view.incidents.length ? view.incidents.map(item => navRow({ leading: stateMark(item.monitorState ?? 'down', { text: false }), title: item.name, badges: [item.ack_by ? badge('Acknowledged') : null], detail: `${scopeName(item.scope)} · down since ${shortTime(item.opened)}${item.cause ? ' · ' + item.cause : ''}`, onClick: () => open('incident/' + item.id) }))
@@ -197,8 +216,8 @@
           const health = view.health ? group({ title: 'Studio', info: 'How Studio’s own monitoring and log storage is doing.' },
             row('Monitoring and logs', value(view.health.status === 'ok' ? 'Working' : view.health.reason ?? 'Needs attention')),
             row('Checks running now', value(String(view.health.running))),
-            row('Waiting to be written', value(`${view.health.queue} events`)),
-            view.health.dropped ? row('Not kept (too many at once)', value(`${view.health.dropped} events`), { info: 'Each source may send about 200 events a second, with bursts of 1000. Events over that are counted here and left out, least important first.' }) : null) : null;
+            row('Waiting to be written', value(plural(view.health.queue, 'event', 'events'))),
+            view.health.dropped ? row('Not kept (too many at once)', value(plural(view.health.dropped, 'event', 'events')), { info: 'Each source may send about 200 events a second, with bursts of 1000. Events over that are counted here and left out, least important first.' }) : null) : null;
           put(holder, summary, incidents, attention, health);
         } catch (error) { put(holder, h('div', { class: 'notice error', role: 'alert', text: error.message })); }
       }
@@ -210,11 +229,15 @@
     // ---- Monitors ----
     function monitorsTab() {
       const holder = h('div', { class: 'stack' }, loading());
+      // Opened from an Overview count: only monitors in that state, until cleared.
+      let only = monitorsState;
+      monitorsState = null;
+      const onlyPill = only ? pill(`Only ${(STATES[only] ?? STATES.unknown)[0]}`, { iconName: 'close', 'aria-label': `Showing only ${(STATES[only] ?? STATES.unknown)[0]}. Show all`, onclick: () => { only = null; onlyPill.remove(); draw(); } }) : null;
       const search = h('input', { type: 'search', class: 'ops-search', placeholder: 'Find a monitor', 'aria-label': 'Find a monitor' });
       let list = [];
       function draw() {
         const words = search.value.trim().toLowerCase();
-        const shown = list.filter(item => !words || `${item.name} ${item.target} ${(item.tags ?? []).join(' ')}`.toLowerCase().includes(words));
+        const shown = list.filter(item => (!only || (item.paused ? 'paused' : item.state) === only) && (!words || `${item.name} ${item.target} ${(item.tags ?? []).join(' ')}`.toLowerCase().includes(words)));
         const scopes = [...new Set(shown.map(item => item.scope))].sort((a, b) => scopeName(a).localeCompare(scopeName(b)));
         const rank = item => ({ down: 0, unreachable: 1, pending: 2 })[item.state] ?? 3;
         put(holder, scopes.length ? scopes.map(scope => group({ title: scopeName(scope), aside: String(shown.filter(item => item.scope === scope).length) },
@@ -234,7 +257,7 @@
       refreshEvery(load, 30000);
       const add = admin ? pill('New monitor', { primary: true, iconName: 'plus', onclick: () => monitorEditor(null, { onSaved: load }) }) : null;
       const maintenance = admin ? pill('Maintenance', { iconName: 'wrench', onclick: () => maintenanceDialog(load) }) : null;
-      return [filterBar(search, maintenance, add), holder];
+      return [filterBar(search, onlyPill, maintenance, add), holder];
     }
 
     async function monitorDetail(id) {
@@ -262,7 +285,7 @@
         m.certExpires ? row('Certificate expires', value(new Date(m.certExpires).toLocaleDateString())) : null,
         row('Check every', value(`${m.interval} s`)));
       const avail = group({ title: 'Availability', info: 'Up time ÷ (up + down). Maintenance and time not checked are left out.' },
-        h('div', { class: 'ops-avail' }, ...[['24 hours', a.day], ['7 days', a.week], ['30 days', a.month], ['90 days', a.quarter]].map(([label, v]) => h('div', {}, h('strong', { text: percent(v) }), h('small', { text: label })))));
+        h('div', { class: 'ops-avail' }, ...availabilityRanges(a, detail.history.first).map(([label, v]) => h('div', {}, h('strong', { text: percent(v) }), h('small', { text: label })))));
       const hourly = group({ title: 'Last 24 hours' }, h('div', { class: 'ops-pad' }, bars(slots(detail.history.hourly, 24, 3600e3, Math.floor(Date.now() / 3600e3) * 3600e3), { label: 'Status each hour for the last 24 hours' })));
       const daily = detail.history.daily.length > 1 ? group({ title: 'Last 90 days' }, h('div', { class: 'ops-pad' }, bars(slots(detail.history.daily, 90, 86400e3, new Date().setHours(0, 0, 0, 0)), { label: 'Status each day for the last 90 days' }))) : null;
       const chartHolder = h('div', { class: 'ops-pad' }, loading());
@@ -335,7 +358,7 @@
       // The entry's own words, without repeating its title.
       const entryText = item => { const title = KIND_TEXT[item.kind] ?? item.kind; const text = String(item.text ?? '').replace(new RegExp(`^${title} · `), ''); return text === title ? '' : text; };
       put(panel, backTo('incidents', 'Incidents'),
-        h('div', { class: 'ops-head' }, h('h2', { class: 'ops-name', text: incident.name }), stateMark(incident.closed ? 'up' : 'down'), h('span', { class: 'muted small', text: incident.closed ? `lasted ${minutes(Math.max(1, Math.round((incident.closed - incident.opened) / 60000)))}` : `down since ${shortTime(incident.opened)}` })),
+        h('div', { class: 'ops-head' }, h('h2', { class: 'ops-name', text: incident.name }), stateMark(incident.closed ? 'up' : 'down'), h('span', { class: 'muted small', text: incident.closed ? `lasted ${minutes(Math.max(1, Math.round((incident.closed - incident.opened) / 60000)))}` : `since ${shortTime(incident.opened)}` })),
         toolbar(detail.monitor ? pill('Open monitor', { iconName: 'pulse', onclick: () => open('monitor/' + encodeURIComponent(incident.monitor_id)) }) : null, access.logs ? pill('Logs around it', { iconName: 'search', onclick: () => { pendingLogs = { query: `dashboard:${incident.scope}`, from: incident.opened - 15 * 60e3, to: (incident.closed ?? Date.now()) + 5 * 60e3 }; open('logs'); } }) : null, ack),
         box,
         group({ title: 'What happened' }, row('Dashboard', value(scopeName(incident.scope))), incident.cause ? row('Problem', value(incident.cause)) : null, incident.ack_by ? row('Acknowledged by', value(`${incident.ack_by}, ${ago(incident.ack_at)}`)) : null),
@@ -355,7 +378,7 @@
       const rangeControl = segmented({ value: range, label: 'Time range', options: RANGES, onChange: option => { range = option; window_ = null; search(); } });
       const [helpButton, help] = infoToggle('search', [
         h('p', { text: 'Words find events that contain them; "quotes" find a phrase.' }),
-        h('p', { text: 'Filters: severity:error (or warning, info), source:docker, resource:plex, type:container.*, class:timeout, dashboard:<name or id>, actor:alice. Put - in front to leave matches out: -source:renderer.' }),
+        h('p', { text: 'Filters: severity:error (or warning, info), source:docker, resource:plex, type:container.*, class:timeout, dashboard:<name or id>, panel:<widget id>, actor:alice. Put - in front to leave matches out: -source:renderer.' }),
         h('p', { text: 'Times are this browser’s time zone. Secrets are masked when events are stored.' }),
       ]);
       const histogram = h('div', { class: 'ops-pad' });
@@ -379,8 +402,8 @@
           const [hist, list, facetData] = await Promise.all([ops('logs/histogram?' + p), grouped ? ops('logs/groups?' + p) : ops('logs/search?' + p + '&limit=100'), ops('logs/facets?' + p)]);
           drawHistogram(hist);
           drawFacets(facetData);
-          if (grouped) { drawGroups(list.groups); status.textContent = `${list.groups.length} kinds of event${list.partial ? ' (search stopped early; narrow it to see everything)' : ''}`; }
-          else { next = list.next; drawEvents(list.events, false); status.textContent = `${facetData.total} events${list.partial || facetData.partial ? ' (search stopped early; narrow it to see everything)' : ''}`; }
+          if (grouped) { drawGroups(list.groups); status.textContent = `${plural(list.groups.length, 'kind of event', 'kinds of event')}${list.partial ? ' (search stopped early; narrow it to see everything)' : ''}`; }
+          else { next = list.next; drawEvents(list.events, false); status.textContent = `${plural(facetData.total, 'event', 'events')}${list.partial || facetData.partial ? ' (search stopped early; narrow it to see everything)' : ''}`; }
         } catch (error) { status.textContent = ''; put(results, h('div', { class: 'notice error', role: 'alert', text: error.message })); }
       }
       function drawHistogram(data) {
@@ -568,7 +591,7 @@
           } else if (type === 'push') {
             const period = field('Expect a ping every (minutes)', 'period', { type: 'number', min: 1, value: Math.round((s.period ?? 3600) / 60) });
             const grace = field('Then wait (minutes)', 'grace', { type: 'number', min: 0, value: Math.round((s.grace ?? 300) / 60) });
-            rows.push(h('p', { class: 'empty-row', text: existing ? 'Its address stays the same. Make a new one from the monitor’s menu if the old one leaked.' : 'Its address is shown once, after saving.' }));
+            rows.push(h('p', { class: 'empty-row', text: existing ? 'Its address stays the same. If the old one leaked, use Make a new push address below.' : 'Its address is shown once, after saving.' }));
             read = () => ({ period: Number(period.value) * 60, grace: Number(grace.value) * 60 });
           } else if (type === 'docker') {
             const server = field('Docker server', 'server', { placeholder: 'as named in the dashboard’s docker.yaml' }, { info: 'A server from this dashboard’s docker.yaml. Studio only reads from Docker; a read-only socket proxy is recommended (see the monitoring guide).' });
@@ -648,31 +671,36 @@
         return [h('p', { class: 'muted small', text: 'This card’s address and check come from the card itself. Here you choose who hears when it goes down.' }), group({ title: 'Notify' }, rows), group({}, row('Pause the check', paused)), box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save)];
       });
     }
+    // Maintenance: the windows, each opening for editing (Delete inside,
+    // confirmed), like channels and sources.
     async function maintenanceDialog(onChanged) {
       const cfg = await config();
       openDialog('Maintenance', close => {
+        const reopen = () => { close(); onChanged?.(); maintenanceDialog(onChanged); };
+        const list = group({ title: 'Windows' }, cfg.maintenance.length ? cfg.maintenance.map(item => navRow({ title: item.name, detail: `${scopeName(item.scope)} · ${windowText(item)}`, onClick: () => { close(); maintenanceEditor(cfg, item, reopen); } })) : [emptyRow('None yet.')]);
+        const add = h('button', { type: 'button', class: 'primary', text: 'New window', onclick: () => { close(); maintenanceEditor(cfg, null, reopen); } });
+        return [h('p', { class: 'muted small', text: 'Monitors in maintenance aren’t counted as down and send no notifications. Times are the server’s time zone.' }), list, dialogActions(h('button', { type: 'button', onclick: close, text: 'Close' }), add)];
+      });
+    }
+    function maintenanceEditor(cfg, existing, onDone) {
+      openDialog(existing ? existing.name : 'New maintenance window', close => {
         const box = notice();
-        const list = group({ title: 'Windows' }, cfg.maintenance.length ? cfg.maintenance.map(item => h('div', { class: 'item-row' }, h('span', { class: 'nav-text' }, h('span', { class: 'nav-title', text: item.name }), h('small', { text: `${scopeName(item.scope)} · ${windowText(item)}` })),
-          deleteButton(item))) : [emptyRow('None yet.')]);
-        function deleteButton(item) {
-          const button = h('button', { type: 'button', class: 'icon-button', 'aria-label': `Delete ${item.name}` }, icon('trash', 16));
-          button.addEventListener('click', () => busy(button, '', async () => { try { await ops('config', { kind: 'maintenance', action: 'delete', id: item.id }); close(); onChanged?.(); maintenanceDialog(onChanged); } catch (error) { failure(box, error); } }));
-          return button;
-        }
-        const name = inputRow('Name', { maxlength: 80, placeholder: 'Router update' });
+        const name = inputRow('Name', { maxlength: 80, placeholder: 'Router update', value: existing?.name ?? '' });
         const scopes = cfg.dashboards.map(entry => [entry.id, entry.name]).concat([['studio', 'Studio only']]);
-        const scope = selectRow('Dashboard', scopes, filter && filter !== 'studio' ? filter : scopes[0][0]);
-        let kind = 'now';
+        const scope = selectRow('Dashboard', scopes, existing?.scope ?? (filter && filter !== 'studio' ? filter : scopes[0][0]));
+        // A window that was "now" or one-off is edited as "now, for so many minutes from now".
+        let kind = existing && ['daily', 'weekly'].includes(existing.kind) ? existing.kind : 'now';
         const when = segmented({ value: kind, label: 'When', options: [['now', 'Now'], ['daily', 'Every day'], ['weekly', 'Every week']], onChange: option => { kind = option; drawWhen(); } });
         const whenHolder = h('div', {});
-        const length = inputRow('For (minutes)', { type: 'number', min: 5, value: 60 });
-        const from = inputRow('From', { type: 'time', value: '02:00' });
-        const to = inputRow('To', { type: 'time', value: '03:00' });
-        const days = new Set([0]);
+        const remaining = existing?.end ? Math.max(5, Math.ceil((existing.end - Date.now()) / 60000)) : 60;
+        const length = inputRow(existing ? 'For (minutes from now)' : 'For (minutes)', { type: 'number', min: 5, value: remaining });
+        const from = inputRow('From', { type: 'time', value: existing?.from ?? '02:00' });
+        const to = inputRow('To', { type: 'time', value: existing?.to ?? '03:00' });
+        const days = new Set(existing?.days ?? [0]);
         const dayRow = row('Days', h('div', { class: 'ops-days' }, ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, index) => { const b = h('button', { type: 'button', class: 'ops-chip', 'aria-pressed': String(days.has(index)), text: label }); b.addEventListener('click', () => { if (days.has(index)) days.delete(index); else days.add(index); b.setAttribute('aria-pressed', String(days.has(index))); }); return b; })), { stacked: true });
         function drawWhen() { put(whenHolder, kind === 'now' ? length.row : [from.row, to.row, kind === 'weekly' ? dayRow : null]); }
         drawWhen();
-        const covered = new Set();
+        const covered = new Set(existing?.monitors ?? []);
         const monitorsHolder = h('div', {});
         function drawMonitors() {
           const candidates = cfg.monitors.filter(item => item.scope === scope.select.value);
@@ -680,15 +708,17 @@
         }
         scope.select.addEventListener('change', () => { covered.clear(); drawMonitors(); });
         drawMonitors();
-        const coverTags = inputRow('Monitors tagged', { placeholder: 'optional, comma separated' }, { info: 'Also covers every monitor on this dashboard with one of these tags, including ones added later.' });
-        const add = h('button', { type: 'button', class: 'primary', text: 'Add window' });
-        add.addEventListener('click', () => busy(add, 'Saving…', async () => {
+        const coverTags = inputRow('Monitors tagged', { placeholder: 'optional, comma separated', value: (existing?.tags ?? []).join(', ') }, { info: 'Also covers every monitor on this dashboard with one of these tags, including ones added later.' });
+        const save = h('button', { type: 'button', class: 'primary', text: existing ? 'Save' : 'Add window' });
+        save.addEventListener('click', () => busy(save, 'Saving…', async () => {
           try {
-            await ops('config', { kind: 'maintenance', action: 'save', item: { name: name.input.value, scope: scope.select.value, kind, monitors: [...covered], tags: coverTags.input.value.split(',').map(t => t.trim()).filter(Boolean), minutes: length.input.value, from: from.input.value, to: to.input.value, days: [...days] } });
-            close(); onChanged?.(); maintenanceDialog(onChanged);
+            await ops('config', { kind: 'maintenance', action: 'save', id: existing?.id, item: { name: name.input.value, scope: scope.select.value, kind, monitors: [...covered], tags: coverTags.input.value.split(',').map(t => t.trim()).filter(Boolean), minutes: length.input.value, from: from.input.value, to: to.input.value, days: [...days] } });
+            close(); onDone();
           } catch (error) { failure(box, error); }
         }));
-        return [h('p', { class: 'muted small', text: 'Monitors in maintenance aren’t counted as down and send no notifications. Times are the server’s time zone.' }), list, group({ title: 'New window' }, name.row, scope.row, row('When', when), whenHolder), group({ title: 'Covers' }, monitorsHolder, coverTags.row), box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Close' }), add)];
+        const remove = existing ? group({}, actionRow('Delete this window', { iconName: 'trash', danger: true, onClick: () => confirmDialog(`Delete ${existing.name}?`, 'Its monitors are no longer paused for it.', 'Delete', async () => { await ops('config', { kind: 'maintenance', action: 'delete', id: existing.id }); close(); onDone(); }) })) : null;
+        const cancel = h('button', { type: 'button', text: 'Cancel', onclick: () => { close(); onDone(); } });
+        return [group({}, name.row, scope.row, row('When', when), whenHolder), group({ title: 'Covers' }, monitorsHolder, coverTags.row), remove, box, dialogActions(cancel, save)];
       });
     }
 

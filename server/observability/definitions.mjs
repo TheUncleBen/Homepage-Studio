@@ -27,9 +27,11 @@ export const hashToken = token => createHash('sha256').update(String(token)).dig
 export const newToken = () => randomBytes(24).toString('base64url');
 const newId = () => randomUUID();
 
-const text = (value, label, max = 120, { optional = false } = {}) => {
+const text = (value, label, max = 120, { optional = false, empty } = {}) => {
   if ((value === undefined || value === null || value === '') && optional) return '';
-  if (typeof value !== 'string' || !value.trim() || value.length > max || /[\u0000-\u001f\u007f]/.test(value)) fail(`${label} must be text of up to ${max} characters.`);
+  if (typeof value !== 'string' || !value.trim()) fail(empty ?? `Fill in ${label.toLowerCase()}.`);
+  if (value.length > max) fail(`${label} can be up to ${max} characters.`);
+  if (/[\u0000-\u001f\u007f]/.test(value)) fail(`${label} can’t contain line breaks or control characters.`);
   return value.trim();
 };
 const integer = (value, label, min, max, fallback) => {
@@ -84,7 +86,7 @@ export function cleanMonitor(input, { existing, channels, monitors }) {
   const interval = integer(input.interval, 'Check every', 20, 86400, existing?.interval ?? 60);
   const monitor = {
     id: existing?.id ?? newId(),
-    name: text(input.name, 'Name', 80),
+    name: text(input.name, 'Name', 80, { empty: 'Give the monitor a name.' }),
     scope: scopeOf(input.scope ?? existing?.scope),
     type,
     interval,
@@ -160,7 +162,7 @@ export function cleanMaintenance(input, { existing, monitors }) {
   if (!ids.length && !(input.tags ?? []).length) fail('Choose the monitors or tags it covers.');
   const scope = scopeOf(input.scope ?? existing?.scope);
   for (const id of ids) if (!monitors.some(monitor => monitor.id === id && monitor.scope === scope)) fail('Choose monitors on the same dashboard.');
-  const window = { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80), scope, kind, monitors: [...new Set(ids)], tags: tags(input.tags) };
+  const window = { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80, { empty: 'Give the maintenance window a name.' }), scope, kind, monitors: [...new Set(ids)], tags: tags(input.tags) };
   if (kind === 'now') { window.start = Date.now(); window.end = window.start + integer(input.minutes, 'Minutes', 5, 7 * 1440, 60) * 60e3; }
   if (kind === 'once') {
     window.start = Number(input.start); window.end = Number(input.end);
@@ -185,7 +187,7 @@ export function cleanChannel(input, { existing }) {
   const type = existing?.type ?? input.type;
   if (!CHANNEL_TYPES.includes(type)) fail('Choose a channel type.');
   const keep = field => (input[field] === undefined || input[field] === '' ? existing?.[field] : input[field]);
-  const channel = { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80), type };
+  const channel = { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80, { empty: 'Give the channel a name.' }), type };
   if (type === 'email') {
     const list = String(input.to ?? existing?.to ?? '').split(/[,;\s]+/).filter(Boolean);
     if (!list.length || list.length > 10 || list.some(address => !/^[^\s@<>()",;:]{1,64}@[^\s@<>()",;:]{1,253}$/.test(address))) fail('Enter up to 10 email addresses.');
@@ -219,14 +221,14 @@ export function publicMonitor(monitor) {
 
 export function cleanView(input, { existing }) {
   if (!input || typeof input !== 'object') fail('Send a saved view.');
-  return { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80), query: text(input.query, 'Search', 1000, { optional: true }), range: ['15m', '1h', '6h', '24h', '7d', '14d', '30d'].includes(input.range) ? input.range : '1h' };
+  return { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80, { empty: 'Give the search a name.' }), query: text(input.query, 'Search', 1000, { optional: true }), range: ['15m', '1h', '6h', '24h', '7d', '14d', '30d'].includes(input.range) ? input.range : '1h' };
 }
 
 export function cleanSource(input, { existing }) {
   if (!input || typeof input !== 'object') fail('Send a log source.');
   const kind = existing?.kind ?? input.kind;
   if (!['https', 'syslog'].includes(kind)) fail('Choose HTTPS intake or syslog.');
-  const source = { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80), kind, scope: scopeOf(input.scope ?? existing?.scope), resource: text(input.resource ?? existing?.resource, 'Resource', 120, { optional: true }) };
+  const source = { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80, { empty: 'Give the source a name.' }), kind, scope: scopeOf(input.scope ?? existing?.scope), resource: text(input.resource ?? existing?.resource, 'Resource', 120, { optional: true }) };
   if (kind === 'https') source.tokenHash = existing?.tokenHash ?? null;
   if (kind === 'syslog') {
     const address = text(input.address ?? existing?.address, 'Sender address', 64);
@@ -240,7 +242,7 @@ export function cleanAlert(input, { existing, channels }) {
   if (!input || typeof input !== 'object') fail('Send a log alert.');
   const ids = Array.isArray(input.channels) ? input.channels : [];
   if (!ids.length || ids.some(id => !channels.some(channel => channel.id === id))) fail('Choose at least one notification channel.');
-  return { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80), query: text(input.query, 'Search', 1000), threshold: integer(input.threshold, 'At least', 1, 100000, 1), minutes: integer(input.minutes, 'Within', 1, 1440, 5), channels: [...new Set(ids)], quietMinutes: integer(input.quietMinutes, 'Then wait', 1, 1440, 30) };
+  return { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80, { empty: 'Give the alert a name.' }), query: text(input.query, 'Search', 1000), threshold: integer(input.threshold, 'At least', 1, 100000, 1), minutes: integer(input.minutes, 'Within', 1, 1440, 5), channels: [...new Set(ids)], quietMinutes: integer(input.quietMinutes, 'Then wait', 1, 1440, 30) };
 }
 
 export function cleanSettings(input, current) {

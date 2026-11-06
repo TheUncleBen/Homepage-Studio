@@ -1800,7 +1800,13 @@ export default function StudioBoard({
           else if (next !== boardRef.current) changeBoard(next);
         },
       };
-    if (stack && !editing) return [];
+    // While viewing, a stack offers Investigate for the widget it shows.
+    if (stack && !editing) {
+      const shownId =
+        controllers.current.get(stack.id)?.getSnapshot().activeId || active[stack.id] || stack.panelIds[0];
+      const shown = wholeBoard.panels.find((item) => item.id === shownId);
+      return shown ? [investigateItem(shown)].filter(Boolean) : [];
+    }
     if (stack)
       return [
         { id: "edit", icon: "edit", label: "Edit stack", onSelect: guarded(() => editStack(stack)) },
@@ -2523,7 +2529,7 @@ export default function StudioBoard({
               onActive={onActive}
               registerController={registerController}
               onEdit={editStack}
-              onLongPress={editing ? openUnitMenu : undefined}
+              onLongPress={editing || canInvestigate ? openUnitMenu : undefined}
               onManipulate={manipulate}
               onUnitKey={unitKey}
               onStackDrag={(offset) => onStackDrag(stack.id, offset)}

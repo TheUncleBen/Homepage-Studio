@@ -113,6 +113,9 @@ const LEVELS = { error: 3, warn: 4, warning: 4, info: 6, http: 6, verbose: 7, de
 export function parseWorkerLine(raw, stream) {
   const line = String(raw).replace(/\u001b\[[0-9;]*m/g, '');
   if (/^\s+at\s/.test(line)) return null;
+  // The renderer's start-up banner (Next.js version, internal addresses,
+  // "Ready"): Studio's own business, not a dashboard's (UI review M4).
+  if (/^\s*(?:▲ Next\.js\b|- (?:Local|Network|Environments?|Experiments?):|✓ (?:Ready|Starting)\b)/u.test(line)) return { severity: 7, label: null, message: line.trim(), startup: true };
   const match = /^\[([^\]]+)\] (\w+): (?:<([^>]{1,64})> )?([\s\S]*)$/.exec(line);
   if (match) {
     const ts = Date.parse(match[1]);
@@ -574,7 +577,7 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
   function workerOutput(dashboardId, stream, line) {
     const parsed = parseWorkerLine(line, stream);
     if (!parsed) return;
-    log({ source_type: 'renderer', source_id: dashboardId, scope: SCOPE.test(dashboardId) ? dashboardId : STUDIO_SCOPE, category: /proxy|widget|service/i.test(parsed.label ?? '') ? 'integration' : 'application', severity: parsed.severity, ts: parsed.ts, resource: parsed.label ?? undefined, event_type: parsed.label ? `renderer.${parsed.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}` : 'renderer.log', message: parsed.message });
+    log({ source_type: 'renderer', source_id: dashboardId, scope: SCOPE.test(dashboardId) && !parsed.startup ? dashboardId : STUDIO_SCOPE, category: /proxy|widget|service/i.test(parsed.label ?? '') ? 'integration' : 'application', severity: parsed.severity, ts: parsed.ts, resource: parsed.label ?? undefined, event_type: parsed.label ? `renderer.${parsed.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}` : 'renderer.log', message: parsed.message });
   }
   function auditEvent(event, user) {
     const { type, ip, userId, by, ...rest } = event;

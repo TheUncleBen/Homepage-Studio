@@ -17,10 +17,10 @@ async function setup(t, defs) {
   const db = openMain(dir);
   t.after(async () => { db.close(); await fs.rm(dir, { recursive: true, force: true }); });
   let clock = Date.parse('2026-11-02T10:00:00');
-  const events = [], transitions = [];
+  const events = [], transitions = [], results = [];
   const definitions = { monitors: [], maintenance: [], ...defs };
-  const engine = createMonitoring({ db, definitions: () => definitions, runCheck: async () => ({ ok: true, ms: 5 }), onEvent: event => events.push(event), onTransition: change => transitions.push(change), now: () => clock });
-  return { db, engine, events, transitions, definitions, tick: ms => { clock += ms; }, get now() { return clock; } };
+  const engine = createMonitoring({ db, definitions: () => definitions, runCheck: async () => ({ ok: true, ms: 5 }), onEvent: event => events.push(event), onTransition: change => transitions.push(change), onResult: (monitor, result) => results.push([monitor.id, result]), now: () => clock });
+  return { db, engine, events, transitions, results, definitions, tick: ms => { clock += ms; }, get now() { return clock; } };
 }
 
 test('a monitor goes down only after its failure threshold, opens one incident and recovers with one success', async t => {
@@ -45,6 +45,11 @@ test('a monitor goes down only after its failure threshold, opens one incident a
   assert.equal(env.engine.state('m1').state, 'up');
   assert.ok(env.db.get('SELECT closed FROM incident WHERE id = ?', incident.id).closed);
   assert.deepEqual(env.transitions.map(change => change.state), ['up', 'pending', 'down', 'up']);
+  // Every result reaches onResult, not only state changes (charts, certificate warnings).
+  assert.equal(env.results.length, 5);
+  env.tick(60e3);
+  env.engine.apply(m, { ok: true, ms: 7, warning: { cls: 'tls-expired', message: 'The certificate expires in 5 days' } });
+  assert.equal(env.results.at(-1)[1].warning.cls, 'tls-expired', 'a warning on an up monitor still reaches onResult');
   assert.ok(env.events.some(event => event.event_type === 'monitor.down' && event.scope === DASH && event.error_class === 'refused'));
 });
 
@@ -138,4 +143,15 @@ test('TCP, ping parsing and helpers', async t => {
   assert.equal(acceptsStatus('200-299,404')(404), true);
   assert.equal(acceptsStatus('200-299')(301), false);
   assert.equal(jsonValue({ a: [{ b: 2 }] }, 'a.0.b'), 2);
+});
+
+test('history says when checks began, to the minute for a new monitor', async t => {
+  const m = monitor();
+  const env = await setup(t, { monitors: [m] });
+  const began = env.now + 25 * 60e3;
+  env.tick(25 * 60e3);
+  env.engine.apply(m, { ok: true, ms: 4 });
+  env.tick(60e3);
+  env.engine.apply(m, { ok: true, ms: 4 });
+  assert.equal(env.engine.history('m1').first, began);
 });

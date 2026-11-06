@@ -5,7 +5,12 @@ import { normalizeEvent } from './model.mjs';
 const RATE = 200; // events per second per source
 const BURST = 1000;
 const QUEUE_MAX = 10000;
-const DEDUPE_MS = 60000;
+// Only identical events (same words, level, type, source, resource and
+// dashboard) whose own times are this close are stored once with a count.
+// Events that differ only in numbers stay apart; "Similar together" groups
+// those by fingerprint when reading (UI review H2).
+const DEDUPE_MS = 10000;
+const DEDUPE_MAX = 20000;
 const PERSONAL_KEYS = ['ip', 'username', 'user_id'];
 
 export function createIngest({ storage, redactor, batchMs = 2000, batchMax = 500, now = () => Date.now(), onDropped = () => {} }) {
@@ -54,13 +59,13 @@ export function createIngest({ storage, redactor, batchMs = 2000, batchMax = 500
       for (const key of PERSONAL_KEYS) if (key in event.fields) { personal[key] = event.fields[key]; delete event.fields[key]; }
       if (Object.keys(personal).length) event.personal = personal;
     }
-    const dedupeKey = `${event.fingerprint}|${sourceKey}|${event.resource ?? ''}|${event.scope}`;
+    const dedupeKey = JSON.stringify([event.message, event.severity, event.event_type, sourceKey, event.resource, event.panel, event.scope]);
     const seen = recent.get(dedupeKey);
-    if (seen && event.received - seen.first < DEDUPE_MS && event.sensitivity !== 'restricted') {
-      seen.count++; seen.last = event.ts; seen.dirty = true;
+    if (seen && event.sensitivity !== 'restricted' && event.ts >= seen.event.ts && event.ts - seen.event.ts < DEDUPE_MS) {
+      seen.count++; seen.last = Math.max(seen.last, event.ts); seen.dirty = true;
       return seen.event;
     }
-    recent.set(dedupeKey, { event, first: event.received, count: 1, last: event.ts, dirty: false });
+    if (event.sensitivity !== 'restricted' && recent.size < DEDUPE_MAX) recent.set(dedupeKey, { event, first: event.received, count: 1, last: event.ts, dirty: false });
     enqueue(event);
     return event;
   }
