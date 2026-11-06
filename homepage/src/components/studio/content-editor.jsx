@@ -186,7 +186,7 @@ function hostOf(value) {
 
 // What a widget's card takes from the entry it lives in: its link, status
 // check, logo and description (its name is the entry's name).
-const WIDGET_SERVICE_KEYS = ["href", "siteMonitor", "ping", "icon", "description"];
+const WIDGET_SERVICE_KEYS = ["href", "siteMonitor", "ping", "icon", "description", "server", "container"];
 // Check now in the Status setting: the card's own check, on the draft address.
 const statusCheckNow = (check, address) => studioRequest("/studio/api/connection-test", { status: { check, address } });
 function widgetService(config = {}) {
@@ -826,6 +826,14 @@ export default function ContentEditor({
                 description: service.description,
                 onIcon: (value) => setService({ ...service, icon: value || "" }),
                 onDescription: (value) => setService({ ...service, description: value }),
+              }
+            : undefined,
+        docker:
+          kind === "serviceWidget"
+            ? {
+                server: service.server,
+                container: service.container,
+                onChange: (key, value) => setService({ ...service, [key]: value }),
               }
             : undefined,
         statusAddress:

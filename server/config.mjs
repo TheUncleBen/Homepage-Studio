@@ -889,7 +889,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     return response(await readCurrent());
   }
 
-  const WIDGET_SERVICE_KEYS = new Set(['name', 'href', 'icon', 'description', 'siteMonitor', 'ping']);
+  const WIDGET_SERVICE_KEYS = new Set(['name', 'href', 'icon', 'description', 'siteMonitor', 'ping', 'server', 'container']);
   async function mutateServiceInner(change) {
     const current = await readCurrent();
     checkRevision(change.revision, current);
@@ -1039,9 +1039,9 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     // The widget's name, link and status check are its service's (the card
     // shows them), so the widget dialog changes them in the same save.
     if (change.action !== 'delete' && change.service !== undefined) {
-      if (!object(change.service) || Object.keys(change.service).some((key) => !WIDGET_SERVICE_KEYS.has(key))) fail('Only the widget\'s name, link, icon, description and status check can change with it.');
+      if (!object(change.service) || Object.keys(change.service).some((key) => !WIDGET_SERVICE_KEYS.has(key))) fail('Only the widget\'s name, link, icon, description, status check and Docker container can change with it.');
       const { name: rename, ...servicePatch } = change.service;
-      if (Object.values(servicePatch).some((value) => value !== null && (typeof value !== 'string' || value.length > 4096))) fail('A widget\'s link, icon, description and status address are text.');
+      if (Object.values(servicePatch).some((value) => value !== null && (typeof value !== 'string' || value.length > 4096))) fail('A widget\'s link, icon, description, status address and Docker container are text.');
       if (Object.keys(servicePatch).length) {
         const next = patchMap(doc, options, servicePatch, parsed);
         validateServiceConfig(Object.fromEntries(Object.entries({ ...service.config, ...servicePatch }).filter(([, value]) => value !== null)), 'Widget');

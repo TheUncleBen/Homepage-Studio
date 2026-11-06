@@ -386,6 +386,20 @@ describe("status address", () => {
   });
 });
 
+describe("Docker container (option audit against 6a93f66)", () => {
+  it("edits an integration widget's Docker server and container, even with no status check", () => {
+    const onChange = vi.fn();
+    renderEditor({
+      kind: "serviceWidget",
+      behaviour: { status: "off" },
+      docker: { server: "my-docker", container: "", onChange },
+    });
+    expect(screen.getByLabelText("Docker server").value).toBe("my-docker");
+    fireEvent.change(screen.getByLabelText("Docker container"), { target: { value: "jellyfin" } });
+    expect(onChange).toHaveBeenCalledWith("container", "jellyfin");
+  });
+});
+
 describe("exact colour", () => {
   it("offers it only for a custom colour, and hides Strength for an exact solid", () => {
     const { onLook } = renderEditor({ look: { fill: "solid", colour: "#ffff00" } });

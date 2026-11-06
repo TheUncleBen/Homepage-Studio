@@ -947,6 +947,10 @@ export default function LookEditor({
   lookUsage,
   onUpdateLookUsers,
   statusAddress,
+  // An integration widget's Docker container ({ server, container, onChange }),
+  // kept on the entry around it like its logo (6a93f66 had it on that entry's
+  // own tile).
+  docker,
   // An integration widget's own logo and description ({ icon, description,
   // onIcon, onDescription }), shown with the header that draws them.
   identity,
@@ -1283,6 +1287,36 @@ export default function LookEditor({
                 />
               )}
             </Dependent>
+          )}
+          {docker && (
+            <>
+              <Row
+                label="Docker server"
+                htmlFor={`${showId}-docker-server`}
+                info="The Docker server's name from docker.yaml. With a container, the card shows whether it is running."
+              >
+                <input
+                  id={`${showId}-docker-server`}
+                  type="text"
+                  value={docker.server || ""}
+                  onChange={(event) => docker.onChange("server", event.target.value)}
+                  placeholder="my-docker"
+                  maxLength={200}
+                  autoComplete="off"
+                />
+              </Row>
+              <Row label="Docker container" htmlFor={`${showId}-docker-container`}>
+                <input
+                  id={`${showId}-docker-container`}
+                  type="text"
+                  value={docker.container || ""}
+                  onChange={(event) => docker.onChange("container", event.target.value)}
+                  placeholder="container name"
+                  maxLength={200}
+                  autoComplete="off"
+                />
+              </Row>
+            </>
           )}
         </Group>
       )}

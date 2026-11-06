@@ -467,3 +467,25 @@ test('an archived dashboard is deleted for good when its name is typed, and its 
   const registryFile = JSON.parse(await fs.readFile(path.join(f.configDir, DASHBOARD_REGISTRY_FILE), 'utf8'));
   assert.equal(Object.hasOwn(registryFile, 'archiveRetention'), false);
 });
+
+// Option audit against 6a93f66: an integration widget's Docker container was
+// set on its service's own tile, which round 4 folded into the widget. It is
+// changed with the widget again.
+test('an integration widget keeps its Docker server and container', async t => {
+  const f = await fixture(t);
+  const current = await f.state();
+  const added = await f.post('/studio/api/service-widget', { revision: current.revision, action: 'add', newService: { name: 'Media' }, service: { href: 'https://media.example.test', server: 'my-docker', container: 'jellyfin' }, type: 'jellyfin', config: { url: 'https://media.example.test', key: 'k' } });
+  assert.equal(added.status, 200, added.text);
+  const widget = added.json.serviceWidgets.find(item => item.type === 'jellyfin');
+  const service = added.json.services.find(item => item.id === widget.serviceId);
+  assert.equal(service.config.server, 'my-docker');
+  assert.equal(service.config.container, 'jellyfin');
+  const cleared = await f.post('/studio/api/service-widget', { revision: added.json.revision, action: 'update', id: widget.id, service: { server: null, container: null }, config: {} });
+  assert.equal(cleared.status, 200, cleared.text);
+  const after = cleared.json.services.find(item => item.id === widget.serviceId);
+  assert.equal(after.config.server, undefined);
+  assert.equal(after.config.container, undefined);
+  const refused = await f.post('/studio/api/service-widget', { revision: cleared.json.revision, action: 'update', id: widget.id, service: { showStats: true }, config: {} });
+  assert.equal(refused.status, 422);
+  assert.match(refused.text, /Docker container can change with it/);
+});
