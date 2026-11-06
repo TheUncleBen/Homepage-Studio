@@ -143,6 +143,9 @@ export default function PanelHost({
   toolsShown = false,
   // While editing: this layout leaves the widget out (Show on).
   offLayout = false,
+  // While its editor is docked beside the board: what the editor has typed
+  // so far (name, logo, values), drawn on the real card.
+  override = null,
 }) {
   const nativeContent = useRef(null);
   const slide = useRef(null);
@@ -431,7 +434,7 @@ export default function PanelHost({
           }}
         >
           <CardLookContext.Provider value={card}>
-            <RenderNative panel={panel} data={data} />
+            <RenderNative panel={panel} data={data} {...(override ? { override } : {})} />
           </CardLookContext.Provider>
         </div>
         {!editing && !stale && <Freshness panelId={panel.id} title={panel.title} />}

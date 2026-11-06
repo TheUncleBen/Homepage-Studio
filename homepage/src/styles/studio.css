@@ -5376,3 +5376,42 @@ svg.studio-chart-gauge {
 .studio-status-address .studio-connection-result:empty {
   display: none;
 }
+
+/* ---- Widget editor docked beside the board (T26) ------------------------ */
+/* Wide screens: a panel down the right; the board stays visible and its own
+   card shows the draft. Narrower screens keep the centred, full-height sheet. */
+@media (min-width: 900px) {
+  .studio-dialog.studio-dialog-docked {
+    inset: 0 0 0 auto;
+    margin: 0;
+    width: min(480px, 42vw);
+    height: 100dvh;
+    max-height: 100dvh;
+    border-width: 0 0 0 1px;
+    border-radius: 0;
+    box-shadow: -18px 0 60px #0006;
+  }
+  .studio-dialog.studio-dialog-docked::backdrop {
+    background: transparent;
+    backdrop-filter: none;
+  }
+  .studio-app.studio-docked-editing {
+    padding-right: calc(min(480px, 42vw) + 20px);
+  }
+  /* The top bar spans the window: undo the right padding's shift. */
+  .studio-app.studio-docked-editing .studio-topbar {
+    margin-left: calc(50% + (min(480px, 42vw) + 20px) / 2 - 50vw);
+  }
+}
+/* In the docked panel a value's name gets its own line; its controls wrap
+   below it instead of squeezing the name. */
+.studio-dialog-docked .studio-value-list input {
+  flex-basis: calc(100% - 44px);
+}
+.studio-dialog-docked .studio-value-list .studio-segmented {
+  flex-wrap: nowrap;
+}
+.studio-dialog.studio-dialog-docked .studio-value-list > li {
+  display: flex;
+  padding: 8px 12px;
+}

@@ -573,6 +573,15 @@ export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, in
   );
 }
 
+// Sends the docked editor's draft to the board as it changes.
+function LiveDraft({ value, onChange }) {
+  useEffect(() => {
+    const [panel, override] = JSON.parse(value);
+    onChange({ panel, override });
+  }, [value, onChange]);
+  return null;
+}
+
 export default function ContentEditor({
   state,
   catalog,
@@ -587,6 +596,10 @@ export default function ContentEditor({
   renderPreview,
   startDeleting = false,
   onDelete,
+  // Docked beside the board (T26): the board's own card shows the draft
+  // through onLiveDraft, so the dialog has no preview of its own.
+  docked = false,
+  onLiveDraft,
 }) {
   const kind = panel?.kind || entry.kind;
   // The widget's own look and behaviour live on the board, not in its YAML.
@@ -670,16 +683,18 @@ export default function ContentEditor({
   const [deleting, setDeleting] = useState(startDeleting);
   const sizeNoteId = useId();
   const [savingAs, setSavingAs] = useState(false);
-  // One section open at a time (board 24). A new item opens on its settings;
-  // an existing one opens with everything summarised.
-  const [openSection, setOpenSection] = useState(startDeleting ? "manage" : panel ? null : "settings");
+  // Sections stay open until closed, so Values and Look can be open together
+  // (F7, 6 Nov 2026: less back and forth; was one at a time, board 24). A new
+  // item opens on its settings; an existing one opens with everything summarised.
+  const [openSections, setOpenSections] = useState(startDeleting ? ["manage"] : panel ? [] : ["settings"]);
   // Saved looks and widgets are read once Look or Management first opens.
   const [libraryWanted, setLibraryWanted] = useState(false);
-  if ((openSection === "look" || openSection === "manage") && !libraryWanted) setLibraryWanted(true);
+  if ((openSections.includes("look") || openSections.includes("manage")) && !libraryWanted) setLibraryWanted(true);
   const library = useLibrary(Boolean(boardPanel) && libraryWanted);
   const sectionProps = (id) => ({
-    open: openSection === id,
-    onToggle: () => setOpenSection((current) => (current === id ? null : id)),
+    open: openSections.includes(id),
+    onToggle: () =>
+      setOpenSections((current) => (current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id])),
   });
   const deleteConfirm = useRef(null);
   const keepButton = useRef(null);
@@ -940,6 +955,25 @@ export default function ContentEditor({
   };
   const requiresName = kind === "service" || kind === "bookmark" || kind === "serviceWidget";
   const disabled = !valid || pending || (requiresName && !name.trim());
+  // What the card shows while editing: in the preview, or on the board itself
+  // when the editor is docked.
+  const previewPanel = boardPanel
+    ? {
+        ...boardPanel,
+        ...(rect ? { rect } : {}),
+        look,
+        behaviour,
+        title: kind === "service" || kind === "bookmark" ? name || boardPanel.title : boardPanel.title,
+      }
+    : null;
+  // A link's name, address, description and icon show as they are typed.
+  const previewOverride =
+    kind === "service" || kind === "bookmark"
+      ? { name: name || boardPanel?.title, href: draft.href, description: draft.description, icon: draft.icon }
+      : kind === "serviceWidget"
+        ? { icon: service.icon, description: service.description, ...(draftFields ? { fields: draftFields } : {}) }
+        : null;
+  const liveKey = docked && previewPanel && onLiveDraft ? JSON.stringify([previewPanel, previewOverride]) : null;
   return (
     <form
       onSubmit={(event) => {
@@ -947,30 +981,16 @@ export default function ContentEditor({
         submit();
       }}
     >
-      <div className={`studio-dialog-body${boardPanel && renderPreview ? " studio-widget-layout" : ""}`}>
-        {boardPanel && renderPreview && (
+      {liveKey && <LiveDraft value={liveKey} onChange={onLiveDraft} />}
+      <div className={`studio-dialog-body${boardPanel && renderPreview && !docked ? " studio-widget-layout" : ""}`}>
+        {boardPanel && renderPreview && !docked && (
           <aside className="studio-look-preview" aria-label="Preview">
             <span className="studio-look-preview-label" aria-hidden="true">
               Preview
             </span>
             {renderPreview(
-              {
-                ...boardPanel,
-                ...(rect ? { rect } : {}),
-                look,
-                behaviour,
-                title: kind === "service" || kind === "bookmark" ? name || boardPanel.title : boardPanel.title,
-              },
-              // A link's name, address, description and icon show as they are typed.
-              kind === "service" || kind === "bookmark"
-                ? { name: name || boardPanel.title, href: draft.href, description: draft.description, icon: draft.icon }
-                : kind === "serviceWidget"
-                  ? {
-                      icon: service.icon,
-                      description: service.description,
-                      ...(draftFields ? { fields: draftFields } : {}),
-                    }
-                  : null,
+              previewPanel,
+              previewOverride,
               rect && (
                 <ResizeCorner
                   rect={rect}

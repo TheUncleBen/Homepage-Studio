@@ -2,7 +2,18 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 
 import StudioIcon from "./icons";
 
-export default function StudioDialog({ title, eyebrow, children, onClose, onBack, wide = false, busy = false }) {
+// docked: a widget's editor on a wide screen, a panel down the right with
+// the board visible beside it (owner T26, 6 Nov 2026).
+export default function StudioDialog({
+  title,
+  eyebrow,
+  children,
+  onClose,
+  onBack,
+  wide = false,
+  docked = false,
+  busy = false,
+}) {
   const ref = useRef(null);
   const close = useRef(onClose);
   const pendingFocus = useRef(null);
@@ -42,7 +53,7 @@ export default function StudioDialog({ title, eyebrow, children, onClose, onBack
     <dialog
       ref={ref}
       tabIndex={-1}
-      className={`studio-dialog${wide ? " studio-dialog-wide" : ""}`}
+      className={`studio-dialog${wide ? " studio-dialog-wide" : ""}${docked ? " studio-dialog-docked" : ""}`}
       aria-labelledby="studio-dialog-title"
       aria-busy={busy || undefined}
       onKeyDown={(event) => {

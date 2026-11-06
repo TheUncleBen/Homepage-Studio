@@ -124,6 +124,22 @@ const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const uuid = () => globalThis.crypto?.randomUUID?.() || `stack-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 // One stable React parent owns every native host for its entire board lifetime.
 // Stack shells are siblings; a membership change never reparents native content.
+// Wide enough to dock the widget editor beside the board (tablets in
+// landscape and up); narrower screens keep the full-height sheet.
+const DOCK_QUERY = "(min-width: 900px)";
+function useWideScreen() {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const query = typeof window !== "undefined" && window.matchMedia ? window.matchMedia(DOCK_QUERY) : null;
+    if (!query) return undefined;
+    const update = () => setWide(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+  return wide;
+}
+
 export function PanelLayer({
   board,
   data,
@@ -152,6 +168,7 @@ export function PanelLayer({
   renderNative,
   toolsShown = null,
   offLayout = null,
+  liveDraft = null,
 }) {
   const stackByPanel = new Map(board.stacks.flatMap((stack) => stack.panelIds.map((id) => [id, stack])));
   // Keep DOM sibling order independent of geometry. Moving an existing iframe
@@ -160,7 +177,12 @@ export function PanelLayer({
   const panels = board.panels;
   return (
     <div className="studio-panel-layer">
-      {panels.map((panel) => {
+      {panels.map((shown) => {
+        // The widget being edited in the docked editor shows its draft.
+        const live = liveDraft?.panel?.id === shown.id ? liveDraft : null;
+        const panel = live
+          ? { ...shown, look: live.panel.look, behaviour: live.panel.behaviour, title: live.panel.title }
+          : shown;
         const stack = stackByPanel.get(panel.id);
         const unitId = stack?.id || panel.id;
         const selectedId = stack
@@ -197,6 +219,7 @@ export function PanelLayer({
             renderNative={renderNative}
             toolsShown={!stack && toolsShown === panel.id}
             offLayout={offLayout?.has(panel.id) || false}
+            override={live?.override || null}
           />
         );
       })}
@@ -502,7 +525,13 @@ export default function StudioBoard({
   // widgets on other pages don't poll their services.
   // The size being shown: the screen's own, or in the editor the one picked
   // in its size switch. A tablet or phone view carries that size's layout.
-  const layoutSize = editing && editSize ? editSize : sizeForWidth(width);
+  // The editor docked beside the board narrows it; the layout being edited
+  // stays the one chosen before it opened.
+  const wideScreen = useWideScreen();
+  const docked = Boolean(wideScreen && modal?.type === "content" && modal.panel);
+  // (The panel takes min(480px, 42vw) plus a 20px gap; see studio.css.)
+  const dockWidth = docked && typeof window !== "undefined" ? Math.min(480, window.innerWidth * 0.42) + 20 : 0;
+  const layoutSize = editing && editSize ? editSize : sizeForWidth(width + dockWidth);
   const board = useMemo(
     () => sizeView(pageBoard(wholeBoard, currentPage), layoutSize),
     [wholeBoard, currentPage, layoutSize],
@@ -700,6 +729,19 @@ export default function StudioBoard({
       setDiscardAction(() => action);
     } else action();
   };
+  // A widget's editor docks beside the board on wide screens (T26): the real
+  // card shows the draft as it changes.
+  const [liveDraft, setLiveDraft] = useState(null);
+  const editedId = docked ? modal.panel.id : null;
+  useEffect(() => {
+    if (!editedId) return;
+    // Bring the card being edited into view beside the panel.
+    requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-panel-id="${CSS.escape(editedId)}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: "auto" }),
+    );
+  }, [editedId]);
   const closeModal = () => {
     if (discardAction) setDiscardAction(null);
     else requestEditorAction(dismissEditor);
@@ -1963,7 +2005,7 @@ export default function StudioBoard({
 
   return (
     <main
-      className={`studio-app${editing ? " studio-edit-mode" : ""}${editing && selection.length ? " studio-has-bulk" : ""}`}
+      className={`studio-app${editing ? " studio-edit-mode" : ""}${editing && selection.length ? " studio-has-bulk" : ""}${docked ? " studio-docked-editing" : ""}`}
       data-glass={(pageBackground && settings?.studioTheme?.glass) || undefined}
       style={Object.fromEntries(
         Object.entries(statusColours(settings)).map(([key, colour]) => [`--studio-status-${key}`, colour]),
@@ -2370,6 +2412,7 @@ export default function StudioBoard({
         </div>
         <PanelLayer
           offLayout={offLayout}
+          liveDraft={docked ? liveDraft : null}
           board={board}
           data={renderedNativeData}
           geometry={geometry}
@@ -2483,6 +2526,7 @@ export default function StudioBoard({
       )}
       {modal && (
         <StudioDialog
+          docked={docked}
           title={modalTitles[modal.type]}
           onClose={closeModal}
           onBack={
@@ -2722,6 +2766,8 @@ export default function StudioBoard({
                   onSaved={savedContent}
                   onCancel={closeModal}
                   onReload={reloadEditor}
+                  docked={docked}
+                  onLiveDraft={docked ? setLiveDraft : undefined}
                   onDuplicate={(entry) => requestEditorAction(() => setModal({ type: "content", entry }))}
                   onDelete={
                     isAdmin
