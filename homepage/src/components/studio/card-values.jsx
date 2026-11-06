@@ -24,12 +24,22 @@ function useFold(count, least = 1, content = "") {
   const ref = useRef(null);
   const [shown, setShown] = useState(count);
   const [epoch, setEpoch] = useState(0);
+  // Set while a fresh measure waits for every value to show again, so the
+  // fold below doesn't act on the old count in the same pass (a size or
+  // font change would otherwise fold everything: review M7).
+  const remeasure = useRef(false);
   useIsoLayoutEffect(() => {
+    remeasure.current = true;
     // Measure afresh at the card's usual spacing.
     ref.current?.closest(".studio-native-content")?.removeAttribute("data-tight");
+    ref.current?.removeAttribute("data-bare");
     setShown(count);
   }, [count, epoch, content]);
   useIsoLayoutEffect(() => {
+    if (remeasure.current) {
+      if (shown !== count) return;
+      remeasure.current = false;
+    }
     const list = ref.current;
     const clip = list?.closest(".studio-native-content");
     if (!list || !clip) return;
@@ -46,9 +56,20 @@ function useFold(count, least = 1, content = "") {
       clip.setAttribute("data-tight", "");
       bottoms = measure();
       if (all()) return;
+      let fitting = bottoms.filter((bottom) => bottom <= limit + 0.5).length;
+      // Under a hero, when not even one row fits below its rule, the row
+      // goes without the rule (as "+N more" alone would) and often fits:
+      // the band shows values rather than only the hint (review M7).
+      if (!fitting && least === 0) {
+        list.setAttribute("data-bare", "");
+        bottoms = measure();
+        if (all()) return;
+        fitting = bottoms.filter((bottom) => bottom <= limit + 0.5).length;
+        if (!fitting) list.removeAttribute("data-bare");
+      }
       // Keep every value that fits; the check below folds one more while the
       // "+N more" hint (in the last free column of a row) doesn't fit too.
-      setShown(Math.max(least, bottoms.filter((bottom) => bottom <= limit + 0.5).length));
+      setShown(Math.max(least, fitting));
       return;
     }
     // Folded: the values left can reflow (a narrower row, a wrapped line), so

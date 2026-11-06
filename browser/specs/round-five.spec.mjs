@@ -47,13 +47,23 @@ test('the search bar sits in the top bar on wide screens and the icon replaces i
 });
 
 test('on a wide screen the widget editor docks beside the board and keeps the desktop layout', async ({ page, request }) => {
-  await seedNative(request, { widgetsYaml: JSON.stringify([{ greeting: { text: 'Docked fixture' } }]) });
+  await seedNative(request, { widgetsYaml: JSON.stringify([{ greeting: { text: 'Docked fixture' } }, { greeting: { text: 'Second fixture' } }]) });
   await openEditor(page);
   await page.getByRole('button', { name: 'Edit Greeting', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toHaveClass(/studio-dialog-docked/);
   await expect(page.getByText('Docked fixture', { exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Layout size' }).getByRole('button', { name: 'Desktop', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.setViewportSize({ width: 800, height: 900 });
-  await expect(dialog).not.toHaveClass(/studio-dialog-docked/);
+  // The board beside it stays usable (UI review H1): not modal, no sideways
+  // scroll, another widget's edit switches the panel, Esc closes it.
+  expect(await dialog.evaluate(element => element.matches(':modal'))).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  await page.getByRole('button', { name: 'Edit Greeting 2', exact: true }).click();
+  await expect(dialog.getByRole('heading', { name: 'Edit Greeting 2' })).toBeVisible();
+  await dialog.getByRole('button', { name: /^Settings/ }).focus();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Edit Greeting', exact: true }).click();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByRole('dialog')).not.toHaveClass(/studio-dialog-docked/);
 });

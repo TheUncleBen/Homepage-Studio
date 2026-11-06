@@ -443,22 +443,24 @@ function StatusAddress({ check, address }) {
             }}
           />
         </div>
-        <div className="studio-inline-actions">
-          <span id={`${id}-from`} className="studio-muted">
-            {own ? "Your own address" : derived ? `From the ${from}` : "Nothing to check yet"}
-          </span>
-          {address.onCheck && target && (
+        {/* Where an empty address comes from, right under the field; then
+            Check now and its answer on one line (review L1). */}
+        <span id={`${id}-from`} className="studio-muted studio-status-from">
+          {own ? "Your own address" : derived ? `From the ${from}` : "Nothing to check yet"}
+        </span>
+        {address.onCheck && target && (
+          <div className="studio-inline-actions studio-status-check">
             <button type="button" className="studio-button studio-quiet" disabled={result?.busy} onClick={run}>
               {result?.busy ? "Checking…" : "Check now"}
             </button>
-          )}
-        </div>
-        <p
-          className={`studio-connection-result${result && !result.busy ? (result.ok ? " studio-ok" : " studio-failed") : ""}`}
-          role="status"
-        >
-          {result && !result.busy ? result.message : ""}
-        </p>
+            <p
+              className={`studio-connection-result${result && !result.busy ? (result.ok ? " studio-ok" : " studio-failed") : ""}`}
+              role="status"
+            >
+              {result && !result.busy ? result.message : ""}
+            </p>
+          </div>
+        )}
       </div>
     </Row>
   );
@@ -1300,10 +1302,19 @@ export default function LookEditor({
                   type="text"
                   value={docker.server || ""}
                   onChange={(event) => docker.onChange("server", event.target.value)}
-                  placeholder="my-docker"
+                  placeholder={docker.servers?.[0] || "my-docker"}
                   maxLength={200}
                   autoComplete="off"
+                  list={docker.servers?.length ? `${showId}-docker-servers` : undefined}
                 />
+                {/* docker.yaml's servers as choices; any name can still be typed (review L2). */}
+                {docker.servers?.length > 0 && (
+                  <datalist id={`${showId}-docker-servers`}>
+                    {docker.servers.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                )}
               </Row>
               <Row label="Docker container" htmlFor={`${showId}-docker-container`}>
                 <input

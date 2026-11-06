@@ -51,21 +51,23 @@ function Note({ options }) {
   return (
     <div className={`studio-filler studio-filler-note studio-filler-note-${size(options.text_size, "sm")}`}>
       <p className="studio-filler-text">
-        {text.trim()
-          ? noteParts(text).map((part, index) =>
-              part.link ? (
-                <a
-                  key={index}
-                  href={part.link}
-                  {...(newTab ? { target: "_blank", rel: "noopener noreferrer" } : { rel: "noreferrer" })}
-                >
-                  {part.link}
-                </a>
-              ) : (
-                <span key={index}>{part.text}</span>
-              ),
-            )
-          : "Write your note in its settings."}
+        {text.trim() ? (
+          noteParts(text).map((part, index) =>
+            part.link ? (
+              <a
+                key={index}
+                href={part.link}
+                {...(newTab ? { target: "_blank", rel: "noopener noreferrer" } : { rel: "noreferrer" })}
+              >
+                {part.link}
+              </a>
+            ) : (
+              <span key={index}>{part.text}</span>
+            ),
+          )
+        ) : (
+          <span className="studio-filler-hint">Write your note in its settings.</span>
+        )}
       </p>
     </div>
   );
@@ -76,7 +78,7 @@ function Picture({ options }) {
   if (!IMAGE_REFERENCE.test(reference))
     return (
       <div className="studio-filler studio-filler-picture studio-filler-picture-empty">
-        <p>Choose a picture in its settings.</p>
+        <p className="studio-filler-hint">Choose a picture in its settings.</p>
       </div>
     );
   return (

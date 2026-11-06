@@ -124,9 +124,10 @@ const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const uuid = () => globalThis.crypto?.randomUUID?.() || `stack-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 // One stable React parent owns every native host for its entire board lifetime.
 // Stack shells are siblings; a membership change never reparents native content.
-// Wide enough to dock the widget editor beside the board (tablets in
-// landscape and up); narrower screens keep the full-height sheet.
-const DOCK_QUERY = "(min-width: 900px)";
+// Wide enough to dock the widget editor beside the board and still leave the
+// board about 900px (480px panel + 20px gap); narrower screens keep the
+// full-height sheet. Matches the media query in studio.css.
+const DOCK_QUERY = "(min-width: 1400px)";
 function useWideScreen() {
   const [wide, setWide] = useState(false);
   useEffect(() => {
@@ -532,9 +533,18 @@ export default function StudioBoard({
   // (The panel takes min(480px, 42vw) plus a 20px gap; see studio.css.)
   const dockWidth = docked && typeof window !== "undefined" ? Math.min(480, window.innerWidth * 0.42) + 20 : 0;
   const layoutSize = editing && editSize ? editSize : sizeForWidth(width + dockWidth);
+  // The live dashboard lays a size out without the widgets it leaves out
+  // (Show on), so a generated tablet or phone layout closes up around them
+  // rather than keeping their gap (review M6).
   const board = useMemo(
-    () => sizeView(pageBoard(wholeBoard, currentPage), layoutSize),
-    [wholeBoard, currentPage, layoutSize],
+    () =>
+      sizeView(
+        editing
+          ? pageBoard(wholeBoard, currentPage)
+          : withoutHiddenOn(pageBoard(wholeBoard, currentPage), settings, layoutSize),
+        layoutSize,
+      ),
+    [wholeBoard, currentPage, layoutSize, editing, settings],
   );
   // The page's own background, or the dashboard's (Appearance).
   const cardTheme = useCardTheme();
@@ -989,7 +999,13 @@ export default function StudioBoard({
       if (!(await flushArrangement())) return;
       setModal({ type: "discovery", panel });
       setEditorData(null);
-    } else if (isAdmin) openEditor("content", { panel });
+    } else if (isAdmin) {
+      // With the editor docked the board stays usable: editing another widget
+      // switches the panel to it, asking first about unsaved changes.
+      if (modal?.type === "content" && modal.panel?.id === panel.id) return;
+      if (modal) requestEditorAction(() => openEditor("content", { panel }));
+      else openEditor("content", { panel });
+    }
   };
   const editStack = (stack) => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
@@ -2768,6 +2784,11 @@ export default function StudioBoard({
                   onReload={reloadEditor}
                   docked={docked}
                   onLiveDraft={docked ? setLiveDraft : undefined}
+                  beforeSave={
+                    docked
+                      ? async () => ((await flushArrangement()) ? latestEnvelope.current?.revision : null)
+                      : undefined
+                  }
                   onDuplicate={(entry) => requestEditorAction(() => setModal({ type: "content", entry }))}
                   onDelete={
                     isAdmin

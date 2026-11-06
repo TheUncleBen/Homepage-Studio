@@ -137,8 +137,21 @@ test('new content starts compact: links and info 6x2, integrations 6x4, never un
   assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'resources' } }), { w: 8, h: 2 });
   assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'longhorn' } }), { w: 8, h: 4 });
   assert.deepEqual(newPanelSize({ kind: 'serviceWidget', nativeLocator: { type: 'customapi' } }), { w: 6, h: 4 });
-  assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'heading' } }), { w: 12, h: 2 });
+  assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'heading' } }), { w: 12, h: 1 });
   assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'note' } }), { w: 6, h: 3 });
   assert.deepEqual(newPanelSize({ kind: 'informationWidget', nativeLocator: { type: 'spacer' } }), { w: 6, h: 2 });
   assert.deepEqual(newPanelSize({ kind: 'serviceWidget', nativeLocator: { type: 'calendar' } }), { w: 12, h: 9 });
+});
+
+// UI review of the 65f724c feedback build (M5): a new heading reads as a
+// section title, one row, no fill and no edge; a heading already placed keeps
+// whatever look it was given.
+test('a new heading starts as one plain row with no edge', () => {
+  const heading = { id: 'heading-1', kind: 'informationWidget', nativeLocator: { type: 'heading', index: 0 } };
+  const board = reconcileBoard([heading], null);
+  const placed = board.panels.find((panel) => panel.id === 'heading-1');
+  assert.deepEqual(placed.look, { fill: 'plain', edge: 'none' });
+  assert.equal(placed.rect.h, 1);
+  const restyled = { ...board, panels: board.panels.map((panel) => ({ ...panel, look: { fill: 'tint' } })) };
+  assert.deepEqual(reconcileBoard([heading], restyled).panels[0].look, { fill: 'tint' });
 });

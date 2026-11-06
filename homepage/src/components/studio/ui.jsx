@@ -237,3 +237,10 @@ export function ActionRow({ icon, children, danger = false, detail, ...props }) 
     </button>
   );
 }
+
+// Scrolls a form that just opened into view and focuses its first field.
+export function revealForm(element) {
+  if (!element) return;
+  element.scrollIntoView?.({ block: "nearest" });
+  element.querySelector("input, textarea, select")?.focus({ preventScroll: true });
+}

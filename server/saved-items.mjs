@@ -26,10 +26,10 @@ const host = (url) => { try { return new URL(url).host; } catch { return ''; } }
 const kb = (size) => (Number.isSafeInteger(size) ? `${Math.max(1, Math.round(size / 1024))} KB` : '');
 
 // Everything one place keeps, in the shape the pages show.
-async function itemsOf({ library, connections, images }) {
+async function itemsOf({ library, connections, images }, widgetName = async (type) => type) {
   const items = [];
   for (const entry of library ? await library.list() : []) {
-    if (entry.kind === 'widget') items.push({ kind: 'widget', id: entry.id, name: entry.name, detail: entry.widget?.type || '', updatedAt: entry.updatedAt, savedBy: entry.savedBy });
+    if (entry.kind === 'widget') items.push({ kind: 'widget', id: entry.id, name: entry.name, detail: entry.widget?.type ? await widgetName(entry.widget.type) : '', updatedAt: entry.updatedAt, savedBy: entry.savedBy });
     else if (entry.kind === 'look') items.push({ kind: 'look', id: entry.id, name: entry.name, detail: '', updatedAt: entry.updatedAt, savedBy: entry.savedBy });
   }
   for (const entry of connections ? await connections.list() : []) items.push({ kind: 'connection', id: entry.id, name: entry.name, detail: host(entry.url), updatedAt: entry.updatedAt, savedBy: entry.savedBy });
@@ -56,7 +56,8 @@ async function change(stores, { action, kind, id, name }) {
 // personal: server/personal.mjs; sharedLibrary: Everyone's saved widgets;
 // dashboards(): [{ id, name, stores: { library, connections, images } }];
 // users(): [{ id, username, displayName }].
-export function createSavedItems({ personal, sharedLibrary, dashboards, users }) {
+// widgetName: a widget type's name as the catalog lists it (Custom API, not customapi).
+export function createSavedItems({ personal, sharedLibrary, dashboards, users, widgetName }) {
   // Which dashboards hold a copy of each connection or image id.
   async function copies() {
     const where = new Map();
@@ -74,7 +75,7 @@ export function createSavedItems({ personal, sharedLibrary, dashboards, users })
 
   return {
     async mine(userId) {
-      return { items: withCopies(await itemsOf(personStores(userId)), await copies()) };
+      return { items: withCopies(await itemsOf(personStores(userId), widgetName), await copies()) };
     },
     async changeMine(userId, request) {
       await change(personStores(userId), request ?? {});
@@ -85,16 +86,16 @@ export function createSavedItems({ personal, sharedLibrary, dashboards, users })
       const items = [];
       for (const user of await users()) {
         const owner = user.displayName || user.username;
-        for (const item of withCopies(await itemsOf(personStores(user.id)), where)) {
+        for (const item of withCopies(await itemsOf(personStores(user.id), widgetName), where)) {
           items.push({ ...item, place: { type: 'person', id: user.id, name: 'Just me' }, owner, canChange: true });
         }
       }
       for (const dashboard of await dashboards()) {
-        for (const item of await itemsOf({ library: dashboard.stores.library, connections: dashboard.stores.connections, images: dashboard.stores.images })) {
+        for (const item of await itemsOf({ library: dashboard.stores.library, connections: dashboard.stores.connections, images: dashboard.stores.images }, widgetName)) {
           items.push({ ...item, place: { type: 'dashboard', id: dashboard.id, name: dashboard.name }, ...(item.savedBy ? { owner: item.savedBy } : {}), canChange: item.kind === 'widget' });
         }
       }
-      for (const item of await itemsOf({ library: sharedLibrary })) {
+      for (const item of await itemsOf({ library: sharedLibrary }, widgetName)) {
         items.push({ ...item, place: { type: 'everyone', name: 'Everyone' }, ...(item.savedBy ? { owner: item.savedBy } : {}), canChange: true });
       }
       return { items };

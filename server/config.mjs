@@ -757,6 +757,8 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       serviceWidgets: current.serviceWidgets.map(({ scope, key, fingerprint, ...entry }) => entry),
       bookmarks: current.bookmarks.map(({ scope, key, fingerprint, type, path, ...entry }) => entry),
       settingsConfig: current.parsed.settingsYaml.data ?? {},
+      // docker.yaml's server names, offered as choices for a widget's Docker server.
+      dockerServers: Object.keys(current.parsed.dockerYaml.data ?? {}).slice(0, 200),
       board: current.board,
       discoveredSources: current.discoveredSources,
       hiddenDiscoveredIds: current.hiddenDiscoveredIds,

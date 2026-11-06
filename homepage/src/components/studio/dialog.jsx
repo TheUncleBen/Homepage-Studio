@@ -33,11 +33,26 @@ export default function StudioDialog({
       if (dialog?.contains(previous) && !previous.matches(":disabled,[inert]")) previous.focus();
     }
   }, [busy]);
-  useEffect(() => {
-    const previous = document.activeElement;
+  // Docked, the dialog is not modal, so the board beside it still takes
+  // input (resize the card, open another one); otherwise it is.
+  const mode = useRef(null);
+  const previousFocus = useRef(null);
+  useLayoutEffect(() => {
     const dialog = ref.current;
-    if (dialog.showModal) dialog.showModal();
-    else dialog.setAttribute("open", "");
+    const want = docked ? "docked" : "modal";
+    if (mode.current === want) return;
+    if (mode.current === null) previousFocus.current = document.activeElement;
+    if (!dialog.showModal) dialog.setAttribute("open", "");
+    else {
+      if (dialog.open) dialog.close();
+      if (docked) dialog.show();
+      else dialog.showModal();
+    }
+    mode.current = want;
+  }, [docked]);
+  useEffect(() => {
+    const previous = previousFocus.current;
+    const dialog = ref.current;
     const cancel = (event) => {
       event.preventDefault();
       close.current?.();
@@ -57,6 +72,12 @@ export default function StudioDialog({
       aria-labelledby="studio-dialog-title"
       aria-busy={busy || undefined}
       onKeyDown={(event) => {
+        // A modal dialog hears Esc as its cancel event; a docked one here.
+        if (docked && event.key === "Escape" && !event.defaultPrevented) {
+          event.preventDefault();
+          close.current?.();
+          return;
+        }
         if (busy && event.key === "Tab") {
           event.preventDefault();
           event.currentTarget.focus();

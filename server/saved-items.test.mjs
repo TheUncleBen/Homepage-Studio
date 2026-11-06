@@ -65,3 +65,13 @@ test('Administration › Saved items shows everyone’s with owner and place; da
   assert.equal(after.items.some(item => item.name === 'Local clock'), false);
   await assert.rejects(saved.changeAny({ action: 'delete', place: { type: 'person', id: '0123abcd-0000-4000-8000-00000000ffff' }, kind: 'look', id: 'abc' }), /no longer exists/);
 });
+
+// UI review of the 65f724c feedback build (L4): a saved widget's type shows
+// by its catalog name.
+test('a saved widget is listed by its widget name, not its type key', async () => {
+  const { sharedLibrary, personal, dashboard } = await setup();
+  const saved = createSavedItems({ personal, sharedLibrary, dashboards: async () => [dashboard], users: async () => [], widgetName: async (type) => ({ customapi: 'Custom API' })[type] || type });
+  await dashboard.stores.library.add({ kind: 'widget', name: 'Tracker', widget: { kind: 'serviceWidget', type: 'customapi', title: 'Tracker', config: { url: 'https://api.example.test' }, service: {} } });
+  const { items } = await saved.all();
+  assert.equal(items.find(item => item.name === 'Tracker').detail, 'Custom API');
+});

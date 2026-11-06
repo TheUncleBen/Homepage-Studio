@@ -39,6 +39,15 @@ function LiveTabs({ board, pages, currentId, onSelect, dropTarget }) {
         holder.current.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
       const widths = [...measure.current.children].map((child) => child.getBoundingClientRect().width + 4);
       const total = widths.reduce((sum, value) => sum + value, 0);
+      // What the bar's start needs for every tab: the centred search bar
+      // gives way to it before tabs fold into "more" (review M3).
+      const bar = holder.current.closest(".studio-topbar");
+      const start = holder.current.closest(".studio-top-start");
+      if (bar && start) {
+        const before = holder.current.getBoundingClientRect().left - start.getBoundingClientRect().left;
+        const padding = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+        bar.style.setProperty("--studio-start-need", `${Math.ceil(before + padding + total)}px`);
+      }
       if (total <= available || !available) return setFit(pages.length);
       let used = MORE_WIDTH;
       let count = 0;
@@ -53,7 +62,11 @@ function LiveTabs({ board, pages, currentId, onSelect, dropTarget }) {
     if (typeof ResizeObserver === "undefined") return undefined;
     const observer = new ResizeObserver(update);
     observer.observe(holder.current);
-    return () => observer.disconnect();
+    const bar = holder.current.closest(".studio-topbar");
+    return () => {
+      observer.disconnect();
+      bar?.style.removeProperty("--studio-start-need");
+    };
   }, [pages]);
   const currentIndex = pages.findIndex((page) => page.id === currentId);
   let shown = pages.slice(0, fit);

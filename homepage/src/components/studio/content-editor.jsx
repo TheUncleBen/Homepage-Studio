@@ -26,7 +26,7 @@ import StudioIcon from "./icons";
 import { SCOPE_LABEL, useLibrary } from "./library";
 import LookEditor, { lookOnly, lookSections, lookSummaries, sameLook, valuesPartShown } from "./look-editor";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
-import { ActionRow, Group, Row, Section, Segmented } from "./ui";
+import { ActionRow, Group, revealForm, Row, Section, Segmented } from "./ui";
 
 import { SettingsContext } from "utils/contexts/settings";
 
@@ -106,8 +106,14 @@ function SaveAsWidget({ library, defaultName, panelId, changed, onDone }) {
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(null);
   const id = useId();
+  const box = useRef(null);
   const scopes = library.scopes;
   const chosen = scope ?? (scopes.includes("dashboard") ? "dashboard" : scopes[0]);
+  // The form opens under the actions, often below the fold: bring it into
+  // view and start in its name.
+  useEffect(() => {
+    if (library.loaded) revealForm(box.current);
+  }, [library.loaded]);
   if (!library.loaded) return <p className="studio-muted">Loading…</p>;
   if (saved)
     return (
@@ -119,7 +125,7 @@ function SaveAsWidget({ library, defaultName, panelId, changed, onDone }) {
       </p>
     );
   return (
-    <div className="studio-save-as">
+    <div className="studio-save-as" ref={box}>
       <ErrorMessage error={error} />
       <Row label="Name" htmlFor={id}>
         <input id={id} maxLength={60} value={name} onChange={(event) => setName(event.target.value)} />
@@ -605,6 +611,9 @@ export default function ContentEditor({
   // through onLiveDraft, so the dialog has no preview of its own.
   docked = false,
   onLiveDraft,
+  // Docked, the board beside it can change and save while the dialog is
+  // open: settle that first, then save on the board's latest revision.
+  beforeSave,
 }) {
   const kind = panel?.kind || entry.kind;
   // The widget's own look and behaviour live on the board, not in its YAML.
@@ -623,7 +632,8 @@ export default function ContentEditor({
   // widget in a stack takes the stack's size, so it has none of its own here.
   const initialRect = boardPanel && !stacked ? boardPanel.rect : null;
   const [rect, setRect] = useState(initialRect);
-  const rectChanged = Boolean(initialRect) && (rect.w !== initialRect.w || rect.h !== initialRect.h);
+  // Docked, the widget is resized on the board itself, which saves it.
+  const rectChanged = !docked && Boolean(initialRect) && (rect.w !== initialRect.w || rect.h !== initialRect.h);
   // The formats of this widget's numbers (from Studio's collector), so Show
   // as offers only the charts its data supports.
   const { data: chartProbe } = useSWR(
@@ -833,6 +843,7 @@ export default function ContentEditor({
             ? {
                 server: service.server,
                 container: service.container,
+                servers: Array.isArray(state?.dockerServers) ? state.dockerServers : [],
                 onChange: (key, value) => setService({ ...service, [key]: value }),
               }
             : undefined,
@@ -931,16 +942,18 @@ export default function ContentEditor({
     setError(null);
     setPending(true);
     try {
+      const revision = beforeSave ? await beforeSave() : state.revision;
+      if (!revision) throw new Error("The arrangement beside this dialog could not be saved. Try again.");
       const contentChanged =
         action !== "update" || name !== initialName || serviceChanged || editorDraftChanged(initial, draft);
       // A look-only change saves the arrangement; with content it travels
       // along so both commit together.
       if (!contentChanged && lookChanged) {
-        await onSaved(await studioRequest("/studio/api/board", { revision: state.revision, board: nextBoard() }));
+        await onSaved(await studioRequest("/studio/api/board", { revision, board: nextBoard() }));
         return;
       }
       const body = {
-        revision: state.revision,
+        revision,
         action,
         ...(source ? { id: source.id } : {}),
         config: patchFromDraft(initial, draft),
@@ -973,7 +986,7 @@ export default function ContentEditor({
   const previewPanel = boardPanel
     ? {
         ...boardPanel,
-        ...(rect ? { rect } : {}),
+        ...(rect && !docked ? { rect } : {}),
         look,
         behaviour,
         title: kind === "service" || kind === "bookmark" ? name || boardPanel.title : boardPanel.title,
@@ -1059,6 +1072,9 @@ export default function ContentEditor({
                   value={draft}
                   onChange={setDraft}
                   fields={fields}
+                  emptyNote={
+                    (source?.type || entry?.type) === "spacer" ? "Nothing to set up. Size it on the board." : undefined
+                  }
                   knownKeys={hiddenKeys}
                   onValidity={setValid}
                   sectioned

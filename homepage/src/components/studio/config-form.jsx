@@ -622,6 +622,8 @@ export default function ConfigForm({
   connections = false,
   // Inside the widget dialog's Connection section, which already names it.
   sectioned = false,
+  // What to say when there is nothing to fill in (a Spacer).
+  emptyNote = "This widget is set up in YAML.",
 }) {
   const [tab, setTab] = useState("fields");
   // Whether a saved connection fills the address and key (connections.jsx).
@@ -762,7 +764,7 @@ export default function ConfigForm({
               {options.map(fieldRow)}
             </Group>
           )}
-          {!shown.length && <p className="studio-empty-note">This widget is set up in YAML.</p>}
+          {!shown.length && <p className="studio-empty-note">{emptyNote}</p>}
           {additional.length > 0 && (
             <Group title="More options" info="These options have no control here. Change them in YAML.">
               {additional.map((key) => (

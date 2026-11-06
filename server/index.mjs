@@ -286,6 +286,16 @@ async function readBody(req, maxBytes = 2 * 1024 * 1024) {
 // strong per-encoding ETag instead of downloading it again.
 const gzip = promisify(zlib.gzip), brotli = promisify(zlib.brotliCompress);
 let catalogVariants;
+// Widget names by type, from the same catalog (saved items show Custom API,
+// not customapi). A failed read falls back to a name made from the type.
+let catalogNameMap;
+function catalogNames() {
+  catalogNameMap ||= readFile(join(base, 'public', 'catalog.json'), 'utf8').then((text) => {
+    const catalog = JSON.parse(text);
+    return new Map([...(catalog.service || []), ...(catalog.info || [])].filter((entry) => typeof entry?.type === 'string' && typeof entry.name === 'string').map((entry) => [entry.type, entry.name]));
+  }, () => { catalogNameMap = undefined; return null; });
+  return catalogNameMap;
+}
 function loadCatalogVariants() {
   catalogVariants ||= (async () => {
     const identity = await readFile(join(base, 'public', 'catalog.json'));
@@ -896,6 +906,7 @@ export function createStudioServer(options = {}) {
     sharedLibrary,
     dashboards: async () => (await registryForAuth()).dashboards.map(entry => ({ id: entry.id, name: entry.name, stores: forDashboard(entry) })),
     users: async () => (auth?.ready ? auth.store.read().users.map(user => ({ id: user.id, username: user.username, displayName: user.displayName })) : []),
+    widgetName: async (type) => (await catalogNames())?.get(type) || infoWidgetLabel(type),
   });
   const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards, preferences: { read: userId => personal.forUser(userId).preferences.read(), write: (userId, value) => personal.forUser(userId).preferences.write(value) }, saved: { list: userId => savedItems.mine(userId), change: (userId, request) => savedItems.changeMine(userId, request) } }) : null;
   const privateCookies = auth ? [authConfig.cookieName, authConfig.flowCookieName, authConfig.setupCookieName] : [];

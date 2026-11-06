@@ -71,8 +71,9 @@ Every page, dashboards and administration alike, has the same bar:
   the deployment's name. On a dashboard, that dashboard's logo and name.
 - The name opens Studio's menu: **All dashboards**, **Administration** for
   administrators, then every dashboard you can open, to jump straight to one.
-- **Search** on a dashboard: the centred *Start typing…* bar (an icon on
-  phones), <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd>, or just start
+- **Search** on a dashboard: the centred *Start typing…* bar (it narrows
+  before your page tabs fold into *more*; an icon on phones, with **Cancel**
+  to close it), <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd>, or just start
   typing. It finds every widget, service and bookmark on every page, says
   which page each is on, and offers a web search with your own search engine
   (Google unless you choose another in **My account → Search**). A result
@@ -187,9 +188,9 @@ where Homepage has nothing. They need no app and fetch nothing.
 
 | Widget | What it does |
 | --- | --- |
-| **Heading** | A title for a row of widgets. With **Look › Edge › None** it stands on the page without a card; **Align** centres it. In a one-row card the text shrinks to fit. |
+| **Heading** | A title for a row of widgets. It starts one row tall with no fill and no edge, so it stands on the page without a card (its **Look** can add them); **Align** centres it. In a one-row card the text shrinks to fit. |
 | **Note** | Text you write yourself, on several lines: the guest Wi-Fi, on-call numbers, a reminder. Web addresses (`https://…`) become links that open in a new tab. It is plain text: nothing in it is read as HTML. Everyone who can see the dashboard can read it, so keep passwords and keys out of it. |
-| **Picture** | One picture from this dashboard's uploaded backgrounds, filling the card or shown whole, with a description for screen readers. Removing the picture from the library asks first while the widget uses it. |
+| **Picture** | One picture from this dashboard's uploaded backgrounds, filling the card or shown whole, with a description for screen readers. Removing the picture from the library asks first while the widget uses it. An empty note or picture says what to do only in the editor; on the dashboard it is an empty card. |
 | **Spacer** | Empty space that keeps the widgets around it in place. It is invisible on the dashboard and dashed while you edit. With **Behaviour › Show on** it can hold space in one layout only. |
 
 ## Arranging the board
@@ -352,9 +353,11 @@ used after a manual change.
 ## Changing what a panel shows
 
 In the editor, a panel's **edit** button opens its dialog. On a screen at
-least 900 px wide the dialog opens as a panel down the right, beside the
+least 1400 px wide the dialog opens as a panel down the right, beside the
 board: the board keeps its layout, the widget's own card shows your changes
-as you make them, and you resize it on the board as usual. On narrower
+as you make them, and you resize it on the board as usual. The board stays
+usable: **edit** on another widget switches the panel to it (asking first
+if you have unsaved changes), and Esc closes the panel. On narrower
 screens the dialog opens over the board with the widget drawn at the top at
 its real desktop size, on the board's own grid; drag its corner (or focus
 the corner and use the arrow keys) to change that size, never below the

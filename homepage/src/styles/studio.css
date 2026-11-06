@@ -200,8 +200,11 @@ body {
   flex: 1 1 0;
   justify-content: flex-end;
 }
+/* Wide rather than short when there is room (F2), but it gives way to the
+   page tabs before they fold into "more": the start needs
+   --studio-start-need (pages.jsx) on each side of the centred bar. */
 .studio-search-bar {
-  flex: 0 1 min(44%, 560px);
+  flex: 0 1 clamp(240px, calc(100% - 2 * var(--studio-start-need, 0px) - 24px), min(44%, 560px));
   min-width: 200px;
   height: 36px;
   display: flex;
@@ -3248,6 +3251,11 @@ body {
 .studio-native-content[data-tight] .studio-values-below {
   padding-top: 5px;
 }
+/* Values without the rule, when the band is too short for it (card-values.jsx). */
+.studio-native-content .studio-values-below[data-bare] {
+  border-top: 0;
+  padding-top: 0;
+}
 .studio-native-content .studio-values-below[data-empty] {
   /* Only "+N more" is left: no rule, and it tucks up beside the hero's label. */
   border-top: 0;
@@ -4412,6 +4420,17 @@ svg.studio-chart-gauge {
   color: var(--studio-muted);
   font: 11px/1.4 inherit;
 }
+.studio-find-cancel {
+  display: none;
+}
+@media (pointer: coarse) {
+  .studio-find-esc {
+    display: none;
+  }
+  .studio-find-cancel {
+    display: inline-flex;
+  }
+}
 .studio-find-results {
   overflow: auto;
   padding: 6px;
@@ -4745,6 +4764,29 @@ svg.studio-chart-gauge {
 .studio-saved-look-name-edit input {
   flex: 1 1 160px;
   min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--studio-line);
+  border-radius: 9px;
+  background: var(--studio-input);
+  color: var(--studio-text);
+  font: inherit;
+  font-size: 14px;
+}
+/* The name takes the whole line, who can use it the next one across the full
+   width as the dialog's other choices, then the buttons (review M8). */
+.studio-saved-look-name input {
+  flex-basis: 100%;
+}
+.studio-saved-look-name .studio-segmented {
+  display: flex;
+  flex: 1 1 100%;
+}
+.studio-saved-look-name .studio-segmented > button {
+  flex: 1 1 0;
+}
+.studio-saved-look-name > .studio-button {
+  flex: 1 1 0;
 }
 .studio-saved-look-ask {
   padding: 10px 12px;
@@ -4794,6 +4836,12 @@ svg.studio-chart-gauge {
 .studio-connection-result.studio-failed {
   color: var(--studio-danger-text);
 }
+/* Brought into view when opened (ui.jsx revealForm): clear of the dialog's
+   sticky header and footer. */
+.studio-save-as,
+.studio-connection-form {
+  scroll-margin: 96px 0 96px;
+}
 .studio-connection-form {
   border-top: 1px solid var(--studio-line);
   padding-bottom: 12px;
@@ -4815,6 +4863,10 @@ svg.studio-chart-gauge {
 .studio-connection-form .studio-row-control > input {
   flex: 1;
   min-width: 0;
+}
+.studio-dialog-docked .studio-connection-form .studio-row-control > .studio-segmented {
+  display: flex;
+  flex: 1 1 auto;
 }
 .studio-connection-form .studio-row-control > button {
   flex: none;
@@ -5246,6 +5298,11 @@ svg.studio-chart-gauge {
 .studio-filler-picture-empty p {
   margin: 0;
 }
+/* An empty note or picture says what to do only while editing; viewers of
+   the dashboard see an empty card (review M4). */
+.studio-app:not(.studio-edit-mode) .studio-filler-hint {
+  visibility: hidden;
+}
 /* A heading with no edge and the plain fill stands on the page itself. */
 .studio-panel[data-edge="none"][data-fill="plain"]:has(.studio-filler-heading) {
   border-color: transparent;
@@ -5507,13 +5564,23 @@ svg.studio-chart-gauge {
 /* ---- Status address: derived or own, with Check now ---------------------- */
 .studio-status-address {
   display: grid;
-  gap: 6px;
+  gap: 2px;
   width: 100%;
 }
-.studio-status-address .studio-inline-actions {
-  justify-content: space-between;
+.studio-status-from {
+  margin-top: -4px;
+  font-size: 12px;
+}
+.studio-status-address .studio-status-check {
+  justify-content: flex-start;
   align-items: center;
+  flex-wrap: nowrap;
+  gap: 10px;
+  margin: 6px 0 8px;
   font-size: 13px;
+}
+.studio-status-check > .studio-button {
+  flex: none;
 }
 .studio-status-address .studio-connection-result:empty {
   display: none;
@@ -5521,8 +5588,10 @@ svg.studio-chart-gauge {
 
 /* ---- Widget editor docked beside the board (T26) ------------------------ */
 /* Wide screens: a panel down the right; the board stays visible and its own
-   card shows the draft. Narrower screens keep the centred, full-height sheet. */
-@media (min-width: 900px) {
+   card shows the draft. Narrower screens keep the centred, full-height sheet.
+   Docked only where the board keeps about 900px beside the panel (the
+   board's DOCK_QUERY), so desktop cards never reflow into broken words. */
+@media (min-width: 1400px) {
   .studio-dialog.studio-dialog-docked {
     inset: 0 0 0 auto;
     margin: 0;
@@ -5542,7 +5611,7 @@ svg.studio-chart-gauge {
   }
   /* The top bar spans the window: undo the right padding's shift. */
   .studio-app.studio-docked-editing .studio-topbar {
-    margin-left: calc(50% + (min(480px, 42vw) + 20px) / 2 - 50vw);
+    margin-left: calc(50% + (min(480px, 42vw) - 20px) / 2 - 50vw);
   }
 }
 /* The docked panel is phone-narrow, so its rows are laid out as on a phone:

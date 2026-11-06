@@ -197,7 +197,11 @@ export default function StudioSearch({ board, data, query, onQuery, onClose, onS
             }
           }}
         />
-        <kbd>Esc</kbd>
+        {/* A keyboard closes it with Esc; a touch screen with Cancel (review L6). */}
+        <kbd className="studio-find-esc">Esc</kbd>
+        <button type="button" className="studio-text-button studio-find-cancel" onClick={onClose}>
+          Cancel
+        </button>
       </div>
       <div id={listId} role="listbox" aria-label="Results" className="studio-find-results">
         {found.length > 0 && (

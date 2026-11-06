@@ -607,6 +607,7 @@
     down: 'm6 9 6 6 6-6',
     grip: 'M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01',
     grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+    bookmark: 'M6 3h12v18l-6-4.5L6 21Z',
     settings: 'M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4',
     check: 'm5 12 4 4L19 6',
     info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 11v6M12 7.5h.01',
@@ -918,7 +919,9 @@
       ];
       if (view.pendingLink) parts.push(linkConfirmSection(view.pendingLink));
       if (view.recovery) parts.push(h('div', { class: 'notice warn', text: 'You signed in with a command-line recovery link. This session ends when you close the browser. Add a passkey or authenticator app now if you lost yours.' }));
-      parts.push(profileSection(user), defaultDashboardSection(user), preferencesSection(), savedSection);
+      // Saved sits after Search, before the longer Display list (review L7).
+      const [searchPart, ...displayParts] = preferencesSection();
+      parts.push(profileSection(user), defaultDashboardSection(user), searchPart, savedSection, ...displayParts);
       if (local) parts.push(securitySection(user, factors), passkeySection(factors));
       if (view.oidc) parts.push(linkSection(user));
       parts.push(sessionsSection(), policySection());
@@ -1553,7 +1556,7 @@
     // The sections, as a list down the side like macOS System Settings (owner
     // decision, 26 Oct 2026). On a phone the page opens on that list, like iOS
     // Settings: tapping a section opens it, and Back returns to the list.
-    const tabs = [['people', 'People', 'user'], ['groups', 'Groups', 'people'], ['access', 'Dashboard access', 'grid'], ['policies', 'Session policies', 'clock'], ['sign-in', 'Sign-in settings', 'lock'], ['appearance', 'Appearance', 'palette'], ['saved', 'Saved items', 'grid'], ['certificates', 'Trusted certificates', 'key'], ['backups', 'Backups', 'archive'], ['activity', 'Activity', 'shield']];
+    const tabs = [['people', 'People', 'user'], ['groups', 'Groups', 'people'], ['access', 'Dashboard access', 'grid'], ['policies', 'Session policies', 'clock'], ['sign-in', 'Sign-in settings', 'lock'], ['appearance', 'Appearance', 'palette'], ['saved', 'Saved items', 'bookmark'], ['certificates', 'Trusted certificates', 'key'], ['backups', 'Backups', 'archive'], ['activity', 'Activity', 'shield']];
     const hashed = () => tabs.some(([key]) => key === location.hash.slice(1)) ? location.hash.slice(1) : null;
     let tab = hashed() ?? 'people';
     const narrow = window.matchMedia('(max-width: 760px)');
