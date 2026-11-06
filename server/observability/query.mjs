@@ -230,6 +230,19 @@ export function createQueryRunner({ dir }) {
       for (const event of repeats) { const group = list.find(item => item.event === event); if (group && event.repeat > 1) group.count += event.repeat - 1; }
       return { groups: list, partial };
     },
+    // How many events match, for log alert rules.
+    count({ query = '', from, to, scopes, restricted = false, budgetMs = 5000 }) {
+      const filter = buildFilter(parseQuery(query), { from, to, scopes, restricted });
+      const late = deadlineFor(budgetMs);
+      let total = 0;
+      for (const segment of listSegments(from, to)) {
+        if (late()) break;
+        let db;
+        try { db = segmentDb(segment.stream, segment.file); } catch { continue; }
+        total += db.get(`SELECT COUNT(*) AS n FROM event e WHERE ${filter.sql}`, ...filter.args).n;
+      }
+      return total;
+    },
     oldest() {
       const row = mainDb().get('SELECT MIN(first_ts) AS t FROM segment');
       return row?.t ?? null;

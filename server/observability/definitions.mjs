@@ -194,7 +194,7 @@ export function cleanChannel(input, { existing }) {
   }
   const needsUrl = !['telegram', 'pushover'].includes(type);
   if (needsUrl) channel.url = httpUrl(keep('url'), 'Address');
-  if (['gotify', 'telegram', 'pushover', 'matrix', 'homeassistant', 'ntfy'].includes(type)) {
+  if (['gotify', 'telegram', 'pushover', 'matrix', 'ntfy'].includes(type)) {
     const token = keep('token');
     if (type !== 'ntfy' || token) channel.token = text(token, 'Token', 512);
   }
@@ -256,7 +256,7 @@ export function cleanSettings(input, current) {
   };
 }
 
-const empty = () => ({ version: 1, settings: structuredClone(DEFAULT_SETTINGS), monitors: [], maintenance: [], channels: [], views: [], sources: [], alerts: [] });
+const empty = () => ({ version: 1, settings: structuredClone(DEFAULT_SETTINGS), monitors: [], maintenance: [], channels: [], views: [], sources: [], alerts: [], overrides: {} });
 
 export function createDefinitions({ stateRoot }) {
   const path = join(stateRoot, DEFINITIONS_FILE);
@@ -274,6 +274,7 @@ export function createDefinitions({ stateRoot }) {
       const base = empty();
       cache = { ...base, ...value, settings: { ...base.settings, ...value.settings, syslog: { ...base.settings.syslog, ...value.settings?.syslog } } };
       for (const key of Object.keys(LIMITS)) if (!Array.isArray(cache[key])) cache[key] = [];
+      if (!cache.overrides || typeof cache.overrides !== 'object' || Array.isArray(cache.overrides)) cache.overrides = {};
     } catch (error) {
       if (error.code === 'ENOENT') cache = empty();
       else if (error instanceof SyntaxError) throw new DefinitionError('The monitoring settings file is not usable.', 'OBSERVABILITY_SETTINGS_UNAVAILABLE', 503);
