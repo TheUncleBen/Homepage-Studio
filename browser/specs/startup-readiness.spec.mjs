@@ -13,7 +13,7 @@ test('startup controls wait for the first board response and the settings page o
   try {
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     await boardRequested;
-    const search = page.getByRole('navigation', { name: 'Studio', exact: true }).getByRole('button', { name: 'Search', exact: true });
+    const search = page.getByRole('button', { name: 'Search', exact: true });
     await expect(search).toBeDisabled();
     // The live dashboard has no editing or settings controls at all.
     for (const name of ['Dashboard settings', 'Edit dashboard', 'Widgets'])

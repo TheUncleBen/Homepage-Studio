@@ -2085,7 +2085,6 @@
       const starters = !entry && !source ? view.starters || [] : [];
       const starter = starters.length ? h('select', {}, [h('option', { value: '', text: 'Blank' }), ...starters.map(choice => h('option', { value: choice.id, text: choice.name }))]) : null;
       const save = h('button', { type: 'submit', class: 'primary', text: entry ? 'Save' : source ? 'Duplicate' : 'Create dashboard' });
-      slug.setAttribute('aria-label', `Address: ${location.host}/`);
       const addressRow = row('Address', addressInput(slug), { info: 'Lowercase letters, numbers and hyphens.' + (entry ? ' Changing it breaks bookmarks to the old address.' : '') });
       const form = h('form', { class: 'stack' },
         group({}, row('Name', name), addressRow, starter ? row('Start with', starter, { info: 'Blank, or links to common apps at placeholder addresses you change, plus a clock and the weather.' }) : null),
@@ -2275,7 +2274,12 @@
     // (this host and a slash) sits in front of the slug, on the same line
     // (owner T2 on 65f724c: a preview under the label read as a second field).
     function addressInput(slug) {
-      return h('div', { class: 'address-input' }, h('span', { class: 'address-prefix', 'aria-hidden': 'true', text: `${location.host}/` }), slug);
+      // The field is named Address, as its row says; the host before it is
+      // read as its description.
+      const prefix = h('span', { class: 'address-prefix', 'aria-hidden': 'true', text: `${location.host}/` });
+      slug.setAttribute('aria-label', 'Address');
+      slug.setAttribute('aria-describedby', ensureId(prefix));
+      return h('div', { class: 'address-input' }, prefix, slug);
     }
     // A new deployment's main dashboard has no address until the first
     // administrator picks one; nothing else on this page works until then.
@@ -2286,7 +2290,6 @@
         const box = notice();
         const slug = h('input', { type: 'text', maxlength: 64, required: true, spellcheck: 'false', autocapitalize: 'off', value: view.suggestedSlug });
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save address' });
-        slug.setAttribute('aria-label', `Address: ${location.host}/`);
         const addressRow = row('Address', addressInput(slug), { info: 'Lowercase letters, numbers and hyphens. You can change it later from the Dashboards page.' });
         const form = h('form', { class: 'stack' },
           h('p', { class: 'lede', text: `${main.name} needs an address before anyone can open it.` }),

@@ -52,7 +52,7 @@ test('Tab follows the visual reading order of panels and stacks without moving n
 
   // Start on the last top bar control, immediately before the board (the
   // live dashboard has no editing toolbar).
-  await page.evaluate(() => [...document.querySelectorAll('.studio-topbar :is(button, a[href]):not(:disabled)')].at(-1).focus());
+  await page.evaluate(() => [...document.querySelectorAll('.studio-topbar :is(button, a[href]):not(:disabled)')].filter(control => control.checkVisibility()).at(-1).focus());
   const visited = [];
   for (let step = 0; step < 30; step += 1) {
     await page.keyboard.press('Tab');

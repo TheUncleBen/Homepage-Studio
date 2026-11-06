@@ -90,7 +90,9 @@ test('card text stays readable in light, dark and Follow device modes while stat
   await expect(page.locator('[aria-label="Up link"] .studio-status-up')).toBeVisible();
   await expect(page.locator('[aria-label="Down link"] .studio-status-down')).toBeVisible();
   expect(await page.locator('[data-panel-kind]').evaluateAll(nodes => nodes.map(node => node.dataset.panelKind).sort())).toEqual(['bookmark', 'informationWidget', 'service', 'service', 'serviceWidget']);
-  const statuses = () => page.locator('.studio-status-dot').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).backgroundColor));
+  // The integration widget checks its Connection address too (B3 on 65f724c);
+  // the two links are the ones whose colours this test compares.
+  const statuses = () => page.locator('[aria-label="Up link"] .studio-status-dot, [aria-label="Down link"] .studio-status-dot').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).backgroundColor));
   const originalStatuses = await statuses();
   expect(originalStatuses).toHaveLength(2);
   expect(originalStatuses[0]).not.toBe(originalStatuses[1]);
