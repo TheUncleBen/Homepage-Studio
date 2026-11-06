@@ -1183,7 +1183,7 @@ export default function LookEditor({
               ["ping", "Ping"],
               ["off", "Off"],
             ]}
-            info="Web address asks the service's site monitor, or its address when it has none. Ping uses its ping host, or the address's host."
+            info="Web address checks the status address when one is set, otherwise the widget's Connection address or its link. Ping uses the same address's host."
           />
           {acts.status !== "off" && (
             <Dependent>

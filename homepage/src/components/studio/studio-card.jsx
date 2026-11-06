@@ -19,10 +19,14 @@ const TARGETS = { same: "_self", new: "_blank" };
 const downSince = new Map();
 
 // The check behind a card's status: the service's own siteMonitor or ping
-// when set, otherwise its address (fallback=1) when the widget asks for one.
+// when set, otherwise its widget's Connection address or its link
+// (fallback=1) when the card asks for one.
 function useStatus(service, groupName, check) {
   const kind = statusKind(check);
-  const has = kind === "ping" ? service.ping || service.href : service.siteMonitor || service.href;
+  // An integration widget's Connection address is used when nothing else is
+  // set (utils/studio/status-address); the browser never sees that address.
+  const widgets = Array.isArray(service.widgets) && service.widgets.length > 0;
+  const has = (kind === "ping" ? service.ping : service.siteMonitor) || service.href || widgets;
   const key =
     kind && has && groupName && service.name
       ? `/api/${kind}?${new URLSearchParams({ groupName, serviceName: service.name, fallback: "1" })}`

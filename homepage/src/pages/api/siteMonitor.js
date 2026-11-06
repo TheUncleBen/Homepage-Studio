@@ -4,6 +4,7 @@ import { withAuth } from "utils/auth";
 import { getServiceItem } from "utils/config/service-helpers";
 import createLogger from "utils/logger";
 import { httpProxy } from "utils/proxy/http";
+import { statusFallback } from "utils/studio/status-address";
 
 const logger = createLogger("siteMonitor");
 
@@ -18,13 +19,11 @@ export async function siteMonitor(req, res) {
     });
   }
 
-  // Studio checks a service's own address when it has no siteMonitor of its
-  // own and the dashboard asks for a web check (fallback=1). Only the address
-  // already in services.yaml is ever probed.
+  // Studio checks the widget's Connection address, else the service's link,
+  // when it has no siteMonitor of its own and the card asks for a web check
+  // (fallback=1). Only addresses already in services.yaml are ever probed.
   let monitorURL = serviceItem.siteMonitor;
-  if (!monitorURL && req.query.fallback === "1" && /^https?:\/\//i.test(serviceItem.href || "")) {
-    monitorURL = serviceItem.href;
-  }
+  if (!monitorURL && req.query.fallback === "1") monitorURL = statusFallback(serviceItem);
 
   if (!monitorURL) {
     logger.debug("No http monitor URL specified");
