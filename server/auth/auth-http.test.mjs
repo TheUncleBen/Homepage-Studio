@@ -11,7 +11,7 @@ import { createStudioServer, NATIVE_PROTOCOL, UPSTREAM_COMMIT } from '../index.m
 import { base32Decode, hotp, totpStep } from './primitives.mjs';
 // The main dashboard lives at /home. Its own addresses (native API, editor
 // API, native data) move with it; Studio-wide addresses stay at the root.
-const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview|preview|platform|backups)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
+const onPrimary = target => (/^\/(?:api\/|studio\/(?:api\/(?!dashboards|overview|preview|platform|backups|saved-items|trusted-certificates)|catalog\.json|edit|settings)|_next\/(?!static\/))/.test(target) ? '/home' + target : target);
 
 
 const HOST = 'localhost:3001';
@@ -657,6 +657,34 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.equal(used.status, 200, used.text);
   assert.equal(used.json.connection.id, mineAdded.json.connection.id);
   assert.equal((await post('/home/studio/api/my-connections/use', { id: mineAdded.json.connection.id }, { cookie: admin.cookie })).status, 200, 'using it again refreshes the copy');
+  // My account › Saved lists your own, with the dashboards holding a copy,
+  // and never a key; Administration › Saved items lists everyone's with who saved it.
+  const mySaved = await request('/studio/auth/account/saved', { cookie: admin.cookie });
+  assert.equal(mySaved.status, 200, mySaved.text);
+  const media = mySaved.json.items.find(item => item.name === 'Media server');
+  assert.equal(media.kind, 'connection');
+  assert.ok(media.usedOn.length >= 1);
+  assert.doesNotMatch(mySaved.text, /personal-key/);
+  assert.deepEqual((await request('/studio/auth/account/saved', { cookie: member.cookie })).json.items, []);
+  assert.equal((await request('/studio/api/saved-items', { cookie: member.cookie })).status, 403);
+  const everyone = await request('/studio/api/saved-items', { cookie: admin.cookie });
+  assert.equal(everyone.status, 200, everyone.text);
+  const mediaAdmin = everyone.json.items.find(item => item.name === 'Media server' && item.place.type === 'person');
+  assert.ok(mediaAdmin.owner);
+  assert.ok(everyone.json.items.some(item => item.kind === 'connection' && item.place.type === 'dashboard' && item.canChange === false));
+  assert.doesNotMatch(everyone.text, /personal-key|secret-key/);
+  const renamedMine = await post('/studio/auth/account/saved', { action: 'rename', kind: 'connection', id: media.id, name: 'Media box' }, { cookie: admin.cookie });
+  assert.equal(renamedMine.status, 200, renamedMine.text);
+  assert.ok(renamedMine.json.items.some(item => item.name === 'Media box'));
+  assert.equal((await post('/studio/auth/account/saved', { action: 'rename', kind: 'connection', id: media.id, name: 'Media server' }, { cookie: admin.cookie })).status, 200);
+  assert.equal((await post('/studio/api/saved-items', { action: 'delete', place: { type: 'dashboard', id: 'default' }, kind: 'connection', id: 'ABCDEF0123456789' }, { cookie: admin.cookie })).status, 400);
+  // Trusted certificates: administrators only.
+  assert.equal((await request('/studio/api/trusted-certificates', { cookie: member.cookie })).status, 403);
+  assert.equal((await post('/studio/api/trusted-certificates', { action: 'add', pem: 'x' }, { cookie: member.cookie })).status, 403);
+  const trustedList = await request('/studio/api/trusted-certificates', { cookie: admin.cookie });
+  assert.equal(trustedList.status, 200, trustedList.text);
+  assert.deepEqual(trustedList.json.certificates, []);
+  assert.equal((await post('/studio/api/trusted-certificates', { action: 'add', pem: 'not a certificate' }, { cookie: admin.cookie })).status, 400);
   // A different personal one with a name the dashboard already uses says how out.
   const clash = await post('/home/studio/api/my-connections', { action: 'add', name: 'Media server', url: 'https://other.example.org' }, { cookie: admin.cookie });
   assert.equal(clash.status, 400, 'names are unique within one person too');

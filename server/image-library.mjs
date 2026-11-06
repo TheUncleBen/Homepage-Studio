@@ -85,7 +85,7 @@ export function createImageLibrary({ stateDir }) {
       // The stored bytes must still be the type the list names.
       return bytes && logoType(bytes) === entry.type ? { ...entry, bytes } : null;
     }),
-    add: ({ kind, name, image }) => serial(async () => {
+    add: ({ kind, name, image, by }) => serial(async () => {
       if (!IMAGE_KINDS.includes(kind)) fail('Say whether this is a logo or a background.');
       if (typeof image !== 'string') fail('Choose an image file.');
       const match = /^data:[a-z0-9.+/-]+;base64,([A-Za-z0-9+/]+={0,2})$/.exec(image);
@@ -105,11 +105,19 @@ export function createImageLibrary({ stateDir }) {
       if (entries.length >= MAX_IMAGES) fail(`A dashboard keeps up to ${MAX_IMAGES} images. Remove some you no longer use.`, 'IMAGE_LIMIT', 409);
       const used = entries.reduce((total, item) => total + (Number.isSafeInteger(item.size) ? item.size : 0), 0);
       if (used + bytes.length > MAX_LIBRARY_BYTES) fail(`A library keeps up to ${MAX_LIBRARY_BYTES / 1024 / 1024} MiB of images. Remove some you no longer use.`, 'IMAGE_LIMIT', 409);
-      const entry = { id, kind, name: cleanName(name), type, size: bytes.length, createdAt: new Date().toISOString() };
+      const entry = { id, kind, name: cleanName(name), type, size: bytes.length, createdAt: new Date().toISOString(), ...(typeof by === 'string' && by.trim() ? { savedBy: by.trim().slice(0, 120) } : {}) };
       // The bytes first: the list never names an image that wasn't written.
       await write(id + '.' + EXTENSION[type], bytes);
       await saveList([...entries, entry]);
       return entry;
+    }),
+    rename: (id, name) => serial(async () => {
+      const entries = await list();
+      const entry = validImageId(id) && entries.find(item => item.id === id);
+      if (!entry) fail('That image does not exist.', 'IMAGE_NOT_FOUND', 404);
+      const next = { ...entry, name: cleanName(name) };
+      await saveList(entries.map(item => (item.id === id ? next : item)));
+      return next;
     }),
     remove: id => serial(async () => {
       if (!validImageId(id)) fail('That image does not exist.', 'IMAGE_NOT_FOUND', 404);

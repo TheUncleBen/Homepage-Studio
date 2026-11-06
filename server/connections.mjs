@@ -55,6 +55,7 @@ export function publicConnection(entry, usedBy) {
     url: entry.url,
     has: Object.fromEntries(SECRET_FIELDS.map((field) => [field, Boolean(entry.secrets[field])])),
     updatedAt: entry.updatedAt,
+    ...(entry.savedBy ? { savedBy: entry.savedBy } : {}),
     ...(usedBy ? { usedBy } : {}),
   };
 }
@@ -109,14 +110,14 @@ export function createConnectionStore({ dir }) {
     list: () => serial(() => readFile(path)),
     // Full entries, secrets included: only for copying between places.
     read: (id) => serial(async () => find(await readFile(path), id)),
-    add: (input, { id } = {}) => serial(async () => {
+    add: (input, { id, by } = {}) => serial(async () => {
       const list = await readFile(path);
       if (list.length >= MAX_CONNECTIONS) fail(`Keep at most ${MAX_CONNECTIONS} saved connections.`);
       const name = validName(input?.name);
       nameFree(list, name);
       const secrets = {};
       for (const field of SECRET_FIELDS) if (input?.[field]) secrets[field] = validSecret(input[field], field);
-      const entry = { id: id && ID.test(id) && !list.some((item) => item.id === id) ? id : randomBytes(8).toString('hex').toUpperCase(), name, url: validAddress(input?.url), secrets, updatedAt: new Date().toISOString() };
+      const entry = { id: id && ID.test(id) && !list.some((item) => item.id === id) ? id : randomBytes(8).toString('hex').toUpperCase(), name, url: validAddress(input?.url), secrets, updatedAt: new Date().toISOString(), ...(typeof by === 'string' && by.trim() ? { savedBy: by.trim().slice(0, 120) } : {}) };
       await writeFile(dir, path, [...list, entry]);
       return entry;
     }),

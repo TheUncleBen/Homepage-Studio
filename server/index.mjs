@@ -9,6 +9,7 @@ import { createDiscoveryClient, DiscoveryError } from './discovery.mjs';
 import { createDashboardRegistry, resolveDashboardRoute, sharedPublic } from './dashboards.mjs';
 import { DashboardError, dashboardConfigDir, dashboardStateDir, dashboardBasePath, suggestedDashboardSlug, archiveDeletesAt, archiveRetentionOf } from './dashboard-paths.mjs';
 import { createRendererPool, RendererError } from './renderer-pool.mjs';
+import { createSavedItems, SavedItemsError } from './saved-items.mjs';
 import { createTrustedCertificates, TrustError } from './trusted-certificates.mjs';
 import { starterFiles, starterChoices, starterLayout } from './starters.mjs';
 import { createHistoryStore, retentionDays } from './history.mjs';
@@ -698,7 +699,7 @@ function createDashboardHandlers(options = {}) {
       if (path === '/studio/api/images' && req.method === 'POST') {
         const change = await readBody(req, 5 * 1024 * 1024);
         if (!change || typeof change !== 'object' || Object.keys(change).some(key => !['kind', 'name', 'image'].includes(key))) throw new ImageError('Send a kind, a name and an image.');
-        return json(res, 200, { image: await images.add(change) });
+        return json(res, 200, { image: await images.add({ ...change, by: req.studioActor }) });
       }
       if (path === '/studio/api/images/delete' && req.method === 'POST') {
         const change = await readBody(req);
@@ -767,7 +768,7 @@ function createDashboardHandlers(options = {}) {
       if (path === '/studio/api/connections' && req.method === 'POST') {
         const change = await readBody(req, 64 * 1024);
         if (!change || typeof change !== 'object' || Object.keys(change).some((key) => !CONNECTION_KEYS.includes(key))) throw new ConnectionError('Send a connection change.');
-        if (change.action === 'add') return json(res, 200, { connection: publicConnection(await connections.add(change)) });
+        if (change.action === 'add') return json(res, 200, { connection: publicConnection(await connections.add(change, { by: req.studioActor })) });
         if (change.action === 'update') return json(res, 200, { connection: publicConnection(await connections.update(change.id, change)) });
         if (change.action === 'delete') {
           await connections.remove(change.id, { usedBy: (await connectionUsageOf())(change.id) });
@@ -875,7 +876,15 @@ export function createStudioServer(options = {}) {
   const siteName = () => (auth?.ready ? auth.siteName() : deploymentName);
   const platform = createPlatformStore({ configRoot });
   const backups = createBackupStore({ configRoot, stateRoot, buildRevision: options.buildRevision ?? process.env.STUDIO_BUILD_REVISION });
-  const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards, preferences: { read: userId => personal.forUser(userId).preferences.read(), write: (userId, value) => personal.forUser(userId).preferences.write(value) } }) : null;
+  // Saved items (server/saved-items.mjs): My account › Saved and
+  // Administration › Saved items.
+  const savedItems = createSavedItems({
+    personal,
+    sharedLibrary,
+    dashboards: async () => (await registryForAuth()).dashboards.map(entry => ({ id: entry.id, name: entry.name, stores: forDashboard(entry) })),
+    users: async () => (auth?.ready ? auth.store.read().users.map(user => ({ id: user.id, username: user.username, displayName: user.displayName })) : []),
+  });
+  const authRoutes = auth ? createAuthRoutes(auth, { listDashboards: async () => (await registryForAuth()).dashboards, preferences: { read: userId => personal.forUser(userId).preferences.read(), write: (userId, value) => personal.forUser(userId).preferences.write(value) }, saved: { list: userId => savedItems.mine(userId), change: (userId, request) => savedItems.changeMine(userId, request) } }) : null;
   const privateCookies = auth ? [authConfig.cookieName, authConfig.flowCookieName, authConfig.setupCookieName] : [];
   const handlers = new Map();
   const unpublished = new Map();
@@ -1063,7 +1072,7 @@ export function createStudioServer(options = {}) {
     if (path === '/studio/api/my-images') {
       const change = await readBody(req, 5 * 1024 * 1024);
       if (!change || typeof change !== 'object' || Object.keys(change).some(key => !['kind', 'name', 'image'].includes(key))) throw new ImageError('Send a kind, a name and an image.');
-      return json(res, 200, { image: await person.images.add(change) });
+      return json(res, 200, { image: await person.images.add({ ...change, by: current.user.username }) });
     }
     const change = await readBody(req);
     if (!change || typeof change !== 'object' || Object.keys(change).some(key => key !== 'id')) throw new ImageError('Send the image.');
@@ -1104,7 +1113,7 @@ export function createStudioServer(options = {}) {
     }
     if (path !== '/studio/api/my-connections') return json(res, 404, { error: 'This editor endpoint does not exist.' });
     if (!change || typeof change !== 'object' || Object.keys(change).some(key => !CONNECTION_KEYS.includes(key))) throw new ConnectionError('Send a connection change.');
-    if (change.action === 'add') return json(res, 200, { connection: publicConnection(await mine.add(change)) });
+    if (change.action === 'add') return json(res, 200, { connection: publicConnection(await mine.add(change, { by: current.user.username })) });
     if (change.action === 'update') return json(res, 200, { connection: publicConnection(await mine.update(change.id, change)) });
     // Dashboards that use it keep their own copy.
     if (change.action === 'delete') { await mine.remove(change.id); return json(res, 200, { removed: true }); }
@@ -1195,7 +1204,7 @@ export function createStudioServer(options = {}) {
       return widget;
     };
     if (action === 'add') {
-      const entry = await target.add({ kind, name: change.name, ...(kind === 'look' ? { look: change.look } : { widget: await widgetOf() }) });
+      const entry = await target.add({ kind, name: change.name, ...(kind === 'look' ? { look: change.look } : { widget: await widgetOf() }) }, { by: current?.user?.username });
       return json(res, 200, { entry: publicEntry(entry, change.scope) });
     }
     const existing = await target.read(change.id);
@@ -1379,6 +1388,17 @@ export function createStudioServer(options = {}) {
         }
         return json(res, 400, { error: 'Unknown trusted certificate action.', code: 'INVALID_TRUST_ACTION' });
       }
+      // Saved items for everyone (server/saved-items.mjs), for administrators.
+      // Renaming or deleting someone else's needs a recent sign-in.
+      if (path === '/studio/api/saved-items') {
+        if (!isAdmin) return forbidden(res, 'Only administrators can see everyone’s saved items.');
+        if (req.method === 'GET') return json(res, 200, await savedItems.all());
+        if (req.method !== 'POST') return json(res, 405, { error: 'Use GET or POST for saved items.' });
+        if (auth && !current.fresh()) return json(res, 401, { error: 'Confirm it’s you to continue.', code: 'REAUTH_REQUIRED' });
+        const change = await readBody(req, 8 * 1024);
+        if (!change || typeof change !== 'object' || Object.keys(change).some(key => !['action', 'place', 'kind', 'id', 'name'].includes(key))) throw new SavedItemsError('Send a saved item change.');
+        return json(res, 200, await savedItems.changeAny(change));
+      }
       // Full backups (server/backups.mjs), for administrators. Everything but
       // the list needs a recent sign-in: a backup holds every secret Studio has.
       if (path === '/studio/api/backups' || path.startsWith('/studio/api/backups/')) {
@@ -1473,6 +1493,8 @@ export function createStudioServer(options = {}) {
         const language = viewerLanguage((await personal.forUser(current.user.id).preferences.read()).language);
         if (language) req.studioLanguage = language;
       }
+      // Who saves an uploaded image or a connection (Saved items shows it).
+      if (auth && current?.user) req.studioActor = current.user.username;
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
       if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);

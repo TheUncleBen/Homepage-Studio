@@ -37,6 +37,7 @@ export class LibraryError extends Error {
   }
 }
 const fail = (message, code, status) => { throw new LibraryError(message, code, status); };
+export const savedBy = (by) => (typeof by === 'string' && by.trim() ? by.trim().slice(0, 120) : undefined);
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export function validName(value, what = 'it') {
@@ -92,7 +93,7 @@ export function validWidget(value) {
 // What a browser sees of an entry: a widget's name and type only, never its
 // settings; a look in full (it holds no secrets).
 export function publicEntry(entry, scope) {
-  const base = { id: entry.id, kind: entry.kind, name: entry.name, scope, updatedAt: entry.updatedAt };
+  const base = { id: entry.id, kind: entry.kind, name: entry.name, scope, updatedAt: entry.updatedAt, ...(entry.savedBy ? { savedBy: entry.savedBy } : {}) };
   if (entry.kind === 'look') return { ...base, look: entry.look };
   return { ...base, widgetKind: entry.widget.kind, type: entry.widget.type };
 }
@@ -159,7 +160,8 @@ export function createLibrary({ dir, file = LIBRARY_FILE, looks = true }) {
     list: () => serial(() => readFile(path)),
     // Full entries, secrets included: only for placing on a dashboard.
     read: (id) => serial(async () => find(await readFile(path), id)),
-    add: (input) => serial(async () => {
+    // `by`: who saved it, shown in Administration › Saved items.
+    add: (input, { by } = {}) => serial(async () => {
       const list = await readFile(path);
       const kind = input?.kind;
       const limit = kind === 'look' ? MAX_PERSONAL_LOOKS : MAX_SAVED_WIDGETS;
@@ -167,7 +169,7 @@ export function createLibrary({ dir, file = LIBRARY_FILE, looks = true }) {
       const name = validName(input?.name, `the saved ${kind === 'look' ? 'look' : 'widget'}`);
       const value = content(kind, input);
       nameFree(list, kind, name);
-      const entry = { id: randomBytes(8).toString('hex'), kind, name, ...value, updatedAt: new Date().toISOString() };
+      const entry = { id: randomBytes(8).toString('hex'), kind, name, ...value, updatedAt: new Date().toISOString(), ...(savedBy(by) ? { savedBy: savedBy(by) } : {}) };
       await writeFile(dir, path, [...list, entry]);
       return entry;
     }),

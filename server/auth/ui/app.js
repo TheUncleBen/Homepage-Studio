@@ -904,6 +904,8 @@
     if (params.get('error')) say(message, ERRORS[params.get('error')] ?? "That didn't complete. Try again.");
     if (params.get('link') === 'confirm' && !view.pendingLink) say(message, 'That link request expired. Start again below.');
     if (params.has('linked') || params.has('error') || params.has('recovered') || params.has('confirmed') || params.has('link')) history.replaceState(null, '', location.pathname);
+    // Built once, so redrawing the page keeps its list and filter.
+    const savedSection = savedItemsView({ title: 'Saved', info: 'What you keep for yourself (Just me): saved widgets, looks, connections, logos and backgrounds. Dashboards that use a copy keep it when you delete yours.', load: () => api('account/saved'), change: body => api('account/saved', body) });
     function draw() {
       const user = view.user;
       const factors = user.factors;
@@ -916,7 +918,7 @@
       ];
       if (view.pendingLink) parts.push(linkConfirmSection(view.pendingLink));
       if (view.recovery) parts.push(h('div', { class: 'notice warn', text: 'You signed in with a command-line recovery link. This session ends when you close the browser. Add a passkey or authenticator app now if you lost yours.' }));
-      parts.push(profileSection(user), defaultDashboardSection(user), preferencesSection());
+      parts.push(profileSection(user), defaultDashboardSection(user), preferencesSection(), savedSection);
       if (local) parts.push(securitySection(user, factors), passkeySection(factors));
       if (view.oidc) parts.push(linkSection(user));
       parts.push(sessionsSection(), policySection());
@@ -1478,11 +1480,69 @@
     return holder;
   }
 
+  // Saved items (server/saved-items.mjs): My account › Saved for your own,
+  // Administration › Saved items for everyone's. A filter by kind, then one
+  // row per item; tapping it opens rename and delete (owner T8, 6 Nov 2026).
+  const SAVED_KINDS = [['widget', 'Widgets', 'grid'], ['look', 'Looks', 'palette'], ['connection', 'Connections', 'key'], ['logo', 'Logos', 'layout'], ['background', 'Backgrounds', 'layout']];
+  const SAVED_ONE = { widget: 'saved widget', look: 'saved look', connection: 'saved connection', logo: 'logo', background: 'background' };
+  function savedItemsView({ title, info, load, change, admin = false }) {
+    const holder = h('div', { class: 'stack' });
+    const message = notice();
+    let items = null;
+    let filter = 'all';
+    async function refresh(work, success) {
+      try { items = (await work()).items; draw(); if (success) say(message, success, 'ok'); }
+      catch (error) { failure(message, error); }
+    }
+    const where = item => admin ? [item.place.type === 'person' ? `${item.owner}’s, Just me` : item.place.type === 'everyone' ? 'Everyone' : item.place.name, item.place.type !== 'person' && item.owner ? `saved by ${item.owner}` : null].filter(Boolean).join(' · ') : null;
+    const used = item => Array.isArray(item.usedOn) ? (item.usedOn.length ? `Copied to ${item.usedOn.join(', ')}` : 'Not used on a dashboard') : null;
+    const detailOf = item => [item.detail, where(item), used(item)].filter(Boolean).join(' · ');
+    const target = item => ({ kind: item.kind, id: item.id, ...(admin ? { place: item.place.type === 'everyone' ? { type: 'everyone' } : { type: item.place.type, id: item.place.id } } : {}) });
+    function manage(item) {
+      const one = SAVED_ONE[item.kind];
+      openDialog(item.name, close => {
+        const box = notice();
+        const canChange = !admin || item.canChange;
+        const name = h('input', { type: 'text', maxlength: 80, value: item.name, disabled: !canChange });
+        const save = h('button', { type: 'submit', class: 'primary', text: 'Save name', hidden: true });
+        name.addEventListener('input', () => { save.hidden = !name.value.trim() || name.value.trim() === item.name; });
+        const copied = ['connection', 'logo', 'background'].includes(item.kind);
+        const remove = actionRow(`Delete this ${one}`, { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog(`Delete ${item.name}?`, copied ? 'Dashboards that use a copy of it keep theirs.' : item.kind === 'widget' ? 'Widgets already placed from it stay on their dashboards.' : 'Widgets that use this look keep it.', 'Delete', () => refresh(() => change({ action: 'delete', ...target(item) }), `${item.name} is deleted.`)); } });
+        const form = h('form', { class: 'stack' },
+          group({}, row('Name', name), item.detail ? row(item.kind === 'connection' ? 'Address' : item.kind === 'widget' ? 'Type' : 'Size', value(item.detail)) : null, admin ? row('Kept', value(where(item))) : null, used(item) ? row('Used', value(used(item))) : null, item.updatedAt ? row('Saved', value(shortDate(item.updatedAt))) : null),
+          canChange ? group({}, remove) : h('p', { class: 'muted', text: 'Manage this dashboard’s connections and images in its Dashboard settings, where Studio checks which widgets use them first.' }),
+          box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Done' }), save));
+        form.addEventListener('submit', event => {
+          event.preventDefault();
+          busy(save, 'Saving…', async () => {
+            try { items = (await change({ action: 'rename', name: name.value.trim(), ...target(item) })).items; close(); draw(); say(message, 'Renamed.', 'ok'); }
+            catch (error) { failure(box, error); }
+          });
+        });
+        return form;
+      });
+    }
+    function draw() {
+      const present = SAVED_KINDS.filter(([kind]) => items.some(item => item.kind === kind));
+      if (filter !== 'all' && !present.some(([kind]) => kind === filter)) filter = 'all';
+      const shown = items.filter(item => filter === 'all' || item.kind === filter);
+      const iconOf = kind => SAVED_KINDS.find(entry => entry[0] === kind)?.[2] ?? 'grid';
+      put(holder, message,
+        present.length > 1 ? segmented({ label: 'Show', value: filter, options: [['all', 'All'], ...present.map(([kind, label]) => [kind, label])], onChange: next => { filter = next; draw(); } }) : null,
+        group({ title, aside: items.length ? String(items.length) : null, info },
+          shown.length ? shown.map(item => navRow({ leading: icon(iconOf(item.kind), 18), title: item.name, badges: [badge(SAVED_KINDS.find(entry => entry[0] === item.kind)?.[1].replace(/s$/, '') ?? '')], detail: detailOf(item), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: admin ? 'Nobody has saved anything yet.' : 'Nothing saved yet. Widgets, looks, connections and images you keep for yourself in the editor appear here.' })));
+    }
+    put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
+    refresh(load);
+    return holder;
+  }
+  const savedItemsPanel = () => savedItemsView({ title: 'Saved items', admin: true, info: 'Everything people saved: their own (Just me), each dashboard’s and Everyone’s, with who saved it. Keys are never shown.', load: () => call('/studio/api/saved-items'), change: body => call('/studio/api/saved-items', body) });
+
   async function adminPage() {
     // With sign-in off, Administration only holds the dashboards' default look.
     const overview = await call('/studio/api/overview');
     if (!overview.authEnabled) {
-      render(...pageChrome('/studio/admin', null, h('div', { class: 'admin-plain' }, h('h1', { text: 'Administration' }), await platformAppearance(), trustedPanel(), backupsPanel())));
+      render(...pageChrome('/studio/admin', null, h('div', { class: 'admin-plain' }, h('h1', { text: 'Administration' }), await platformAppearance(), savedItemsPanel(), trustedPanel(), backupsPanel())));
       return;
     }
     let view = await api('admin/overview');
@@ -1492,7 +1552,7 @@
     // The sections, as a list down the side like macOS System Settings (owner
     // decision, 26 Oct 2026). On a phone the page opens on that list, like iOS
     // Settings: tapping a section opens it, and Back returns to the list.
-    const tabs = [['people', 'People', 'user'], ['groups', 'Groups', 'people'], ['access', 'Dashboard access', 'grid'], ['policies', 'Session policies', 'clock'], ['sign-in', 'Sign-in settings', 'lock'], ['appearance', 'Appearance', 'palette'], ['certificates', 'Trusted certificates', 'key'], ['backups', 'Backups', 'archive'], ['activity', 'Activity', 'shield']];
+    const tabs = [['people', 'People', 'user'], ['groups', 'Groups', 'people'], ['access', 'Dashboard access', 'grid'], ['policies', 'Session policies', 'clock'], ['sign-in', 'Sign-in settings', 'lock'], ['appearance', 'Appearance', 'palette'], ['saved', 'Saved items', 'grid'], ['certificates', 'Trusted certificates', 'key'], ['backups', 'Backups', 'archive'], ['activity', 'Activity', 'shield']];
     const hashed = () => tabs.some(([key]) => key === location.hash.slice(1)) ? location.hash.slice(1) : null;
     let tab = hashed() ?? 'people';
     const narrow = window.matchMedia('(max-width: 760px)');
@@ -1555,7 +1615,7 @@
 
     function drawPanel() {
       say(message, '');
-      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, appearance: appearanceTab, certificates: trustedPanel, backups: backupsPanel, activity: activityTab };
+      const builders = { people: peopleTab, groups: groupsTab, access: accessTab, policies: policiesTab, 'sign-in': signInTab, appearance: appearanceTab, saved: savedItemsPanel, certificates: trustedPanel, backups: backupsPanel, activity: activityTab };
       put(panel, ...[].concat(builders[tab]()));
     }
 
