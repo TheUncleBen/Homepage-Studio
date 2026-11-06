@@ -34,15 +34,18 @@ export async function siteMonitor(req, res) {
 
   try {
     let startTime = performance.now();
+    // No cookies: the widget's own requests may have collected a session for
+    // this address, and a status check must not ride on it.
     let [status, , , headers] = await httpProxy(monitorURL, {
       method: "HEAD",
+      cookieJar: false,
     });
     let endTime = performance.now();
 
     if (status > 403) {
       // try one more time as a GET in case HEAD is rejected for whatever reason
       startTime = performance.now();
-      [status, , , headers] = await httpProxy(monitorURL);
+      [status, , , headers] = await httpProxy(monitorURL, { cookieJar: false });
       endTime = performance.now();
     }
 
