@@ -7,6 +7,7 @@ import { resolvedBehaviour, resolvedLook, widgetFields } from "./card-look";
 import ConfigForm, { LINK_FIELDS, SERVICE_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
+import { isFiller } from "./fillers";
 import {
   gridColumns,
   mergePage,
@@ -222,6 +223,9 @@ export function duplicateEntry(panel, state, catalog) {
   };
 }
 
+// Studio's fillers have no app logo; each has its own symbol.
+const FILLER_ICONS = { heading: "heading", note: "note", picture: "image", spacer: "maximize" };
+
 const ENDPOINT = {
   service: "service",
   serviceWidget: "service-widget",
@@ -416,7 +420,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, in
     ...(catalog.info || []).map((item) => ({
       ...item,
       kind: "informationWidget",
-      icon: "clock",
+      icon: FILLER_ICONS[item.type] || "clock",
     })),
     ...(catalog.service || []).map((item) => ({
       ...item,
@@ -443,6 +447,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, in
   // The app's own logo from the bundled set, when one matches its name.
   const logoOf = (entry) => {
     if (!logos || (entry.kind !== "serviceWidget" && entry.kind !== "informationWidget")) return null;
+    if (entry.kind === "informationWidget" && isFiller(entry.type)) return null;
     const keys = [entry.type, entry.name].map((text) =>
       String(text || "")
         .toLowerCase()
@@ -972,7 +977,10 @@ export default function ContentEditor({
       ? { name: name || boardPanel?.title, href: draft.href, description: draft.description, icon: draft.icon }
       : kind === "serviceWidget"
         ? { icon: service.icon, description: service.description, ...(draftFields ? { fields: draftFields } : {}) }
-        : null;
+        : // Studio's fillers fetch nothing, so their text and picture show as typed.
+          kind === "informationWidget" && isFiller(source?.type || entry?.type)
+          ? { options: draft }
+          : null;
   const liveKey = docked && previewPanel && onLiveDraft ? JSON.stringify([previewPanel, previewOverride]) : null;
   return (
     <form
@@ -1207,11 +1215,19 @@ export default function ContentEditor({
               )}
               {guided && (
                 <Section
-                  title={guideName ? `Setting up ${guideName}` : "Setting it up"}
+                  title={
+                    selectedEntry?.documentationStatus === "studio"
+                      ? `About ${guideName}`
+                      : guideName
+                        ? `Setting up ${guideName}`
+                        : "Setting it up"
+                  }
                   detail={
-                    selectedEntry?.secrets?.length
-                      ? `What ${guideName || "it"} needs and how to name its secrets`
-                      : `What ${guideName || "it"} needs`
+                    selectedEntry?.documentationStatus === "studio"
+                      ? "What it's for"
+                      : selectedEntry?.secrets?.length
+                        ? `What ${guideName || "it"} needs and how to name its secrets`
+                        : `What ${guideName || "it"} needs`
                   }
                   {...sectionProps("guide")}
                 >

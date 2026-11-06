@@ -28,6 +28,8 @@ export default function StudioIcon({ name, size = 18, ...props }) {
     redo: "M20 10H10a6 6 0 0 0 0 12M20 10l-5-5M20 10l-5 5",
     home: "M3 11l9-7 9 7M5 10v10h14V10",
     image: "M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5M15 9h.01",
+    heading: "M6 4v16M18 4v16M6 12h12",
+    note: "M5 4h14v16H5zM8 9h8M8 13h8M8 17h5",
     arrowLeft: "M19 12H5M11 6l-6 6 6 6",
     arrowRight: "M5 12h14M13 6l6 6-6 6",
     move: "M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3",

@@ -44,9 +44,9 @@ function settingNotes(field) {
 }
 
 export function widgetPage(kind, widget) {
-  const lines = [`# ${widget.name}`, '', ...(widget.description ? [widget.description, ''] : []), `${KIND[kind]} · type ${code(widget.type)} · [Homepage documentation](${widget.docs})`, ''];
+  const lines = [`# ${widget.name}`, '', ...(widget.description ? [widget.description, ''] : []), `${KIND[kind]} · type ${code(widget.type)} · ${widget.documentationStatus === 'studio' ? 'Made by Studio' : `[Homepage documentation](${widget.docs})`}`, ''];
   lines.push('[All widgets](README.md)', '');
-  if (widget.documentationStatus !== 'documented-example') {
+  if (!['documented-example', 'studio'].includes(widget.documentationStatus)) {
     lines.push('> **Set up in YAML.** Homepage has no complete documented example for this widget, so Studio shows no form for it. Add it, then write its options in the dialog\'s YAML view.', '');
   }
   if (widget.setupNotes?.length || widget.guide?.length) {
@@ -68,7 +68,7 @@ export function widgetPage(kind, widget) {
     lines.push('', `For a second ${widget.name} with different credentials, add a suffix such as \`_2\` to each name.`, '');
   }
   if (widget.examples?.length) {
-    lines.push('## Examples', '', 'From Homepage\'s documentation. Values are examples, not defaults.', '');
+    lines.push('## Examples', '', widget.documentationStatus === 'studio' ? 'As Studio writes it in widgets.yaml. Values are examples, not defaults.' : 'From Homepage\'s documentation. Values are examples, not defaults.', '');
     for (const example of widget.examples) lines.push('```yaml', example, '```', '');
   }
   lines.push('## Source', '');
@@ -89,7 +89,7 @@ export function indexPage(catalog) {
     for (const widget of catalog[kind]) {
       const keys = (widget.fields || []).filter(field => field.key !== 'type');
       const needs = keys.filter(field => ['url', 'key', 'username', 'password', 'token'].includes(field.key)).map(field => field.label);
-      lines.push(`| [${cell(widget.name)}](${pageName(kind, widget.type)}) | ${cell(needs.join(', ') || '—')} | ${widget.documentationStatus === 'documented-example' ? keys.length : 'YAML only'} |`);
+      lines.push(`| [${cell(widget.name)}](${pageName(kind, widget.type)}) | ${cell(needs.join(', ') || '—')} | ${['documented-example', 'studio'].includes(widget.documentationStatus) ? keys.length : 'YAML only'} |`);
     }
     lines.push('');
   }

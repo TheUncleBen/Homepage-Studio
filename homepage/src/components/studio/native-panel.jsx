@@ -2,6 +2,7 @@ import { memo, useContext } from "react";
 
 import CardDateTime from "./card-datetime";
 import { CardLookContext } from "./card-look";
+import Filler, { isFiller } from "./fillers";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import { usePreferences, withDisplayPreferences } from "./preferences";
 import { BookmarkCard, ServiceCard, WidgetCard } from "./studio-card";
@@ -35,7 +36,9 @@ export default memo(function NativePanel({ panel, data, override }) {
           <WidgetCard service={resolved.service} widget={resolved.widget} groupName={resolved.groupName} />
         )}
         {resolved.kind === "informationWidget" &&
-          (resolved.widget.type === "datetime" ? (
+          (isFiller(resolved.widget.type) ? (
+            <Filler widget={resolved.widget} />
+          ) : resolved.widget.type === "datetime" ? (
             <CardDateTime options={withDisplayPreferences(resolved.widget, preferences).options ?? {}} />
           ) : (
             <InformationWidget widget={withDisplayPreferences(resolved.widget, preferences)} style="clean" />
@@ -51,9 +54,12 @@ export default memo(function NativePanel({ panel, data, override }) {
         </ul>
       )}
       {resolved.kind === "serviceWidget" && <ServiceWidget widget={resolved.widget} service={resolved.service} />}
-      {resolved.kind === "informationWidget" && (
-        <InformationWidget widget={withDisplayPreferences(resolved.widget, preferences)} style="clean" />
-      )}
+      {resolved.kind === "informationWidget" &&
+        (isFiller(resolved.widget.type) ? (
+          <Filler widget={resolved.widget} />
+        ) : (
+          <InformationWidget widget={withDisplayPreferences(resolved.widget, preferences)} style="clean" />
+        ))}
       {resolved.kind === "bookmark" && (
         <ul className="studio-native-list">
           <BookmarkItem bookmark={resolved.bookmark} />
@@ -79,5 +85,11 @@ function withOverride(resolved, override) {
       widget: fields ? { ...resolved.widget, fields } : resolved.widget,
     };
   }
+  // A Studio filler: its unsaved settings (text, size, picture).
+  if (resolved.kind === "informationWidget" && override.options)
+    return {
+      ...resolved,
+      widget: { ...resolved.widget, options: { ...override.options, index: resolved.widget.options?.index } },
+    };
   return resolved;
 }

@@ -73,6 +73,38 @@ function defineField(item, key, types, metadata = {}) {
   return field;
 }
 
+const TEXT_SIZES = [['xs', 'Extra small'], ['sm', 'Small'], ['md', 'Medium'], ['lg', 'Large'], ['xl', 'Extra large'], ['2xl', '2× large'], ['3xl', '3× large'], ['4xl', '4× large']];
+
+// Studio's own fillers: their settings, and what the dialog says about them.
+// Nothing here comes from Homepage's documentation.
+export function studioFillers() {
+  const item = (type, name, fields, guide, example) => ({
+    type, name, docs: '', fields, defaults: {}, example, examples: [example],
+    documentationStatus: 'studio', coverage: 'Made by Studio. Every setting it has is in the dialog.',
+    sources: [{ path: 'homepage/src/components/studio/fillers.jsx', url: 'https://github.com/theuncleben/homepage-studio/blob/main/homepage/src/components/studio/fillers.jsx' }],
+    guide: [{ type: 'p', text: guide }],
+  });
+  const field = (key, label, metadata = {}) => ({ key, label, type: 'string', valueTypes: ['string'], exampleValue: null, sensitive: false, ...metadata });
+  const size = (fallback) => field('text_size', 'Text size', { choices: TEXT_SIZES.map(([value]) => value), defaultChoice: fallback, choiceLabels: Object.fromEntries(TEXT_SIZES) });
+  return [
+    item('heading', 'Heading', [field('text', 'Text', { exampleValue: 'Media' }), size('xl')],
+      'A title for a row of widgets. For a title that stands on the page, without a card, set Edge to None in Look. Align in Look centres it.',
+      '- heading:\n    text: Media\n    text_size: xl'),
+    item('note', 'Note', [field('text', 'Text', { editor: 'multiline', exampleValue: 'Guest Wi-Fi: Garden\nhttps://wiki.example.org', description: 'Plain text. Line breaks are kept, and web addresses (https://…) become links. Nothing in it is read as HTML.' }), size('sm')],
+      'Text you write yourself, such as a reminder, the guest Wi-Fi or on-call numbers. Everyone who can see the dashboard can read it, so keep passwords and keys out of it.',
+      '- note:\n    text: |\n      Guest Wi-Fi: Garden\n      https://wiki.example.org'),
+    item('picture', 'Picture', [
+      field('image', 'Picture', { editor: 'picture', description: 'One of this dashboard’s backgrounds. Upload a new one here.' }),
+      field('fit', 'Fit', { choices: ['fill', 'fit'], defaultChoice: 'fill', choiceLabels: { fill: 'Fill the card', fit: 'Show it whole' } }),
+      field('alt', 'Description', { description: 'What the picture shows, for screen readers. Leave empty for a decorative picture.' }),
+    ], 'One picture, from the same library as card and page backgrounds. Removing it from the library asks first while this widget uses it.',
+      '- picture:\n    image: /studio/api/images/0123456789abcdef01234567\n    fit: fill'),
+    item('spacer', 'Spacer', [],
+      'Holds space so the widgets around it stay where you put them. It is only visible while editing. Use Show on to keep it in one layout, such as Desktop.',
+      '- spacer: {}'),
+  ];
+}
+
 // Only literal documented field lists are collected. Multiple or qualified
 // lists keep their contexts; they are never flattened into a universal enum.
 export function documentedFields(markdown) {
@@ -202,7 +234,7 @@ function applyReviewedCorrections(byType) {
   // Text size is a choice of the sizes the widget's code knows (its docs leave
   // out lg, the default). Format gets the Date & Time editor: what the time
   // and the date show, with a live example; other Intl options stay in YAML.
-  const sizes = [['xs', 'Extra small'], ['sm', 'Small'], ['md', 'Medium'], ['lg', 'Large'], ['xl', 'Extra large'], ['2xl', '2× large'], ['3xl', '3× large'], ['4xl', '4× large']];
+  const sizes = TEXT_SIZES;
   set('info', 'datetime', 'text_size', ['string'], { label: 'Text size', choices: sizes.map(([value]) => value), defaultChoice: 'lg', choiceLabels: Object.fromEntries(sizes) });
   set('info', 'datetime', 'format', ['object'], { label: 'Shows', editor: 'dateTimeFormat', description: 'What the clock writes. More Intl.DateTimeFormat options, such as hour or weekday on their own, can be set in YAML.' });
   set('info', 'glances', 'disk', ['string', 'array'], { description: 'One mount path or a list of mount paths reported by Glances.' });
@@ -374,6 +406,11 @@ export async function buildCatalog(sourceDirectory) {
   }
   const weather = byType.info.get('weatherapi');
   if (weather) { weather.name = 'WeatherAPI'; weather.documentationStatus = 'registered-undocumented'; weather.setupNotes = ['A distinct native implementation exists in the source, but the pinned documentation has no dedicated WeatherAPI configuration page. Use advanced configuration with source review; this entry is not evidence of live-tested support.']; }
+
+  // Studio's own information widgets (U6, owner feedback T8 on 65f724c):
+  // fillers where Homepage has nothing. Studio draws them
+  // (homepage/src/components/studio/fillers.jsx); Homepage doesn't know them.
+  for (const item of studioFillers()) byType.info.set(item.type, item);
 
   // Product names as their makers write them (upstream page titles vary).
   const NAMES = { adguard: 'AdGuard Home', pihole: 'Pi-hole', truenas: 'TrueNAS', opnsense: 'OPNsense', gitlab: 'GitLab', mikrotik: 'MikroTik', seerr: 'Seerr', unifi: 'UniFi Controller', unifi_console: 'UniFi Controller', healthchecks: 'Healthchecks', weatherapi: 'WeatherAPI', openwrt: 'OpenWrt', nzbget: 'NZBGet', calibreweb: 'Calibre-Web', coinmarketcap: 'CoinMarketCap', crowdsec: 'CrowdSec', pyload: 'pyLoad' };

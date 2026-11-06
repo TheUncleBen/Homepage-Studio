@@ -2336,7 +2336,8 @@ body {
   grid-template-columns: minmax(0, 1fr) 32px;
 }
 .studio-pair input,
-.studio-json-input {
+.studio-json-input,
+.studio-textarea-input {
   width: 100%;
   min-height: 40px;
   padding: 8px 10px;
@@ -5135,6 +5136,138 @@ svg.studio-chart-gauge {
 }
 .studio-datetime-4xl {
   font-size: 44px;
+}
+/* Studio's fillers (fillers.jsx). */
+.studio-filler {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.studio-filler-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.studio-panel[data-align="centre"] .studio-filler-text {
+  text-align: center;
+}
+/* A heading shrinks to fit a one-row card rather than being cut off. */
+.studio-filler-heading {
+  height: 100%;
+  container-type: size;
+}
+.studio-filler-heading .studio-filler-text {
+  font-size: min(1em, 80cqh);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.studio-native-content:has(> .studio-filler-heading),
+.studio-native-content:has(> .studio-filler-spacer) {
+  padding-block: 4px;
+}
+.studio-filler-note {
+  justify-content: flex-start;
+}
+.studio-filler-note .studio-filler-text {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+.studio-filler-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 2px;
+}
+.studio-filler-note a:hover {
+  text-decoration-color: currentColor;
+}
+.studio-filler-note-xs {
+  font-size: 12px;
+}
+.studio-filler-note-sm {
+  font-size: 14px;
+}
+.studio-filler-note-md {
+  font-size: 15px;
+}
+.studio-filler-note-lg {
+  font-size: 17px;
+}
+.studio-filler-note-xl {
+  font-size: 20px;
+}
+.studio-filler-note-2xl {
+  font-size: 24px;
+}
+.studio-filler-note-3xl {
+  font-size: 28px;
+}
+.studio-filler-note-4xl {
+  font-size: 32px;
+}
+.studio-textarea-input {
+  min-height: 110px;
+  resize: vertical;
+  line-height: 1.45;
+}
+/* A picture fills its card, edge to edge. */
+.studio-native-content:has(> .studio-filler-picture) {
+  padding: 0;
+  overflow: hidden;
+}
+.studio-filler-picture {
+  height: 100%;
+}
+.studio-filler-picture img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.studio-filler-picture-empty {
+  align-items: center;
+  padding: 12px;
+  color: var(--card-muted-text);
+  font-size: 13px;
+  text-align: center;
+}
+.studio-filler-picture-empty p {
+  margin: 0;
+}
+/* A heading with no edge and the plain fill stands on the page itself. */
+.studio-panel[data-edge="none"][data-fill="plain"]:has(.studio-filler-heading) {
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+}
+.studio-edit-mode .studio-panel[data-edge="none"][data-fill="plain"]:has(.studio-filler-heading) {
+  border: 1px dashed var(--studio-line);
+}
+/* A spacer is empty space on the page; while editing it shows where it is. */
+.studio-filler-spacer > span {
+  color: var(--card-muted-text);
+  font-size: 12px;
+  text-align: center;
+}
+.studio-app:not(.studio-edit-mode) .studio-panel:has(.studio-filler-spacer) {
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+}
+.studio-app:not(.studio-edit-mode)
+  .studio-panel:has(.studio-filler-spacer)
+  > .studio-panel-slide
+  > :not(.studio-native-content),
+.studio-app:not(.studio-edit-mode) .studio-filler-spacer > span {
+  display: none;
+}
+.studio-edit-mode .studio-panel:has(.studio-filler-spacer) {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
 }
 /* Phone: a widget-dialog choice keeps its options on one line, sharing the
    width; a long option wraps inside its own button rather than pushing the

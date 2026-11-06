@@ -154,7 +154,7 @@ In the editor, **Widgets** opens *Add to your dashboard*. Search, or pick a tab:
 | --- | --- |
 | **All** | Everything below, in one list |
 | **Integrations** | One native service widget (Sonarr, Proxmox, AdGuard, ...), each with a line on what the app is and the values it shows |
-| **Information** | An information widget: date and time, greeting, weather, search, resources, stocks and the rest of Homepage's list |
+| **Information** | An information widget: date and time, greeting, weather, search, resources, stocks and the rest of Homepage's list, plus [Studio's fillers](#headings-notes-pictures-and-spacers) |
 | **Links** | A service tile (a link to an app, with Homepage's status check) or a bookmark (a compact link) |
 | **Saved** | Your [saved widgets](#saved-widgets) |
 
@@ -177,6 +177,18 @@ name, link and status check are edited with it.
 Information widgets are titled by their native name, numbered when you have
 more than one of a kind in configuration order: *Date & Time*, *Date & Time 2*.
 Adding a widget further down the list never renames the ones above it.
+
+### Headings, notes, pictures and spacers
+
+Four information widgets are Studio's own, for filling and grouping a board
+where Homepage has nothing. They need no app and fetch nothing.
+
+| Widget | What it does |
+| --- | --- |
+| **Heading** | A title for a row of widgets. With **Look › Edge › None** it stands on the page without a card; **Align** centres it. In a one-row card the text shrinks to fit. |
+| **Note** | Text you write yourself, on several lines: the guest Wi-Fi, on-call numbers, a reminder. Web addresses (`https://…`) become links that open in a new tab. It is plain text: nothing in it is read as HTML. Everyone who can see the dashboard can read it, so keep passwords and keys out of it. |
+| **Picture** | One picture from this dashboard's uploaded backgrounds, filling the card or shown whole, with a description for screen readers. Removing the picture from the library asks first while the widget uses it. |
+| **Spacer** | Empty space that keeps the widgets around it in place. It is invisible on the dashboard and dashed while you edit. With **Behaviour › Show on** it can hold space in one layout only. |
 
 ## Arranging the board
 

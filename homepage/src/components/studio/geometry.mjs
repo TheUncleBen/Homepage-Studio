@@ -29,6 +29,9 @@ export const PHONE_WIDTH = 560;
 export function panelMinimum(panel) {
   if (panel.kind === "service" || panel.kind === "bookmark") return { w: 5, h: 2 };
   if (panel.kind === "informationWidget") {
+    // Studio's fillers (fillers.jsx): a heading or spacer can be one row.
+    const filler = { heading: { w: 2, h: 1 }, spacer: { w: 1, h: 1 }, note: { w: 3, h: 2 }, picture: { w: 2, h: 2 } };
+    if (Object.hasOwn(filler, panel.nativeLocator?.type)) return filler[panel.nativeLocator.type];
     // Resources is one row of meters; its card is one grid row tall.
     if (["kubernetes", "longhorn"].includes(panel.nativeLocator?.type)) return { w: 8, h: 4 };
     return { w: ["resources", "search"].includes(panel.nativeLocator?.type) ? 8 : 5, h: 2 };
