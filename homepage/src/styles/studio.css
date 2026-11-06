@@ -5361,3 +5361,18 @@ svg.studio-chart-gauge {
   pointer-events: none;
   z-index: 2;
 }
+
+/* ---- Status address: derived or own, with Check now ---------------------- */
+.studio-status-address {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+.studio-status-address .studio-inline-actions {
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+.studio-status-address .studio-connection-result:empty {
+  display: none;
+}

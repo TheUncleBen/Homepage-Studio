@@ -186,6 +186,8 @@ function hostOf(value) {
 // What a widget's card takes from the entry it lives in: its link, status
 // check, logo and description (its name is the entry's name).
 const WIDGET_SERVICE_KEYS = ["href", "siteMonitor", "ping", "icon", "description"];
+// Check now in the Status setting: the card's own check, on the draft address.
+const statusCheckNow = (check, address) => studioRequest("/studio/api/connection-test", { status: { check, address } });
 function widgetService(config = {}) {
   return Object.fromEntries(
     WIDGET_SERVICE_KEYS.map((key) => [key, typeof config[key] === "string" ? config[key] : ""]),
@@ -812,14 +814,24 @@ export default function ContentEditor({
                 web: service.siteMonitor,
                 ping: service.ping,
                 href: service.href,
+                // Derived (T35): the Connection address, else the link.
+                fallback:
+                  /^https?:\/\//i.test(draft.url || "") || /^\{\{STUDIO_CONNECTION_/.test(draft.url || "")
+                    ? { address: draft.url, from: "Connection" }
+                    : service.href
+                      ? { address: service.href, from: "link" }
+                      : null,
                 onChange: (check, value) =>
                   setService({ ...service, [check === "ping" ? "ping" : "siteMonitor"]: value || "" }),
+                onCheck: statusCheckNow,
               }
             : kind === "service"
               ? {
                   web: typeof draft.siteMonitor === "string" ? draft.siteMonitor : "",
                   ping: typeof draft.ping === "string" ? draft.ping : "",
                   href: typeof draft.href === "string" ? draft.href : "",
+                  fallback: typeof draft.href === "string" && draft.href ? { address: draft.href, from: "link" } : null,
+                  onCheck: statusCheckNow,
                   onChange: (check, value) => {
                     const key = check === "ping" ? "ping" : "siteMonitor";
                     const next = { ...draft };

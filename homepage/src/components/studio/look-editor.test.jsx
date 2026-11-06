@@ -355,6 +355,35 @@ describe("status address", () => {
     renderEditor({ kind: "service", statusAddress: address, behaviour: { status: "ping" } });
     expect(screen.getByLabelText("Address").placeholder).toBe("nas.example.org");
   });
+
+  it("shows the Connection address as derived and checks it before saving", async () => {
+    const onCheck = vi.fn(async () => ({ ok: true, message: "Up · 42 ms" }));
+    const address = {
+      web: "",
+      ping: "",
+      href: "",
+      fallback: { address: "https://pf.example.org", from: "Connection" },
+      onChange: vi.fn(),
+      onCheck,
+    };
+    renderEditor({ kind: "serviceWidget", statusAddress: address });
+    expect(screen.getByLabelText("Address").placeholder).toBe("https://pf.example.org");
+    expect(screen.getByText("From the Connection")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+    expect(onCheck).toHaveBeenCalledWith("web", "https://pf.example.org");
+    expect(await screen.findByText("Up · 42 ms")).toBeTruthy();
+  });
+
+  it("never shows a saved connection's placeholder as text", () => {
+    const address = {
+      web: "",
+      ping: "",
+      fallback: { address: "{{STUDIO_CONNECTION_0123456789ABCDEF_URL}}", from: "Connection" },
+      onChange: vi.fn(),
+    };
+    renderEditor({ kind: "serviceWidget", statusAddress: address });
+    expect(screen.getByLabelText("Address").placeholder).toBe("The saved connection's address");
+  });
 });
 
 describe("exact colour", () => {

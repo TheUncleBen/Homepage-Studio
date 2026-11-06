@@ -1,10 +1,13 @@
 import { performance } from "perf_hooks";
 
+import { promise as ping } from "ping";
+
 import { serviceProxy } from "pages/api/services/proxy";
 import { withAuth } from "utils/auth";
 import { substituteEnvironmentVars } from "utils/config/config";
 import { connectionTest, connectionTestResult, TEST_GROUP } from "utils/config/connection-test.mjs";
 import { resolveWidgetConnection } from "utils/config/studio-connections.mjs";
+import { httpProxy } from "utils/proxy/http";
 import { captureResponse, fromController } from "utils/studio/internal";
 import widgets from "widgets/widgets";
 
@@ -27,9 +30,68 @@ export function firstEndpoint(definition) {
   return simple?.[0];
 }
 
+const shortMs = (ms) => (ms < 1 ? "<1 ms" : `${Math.round(ms)} ms`);
+
+// Check now, in the widget's Status setting (U8): the same check the card
+// runs (pages/api/siteMonitor.js, pages/api/ping.js) on the dialog's
+// address before it is saved. Answers with a plain result only.
+export async function statusCheck({ check, address }) {
+  // A saved connection's address, or a Docker secret / variable reference.
+  const typed = typeof address === "string" ? address.trim() : "";
+  // Secret files never go into an address that is being checked.
+  if (/HOMEPAGE_FILE_/.test(typed))
+    return { ok: false, kind: "address", message: "A secret file can't be part of a status address." };
+  const text = withReferences(resolveWidgetConnection({ url: typed }).url || typed);
+  let url = null;
+  try {
+    url = new URL(text);
+  } catch {
+    url = null;
+  }
+  if (check === "ping") {
+    const host = url ? url.hostname : text;
+    if (!host || !/^[A-Za-z0-9.:[\]-]{1,253}$/.test(host))
+      return { ok: false, kind: "address", message: "Enter a host name or address to ping." };
+    const answer = await ping.probe(host.replace(/^\[|\]$/g, ""));
+    const ms = Number(answer?.time);
+    return answer?.alive
+      ? { ok: true, kind: "up", message: Number.isFinite(ms) ? `Up · ${shortMs(ms)}` : "Up" }
+      : { ok: false, kind: "down", message: "Down · no answer to ping" };
+  }
+  if (!url || !["http:", "https:"].includes(url.protocol) || url.username || url.password)
+    return { ok: false, kind: "address", message: "Enter a web address that starts with http:// or https://." };
+  let started = performance.now();
+  let [status, , , headers] = await httpProxy(url.href, { method: "HEAD" });
+  let ms = performance.now() - started;
+  if (status > 403) {
+    started = performance.now();
+    [status, , , headers] = await httpProxy(url.href);
+    ms = performance.now() - started;
+  }
+  if (headers === null) return { ok: false, kind: "down", message: "Down · no answer" };
+  // As the card decides (utils/studio/status-check.js): a sign-in page is up.
+  return status <= 403
+    ? { ok: true, kind: "up", message: `Up · ${shortMs(ms)}` }
+    : { ok: false, kind: "down", message: `Down · answered ${status}` };
+}
+
 async function handler(req, res) {
   if (!fromController(req.headers["x-studio-internal"])) return res.status(404).end();
   if (req.method !== "POST") return res.status(405).end();
+  if (req.body?.status) {
+    let timer;
+    const answer = await Promise.race([
+      statusCheck(req.body.status).catch(() => ({ ok: false, kind: "down", message: "Down · the check failed" })),
+      new Promise((resolve) => {
+        timer = setTimeout(
+          () => resolve({ ok: false, kind: "down", message: "Down · no answer in time" }),
+          TEST_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    clearTimeout(timer);
+    return res.status(200).json(answer);
+  }
   const draft = req.body?.widget;
   if (!draft || typeof draft !== "object" || Array.isArray(draft) || typeof draft.type !== "string")
     return res.status(400).json({ error: "Send the widget to test." });

@@ -389,33 +389,75 @@ function SavedLooks({ saved = [], look, onApply, onChange, personal, usage, onUp
 // A row that only exists for the choice above it, drawn indented under it.
 // Where the status check goes: the service's site monitor address (web) or
 // ping host. Empty uses the service's own link.
+// The status address (T35, U8): empty means derived, from the widget's
+// Connection or its link, shown greyed; typing one overrides it. Check now
+// runs the card's own check on it before saving.
 function StatusAddress({ check, address }) {
   const id = useId();
+  const [result, setResult] = useState(null);
   const ping = check === "ping";
-  let host = "";
-  try {
-    host = address.href ? new URL(address.href).hostname : "";
-  } catch {
-    host = "";
+  const own = (ping ? address.ping : address.web) || "";
+  const derived = address.fallback?.address || address.href || "";
+  const from = address.fallback?.from || "link";
+  const saved = /^\{\{STUDIO_CONNECTION_/.test(derived);
+  let shown = derived;
+  if (saved) shown = "The saved connection's address";
+  else if (ping && derived) {
+    try {
+      shown = new URL(derived).hostname;
+    } catch {
+      shown = derived;
+    }
   }
+  const target = own || derived;
+  const run = async () => {
+    setResult({ busy: true });
+    try {
+      setResult(await address.onCheck(check, target));
+    } catch (failure) {
+      setResult({ ok: false, message: failure.message });
+    }
+  };
   return (
     <Row
       label="Address"
       htmlFor={id}
       info={
         ping
-          ? "The host to ping. Leave it empty to ping the host of the widget's link."
-          : "The address to check, often a health page. Leave it empty to check the widget's link."
+          ? "The host to ping. Left empty, it's the host of the widget's Connection address, or of its link."
+          : "The address to check, often a health page. Left empty, it's the widget's Connection address, or its link."
       }
     >
-      <input
-        id={id}
-        value={ping ? address.ping : address.web}
-        inputMode={ping ? "text" : "url"}
-        autoComplete="off"
-        placeholder={(ping ? host : address.href) || (ping ? "host.example.org" : "https://service.example.org/health")}
-        onChange={(event) => address.onChange(check, event.target.value.trim())}
-      />
+      <div className="studio-status-address">
+        <input
+          id={id}
+          value={ping ? address.ping : address.web}
+          inputMode={ping ? "text" : "url"}
+          autoComplete="off"
+          aria-describedby={`${id}-from`}
+          placeholder={shown || (ping ? "host.example.org" : "https://service.example.org/health")}
+          onChange={(event) => {
+            setResult(null);
+            address.onChange(check, event.target.value.trim());
+          }}
+        />
+        <div className="studio-inline-actions">
+          <span id={`${id}-from`} className="studio-muted">
+            {own ? "Your own address" : derived ? `From the ${from}` : "Nothing to check yet"}
+          </span>
+          {address.onCheck && target && (
+            <button type="button" className="studio-button studio-quiet" disabled={result?.busy} onClick={run}>
+              {result?.busy ? "Checking…" : "Check now"}
+            </button>
+          )}
+        </div>
+        <p
+          className={`studio-connection-result${result && !result.busy ? (result.ok ? " studio-ok" : " studio-failed") : ""}`}
+          role="status"
+        >
+          {result && !result.busy ? result.message : ""}
+        </p>
+      </div>
     </Row>
   );
 }

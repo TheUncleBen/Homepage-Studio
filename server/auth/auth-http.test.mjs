@@ -640,6 +640,14 @@ test('a dashboard logo can be changed by anyone who can arrange it, and only adm
   assert.equal(elsewhere.status, 200, elsewhere.text);
   assert.equal(elsewhere.json.ok, false);
   assert.match(elsewhere.json.message, /only sent to its own connection/);
+  // Check now (status address): administrators only, one address, never a
+  // saved key or password.
+  assert.equal((await post('/home/studio/api/connection-test', { status: { check: 'web', address: 'https://a.example.org' } }, { cookie: member.cookie })).status, 403);
+  assert.equal((await post('/home/studio/api/connection-test', { status: { check: 'dns', address: 'https://a.example.org' } }, { cookie: admin.cookie })).status, 400);
+  assert.equal((await post('/home/studio/api/connection-test', { status: { check: 'web', address: 'x', extra: 1 } }, { cookie: admin.cookie })).status, 400);
+  const keyCheck = await post('/home/studio/api/connection-test', { status: { check: 'web', address: 'https://e.example.org/{{STUDIO_CONNECTION_0123456789ABCDEF_KEY}}' } }, { cookie: admin.cookie });
+  assert.equal(keyCheck.json.ok, false);
+  assert.match(keyCheck.json.message, /Only a saved connection’s address/);
   const mineAdded = await post('/home/studio/api/my-connections', { action: 'add', name: 'Media server', url: 'https://media.example.org', key: 'personal-key' }, { cookie: admin.cookie });
   assert.equal(mineAdded.status, 200, mineAdded.text);
   assert.doesNotMatch(mineAdded.text, /personal-key/);

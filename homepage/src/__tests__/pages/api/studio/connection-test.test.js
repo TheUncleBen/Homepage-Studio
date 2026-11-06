@@ -8,6 +8,9 @@ import { connectionTest, connectionTestResult, TEST_GROUP } from "utils/config/c
 
 const { serviceProxy } = vi.hoisted(() => ({ serviceProxy: vi.fn() }));
 vi.mock("pages/api/services/proxy", () => ({ serviceProxy }));
+const { httpProxy, probe } = vi.hoisted(() => ({ httpProxy: vi.fn(), probe: vi.fn() }));
+vi.mock("utils/proxy/http", () => ({ httpProxy }));
+vi.mock("ping", () => ({ promise: { probe } }));
 vi.mock("widgets/widgets", () => ({
   default: {
     sonarr: {
@@ -20,7 +23,7 @@ vi.mock("widgets/widgets", () => ({
   },
 }));
 
-import handler, { firstEndpoint, withReferences } from "pages/api/studio/connection-test";
+import handler, { firstEndpoint, statusCheck, withReferences } from "pages/api/studio/connection-test";
 import { fromController } from "utils/studio/internal";
 
 function createRes() {
@@ -141,5 +144,42 @@ describe("Test connection results", () => {
       "Add the service address first.",
     );
     expect(connectionTestResult({ status: 200, body: { ok: 1 }, ms: 0.2 }).message).toBe("Connected in 1 ms.");
+  });
+});
+
+describe("Check now (status address before saving)", () => {
+  beforeEach(() => {
+    httpProxy.mockReset();
+    probe.mockReset();
+  });
+
+  it("answers up with the time, retrying a refused HEAD as GET like the card", async () => {
+    httpProxy.mockResolvedValueOnce([405, null, null, {}]).mockResolvedValueOnce([200, null, null, {}]);
+    const answer = await statusCheck({ check: "web", address: "https://health.example.org/ping" });
+    expect(httpProxy).toHaveBeenCalledTimes(2);
+    expect(answer.ok).toBe(true);
+    expect(answer.message).toMatch(/^Up · (<1|\d+) ms$/);
+  });
+
+  it("says down with the answer, or no answer", async () => {
+    httpProxy.mockResolvedValue([503, null, null, {}]);
+    expect((await statusCheck({ check: "web", address: "https://a.example.org" })).message).toBe("Down · answered 503");
+    httpProxy.mockResolvedValue([500, null, null, null]);
+    expect((await statusCheck({ check: "web", address: "https://a.example.org" })).message).toBe("Down · no answer");
+  });
+
+  it("pings the host of an address", async () => {
+    probe.mockResolvedValue({ alive: true, time: 0.3 });
+    expect((await statusCheck({ check: "ping", address: "https://nas.example.org:5001" })).message).toBe("Up · <1 ms");
+    expect(probe).toHaveBeenCalledWith("nas.example.org");
+  });
+
+  it("refuses addresses it shouldn't check", async () => {
+    for (const address of ["ftp://x.example.org", "https://user:pw@x.example.org", "not an address"])
+      expect((await statusCheck({ check: "web", address })).kind).toBe("address");
+    expect((await statusCheck({ check: "web", address: "https://x.example.org/{{HOMEPAGE_FILE_KEY}}" })).kind).toBe(
+      "address",
+    );
+    expect(httpProxy).not.toHaveBeenCalled();
   });
 });
