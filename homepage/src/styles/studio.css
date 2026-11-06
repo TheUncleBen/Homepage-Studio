@@ -3160,6 +3160,12 @@ body {
 .studio-status-pending .studio-status-dot {
   opacity: 0.4;
 }
+/* Maintenance and paused checks: a grey square, so it isn't read as up or down. */
+.studio-status-maintenance .studio-status-dot,
+.studio-status-paused .studio-status-dot {
+  border-radius: 2px;
+  background: var(--studio-muted);
+}
 /* A card whose check fails turns to the alert look by itself. */
 .studio-panel:has(.studio-card[data-alert]) {
   border-color: var(--studio-status-problem, #c4554d);
