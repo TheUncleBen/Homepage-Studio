@@ -1740,7 +1740,8 @@ export default function StudioBoard({
     );
   };
   const openUnitMenu = async (id, pointer, from) => {
-    if (controlsDisabled || modal || saveInFlight.current || nativeRefreshLock.current) return;
+    // Docked, the board beside the editor keeps its widget menu (review R2).
+    if (controlsDisabled || (modal && !docked) || saveInFlight.current || nativeRefreshLock.current) return;
     const element = canvas.current?.querySelector(
       `[data-panel-id="${CSS.escape(id)}"]:not([aria-hidden]), [data-stack-shell-id="${CSS.escape(id)}"]`,
     );
@@ -1753,6 +1754,11 @@ export default function StudioBoard({
     setUnitMenu({ ...menu, items: unitMenuItems(id, menu, catalog) });
   };
   const unitMenuItems = (id, menu, catalog) => {
+    // With the editor docked, an action that opens another editor asks
+    // about its unsaved changes first; the widget being edited keeps its
+    // look and its Delete in the editor, so they aren't offered twice.
+    const guarded = (action) => () => (modal ? requestEditorAction(action) : action());
+    const beingEdited = docked && modal?.panel?.id === id;
     const panel = wholeBoard.panels.find((item) => item.id === id);
     const stack = wholeBoard.stacks.find((item) => item.id === id);
     const otherPages = pages.filter((page) => page.id !== currentPage);
@@ -1777,7 +1783,7 @@ export default function StudioBoard({
       };
     if (stack)
       return [
-        { id: "edit", icon: "edit", label: "Edit stack", onSelect: () => editStack(stack) },
+        { id: "edit", icon: "edit", label: "Edit stack", onSelect: guarded(() => editStack(stack)) },
         centreItem,
         moveItem,
       ];
@@ -1800,7 +1806,7 @@ export default function StudioBoard({
         icon: "copy",
         label: "Duplicate",
         shortcut: "Ctrl D",
-        onSelect: () => openEditor("content", { panel, duplicate: true }),
+        onSelect: guarded(() => openEditor("content", { panel, duplicate: true })),
       },
       "-",
       { id: "copy-look", icon: "paint", label: "Copy look", shortcut: "Ctrl Alt C", onSelect: () => copyLook(panel) },
@@ -1857,6 +1863,11 @@ export default function StudioBoard({
       },
     ]
       .filter(Boolean)
+      .filter(
+        (item) =>
+          !(beingEdited && ["edit", "copy-look", "paste-look", "delete"].includes(item.id)) &&
+          !(docked && item.id === "look-everywhere"),
+      )
       .filter((item, index, list) => item !== "-" || (index > 0 && index < list.length - 1 && list[index - 1] !== "-"));
   };
   // Widget keys while editing act on the one selected widget, or the

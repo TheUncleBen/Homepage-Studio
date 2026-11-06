@@ -190,7 +190,7 @@ where Homepage has nothing. They need no app and fetch nothing.
 | --- | --- |
 | **Heading** | A title for a row of widgets. It starts one row tall with no fill and no edge, so it stands on the page without a card (its **Look** can add them); **Align** centres it. In a one-row card the text shrinks to fit. |
 | **Note** | Text you write yourself, on several lines: the guest Wi-Fi, on-call numbers, a reminder. Web addresses (`https://…`) become links that open in a new tab. It is plain text: nothing in it is read as HTML. Everyone who can see the dashboard can read it, so keep passwords and keys out of it. |
-| **Picture** | One picture from this dashboard's uploaded backgrounds, filling the card or shown whole, with a description for screen readers. Removing the picture from the library asks first while the widget uses it. An empty note or picture says what to do only in the editor; on the dashboard it is an empty card. |
+| **Picture** | One picture from this dashboard's uploaded backgrounds, filling the card or shown whole, with a description for screen readers. Removing the picture from the library asks first while the widget uses it. An empty note or picture says what to do only in the editor; on the dashboard it is left out, as empty space. |
 | **Spacer** | Empty space that keeps the widgets around it in place. It is invisible on the dashboard and dashed while you edit. With **Behaviour › Show on** it can hold space in one layout only. |
 
 ## Arranging the board

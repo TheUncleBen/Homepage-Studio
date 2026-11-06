@@ -5299,8 +5299,8 @@ svg.studio-chart-gauge {
   margin: 0;
 }
 /* An empty note or picture says what to do only while editing; viewers of
-   the dashboard see an empty card (review M4). */
-.studio-app:not(.studio-edit-mode) .studio-filler-hint {
+   the dashboard see nothing there (review M4, R1). */
+.studio-app:not(.studio-edit-mode) .studio-panel:has(.studio-filler-hint) {
   visibility: hidden;
 }
 /* A heading with no edge and the plain fill stands on the page itself. */
