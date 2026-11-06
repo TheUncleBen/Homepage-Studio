@@ -2241,6 +2241,10 @@ body {
 .studio-item-actions {
   margin-top: 30px;
 }
+/* First in its own section (Management), it needs no gap above it (B6). */
+.studio-section-body > .studio-item-actions:first-child {
+  margin-top: 0;
+}
 /* .studio-action-row resets its border, so a row after another keeps its separator here. */
 .studio-group-body > * + .studio-action-row {
   border-top: 1px solid var(--studio-line);
@@ -2767,6 +2771,11 @@ body {
   margin: 0 0 12px;
 }
 @media (max-width: 680px) {
+  /* The page tabs wrap to their own row under the top bar, so the start
+     group's items join the top bar's own row. */
+  .studio-top-start {
+    display: contents;
+  }
   .studio-topbar:has(.studio-pages) {
     flex-wrap: wrap;
     height: auto;
@@ -5535,6 +5544,43 @@ svg.studio-chart-gauge {
   .studio-app.studio-docked-editing .studio-topbar {
     margin-left: calc(50% + (min(480px, 42vw) + 20px) / 2 - 50vw);
   }
+}
+/* The docked panel is phone-narrow, so its rows are laid out as on a phone:
+   the label above, a choice across the full width on one line (B6). */
+.studio-dialog-docked .studio-row-main {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
+  padding: 9px 0 2px;
+}
+.studio-dialog-docked .studio-row-label {
+  color: var(--studio-muted);
+  font-size: 13px;
+}
+.studio-dialog-docked .studio-row-main:not(:has(.studio-row-control > :is(input, select, .studio-input-line))) {
+  padding-bottom: 10px;
+}
+.studio-dialog-docked .studio-row-control > .studio-segmented {
+  flex-wrap: nowrap;
+  justify-self: stretch;
+  margin-bottom: 8px;
+}
+.studio-dialog-docked .studio-row-control > .studio-segmented > button {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  white-space: normal;
+  line-height: 1.15;
+}
+.studio-dialog-docked .studio-row-main:has(> .studio-row-control > .studio-switch:only-child) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 0;
+}
+.studio-dialog-docked .studio-row-main:has(> .studio-row-control > .studio-switch:only-child) .studio-row-label {
+  color: inherit;
+  font-size: inherit;
 }
 /* In the docked panel a value's name gets its own line; its controls wrap
    below it instead of squeezing the name. */
