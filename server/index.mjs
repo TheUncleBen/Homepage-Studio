@@ -1161,7 +1161,8 @@ export function createStudioServer(options = {}) {
         const source = state.serviceWidgets.find((item) => item.id === panel.id);
         const parent = source && state.services.find((item) => item.id === source.serviceId);
         if (!source || !parent) throw new LibraryError('Only widgets in this dashboard\'s own files can be saved.');
-        const service = Object.fromEntries(['href', 'siteMonitor', 'ping'].filter((key) => typeof parent.config?.[key] === 'string').map((key) => [key, parent.config[key]]));
+        // A logo uploaded to this dashboard stays behind: other dashboards can't load it.
+        const service = Object.fromEntries(['href', 'siteMonitor', 'ping', 'icon', 'description'].filter((key) => typeof parent.config?.[key] === 'string' && !(key === 'icon' && parent.config.icon.startsWith('/studio/api/images/'))).map((key) => [key, parent.config[key]]));
         widget = { kind: 'serviceWidget', type: source.type, title: parent.name, config: source.config ?? {}, service, ...looks };
       } else if (panel.kind === 'informationWidget') {
         const source = state.infoWidgets.find((item) => item.id === panel.id);

@@ -44,6 +44,28 @@ const whereIs = (label) => within(where(label)).getByRole("radio", { checked: tr
 const putIt = (label, text) => fireEvent.click(within(where(label)).getByRole("radio", { name: text }));
 
 describe("widget dialog look (Rule 1: only what can apply)", () => {
+  it("lets an integration widget pick its logo and write its description (owner T8/T30, 65f724c)", () => {
+    const onIcon = vi.fn();
+    const onDescription = vi.fn();
+    renderEditor({
+      look: { header: "logo-name" },
+      identity: { icon: "", description: "", onIcon, onDescription },
+    });
+    expect(screen.getByText("No logo")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(screen.getByRole("radio", { name: "Uploaded" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Description text"), { target: { value: "Edge firewall" } });
+    expect(onDescription).toHaveBeenCalledWith("Edge firewall");
+  });
+
+  it("hides the logo picker when the header draws no logo", () => {
+    renderEditor({
+      look: { header: "name" },
+      identity: { icon: "", description: "", onIcon: vi.fn(), onDescription: vi.fn() },
+    });
+    expect(screen.queryByText("No logo")).toBeNull();
+  });
+
   it("shows integration sections and hides colour rows until a fill needs them", () => {
     renderEditor();
     for (const name of ["Look", "Status", "Show", "Behaviour"])

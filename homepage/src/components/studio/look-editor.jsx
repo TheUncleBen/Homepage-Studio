@@ -5,6 +5,7 @@ import { BackgroundAdjust, BackgroundGrid, familyOf, FILL_FAMILIES } from "./bac
 import { PALETTE, partsFormat } from "./card-chart";
 import { useCardTheme } from "./card-look";
 import ColourField from "./colour-field";
+import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
 import { CHART_SHOWS, exactColour, setOverride } from "./look.mjs";
 import { Group, Row, Segmented, Switch } from "./ui";
@@ -894,6 +895,9 @@ export default function LookEditor({
   lookUsage,
   onUpdateLookUsers,
   statusAddress,
+  // An integration widget's own logo and description ({ icon, description,
+  // onIcon, onDescription }), shown with the header that draws them.
+  identity,
   // The widget's own fields list and its choices (board 27): the Values list
   // shows every choice and keeps that list in sync.
   nativeValues,
@@ -1100,6 +1104,19 @@ export default function LookEditor({
                   ["hidden", "None"],
                 ]}
               />
+              {identity && (effective.header === "logo-name" || effective.header === "logo") && (
+                <Dependent>
+                  <Row label="Logo" htmlFor={`${showId}-logo`}>
+                    <IconField
+                      id={`${showId}-logo`}
+                      label="logo"
+                      value={identity.icon || ""}
+                      onChange={identity.onIcon}
+                      emptyText="No logo"
+                    />
+                  </Row>
+                </Dependent>
+              )}
               {named && (
                 <Dependent>
                   <Choice
@@ -1111,6 +1128,20 @@ export default function LookEditor({
                       ["hide", "Hide"],
                     ]}
                   />
+                </Dependent>
+              )}
+              {identity && named && effective.description !== "hide" && (
+                <Dependent>
+                  <Row label="Description text" htmlFor={`${showId}-description`}>
+                    <input
+                      id={`${showId}-description`}
+                      type="text"
+                      value={identity.description || ""}
+                      onChange={(event) => identity.onDescription(event.target.value)}
+                      placeholder="A line under the name"
+                      maxLength={200}
+                    />
+                  </Row>
                 </Dependent>
               )}
             </>

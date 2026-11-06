@@ -29,7 +29,7 @@ const ID = /^[a-f0-9]{16}$/;
 const TYPE = /^[A-Za-z0-9_-]{1,60}$/;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_CONFIG_BYTES = 64 * 1024;
-const SERVICE_KEYS = ['href', 'siteMonitor', 'ping'];
+const SERVICE_KEYS = ['href', 'siteMonitor', 'ping', 'icon', 'description'];
 
 export class LibraryError extends Error {
   constructor(message, code = 'INVALID_LIBRARY', status = 400) {

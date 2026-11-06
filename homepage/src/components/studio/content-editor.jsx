@@ -183,9 +183,9 @@ function hostOf(value) {
   }
 }
 
-// What a widget's card takes from the entry it lives in: its link and
-// status check (its name is the entry's name).
-const WIDGET_SERVICE_KEYS = ["href", "siteMonitor", "ping"];
+// What a widget's card takes from the entry it lives in: its link, status
+// check, logo and description (its name is the entry's name).
+const WIDGET_SERVICE_KEYS = ["href", "siteMonitor", "ping", "icon", "description"];
 function widgetService(config = {}) {
   return Object.fromEntries(
     WIDGET_SERVICE_KEYS.map((key) => [key, typeof config[key] === "string" ? config[key] : ""]),
@@ -795,6 +795,17 @@ export default function ContentEditor({
             (item) => item.id !== boardPanel.id && item.look && sameLook(lookOnly(item.look), saved),
           ).length,
         onUpdateLookUsers: (from, to) => setLookSwaps((current) => [...current, { from, to }]),
+        // An integration widget's logo and description live on the entry
+        // around it (owner T8/T30 on 65f724c: lost with that entry in round 4).
+        identity:
+          kind === "serviceWidget"
+            ? {
+                icon: service.icon,
+                description: service.description,
+                onIcon: (value) => setService({ ...service, icon: value || "" }),
+                onDescription: (value) => setService({ ...service, description: value }),
+              }
+            : undefined,
         statusAddress:
           kind === "serviceWidget"
             ? {
