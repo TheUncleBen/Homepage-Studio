@@ -1,6 +1,8 @@
 import { useTranslation } from "next-i18next/pages";
+import { useEffect } from "react";
 
 import CardValues, { lastValues } from "./card-values";
+import { reportClientError } from "./client-errors.mjs";
 
 // A widget that can't load, inside a Studio card. It says what failed in a
 // sentence; people who can edit the widget get a link to fix it. With errors
@@ -32,6 +34,16 @@ export function errorSummary(error) {
 export default function CardError({ card, service, error }) {
   const { t } = useTranslation();
   const name = service?.name || "this service";
+  const summary = error?.code === "WIDGET_NOT_SET_UP" ? null : errorSummary(error);
+  // What failed goes to this dashboard's logs too (sign-in on only).
+  useEffect(() => {
+    if (summary)
+      reportClientError({
+        panel: card.id,
+        widget: service?.widget?.type ?? service?.name,
+        message: `${name}: ${summary}`,
+      });
+  }, [summary, card.id, service?.widget?.type, service?.name, name]);
   // A new widget without its address yet points straight at its settings.
   if (error?.code === "WIDGET_NOT_SET_UP") {
     return (

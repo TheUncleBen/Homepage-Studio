@@ -35,6 +35,7 @@ export default function StudioIcon({ name, size = 18, ...props }) {
     move: "M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3",
     tag: "M3 12V4h8l10 10-8 8ZM7.5 7.5h.01",
     maximize: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
+    pulse: "M3 12h4l3-8 4 16 3-8h4",
     refresh: "M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4",
     paint:
       "M12 3a9 9 0 0 0 0 18c1 0 1.5-.7 1.5-1.5 0-1-.8-1.2-.8-2.2 0-.8.7-1.3 1.5-1.3H17a4 4 0 0 0 4-4c0-5-4-9-9-9ZM7.5 11.5h.01M10 7.5h.01M15 7.5h.01",

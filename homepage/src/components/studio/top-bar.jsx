@@ -60,13 +60,17 @@ function DashboardSwitcher({ name, currentId, isAdmin }) {
   const [open, setOpen] = useState(false);
   const [list, setList] = useState(null);
   const [failed, setFailed] = useState(false);
+  const [operations, setOperations] = useState(false);
   const holder = useRef(null);
   useDismiss(open, setOpen, holder);
   useEffect(() => {
     if (!open || list) return;
     fetch(OVERVIEW, { credentials: "same-origin", headers: { accept: "application/json" } })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("unavailable"))))
-      .then((view) => setList(view.dashboards.filter((entry) => !entry.archived && entry.path)))
+      .then((view) => {
+        setOperations(Boolean(view.operations));
+        setList(view.dashboards.filter((entry) => !entry.archived && entry.path));
+      })
       .catch(() => setFailed(true));
   }, [open, list]);
   return (
@@ -92,6 +96,13 @@ function DashboardSwitcher({ name, currentId, isAdmin }) {
             <a role="menuitem" href={ADMIN_PAGE}>
               <StudioIcon name="settings" size={16} />
               <span>Administration</span>
+            </a>
+          )}
+          {/* Monitoring and logs, for administrators and anyone given them on a dashboard. */}
+          {operations && (
+            <a role="menuitem" href="/studio/operations">
+              <StudioIcon name="pulse" size={16} />
+              <span>Operations</span>
             </a>
           )}
           <hr />

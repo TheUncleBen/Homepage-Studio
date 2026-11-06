@@ -5669,3 +5669,35 @@ svg.studio-chart-gauge {
   display: flex;
   padding: 8px 12px;
 }
+
+/* Investigate (components/studio/investigate.jsx). Words as well as colour. */
+.studio-investigate {
+  display: grid;
+  gap: 16px;
+}
+.studio-investigate-state {
+  font-weight: 650;
+}
+.studio-investigate-down,
+.studio-investigate-pending,
+.studio-investigate-unreachable {
+  color: var(--studio-danger-text);
+}
+.studio-investigate-up {
+  color: var(--studio-status-good, #3fb27f);
+}
+.studio-investigate-event {
+  display: grid;
+  gap: 2px;
+  padding: 10px 16px;
+}
+.studio-investigate-meta {
+  color: var(--studio-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.studio-investigate-message {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+}
