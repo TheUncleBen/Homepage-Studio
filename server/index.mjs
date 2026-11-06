@@ -637,6 +637,13 @@ function createDashboardHandlers(options = {}) {
     if (!panels.length) return;
     const results = await rendererCollect(dashboard, panels.map(({ id, kind, nativeLocator, available, check }) => ({ id, kind, nativeLocator, ...(available === false ? { available } : {}), ...(check ? { check } : {}) })));
     const at = Date.now();
+    // A widget whose numbers can't be fetched is an integration problem for
+    // the dashboard's logs (status checks have their own monitors).
+    const FAILURES = { timeout: 'took too long to answer', service: 'did not answer as expected', render: 'could not be read' };
+    for (const panel of panels) {
+      const failure = !panel.check && FAILURES[results[panel.id]?.error];
+      if (failure) options.onIntegration?.({ source_type: 'integration', source_id: panel.nativeLocator?.type ?? 'widget', scope: dashboard.id, resource: panel.title || panel.nativeLocator?.type || 'Widget', panel: panel.id, category: 'integration', severity: 4, event_type: 'widget.collect-failed', error_class: results[panel.id].error === 'timeout' ? 'timeout' : null, message: `${panel.title || 'A widget'}: its history ${failure}` });
+    }
     for (const panel of panels) {
       const values = results[panel.id]?.values;
       if (Array.isArray(values)) await history.record(panel.id, values, { at, days: retentionDays(state.settingsConfig) });
@@ -806,7 +813,9 @@ function createDashboardHandlers(options = {}) {
           const allowed = references.every(([field, value]) => saved.some(config => JSON.stringify(config[field] ?? null) === JSON.stringify(value ?? null)));
           if (!allowed) return json(res, 200, { ok: false, kind: 'address', message: 'A secret or variable reference is only sent to the address it is saved with. Save the widget with this address first, or type the key in to test it.' });
         }
-        return json(res, 200, await rendererTest(req, dashboard, change.widget));
+        const tested = await rendererTest(req, dashboard, change.widget);
+        if (!tested.ok) options.onIntegration?.({ source_type: 'integration', source_id: String(change.widget.type ?? 'widget').slice(0, 64), scope: dashboard.id, resource: String(change.widget.type ?? 'widget').slice(0, 64), category: 'integration', severity: 4, event_type: 'connection.test-failed', actor: req.studioActor, message: `Test connection (${String(change.widget.type ?? 'widget').slice(0, 64)}) failed: ${tested.message || tested.kind}`, fields: { kind: tested.kind } });
+        return json(res, 200, tested);
       }
       // Saved connections (server/connections.mjs). Administrators only, like
       // widget settings; keys are never sent back.
@@ -968,7 +977,7 @@ export function createStudioServer(options = {}) {
   function forDashboard(entry) {
     let handler = handlers.get(entry.id);
     if (!handler) {
-      handler = createDashboardHandlers({ ...options, internalToken, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
+      handler = createDashboardHandlers({ ...options, onIntegration: event => observability?.log(event), internalToken, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
       handlers.set(entry.id, handler);
     }
     // Only immutable-id storage is retained. Each request carries its own
@@ -1384,6 +1393,9 @@ export function createStudioServer(options = {}) {
         const copyAccess = change.copyAccess === true;
         delete change.copyAccess;
         const result = await registry.mutate(change);
+        // Who changed which dashboard, for Operations › Logs (administrators).
+        const changedName = result.dashboard?.name ?? manifest.dashboards.find(entry => entry.id === change.id)?.name;
+        observability?.log({ source_type: 'audit', source_id: 'dashboards', category: 'audit', severity: 5, event_type: `dashboard.${String(change.action).slice(0, 32)}`, actor: current?.user?.username ?? null, resource: changedName, message: `${current?.user?.username ?? 'An administrator'}: dashboard ${String(change.action)}${changedName ? ` · ${changedName}` : ''}` });
         if (change.action === 'retention') return json(res, 200, result);
         if (change.action === 'delete') return json(res, 200, { registry: result.registry, deleted: { id: result.dashboard.id, name: result.dashboard.name }, ...(result.cleanupPending ? { cleanupPending: true } : {}) });
         if (auth && copyAccess && change.action === 'create' && change.sourceId) await auth.copyGrants(change.sourceId, result.dashboard.id);
@@ -1731,7 +1743,7 @@ export function createStudioServer(options = {}) {
     })();
     return shutdownResult;
   }
-  return { server, store: original.store, registry, initialization, rendererPool, shutdown, get dashboardHandlerCount() { return handlers.size; }, get nativeBodyBytesInFlight() { return nativeBodyBudget.used; } };
+  return { server, store: original.store, registry, initialization, rendererPool, observability, shutdown, get dashboardHandlerCount() { return handlers.size; }, get nativeBodyBytesInFlight() { return nativeBodyBudget.used; } };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -1740,7 +1752,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   // is applied before anything reads the volumes.
   await applyPendingRestore({ ...studioRoots(), buildRevision: process.env.STUDIO_BUILD_REVISION });
   let restart = () => {};
-  const { server, initialization, shutdown } = createStudioServer({ onRestoreStaged: () => restart() });
+  const { server, initialization, shutdown, observability } = createStudioServer({ onRestoreStaged: () => restart() });
+  // The controller's own messages go to Operations › Logs as well as stdout.
+  observability?.captureConsole();
   const startup = await initialization;
   if (!startup.ok) console.error('Studio configuration startup requires attention:', startup.code);
   server.listen(port, '0.0.0.0', () => console.log('Homepage Studio listening on port ' + port));

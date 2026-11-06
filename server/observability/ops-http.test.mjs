@@ -189,6 +189,10 @@ test('each person sees only the dashboards given to them; export and settings st
   const adminView = await eventually(async () => { const result = await search(admin.cookie, 'type:auth.*'); return result.events?.length ? result : null; });
   assert.ok(adminView.events.some(event => event.event_type === 'auth.signed-in' || event.event_type === 'auth.setup-completed'), 'administrators see sign-in events');
   assert.equal((await search(member.cookie, 'type:auth.*')).events.length, 0);
+  // Dashboard changes are audit events: administrators see who made them.
+  const changes = await eventually(async () => { const result = await search(admin.cookie, 'type:dashboard.*'); return result.events?.length ? result : null; });
+  assert.ok(changes.events.some(event => event.event_type === 'dashboard.create' && event.actor === 'admin' && /Lab/.test(event.message)));
+  assert.equal((await search(member.cookie, 'type:dashboard.*')).events.length, 0);
   assert.equal((await request('/studio/api/ops/logs/search?range=1h&dashboard=' + lab, { cookie: member.cookie })).status, 404);
 
   // Settings and export are for administrators.
