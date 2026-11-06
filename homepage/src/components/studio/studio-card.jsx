@@ -21,12 +21,11 @@ const downSince = new Map();
 // The check behind a card's status: the service's own siteMonitor or ping
 // when set, otherwise its widget's Connection address or its link
 // (fallback=1) when the card asks for one.
-function useStatus(service, groupName, check) {
+function useStatus(service, groupName, check, connected = false) {
   const kind = statusKind(check);
   // An integration widget's Connection address is used when nothing else is
   // set (utils/studio/status-address); the browser never sees that address.
-  const widgets = Array.isArray(service.widgets) && service.widgets.length > 0;
-  const has = (kind === "ping" ? service.ping : service.siteMonitor) || service.href || widgets;
+  const has = (kind === "ping" ? service.ping : service.siteMonitor) || service.href || connected;
   const key =
     kind && has && groupName && service.name
       ? `/api/${kind}?${new URLSearchParams({ groupName, serviceName: service.name, fallback: "1" })}`
@@ -41,19 +40,21 @@ function useStatus(service, groupName, check) {
 function StatusMark({ status, show }) {
   const { t } = useTranslation();
   if (!status) return null;
+  // Under a millisecond (a ping on the local network) says so, not "0 ms".
+  const time = !Number.isFinite(status.ms)
+    ? ""
+    : status.ms < 1
+      ? `<${t("common.ms", { value: 1, style: "unit", unit: "millisecond", maximumFractionDigits: 0 })}`
+      : t("common.ms", { value: status.ms, style: "unit", unit: "millisecond", maximumFractionDigits: 0 });
   const label =
     status.state === "pending"
       ? "Checking…"
       : status.state === "down"
         ? `Down${status.code ? ` (${status.code})` : ""}`
-        : `Up · ${t("common.ms", { value: status.ms, style: "unit", unit: "millisecond", maximumFractionDigits: 0 })}`;
+        : `Up${time ? ` · ${time}` : ""}`;
   return (
     <span className={`studio-card-status studio-status-${status.state}`} title={label} role="img" aria-label={label}>
-      {show === "time" && status.state === "up" && (
-        <span className="studio-status-text">
-          {t("common.ms", { value: status.ms, style: "unit", unit: "millisecond", maximumFractionDigits: 0 })}
-        </span>
-      )}
+      {show === "time" && status.state === "up" && time && <span className="studio-status-text">{time}</span>}
       {show === "updown" && status.state === "up" && <span className="studio-status-text">Up</span>}
       {status.state === "down" && <span className="studio-status-text">{status.code ? "Down" : "Offline"}</span>}
       <span className="studio-status-dot" aria-hidden="true" />
@@ -111,10 +112,12 @@ export function CardHead({ icon, name, description, note, href, card, status, ex
 
 // A service tile: its logo, name and status. With nothing else to show it
 // stays one compact row; when its check fails it says so in words.
-export function ServiceCard({ service, groupName, children }) {
+// connected: an integration widget's card, whose Connection address the
+// status check can use.
+export function ServiceCard({ service, groupName, children, connected = false }) {
   const card = useContext(CardLookContext);
   const settings = useContext(SettingsContext)?.settings;
-  const status = useStatus(service, groupName, card.statusCheck);
+  const status = useStatus(service, groupName, card.statusCheck, connected);
   const { clock } = usePreferences();
   const { i18n } = useTranslation();
   const statusStyle = service.statusStyle ?? settings?.statusStyle ?? "dot";
@@ -161,7 +164,7 @@ export function ServiceCard({ service, groupName, children }) {
 // An integration widget, under its service's logo and name.
 export function WidgetCard({ service, widget, groupName }) {
   return (
-    <ServiceCard service={service} groupName={groupName}>
+    <ServiceCard service={service} groupName={groupName} connected={typeof widget?.type === "string"}>
       <ServiceWidget widget={widget} service={service} />
     </ServiceCard>
   );

@@ -114,7 +114,7 @@ describe("status history collection", () => {
     expect(await checkStatus(service, "Code", "web", { siteMonitor })).toEqual({
       values: [
         { field: "up", label: "Up", format: "plain", value: 1 },
-        { field: "ms", label: "Response time", format: "plain", value: 42 },
+        { field: "ms", label: "Response time", format: "plain", value: 41.6 },
       ],
     });
     expect(siteMonitor.mock.calls[0][0].query).toEqual({ groupName: "Code", serviceName: "Gitea", fallback: "1" });
@@ -124,7 +124,7 @@ describe("status history collection", () => {
     expect(await checkStatus(service, "Code", "ping", { ping: answer({ alive: true, time: 3.2 }) })).toMatchObject({
       values: [
         { field: "up", value: 1 },
-        { field: "ms", value: 3 },
+        { field: "ms", value: 3.2 },
       ],
     });
     expect(await checkStatus(service, "Code", "ping", { ping: answer({ error: "x" }, 400) })).toEqual({

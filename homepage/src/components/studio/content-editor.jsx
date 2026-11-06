@@ -952,7 +952,13 @@ export default function ContentEditor({
               // A link's name, address, description and icon show as they are typed.
               kind === "service" || kind === "bookmark"
                 ? { name: name || boardPanel.title, href: draft.href, description: draft.description, icon: draft.icon }
-                : null,
+                : kind === "serviceWidget"
+                  ? {
+                      icon: service.icon,
+                      description: service.description,
+                      ...(draftFields ? { fields: draftFields } : {}),
+                    }
+                  : null,
               rect && (
                 <ResizeCorner
                   rect={rect}
