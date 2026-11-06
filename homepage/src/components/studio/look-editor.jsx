@@ -660,7 +660,14 @@ function ValueList({
   const { t } = useTranslation();
   const synced = Boolean(onNativeFields && choices.length);
   const fields = synced ? withNativeValues(reported, choices, prefix) : reported;
-  const absent = new Set(fields.filter((field) => field.absent).map((field) => field.field));
+  // A value the widget isn't drawing yet shows as hidden, unless its fields
+  // list (the draft) already asks for it: "Below" is the default and isn't
+  // stored, so without this a value just shown went straight back to hidden
+  // (owner T8 on 65f724c: values stuck hidden until fields was typed in YAML).
+  const asked = new Set(
+    (nativeFields || []).map((key) => (String(key).includes(".") ? String(key) : `${prefix}.${key}`)),
+  );
+  const absent = new Set(fields.filter((field) => field.absent && !asked.has(field.field)).map((field) => field.field));
   // Widgets name their values with translation keys (adguard.queries).
   const rows = arrangeValues(fields, values).map((row) => ({
     ...row,

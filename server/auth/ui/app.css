@@ -392,6 +392,9 @@ dialog .group-body { background: var(--raised); }
 .row-detail { color: var(--muted); font-size: 0.8125rem; }
 .row-item.attention .row-detail { color: var(--warn-text); }
 .row-control { display: grid; justify-items: stretch; min-width: 0; }
+.address-input { display: flex; align-items: center; min-width: 0; }
+.address-prefix { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.row-control .address-input input { flex: 1 1 auto; min-width: 4ch; }
 .row-control > :is(.switch, .segmented, .pill, .row-value) { justify-self: end; }
 .row-item.stacked .row-control > .segmented { justify-self: start; flex-wrap: wrap; }
 .row-value { color: var(--muted); text-align: right; overflow-wrap: anywhere; }

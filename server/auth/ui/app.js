@@ -1945,15 +1945,12 @@
       const starters = !entry && !source ? view.starters || [] : [];
       const starter = starters.length ? h('select', {}, [h('option', { value: '', text: 'Blank' }), ...starters.map(choice => h('option', { value: choice.id, text: choice.name }))]) : null;
       const save = h('button', { type: 'submit', class: 'primary', text: entry ? 'Save' : source ? 'Duplicate' : 'Create dashboard' });
-      const addressRow = row('Address', slug, { detail: ' ', info: 'Lowercase letters, numbers and hyphens.' + (entry ? ' Changing it breaks bookmarks to the old address.' : '') });
+      slug.setAttribute('aria-label', `Address: ${location.host}/`);
+      const addressRow = row('Address', addressInput(slug), { info: 'Lowercase letters, numbers and hyphens.' + (entry ? ' Changing it breaks bookmarks to the old address.' : '') });
       const form = h('form', { class: 'stack' },
         group({}, row('Name', name), addressRow, starter ? row('Start with', starter, { info: 'Blank, or links to common apps at placeholder addresses you change, plus a clock and the weather.' }) : null),
         source && view.authEnabled ? group({}, row('Share it with the same people', copyAccess, { info: `The copy gets the same sharing as ${source.name}.` })) : null,
         box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
-      // The full address, as people will type it, under the label.
-      const preview = addressRow.querySelector('.row-detail');
-      const showAddress = () => { preview.textContent = `${location.host}/${slug.value || '…'}`; };
-      slug.addEventListener('input', showAddress); showAddress();
       form.addEventListener('submit', event => {
         event.preventDefault();
         busy(save, 'Saving…', async () => {
@@ -2134,6 +2131,12 @@
       previewSizer?.observe(holder);
       return holder;
     }
+    // An address field reads as the address being typed: the fixed part
+    // (this host and a slash) sits in front of the slug, on the same line
+    // (owner T2 on 65f724c: a preview under the label read as a second field).
+    function addressInput(slug) {
+      return h('div', { class: 'address-input' }, h('span', { class: 'address-prefix', 'aria-hidden': 'true', text: `${location.host}/` }), slug);
+    }
     // A new deployment's main dashboard has no address until the first
     // administrator picks one; nothing else on this page works until then.
     function askMainAddress() {
@@ -2143,15 +2146,13 @@
         const box = notice();
         const slug = h('input', { type: 'text', maxlength: 64, required: true, spellcheck: 'false', autocapitalize: 'off', value: view.suggestedSlug });
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save address' });
-        const addressRow = row('Address', slug, { detail: ' ', info: 'Lowercase letters, numbers and hyphens. You can change it later from the Dashboards page.' });
+        slug.setAttribute('aria-label', `Address: ${location.host}/`);
+        const addressRow = row('Address', addressInput(slug), { info: 'Lowercase letters, numbers and hyphens. You can change it later from the Dashboards page.' });
         const form = h('form', { class: 'stack' },
           h('p', { class: 'lede', text: `${main.name} needs an address before anyone can open it.` }),
           group({}, addressRow), box, dialogActions(
             // The dialog stays open until an address is saved, so it carries its own way out.
             view.authEnabled ? h('button', { type: 'button', text: 'Sign out', onclick: event => signOut(event.currentTarget) }) : null, save));
-        const preview = addressRow.querySelector('.row-detail');
-        const showAddress = () => { preview.textContent = `${location.host}/${slug.value || '…'}`; };
-        slug.addEventListener('input', showAddress); showAddress();
         form.addEventListener('submit', event => {
           event.preventDefault();
           busy(save, 'Saving…', async () => {

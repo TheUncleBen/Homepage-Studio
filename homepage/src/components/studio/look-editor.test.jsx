@@ -513,6 +513,12 @@ describe("one Values list for every value", () => {
     expect(onChange).toHaveBeenCalledWith(["load", "memory", "temp", "wanStatus", "wanIP"]);
   });
 
+  it("a value just shown stays shown before the widget draws it (owner T8, 65f724c)", () => {
+    renderEditor({ fields: pfsense, nativeValues: native(["load", "memory", "temp", "wanStatus", "wanIP"], vi.fn()) });
+    expect(whereIs("pfsense.wanIP")).toMatch(/^(Below|Shown)$/);
+    expect(whereIs("pfsense.disk")).toBe("Hidden");
+  });
+
   it("hiding a value removes it from the fields list, and moving one reorders it", () => {
     const onChange = vi.fn();
     renderEditor({ fields: pfsense, nativeValues: native(["load", "memory", "temp", "wanStatus"], onChange) });

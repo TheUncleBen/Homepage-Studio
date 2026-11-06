@@ -3603,8 +3603,15 @@ svg.studio-chart-gauge {
   background: color-mix(in srgb, var(--card-text) 6%, transparent);
   text-align: center;
 }
+/* A long value (an IP address) shrinks to fit its box before it is cut
+   short, and never runs out of it (owner T8 on 65f724c). */
+.studio-value-quiet {
+  container-type: inline-size;
+  overflow: hidden;
+}
 .studio-value-quiet .studio-value-number {
-  font-size: 15px;
+  max-width: 100%;
+  font-size: clamp(11px, 13cqi, 15px);
   font-weight: 600;
 }
 .studio-value-quiet .studio-value-label {
