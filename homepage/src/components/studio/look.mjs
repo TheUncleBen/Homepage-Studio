@@ -31,6 +31,9 @@ export const LOOK_OPTIONS = Object.freeze({
   // history Studio collects for widgets shown this way (server/history.mjs).
   show: ["numbers", "line", "area", "bar", "donut", "pie", "gauge", "table", "status"],
   chartRange: ["1h", "6h", "24h", "7d", "30d"],
+  // Value boxes (U7): Auto balances them (6 values: 3 by 2, not 4 and 2);
+  // a number keeps that many columns while each box still fits.
+  columns: ["auto", "1", "2", "3", "4", "5", "6"],
 });
 
 // Formats drawn from collected history, and the ones that need it at all
@@ -103,6 +106,7 @@ export const BUILT_IN_LOOK = Object.freeze({
   colourFit: "fitted",
   show: "numbers",
   chartRange: "24h",
+  columns: "auto",
 });
 
 export const BUILT_IN_BEHAVIOUR = Object.freeze({

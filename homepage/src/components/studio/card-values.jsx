@@ -77,15 +77,50 @@ function useFold(count, least = 1, content = "") {
       observer.disconnect();
     };
   }, []);
-  return { ref, shown };
+  return { ref, shown, epoch };
 }
 
-function Folded({ className, items, slot, arranged, content }) {
-  const { ref, shown } = useFold(items.length, slot === "below" ? 0 : 1, content);
+// Columns for n boxes (U7): Auto uses as few rows as fit, then spreads the
+// boxes evenly over them (6 boxes, room for 4: 3 by 2). A chosen number is
+// kept while each box still fits; past that the boxes balance as for Auto.
+export function balancedColumns(n, room, chosen = "auto") {
+  if (n <= 0 || room <= 0) return 1;
+  const fit = Math.max(1, room);
+  const wanted = Number(chosen);
+  if (Number.isInteger(wanted) && wanted > 0 && wanted <= fit) return Math.min(wanted, n) || 1;
+  const rows = Math.ceil(n / fit);
+  return Math.ceil(n / rows);
+}
+
+// How many boxes of the slot's smallest width fit across the list.
+const BOX = { quiet: [72, 8], below: [76, 18] };
+function useRoom(ref, slot, epoch) {
+  const [room, setRoom] = useState(0);
+  useIsoLayoutEffect(() => {
+    const box = BOX[slot];
+    const width = ref.current?.clientWidth || 0;
+    if (!box || !width) return;
+    setRoom(Math.max(1, Math.floor((width + box[1]) / (box[0] + box[1]))));
+  }, [slot, epoch]);
+  return room;
+}
+
+function Folded({ className, items, slot, arranged, content, columns }) {
+  // The grid is worked out for every value (not only those that fit), so
+  // folding never changes it; the fold measures again when it changes.
+  const [grid, setGrid] = useState(0);
+  const { ref, shown, epoch } = useFold(items.length, slot === "below" ? 0 : 1, `${content}#${grid}`);
   const hidden = items.length - shown;
+  // A table keeps its own rows (columns null).
+  const room = useRoom(ref, columns === null ? null : slot, epoch);
+  const wanted = room && columns !== null ? balancedColumns(items.length, room, columns || "auto") : 0;
+  useIsoLayoutEffect(() => {
+    if (wanted !== grid) setGrid(wanted);
+  }, [wanted, grid]);
+  const style = grid ? { gridTemplateColumns: `repeat(${grid}, minmax(0, 1fr))` } : undefined;
   return (
     // Nothing left below the hero: the hint alone, without the rule.
-    <div ref={ref} className={className} data-empty={items.length > 0 && shown === 0 ? "" : undefined}>
+    <div ref={ref} className={className} style={style} data-empty={items.length > 0 && shown === 0 ? "" : undefined}>
       {items.map((item, index) => (
         <div key={item.key} className="studio-fold-item" hidden={index >= shown}>
           <ValueSlotContext.Provider
@@ -168,6 +203,7 @@ export default function CardValues({ card, items: children }) {
         className={`studio-values ${show === "table" ? "studio-values-table" : "studio-values-quiet"}`}
         items={visible}
         slot="quiet"
+        columns={show === "table" ? null : card.columns}
         arranged={arranged}
         content={content}
       />
@@ -190,7 +226,14 @@ export default function CardValues({ card, items: children }) {
       {trend && <Trend history={card.history} field={hero.key} trend={card.trend} />}
       {charted && <CardChart card={card} onOpen={CHART_SHOWS.includes(show) ? card.onFullView : undefined} />}
       {!charted && rest.length > 0 && (
-        <Folded className="studio-values-below" items={rest} slot="below" arranged={arranged} content={content} />
+        <Folded
+          className="studio-values-below"
+          items={rest}
+          slot="below"
+          columns={card.columns}
+          arranged={arranged}
+          content={content}
+        />
       )}
     </div>
   );

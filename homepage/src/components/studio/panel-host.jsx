@@ -42,6 +42,7 @@ export function useCardPresentation(panel, data, onEdit, onFullView) {
     () => ({
       id: panel.id,
       layout: look.layout,
+      columns: look.columns,
       values: look.values,
       header: look.header,
       description: look.description,

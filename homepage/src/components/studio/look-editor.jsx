@@ -1006,6 +1006,15 @@ export default function LookEditor({
                 ]}
                 info="Hero shows one value large with the rest below it. Quiet shows every value the same size."
               />
+              <Dependent>
+                <Choice
+                  label="Columns"
+                  value={effective.columns}
+                  onChange={(value) => setLook("columns", value)}
+                  options={[["auto", "Auto"], ...["1", "2", "3", "4", "5", "6"].map((count) => [count, count])]}
+                  info={`How the value boxes${effective.layout === "hero" ? " below the hero" : ""} line up. Auto balances them for the card's size (6 values: 3 by 2, not 4 and 2). A number keeps that many columns while the boxes still fit, then balances. The order comes from Values.`}
+                />
+              </Dependent>
               {effective.layout === "hero" && (
                 <Dependent>
                   <Choice
