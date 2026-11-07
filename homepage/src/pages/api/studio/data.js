@@ -3,20 +3,14 @@ import { readFile, stat } from "fs/promises";
 import { join } from "path";
 
 import { withAuth } from "utils/auth";
-import {
-  bookmarksResponse,
-  servicesResponse,
-  widgetsResponse,
-} from "utils/config/api-response";
+import { bookmarksResponse, servicesResponse, widgetsResponse } from "utils/config/api-response";
 import { CONF_DIR, getSettings } from "utils/config/config";
 import { readPlatformDefaults } from "utils/config/platform";
 
 class NativeSnapshotChanged extends Error {}
 
 function fileIdentity(value) {
-  return [value.dev, value.ino, value.size, value.mtimeNs, value.ctimeNs].join(
-    ":",
-  );
+  return [value.dev, value.ino, value.size, value.mtimeNs, value.ctimeNs].join(":");
 }
 
 async function configurationSnapshot() {
@@ -81,10 +75,7 @@ async function handler(req, res) {
       widgetsResponse(),
     ]);
     const after = await configurationSnapshot();
-    if (
-      before.revision !== after.revision ||
-      before.identity !== after.identity
-    ) {
+    if (before.revision !== after.revision || before.identity !== after.identity) {
       throw new NativeSnapshotChanged();
     }
     return res.status(200).json({

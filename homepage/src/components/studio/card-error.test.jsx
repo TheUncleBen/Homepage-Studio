@@ -26,4 +26,33 @@ describe("card states", () => {
     expect(screen.getByText("Can’t reach NAS")).toBeTruthy();
     expect(screen.getByText("401 · the API key or password was refused")).toBeTruthy();
   });
+
+  it("names a certificate problem and opens the Connection to fix it", () => {
+    const onFix = vi.fn();
+    render(
+      <CardError
+        card={{ id: "w", onFix }}
+        service={{ name: "Glances" }}
+        error={{ error: "HTTP 500 getting data from glances API", errorClass: "tls-untrusted" }}
+      />,
+    );
+    expect(screen.queryByText(/^500/)).toBeNull();
+    expect(screen.getByText(/certificate isn’t trusted/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Fix/ }));
+    expect(onFix).toHaveBeenCalledWith("settings");
+  });
+
+  it("fits an information widget's short card on one line", () => {
+    render(
+      <CardError
+        compact
+        card={{ id: "w", onFix: vi.fn() }}
+        service={{ name: "Glances" }}
+        error={{ error: "x", errorClass: "tls-untrusted" }}
+      />,
+    );
+    const line = screen.getByTitle("Can’t reach Glances · The certificate isn’t trusted");
+    expect(line.className).toBe("studio-card-error-line");
+    expect(screen.getByRole("button", { name: /Fix/ })).toBeTruthy();
+  });
 });

@@ -4,6 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import https from 'node:https';
+import { readFileSync } from 'node:fs';
 import net from 'node:net';
 import { openMain } from './storage.mjs';
 import { availability, createMonitoring, windowActive } from './monitors.mjs';
@@ -154,4 +156,43 @@ test('history says when checks began, to the minute for a new monitor', async t 
   env.tick(60e3);
   env.engine.apply(m, { ok: true, ms: 4 });
   assert.equal(env.engine.history('m1').first, began);
+});
+
+test('a card monitor checks the certificate unless its service opts out (owner decision D1)', async t => {
+  const fixture = name => readFileSync(new URL(`../fixtures/${name}`, import.meta.url));
+  const cert = fixture('self-signed-localhost.pem');
+  const server = https.createServer({ key: fixture('self-signed-localhost.key'), cert }, (req, res) => res.end('ok'));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `https://127.0.0.1:${server.address().port}/`;
+  const checked = await runHttp({ url, card: true }, { timeoutMs: 2000 });
+  assert.equal(checked.ok, false, 'an untrusted certificate is down');
+  const skipped = await runHttp({ url, card: true, verifyTls: false }, { timeoutMs: 2000 });
+  assert.equal(skipped.ok, true, 'the exception accepts it');
+  assert.equal(skipped.warning, undefined, 'and does not keep warning about the choice');
+  assert.equal((await runHttp({ url, verifyTls: false }, { timeoutMs: 2000 })).warning?.cls, 'tls-untrusted', 'a monitor with checking off still warns');
+  assert.equal((await runHttp({ url, card: true }, { timeoutMs: 2000, ca: [cert] })).ok, true, 'a trusted certificate passes');
+});
+
+test('a card whose check changed is checked again at once (audit, 7 Nov 2026)', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-mon-'));
+  const db = openMain(dir);
+  t.after(async () => { db.close(); await fs.rm(dir, { recursive: true, force: true }); });
+  let clock = Date.parse('2026-11-02T10:00:00');
+  const checked = [];
+  const engine = createMonitoring({ db, definitions: () => ({ monitors: [], maintenance: [] }), runCheck: async monitor => { checked.push(monitor.http.url); return { ok: true, ms: 5 }; }, now: () => clock });
+  const card = url => ({ ...monitor({ id: `card:${DASH}:p1`, card: true, panel: 'p1', interval: 30, retryInterval: 30, failures: 1 }), http: { url, card: true } });
+  const settle = async () => { engine.tick(); for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve)); };
+  engine.setBound(DASH, [card('https://a.example.org/')]);
+  await settle(); // the first run is spread over the interval
+  engine.checkNow(`card:${DASH}:p1`);
+  await settle();
+  assert.deepEqual(checked, ['https://a.example.org/']);
+  clock += 1000;
+  engine.setBound(DASH, [card('https://a.example.org/')]);
+  await settle();
+  assert.equal(checked.length, 1, 'the same check waits for its time');
+  engine.setBound(DASH, [{ ...card('https://a.example.org/'), http: { url: 'https://a.example.org/', card: true, verifyTls: false } }]);
+  await settle();
+  assert.equal(checked.length, 2, 'a changed check runs now');
 });

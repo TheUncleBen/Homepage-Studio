@@ -412,12 +412,23 @@ describe("utils/proxy/http httpProxy", () => {
     expect(state.lastAgentOptions.autoSelectFamily).toBe(false);
   });
 
-  it("uses the https agent with rejectUnauthorized=false for https:// URLs", async () => {
+  it("checks certificates for https:// URLs unless the service or the request opts out (Studio D1)", async () => {
     const httpMod = await import("./http");
+    const { certificateCheck } = await import("./certificate-check.mjs");
 
     await httpMod.httpProxy("https://example.com");
+    const checked = state.lastAgent;
+    expect(checked.opts.rejectUnauthorized).toBe(true);
 
-    expect(state.lastAgentOptions.rejectUnauthorized).toBe(false);
+    await certificateCheck.run({ check: false }, () => httpMod.httpProxy("https://example.com"));
+    const unchecked = state.lastAgent;
+    expect(unchecked.opts.rejectUnauthorized).toBe(false);
+    expect(unchecked).not.toBe(checked);
+
+    await httpMod.httpProxy("https://example.com", { checkCertificate: false });
+    expect(state.lastAgent).toBe(unchecked);
+    await httpMod.httpProxy("https://example.com");
+    expect(state.lastAgent).toBe(checked);
   });
 
   it("reuses the same keep-alive agent for repeated http requests", async () => {

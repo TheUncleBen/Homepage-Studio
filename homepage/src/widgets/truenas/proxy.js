@@ -3,6 +3,7 @@ import WebSocket from "ws";
 import getServiceWidget from "utils/config/service-helpers";
 import createLogger from "utils/logger";
 import { formatApiCall, sanitizeErrorURL } from "utils/proxy/api-helpers";
+import { checksCertificate } from "utils/proxy/certificate-check.mjs";
 import credentialedProxyHandler from "utils/proxy/handlers/credentialed";
 import validateWidgetData from "utils/proxy/validate-widget-data";
 import widgets from "widgets/widgets";
@@ -176,7 +177,8 @@ export default async function truenasProxyHandler(req, res, map) {
       const wsUrl = new URL(formatApiCall(widgets[widget.type].wsAPI, { ...widget }));
       const useSecure = wsUrl.protocol === "https:" || Boolean(widget.key); // API key requires secure connection
       wsUrl.protocol = useSecure ? "wss:" : "ws:";
-      ws = new WebSocket(wsUrl, { rejectUnauthorized: false, maxPayload: MAX_MESSAGE_BYTES });
+      // Checked as every other request is (Studio D1), unless the service opts out.
+      ws = new WebSocket(wsUrl, { rejectUnauthorized: checksCertificate(), maxPayload: MAX_MESSAGE_BYTES });
       await waitForEvent(ws, () => true, { event: "open", parseJson: false }); // wait for open
       await authenticate(ws, widget);
       data = await sendMethod(ws, wsMethod);

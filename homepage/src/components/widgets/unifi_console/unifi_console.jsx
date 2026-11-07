@@ -18,7 +18,7 @@ export default function Widget({ options }) {
   const { data: statsData, error: statsError } = useWidgetAPI(widgetOptions, "stat/sites", { index: options.index });
 
   if (statsError) {
-    return <Error options={widgetOptions} />;
+    return <Error options={widgetOptions} error={statsError} />;
   }
 
   const defaultSite = options.site

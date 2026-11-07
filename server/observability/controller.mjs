@@ -10,7 +10,7 @@ import { createEngineHost, createQueryHost } from './host.mjs';
 import { createDefinitions, cleanMonitor, cleanMaintenance, cleanChannel, cleanView, cleanSource, cleanAlert, cleanSettings, publicChannel, publicMonitor, hashToken, newToken, DefinitionError } from './definitions.mjs';
 import { STUDIO_SCOPE, SCOPE, SECRET_FIELD, severityLabel } from './model.mjs';
 import { createHash } from 'node:crypto';
-import { CLASS_SENTENCES } from '../../homepage/src/utils/studio/error-classes.mjs';
+import { CLASS_SENTENCES, classifyError } from '../../homepage/src/utils/studio/error-classes.mjs';
 import { resolveEnvironmentVariables } from '../../homepage/src/utils/config/environment.mjs';
 import { loadYaml } from '../../homepage/src/utils/config/yaml-parser.mjs';
 import { dashboardConfigDir } from '../dashboard-paths.mjs';
@@ -122,6 +122,16 @@ export function parseWorkerLine(raw, stream) {
     return { severity: LEVELS[match[2].toLowerCase()] ?? 6, ts: Number.isFinite(ts) ? ts : undefined, label: match[3] ?? null, message: match[4] };
   }
   return { severity: stream === 'stderr' ? 4 : 6, label: null, message: line };
+}
+
+// One renderer output line as a log event, or null. Errors and warnings get
+// their class, so class: filters, facets and plain words find them (UI
+// review M4).
+export function workerEvent(dashboardId, stream, line) {
+  const parsed = parseWorkerLine(line, stream);
+  if (!parsed) return null;
+  const errorClass = parsed.severity <= 4 ? classifyError({ message: parsed.message }) : null;
+  return { source_type: 'renderer', source_id: dashboardId, scope: SCOPE.test(dashboardId) && !parsed.startup ? dashboardId : STUDIO_SCOPE, category: /proxy|widget|service/i.test(parsed.label ?? '') ? 'integration' : 'application', severity: parsed.severity, ts: parsed.ts, resource: parsed.label ?? undefined, ...(errorClass ? { error_class: errorClass } : {}), event_type: parsed.label ? `renderer.${parsed.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}` : 'renderer.log', message: parsed.message };
 }
 
 export function createObservability({ stateRoot, configRoot, signIn, authConfig = null, smtp = null, siteName = () => 'Homepage Studio', publicOrigin = null, trusted = null, listDashboards, connectionsOf = async () => [], personalConnections = async () => [], now = () => Date.now() }) {
@@ -338,6 +348,8 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
           monitors: defs.monitors.map(publicMonitor), maintenance: defs.maintenance, channels: defs.channels.map(publicChannel), views: defs.views,
           sources: defs.sources.map(({ tokenHash, ...source }) => ({ ...source, tokenSet: Boolean(tokenHash) })), alerts: defs.alerts, settings: defs.settings, overrides: defs.overrides,
           storage, dashboards: access.dashboards.map(({ id, name }) => ({ id, name })),
+          // Daily and weekly maintenance times are in this zone (the stack's TZ).
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? null,
         });
       }
       if (route === 'config' && method === 'POST') {
@@ -402,6 +414,10 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
         if (!value.paused && !value.notify.channels.length) delete draft.overrides[id]; else draft.overrides[id] = value;
         return draft.overrides[id] ?? null;
       });
+      // Pausing a card's check or changing who hears about it is recorded like
+      // any other monitor change.
+      const named = await engine.call('monitor', { id, scopes: null }).catch(() => null);
+      await audit(current, 'card-monitor', 'changed', named?.monitor?.name ?? id);
       await refresh();
       return { override };
     }
@@ -460,7 +476,7 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
     return { ...result, ...(token ? { token } : {}) };
   }
   async function audit(current, kind, action, name) {
-    engine.cast('log', { source_type: 'config', source_id: 'operations', category: 'audit', severity: 5, event_type: `ops.${kind}.${action}`, actor: current.user.username, message: `${current.user.username} ${action === 'save' ? 'saved' : action === 'delete' ? 'deleted' : action === 'token' ? 'made a new token for' : action === 'changed' ? 'changed' : action + 'd'} ${kind} ${name ?? ''}`.trim(), fields: { user_id: current.user.id, ip: current.ip } });
+    engine.cast('log', { source_type: 'config', source_id: 'operations', category: 'audit', severity: 5, event_type: `ops.${kind}.${action}`, actor: current.user.username, message: `${current.user.username} ${action === 'save' ? 'saved' : action === 'delete' ? 'deleted' : action === 'token' ? 'made a new token for' : action === 'changed' ? 'changed' : action + 'd'} ${kind.replace(/-/g, ' ')} ${name ?? ''}`.trim(), fields: { user_id: current.user.id, ip: current.ip } });
   }
 
   async function exportLogs(res, params, format) {
@@ -468,16 +484,24 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
     const cell = value => { const text = value === null || value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value); return /[",\n\r]|^[=+\-@\t]/.test(text) ? `"${(/^[=+\-@\t]/.test(text) ? "'" : '') + text.replace(/"/g, '""')}"` : text; };
     if (format === 'csv') res.write('time,severity,dashboard,source,resource,type,class,message,actor,fields\n');
     let before = null, sent = 0;
-    while (sent < EXPORT_MAX) {
-      const page = await queries.call('search', { ...params, limit: 500, before, budgetMs: 20000 }, 30000);
-      if (!page?.events?.length) break;
-      for (const event of page.events) {
-        if (format === 'csv') res.write([new Date(event.ts).toISOString(), severityLabel(event.severity), event.scope, event.source_type, event.resource, event.event_type, event.error_class, event.message, event.actor, event.fields].map(cell).join(',') + '\n');
-        else res.write(JSON.stringify(event) + '\n');
+    try {
+      while (sent < EXPORT_MAX && !res.destroyed) {
+        const page = await queries.call('search', { ...params, limit: 500, before, budgetMs: 20000 }, 30000);
+        if (!page?.events?.length) break;
+        for (const event of page.events) {
+          if (format === 'csv') res.write([new Date(event.ts).toISOString(), severityLabel(event.severity), event.scope, event.source_type, event.resource, event.event_type, event.error_class, event.message, event.actor, event.fields].map(cell).join(',') + '\n');
+          else res.write(JSON.stringify(event) + '\n');
+        }
+        sent += page.events.length;
+        if (!page.next) break;
+        before = page.next;
       }
-      sent += page.events.length;
-      if (!page.next) break;
-      before = page.next;
+    } catch (error) {
+      // The download has started, so no error answer can follow: cut it off,
+      // so the browser shows a failed download rather than a short file.
+      console.error('A log export stopped:', error.code || error.message);
+      res.destroy();
+      return;
     }
     res.end();
   }
@@ -544,7 +568,8 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
       id: `card:${dashboard.id}:${target.panel}`, name: target.name || 'Card', scope: dashboard.id, card: true, panel: target.panel,
       type: target.check === 'ping' ? 'ping' : 'http', interval: CARD_INTERVAL, timeout: 10, failures: 1, retryInterval: CARD_INTERVAL, successes: 1, paused: false, tags: [], family: 'auto', parent: null,
       notify: { channels: [], down: true, up: true, certificate: true, resendMinutes: 0 },
-      ...(target.check === 'ping' ? { ping: { host: target.host, count: 1 } } : { http: { url: target.url, card: true } }),
+      // A card checks the certificate too, unless its service opts out (D1).
+      ...(target.check === 'ping' ? { ping: { host: target.host, count: 1 } } : { http: { url: target.url, card: true, ...(target.checkCertificate === false ? { verifyTls: false } : {}) } }),
     }));
     const key = JSON.stringify(monitors);
     if (cardTargets.get(dashboard.id) === key) return;
@@ -575,9 +600,8 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
     }
   }
   function workerOutput(dashboardId, stream, line) {
-    const parsed = parseWorkerLine(line, stream);
-    if (!parsed) return;
-    log({ source_type: 'renderer', source_id: dashboardId, scope: SCOPE.test(dashboardId) && !parsed.startup ? dashboardId : STUDIO_SCOPE, category: /proxy|widget|service/i.test(parsed.label ?? '') ? 'integration' : 'application', severity: parsed.severity, ts: parsed.ts, resource: parsed.label ?? undefined, event_type: parsed.label ? `renderer.${parsed.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}` : 'renderer.log', message: parsed.message });
+    const event = workerEvent(dashboardId, stream, line);
+    if (event) log(event);
   }
   function auditEvent(event, user) {
     const { type, ip, userId, by, ...rest } = event;

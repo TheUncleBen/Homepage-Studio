@@ -265,10 +265,13 @@ export function createMonitoring({ db, definitions, runCheck, onEvent = () => {}
     tick, apply, push, forget, evaluateGroup,
     // Cards' monitors for one dashboard, rebuilt from its configuration.
     setBound(dashboardId, monitors) {
-      const before = new Set((bound.get(dashboardId) ?? []).map(monitor => monitor.id));
+      const before = new Map((bound.get(dashboardId) ?? []).map(monitor => [monitor.id, JSON.stringify(monitor)]));
       bound.set(dashboardId, monitors);
       const after = new Set(monitors.map(monitor => monitor.id));
-      for (const id of before) if (!after.has(id)) forget(id);
+      for (const id of before.keys()) if (!after.has(id)) forget(id);
+      // A card whose check changed (its address, or its certificate check) is
+      // checked now, so its dot doesn't show the old answer for a cycle.
+      for (const monitor of monitors) if (before.has(monitor.id) && before.get(monitor.id) !== JSON.stringify(monitor)) due.set(monitor.id, now());
     },
     dropDashboard(dashboardId) { for (const monitor of bound.get(dashboardId) ?? []) forget(monitor.id); bound.delete(dashboardId); },
     monitors: all,

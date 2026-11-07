@@ -1,7 +1,10 @@
 import { withAuth } from "utils/auth";
-import getServiceWidget from "utils/config/service-helpers";
+import { TEST_GROUP } from "utils/config/connection-test.mjs";
+import getServiceWidget, { getServiceItem } from "utils/config/service-helpers";
+import { getPrivateWidgetOptions } from "utils/config/widget-helpers";
 import createLogger from "utils/logger";
 import { formatApiCall } from "utils/proxy/api-helpers";
+import { certificateCheck, serviceChecksCertificate } from "utils/proxy/certificate-check.mjs";
 import genericProxyHandler from "utils/proxy/handlers/generic";
 import calendarProxyHandler from "widgets/calendar/proxy";
 import widgets from "widgets/widgets";
@@ -42,7 +45,28 @@ function getSafeSegments(rawSegments, allowedSegments) {
   return safeSegments;
 }
 
+// Each request a widget makes checks the service's certificate unless the
+// service opts out (owner decision D1). Test connection sets its own answer
+// from the dialog (pages/api/studio/connection-test.js).
 export async function serviceProxy(req, res) {
+  const { service, group } = req.query;
+  if (group === TEST_GROUP) return proxyFor(req, res);
+  // The UniFi console information widget keeps its exception in widgets.yaml.
+  if (group === "unifi_console" && service === "unifi_console") {
+    let index;
+    try {
+      index = req.query?.query ? JSON.parse(req.query.query).index : undefined;
+    } catch {
+      index = undefined;
+    }
+    const options = await getPrivateWidgetOptions("unifi_console", index).catch(() => null);
+    return certificateCheck.run({ check: options?.skipCertificateCheck !== true }, () => proxyFor(req, res));
+  }
+  const item = await getServiceItem(group, service).catch(() => null);
+  return certificateCheck.run({ check: serviceChecksCertificate(item) }, () => proxyFor(req, res));
+}
+
+async function proxyFor(req, res) {
   try {
     const { service, group, index } = req.query;
     const serviceWidget = await getServiceWidget(group, service, index);

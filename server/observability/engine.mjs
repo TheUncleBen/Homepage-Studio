@@ -172,6 +172,12 @@ const docker = (() => {
   const eventStreams = new Map(); // server key → res
   const known = new Map(); // container id → monitor ids
   const serverKey = server => JSON.stringify([server.socket ?? null, server.host ?? null, server.port ?? null]);
+  function saveCursor(entry) {
+    if (!entry.cursor) return;
+    entry.saved = Date.now();
+    try { db.run('INSERT OR REPLACE INTO docker_cursor (endpoint, container, since) VALUES (?, ?, ?)', ...entry.cursor); } catch {}
+    entry.cursor = null;
+  }
   function track(monitor, info) {
     if (info.kind !== 'container' || !info.id) return;
     const set = known.get(info.id) ?? new Set();
@@ -205,9 +211,12 @@ const docker = (() => {
       entry.res = await client.logs(container.Id, line => {
         if (since && line.ts <= since) return;
         log({ source_type: 'docker', source_id: container.Id.slice(0, 12), scope: monitor.scope, resource: monitor.name, category: 'infrastructure', severity: line.stream === 'stderr' ? (/\b(error|fatal|panic|exception)\b/i.test(line.line) ? 3 : 5) : (/\b(error|fatal|panic)\b/i.test(line.line) ? 3 : /\bwarn(ing)?\b/i.test(line.line) ? 4 : 6), event_type: 'container.log', ts: line.ts, message: line.line, fields: { container: monitor.docker.container, stream: line.stream } });
-        db.run('INSERT OR REPLACE INTO docker_cursor (endpoint, container, since) VALUES (?, ?, ?)', cursorKey, container.Id, line.ts);
+        // Where to resume after a restart: saved every few seconds, not per
+        // line, so a chatty container doesn't cost a database write a line.
+        entry.cursor = [cursorKey, container.Id, line.ts];
+        if (Date.now() - (entry.saved ?? 0) > 5000) saveCursor(entry);
       }, { since, follow: true, tty: Boolean(container.Labels?.tty) });
-      entry.res.on('close', () => { if (followers.get(key) === entry) { followers.delete(key); setTimeout(() => sync().catch(() => {}), 30000).unref?.(); } });
+      entry.res.on('close', () => { saveCursor(entry); if (followers.get(key) === entry) { followers.delete(key); setTimeout(() => sync().catch(() => {}), 30000).unref?.(); } });
     } catch (error) {
       followers.delete(key);
       log({ source_type: 'docker', source_id: 'logs', scope: monitor.scope, resource: monitor.name, category: 'infrastructure', severity: 4, event_type: 'container.logs-unavailable', message: `Container logs for ${monitor.docker.container} aren't available: ${error.message}` });
@@ -240,7 +249,7 @@ const docker = (() => {
       setTimeout(() => sync().catch(() => {}), 60000).unref?.();
     }
   }
-  return { sync, track, close() { for (const f of followers.values()) f.res?.destroy(); for (const r of eventStreams.values()) r?.destroy(); followers.clear(); eventStreams.clear(); } };
+  return { sync, track, close() { for (const f of followers.values()) { saveCursor(f); f.res?.destroy(); } for (const r of eventStreams.values()) r?.destroy(); followers.clear(); eventStreams.clear(); } };
 })();
 
 // ---- Syslog (D4) ----
@@ -413,7 +422,10 @@ const handlers = {
     return { counts, total: list.length, incidents: open.map(incident => ({ ...cleanIncident(incident), monitorState: monitoring.state(incident.monitor_id)?.state ?? null })), attention: attention.slice(0, 20), health: admin ? studioHealth() : undefined };
   },
   incidents({ scopes, open = false, limit = 100 }) {
-    const rows = db.all(`SELECT * FROM incident ${open ? 'WHERE closed IS NULL' : ''} ORDER BY opened DESC LIMIT ?`, Math.min(500, limit * 3)).filter(row => visible(scopes, row.scope)).slice(0, limit);
+    // The person's dashboards are filtered in the query, so a busy dashboard
+    // they can't see never pushes their own incidents out of the list.
+    const where = [...(open ? ['closed IS NULL'] : []), ...(Array.isArray(scopes) ? [scopes.length ? `scope IN (${scopes.map(() => '?').join(', ')})` : '0'] : [])];
+    const rows = db.all(`SELECT * FROM incident ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY opened DESC LIMIT ?`, ...(Array.isArray(scopes) ? scopes : []), Math.min(500, Math.max(1, limit)));
     return { incidents: rows.map(cleanIncident) };
   },
   incident({ id, scopes }) {

@@ -192,12 +192,38 @@ function hostOf(value) {
 
 // What a widget's card takes from the entry it lives in: its link, status
 // check, logo and description (its name is the entry's name).
-const WIDGET_SERVICE_KEYS = ["href", "siteMonitor", "ping", "icon", "description", "server", "container"];
+const WIDGET_SERVICE_KEYS = [
+  "href",
+  "siteMonitor",
+  "ping",
+  "icon",
+  "description",
+  "server",
+  "container",
+  "skipCertificateCheck",
+];
 // Check now in the Status setting: the card's own check, on the draft address.
-const statusCheckNow = (check, address) => studioRequest("/studio/api/connection-test", { status: { check, address } });
+// Information widgets that fetch an address of their own, so they carry the
+// per-widget certificate exception (owner decision D1). Longhorn's address is
+// in settings.yaml (providers.longhorn), so its exception is set there.
+const CERTIFICATE_INFO_WIDGETS = new Set(["glances", "customapi", "unifi_console"]);
+
+const statusCheckNow = (check, address, skipCertificateCheck = false) =>
+  studioRequest("/studio/api/connection-test", {
+    status: { check, address, ...(skipCertificateCheck ? { skipCertificateCheck: true } : {}) },
+  });
 function widgetService(config = {}) {
   return Object.fromEntries(
-    WIDGET_SERVICE_KEYS.map((key) => [key, typeof config[key] === "string" ? config[key] : ""]),
+    WIDGET_SERVICE_KEYS.map((key) => [
+      key,
+      key === "skipCertificateCheck"
+        ? config[key] === true
+          ? true
+          : ""
+        : typeof config[key] === "string"
+          ? config[key]
+          : "",
+    ]),
   );
 }
 
@@ -606,6 +632,8 @@ export default function ContentEditor({
   wholeBoard,
   renderPreview,
   startDeleting = false,
+  // The section to open first ("settings" when a card's Fix names it).
+  startSection,
   onDelete,
   // Docked beside the board (T26): the board's own card shows the draft
   // through onLiveDraft, so the dialog has no preview of its own.
@@ -701,7 +729,9 @@ export default function ContentEditor({
   // Sections stay open until closed, so Values and Look can be open together
   // (F7, 6 Nov 2026: less back and forth; was one at a time, board 24). A new
   // item opens on its settings; an existing one opens with everything summarised.
-  const [openSections, setOpenSections] = useState(startDeleting ? ["manage"] : panel ? [] : ["settings"]);
+  const [openSections, setOpenSections] = useState(
+    startDeleting ? ["manage"] : startSection ? [startSection] : panel ? [] : ["settings"],
+  );
   // Saved looks and widgets are read once Look or Management first opens.
   const [libraryWanted, setLibraryWanted] = useState(false);
   if ((openSections.includes("look") || openSections.includes("manage")) && !libraryWanted) setLibraryWanted(true);
@@ -795,7 +825,7 @@ export default function ContentEditor({
   // panels, so neither is listed under More options.
   const hiddenKeys =
     kind === "service"
-      ? ["id", "target", "showStats", "widget", "widgets"]
+      ? ["id", "target", "showStats", "widget", "widgets", "skipCertificateCheck"]
       : kind === "bookmark"
         ? ["id", "target"]
         : nativeValues
@@ -847,6 +877,20 @@ export default function ContentEditor({
                 onChange: (key, value) => setService({ ...service, [key]: value }),
               }
             : undefined,
+        // Certificate checking's per-service exception (owner decision D1).
+        // A widget's switch is in Connection (config-form); a plain tile's is here.
+        certificate:
+          kind === "service"
+            ? {
+                skip: draft.skipCertificateCheck === true,
+                onChange: (skip) => {
+                  const next = { ...draft };
+                  if (skip) next.skipCertificateCheck = true;
+                  else delete next.skipCertificateCheck;
+                  setDraft(next);
+                },
+              }
+            : undefined,
         statusAddress:
           kind === "serviceWidget"
             ? {
@@ -862,7 +906,7 @@ export default function ContentEditor({
                       : null,
                 onChange: (check, value) =>
                   setService({ ...service, [check === "ping" ? "ping" : "siteMonitor"]: value || "" }),
-                onCheck: statusCheckNow,
+                onCheck: (check, address) => statusCheckNow(check, address, service.skipCertificateCheck === true),
               }
             : kind === "service"
               ? {
@@ -870,7 +914,7 @@ export default function ContentEditor({
                   ping: typeof draft.ping === "string" ? draft.ping : "",
                   href: typeof draft.href === "string" ? draft.href : "",
                   fallback: typeof draft.href === "string" && draft.href ? { address: draft.href, from: "link" } : null,
-                  onCheck: statusCheckNow,
+                  onCheck: (check, address) => statusCheckNow(check, address, draft.skipCertificateCheck === true),
                   onChange: (check, value) => {
                     const key = check === "ping" ? "ping" : "siteMonitor";
                     const next = { ...draft };
@@ -1076,6 +1120,25 @@ export default function ContentEditor({
                     (source?.type || entry?.type) === "spacer" ? "Nothing to set up. Size it on the board." : undefined
                   }
                   knownKeys={hiddenKeys}
+                  certificate={
+                    kind === "serviceWidget"
+                      ? {
+                          skip: service?.skipCertificateCheck === true,
+                          onChange: (skip) => setService({ ...service, skipCertificateCheck: skip ? true : "" }),
+                        }
+                      : kind === "informationWidget" &&
+                          CERTIFICATE_INFO_WIDGETS.has(source?.type || selectedEntry?.type || entry?.type)
+                        ? {
+                            skip: draft.skipCertificateCheck === true,
+                            onChange: (skip) => {
+                              const next = { ...draft };
+                              if (skip) next.skipCertificateCheck = true;
+                              else delete next.skipCertificateCheck;
+                              setDraft(next);
+                            },
+                          }
+                        : undefined
+                  }
                   onValidity={setValid}
                   sectioned
                   connections={kind === "serviceWidget" || kind === "informationWidget"}

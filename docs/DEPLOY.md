@@ -333,7 +333,8 @@ is optional and works unset; the comments in the file explain each line.
 | `STUDIO_DEPLOYMENT_NAME` | Optional: the name shown next to the logo, on the sign-in page, in tab titles, in email and in passkey prompts (default `Homepage Studio`) |
 | `STUDIO_TRUSTED_PROXIES` | Recommended: the subnet from step 2, for example `10.0.10.0/24`. Remove the `# ` in front of the line |
 | `STUDIO_NETWORK_NAME` | Only if your network isn't called `homepage-studio` |
-| `STUDIO_TRUSTED_CERTIFICATES_FILE` | (unset) | A PEM file inside the container with your own certificate authorities, such as a Docker secret ([Trusted certificates](#trusted-certificates)) |
+| `STUDIO_TRUSTED_CERTIFICATES_FILE` | Optional: a PEM file inside the container with your own certificate authorities, such as a Docker secret ([Trusted certificates](#trusted-certificates)) |
+| `TZ` | Optional: your time zone, for example `Europe/London`, so daily and weekly maintenance windows in Operations use your local time (default UTC) |
 | `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | Only for host directories (step 3) |
 | `STUDIO_ADMIN_USERNAME` | Recommended: the first administrator's username, for example `admin`. Its password is the `studio_admin_password` secret. Leave it unset if that secret says `off` |
 | `STUDIO_ADMIN_EMAIL` | Optional: that administrator's email. Once you link the account to your identity provider (step 10) it follows the provider's email |
@@ -639,7 +640,7 @@ example a local CA behind Nginx Proxy Manager, Studio needs that authority to
 reach them over `https://`. Studio never trusts a certificate just because a
 service presents it; you add the authority once:
 
-- **Administration → Trusted certificates → Add certificate**: paste the CA
+- **Administration › Trusted certificates › Add certificate**: paste the CA
   certificate (PEM, the text between `-----BEGIN CERTIFICATE-----` and
   `-----END CERTIFICATE-----`) and choose **Trust it**. The list shows each
   one's name and expiry; open one for its issuer, validity and SHA-256
@@ -655,11 +656,24 @@ Both add to the public authorities; they don't replace them. Dashboards
 restart their workers after a change, which takes a few seconds. Add the
 certificate *authority*, not the service's own certificate.
 
-What uses them today: the web and certificate monitors you add in
-Operations ([MONITORING.md](MONITORING.md)). Widgets, **Test connection** and
-cards' status checks still accept any certificate, as Homepage does, so the
-list doesn't change them yet; whether they should check certificates is a
-pending choice.
+Everything Studio fetches over `https://` checks the certificate against the
+public authorities plus this list: widgets' data, **Test connection**,
+**Check now**, cards' status checks and card monitors, and the web and
+certificate monitors you add in Operations ([MONITORING.md](MONITORING.md)).
+A certificate that doesn't check out stops the request, and the card or test
+says the certificate isn't trusted.
+
+For a service whose self-signed certificate you can't replace or add, turn
+off **Check its certificate** under the widget's **Connection** (under
+**Status** for a plain tile; it writes
+`skipCertificateCheck: true` on that service in `services.yaml`). Studio then
+accepts any certificate from that service's address, for its data, tests and
+status check, so it can't tell the real service from an impostor; prefer
+adding the authority. The Glances, Custom API and UniFi console information
+widgets have the same switch in their Settings (it writes
+`skipCertificateCheck: true` in `widgets.yaml`); for Longhorn, whose address
+is in `settings.yaml`, add `skipCertificateCheck: true` under
+`providers.longhorn`.
 
 ## Monitoring and logs
 

@@ -21,7 +21,7 @@ export default function CustomApi({ options }) {
   });
 
   if (error || (data?.error && !mappings.some((mapping) => mapping.field === "error"))) {
-    return <Error options={options} />;
+    return <Error options={options} error={error ?? data} />;
   }
 
   return (

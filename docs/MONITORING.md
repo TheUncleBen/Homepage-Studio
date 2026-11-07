@@ -40,7 +40,9 @@ named after the card. It checks the same address the card would (its
 `siteMonitor` or `ping`, or the service's own address), every 30 seconds,
 and goes down after one failed check. The card's status dot then shows the
 monitor's answer, so every browser sees the same status. If monitoring is not
-running, the card checks for itself as before.
+running, the card checks for itself as before. A web check checks the address's
+certificate like the card does, unless the card's **Check its certificate**
+is off.
 
 Card monitors follow the card: change its address or Status, archive or
 delete the dashboard, and the monitor follows within a minute. Their only
@@ -106,7 +108,8 @@ channel. A channel that keeps failing shows under Overview › Needs attention.
 Operations › Monitors › **Maintenance** adds a window now (for so many
 minutes), every day or every week, covering chosen monitors or every monitor
 with a tag. Monitors in maintenance are not counted as down and send nothing.
-Daily and weekly times are in the server's time zone.
+Daily and weekly times are in the server's time zone: the stack's `TZ`
+(UTC unless you set it; [DEPLOY.md](DEPLOY.md)). The maintenance list names it.
 
 ## Docker
 

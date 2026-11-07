@@ -131,6 +131,9 @@ describe("Test connection results", () => {
     expect(connectionTestResult(transport("ECONNREFUSED")).message).toMatch(/Nothing answered/);
     expect(connectionTestResult(transport("ETIMEDOUT")).message).toMatch(/in time/);
     expect(connectionTestResult(transport("DEPTH_ZERO_SELF_SIGNED_CERT")).kind).toBe("certificate");
+    expect(connectionTestResult(transport("DEPTH_ZERO_SELF_SIGNED_CERT")).errorClass).toBe("tls-untrusted");
+    expect(connectionTestResult(transport("CERT_HAS_EXPIRED")).errorClass).toBe("tls-expired");
+    expect(connectionTestResult({ status: 401, body: { error: "no" } }).errorClass).toBe("auth");
     expect(connectionTestResult(transport("SOMETHING_ELSE")).kind).toBe("unreachable");
     expect(connectionTestResult({ status: 401, body: { error: "x" } }).kind).toBe("key");
     expect(connectionTestResult({ status: 403, body: {} }).kind).toBe("permission");
@@ -166,6 +169,45 @@ describe("Check now (status address before saving)", () => {
     expect((await statusCheck({ check: "web", address: "https://a.example.org" })).message).toBe("Down · answered 503");
     httpProxy.mockResolvedValue([500, null, null, null]);
     expect((await statusCheck({ check: "web", address: "https://a.example.org" })).message).toBe("Down · no answer");
+  });
+
+  it("checks the certificate unless the service opts out, and names a certificate failure (owner decision D1)", async () => {
+    httpProxy.mockResolvedValue([200, null, null, {}]);
+    await statusCheck({ check: "web", address: "https://a.example.org" });
+    expect(httpProxy).toHaveBeenLastCalledWith("https://a.example.org/", {
+      method: "HEAD",
+      cookieJar: false,
+      checkCertificate: true,
+    });
+    await statusCheck({ check: "web", address: "https://a.example.org", skipCertificateCheck: true });
+    expect(httpProxy).toHaveBeenLastCalledWith("https://a.example.org/", {
+      method: "HEAD",
+      cookieJar: false,
+      checkCertificate: false,
+    });
+    httpProxy.mockResolvedValue([
+      500,
+      null,
+      { error: { message: "self-signed", rawError: { code: "DEPTH_ZERO_SELF_SIGNED_CERT" } } },
+      null,
+    ]);
+    const answer = await statusCheck({ check: "web", address: "https://a.example.org" });
+    expect(answer).toMatchObject({ ok: false, kind: "certificate" });
+  });
+
+  it("runs the widget test with the certificate check the dialog asks for", async () => {
+    const seen = [];
+    serviceProxy.mockImplementation(async (req, res) => {
+      const { checksCertificate } = await import("utils/proxy/certificate-check.mjs");
+      seen.push(checksCertificate());
+      res.status(200).send({ ok: 1 });
+    });
+    await handler(request({ widget: { type: "sonarr", url: "https://tv.example.org", key: "k" } }), createRes());
+    await handler(
+      request({ widget: { type: "sonarr", url: "https://tv.example.org", key: "k" }, skipCertificateCheck: true }),
+      createRes(),
+    );
+    expect(seen).toEqual([true, false]);
   });
 
   it("pings the host of an address", async () => {

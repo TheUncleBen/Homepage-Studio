@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import { classifyError } from "../studio/error-classes.mjs";
+
 // Test connection (Studio widget dialog): while a test runs, the native
 // proxy reads the widget being tested instead of services.yaml, so the
 // widget's own request runs with the address and key in the dialog.
@@ -24,7 +26,7 @@ const TRANSPORT = [
   [
     /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|DEPTH_ZERO|ERR_TLS|certificate/i,
     "certificate",
-    "The address's certificate isn't trusted by Studio.",
+    "The address’s certificate isn’t trusted by Studio.",
   ],
 ];
 
@@ -38,8 +40,11 @@ export function connectionTestResult({ status, body, ms }) {
     return { ok: false, kind: "address", message: "Add the service address first." };
   if (transport) {
     const codes = [transport.code, transport.causeCode].filter((part) => typeof part === "string").join(" ");
-    for (const [pattern, kind, message] of TRANSPORT) if (pattern.test(codes)) return { ok: false, kind, message };
-    return { ok: false, kind: "unreachable", message: "Studio couldn't reach that address." };
+    // errorClass: the shared class, so the failure is searchable in the logs.
+    const errorClass = classifyError({ code: codes }) ?? "unreachable";
+    for (const [pattern, kind, message] of TRANSPORT)
+      if (pattern.test(codes)) return { ok: false, kind, message, errorClass };
+    return { ok: false, kind: "unreachable", message: "Studio couldn't reach that address.", errorClass };
   }
   // The proxy's own catch-all: the widget's handler couldn't read what came
   // back (an answer in a shape it doesn't expect), not an error at the service.
@@ -47,27 +52,32 @@ export function connectionTestResult({ status, body, ms }) {
     return {
       ok: false,
       kind: "format",
+      errorClass: "bad-response",
       message: "The address answered, but not in the way this widget expects. Check the address and the app's version.",
     };
   if (status < 400 && !error)
     return { ok: true, kind: "ok", message: `Connected in ${Math.max(1, Math.round(ms))} ms.` };
-  if (status === 401) return { ok: false, kind: "key", message: "The service refused the key or login. Check them." };
+  if (status === 401)
+    return { ok: false, kind: "key", errorClass: "auth", message: "The service refused the key or login. Check them." };
   if (status === 403)
     return {
       ok: false,
       kind: "permission",
+      errorClass: "permission",
       message: "The key or login works but has no permission for this. Give it read access in the app.",
     };
   if (status === 404)
     return {
       ok: false,
       kind: "address",
+      errorClass: "not-found",
       message: "The address answered, but not where this widget expects. Check the address and the app's version.",
     };
   if (status >= 500)
     return {
       ok: false,
       kind: "service",
+      errorClass: "http-status",
       message: `The service had an error (${status}). Try again, or check the app.`,
     };
   return {

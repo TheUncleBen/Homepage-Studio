@@ -62,7 +62,11 @@ describe("pages/api/siteMonitor", () => {
     httpProxy.mockResolvedValueOnce([200]);
     const res = createMockRes();
     await handler({ query: { groupName: "g", serviceName: "s", fallback: "1" } }, res);
-    expect(httpProxy).toHaveBeenCalledWith("https://app.example.com", { method: "HEAD", cookieJar: false });
+    expect(httpProxy).toHaveBeenCalledWith("https://app.example.com", {
+      method: "HEAD",
+      cookieJar: false,
+      checkCertificate: true,
+    });
     expect(res.statusCode).toBe(200);
 
     const plain = createMockRes();
@@ -85,7 +89,11 @@ describe("pages/api/siteMonitor", () => {
 
     await handler(req, res);
 
-    expect(httpProxy).toHaveBeenCalledWith("http://example.com", { method: "HEAD", cookieJar: false });
+    expect(httpProxy).toHaveBeenCalledWith("http://example.com", {
+      method: "HEAD",
+      cookieJar: false,
+      checkCertificate: true,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.body.status).toBe(200);
     expect(res.body.latency).toBe(10);
@@ -101,10 +109,37 @@ describe("pages/api/siteMonitor", () => {
 
     await handler(req, res);
 
-    expect(httpProxy).toHaveBeenNthCalledWith(1, "http://example.com", { method: "HEAD", cookieJar: false });
-    expect(httpProxy).toHaveBeenNthCalledWith(2, "http://example.com", { cookieJar: false });
+    expect(httpProxy).toHaveBeenNthCalledWith(1, "http://example.com", {
+      method: "HEAD",
+      cookieJar: false,
+      checkCertificate: true,
+    });
+    expect(httpProxy).toHaveBeenNthCalledWith(2, "http://example.com", { cookieJar: false, checkCertificate: true });
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ status: 200, latency: 10 });
+  });
+
+  it("skips the certificate check only for a service that opts out (owner decision D1)", async () => {
+    getServiceItem.mockResolvedValueOnce({ siteMonitor: "https://self.example.com", skipCertificateCheck: true });
+    perf.now.mockReturnValueOnce(1).mockReturnValueOnce(3);
+    httpProxy.mockResolvedValueOnce([200]);
+    const res = createMockRes();
+    await handler({ query: { groupName: "g", serviceName: "s" } }, res);
+    expect(httpProxy).toHaveBeenCalledWith("https://self.example.com", {
+      method: "HEAD",
+      cookieJar: false,
+      checkCertificate: false,
+    });
+  });
+
+  it("names a certificate the check refused", async () => {
+    getServiceItem.mockResolvedValueOnce({ siteMonitor: "https://example.com" });
+    perf.now.mockReturnValueOnce(1).mockReturnValueOnce(2).mockReturnValueOnce(5).mockReturnValueOnce(15);
+    const refused = [500, "application/json", { error: { rawError: { code: "DEPTH_ZERO_SELF_SIGNED_CERT" } } }, null];
+    httpProxy.mockResolvedValueOnce(refused).mockResolvedValueOnce(refused);
+    const res = createMockRes();
+    await handler({ query: { groupName: "g", serviceName: "s" } }, res);
+    expect(res.body).toEqual({ status: 500, latency: 10, reachable: false, certificate: "tls-untrusted" });
   });
 
   it("says nothing answered when the proxy could not reach the address", async () => {

@@ -420,7 +420,9 @@ you edit. Only administrators can see or change them.
 **Test connection**, under the connection, sends the widget's first request
 now and says in plain words whether it worked, for example *Connected in
 42 ms.*, *The service refused the key or login. Check them.* or *The
-address's certificate isn't trusted by Studio.*
+address's certificate isn't trusted by Studio. Add its authority in
+Administration › Trusted certificates, or turn off Check its certificate
+below.* (People who aren't administrators are told to ask one to add it.)
 A key kept as a Docker secret or variable (`{{HOMEPAGE_FILE_...}}`,
 `{{HOMEPAGE_VAR_...}}`) is only filled in for the address the saved widget
 already uses, so a test never sends it anywhere new; to test a new address,
@@ -438,7 +440,15 @@ An integration's **Logo** and **Description** are set here too.
 Its **Address** starts from the widget's Connection address (or its link),
 shown greyed as *From the Connection*; type another to check that instead.
 **Check now** runs the check before you save and says, for example,
-*Up · 42 ms*. An integration's **Docker server** and **Docker container**
+*Up · 42 ms*. **Check its certificate** (on unless you turn it off) makes
+Studio check the address's `https://` certificate for the widget's data,
+tests and status check. It sits under the widget's **Connection**, below
+**Test connection** (for a plain tile, under **Status** once the check is a
+web address); turn it off only for a service whose self-signed certificate
+can't be added in **Administration › Trusted certificates**
+([DEPLOY.md](DEPLOY.md#trusted-certificates)). When a card says its
+certificate isn't trusted, **Fix** opens the Connection with the switch. An
+integration's **Docker server** and **Docker container**
 are under **Status** as well; with both set, the card shows whether the
 container is running;
 **Behaviour** sets refresh, what a click does and **Show on**: the layouts (Desktop, Tablet, Phone) the widget appears on. While you edit a layout, widgets it leaves out are shown faded with "Not shown on this layout".

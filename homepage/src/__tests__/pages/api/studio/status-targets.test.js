@@ -26,6 +26,15 @@ describe("card monitor targets", () => {
       await statusTarget(panel("web"), data, async () => ({ name: "Plex", href: "https://plex.example" })),
     ).toEqual({ check: "web", url: "https://plex.example", name: "Plex" });
   });
+  it("tells the card monitor not to check the certificate only when the service opts out", async () => {
+    expect(
+      await statusTarget(panel("web"), data, async () => ({
+        name: "Plex",
+        href: "https://plex.example",
+        skipCertificateCheck: true,
+      })),
+    ).toEqual({ check: "web", url: "https://plex.example", name: "Plex", checkCertificate: false });
+  });
   it("pings the host of the address, or the service's own ping host", async () => {
     expect(
       await statusTarget(panel("ping"), data, async () => ({ name: "Plex", href: "https://plex.example:8443/web" })),

@@ -33,6 +33,20 @@ export function withoutConnection(value) {
   return next;
 }
 
+// Whether this person is a Studio administrator (or sign-in is off).
+export function useStudioAdmin() {
+  const { data: access } = useSWR("/studio/api/access", studioRequest);
+  return !access?.authEnabled || access?.user?.role === "admin";
+}
+
+// Both ways out of a certificate failure (UI review M2), naming
+// Administration only to people who can open it.
+export function certificateRemedy(admin, where = "") {
+  return admin
+    ? `Add its authority in Administration › Trusted certificates, or turn off Check its certificate${where}.`
+    : `Turn off Check its certificate${where}, or ask an administrator to add its authority in Trusted certificates.`;
+}
+
 export function useSavedConnections() {
   const { data: access } = useSWR("/studio/api/access", studioRequest);
   const personal = Boolean(access?.authEnabled && access.user);
@@ -150,14 +164,20 @@ export function ConnectionChooser({ value, keys, saved, onSaved, onChange }) {
 // Test connection: runs the widget's own first request with what is in the
 // dialog (a saved connection's key stays on the server) and says in plain
 // words what happened. Shown once there is an address to test.
-export function ConnectionTest({ value }) {
+export function ConnectionTest({ value, skipCertificateCheck = false }) {
   const [state, setState] = useState(null);
+  const admin = useStudioAdmin();
   const url = typeof value.url === "string" ? value.url.trim() : "";
   if (!url || typeof value.type !== "string") return null;
   const run = async () => {
     setState({ busy: true });
     try {
-      setState(await studioRequest("/studio/api/connection-test", { widget: value }));
+      setState(
+        await studioRequest("/studio/api/connection-test", {
+          widget: value,
+          ...(skipCertificateCheck ? { skipCertificateCheck: true } : {}),
+        }),
+      );
     } catch (failure) {
       setState({ ok: false, message: failure.message });
     }
@@ -171,7 +191,11 @@ export function ConnectionTest({ value }) {
         className={`studio-connection-result${state && !state.busy ? (state.ok ? " studio-ok" : " studio-failed") : ""}`}
         role="status"
       >
-        {state && !state.busy ? state.message : ""}
+        {state && !state.busy
+          ? state.kind === "certificate"
+            ? `${state.message} ${certificateRemedy(admin, " below")}`
+            : state.message
+          : ""}
       </p>
     </div>
   );

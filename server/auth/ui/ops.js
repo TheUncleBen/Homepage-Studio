@@ -123,6 +123,13 @@
       return;
     }
     const admin = access.admin;
+    // The next step for a certificate problem (UI review L4), worded as on the card.
+    const certificateHint = (cls, card) => {
+      if (!/^tls-/.test(cls ?? '')) return null;
+      if (admin) return longRow('Next step', `Add its authority in Administration › Trusted certificates, or ${card ? 'turn off Check its certificate when you edit the card' : 'turn off Check the certificate in the monitor’s settings'}.`);
+      // Someone without the editor may not be able to change the card (review R2).
+      return longRow('Next step', `Ask an administrator to add its authority in Trusted certificates, or ask someone who can edit the ${card ? 'card' : 'monitor'} to turn off its certificate check.`);
+    };
     const names = new Map(access.dashboards.map(entry => [entry.id, entry.name]));
     names.set('studio', 'Studio');
     const scopeName = scope => names.get(scope) ?? 'Removed dashboard';
@@ -283,6 +290,7 @@
         m.target && !m.card ? row('Target', value(m.target, true)) : null,
         row('Last check', value(m.lastCheck ? `${ago(m.lastCheck)}${m.ms !== null ? ' · ' + ms(m.ms) : ''}${m.code ? ' · HTTP ' + m.code : ''}` : 'Not yet')),
         m.state !== 'up' && m.message ? longRow('Problem', m.message) : null,
+        m.state !== 'up' ? certificateHint(m.errorClass, m.card) : null,
         m.warning ? longRow('Warning', m.warning.message ?? String(m.warning)) : null,
         m.certExpires ? row('Certificate expires', value(new Date(m.certExpires).toLocaleDateString())) : null,
         row('Check every', value(`${m.interval} s`)));
@@ -363,7 +371,7 @@
         h('div', { class: 'ops-head' }, h('h2', { class: 'ops-name', text: incident.name }), stateMark(incident.closed ? 'up' : 'down'), h('span', { class: 'muted small', text: incident.closed ? `lasted ${minutes(Math.max(1, Math.round((incident.closed - incident.opened) / 60000)))}` : `since ${shortTime(incident.opened)}` })),
         toolbar(detail.monitor ? pill('Open monitor', { iconName: 'pulse', onclick: () => open('monitor/' + encodeURIComponent(incident.monitor_id)) }) : null, access.logs ? pill('Logs around it', { iconName: 'search', onclick: () => { pendingLogs = { query: `dashboard:${incident.scope}`, from: incident.opened - 15 * 60e3, to: (incident.closed ?? Date.now()) + 5 * 60e3 }; open('logs'); } }) : null, ack),
         box,
-        group({ title: 'What happened' }, row('Dashboard', value(scopeName(incident.scope))), incident.cause ? longRow('Problem', incident.cause) : null, incident.ack_by ? row('Acknowledged by', value(`${incident.ack_by}, ${ago(incident.ack_at)}`)) : null),
+        group({ title: 'What happened' }, row('Dashboard', value(scopeName(incident.scope))), incident.cause ? longRow('Problem', incident.cause) : null, incident.closed ? null : certificateHint(incident.error_class, detail.monitor?.card), incident.ack_by ? row('Acknowledged by', value(`${incident.ack_by}, ${ago(incident.ack_at)}`)) : null),
         group({ title: 'Timeline' }, detail.timeline.map(item => h('div', { class: 'item-row' }, h('span', { class: 'nav-text' }, h('span', { class: 'nav-title', text: `${KIND_TEXT[item.kind] ?? item.kind}${item.actor ? ' · ' + item.actor : ''}` }), entryText(item) ? h('small', { class: 'ops-wrap', text: entryText(item) }) : null), h('time', { class: 'row-value small', text: shortTime(item.ts) }))),
           h('div', { class: 'ops-note' }, note, addNote)));
     }
@@ -681,7 +689,7 @@
         const reopen = () => { close(); onChanged?.(); maintenanceDialog(onChanged); };
         const list = group({ title: 'Windows' }, cfg.maintenance.length ? cfg.maintenance.map(item => navRow({ title: item.name, detail: `${scopeName(item.scope)} · ${windowText(item)}`, onClick: () => { close(); maintenanceEditor(cfg, item, reopen); } })) : [emptyRow('None yet.')]);
         const add = h('button', { type: 'button', class: 'primary', text: 'New window', onclick: () => { close(); maintenanceEditor(cfg, null, reopen); } });
-        return [h('p', { class: 'muted small', text: 'Monitors in maintenance aren’t counted as down and send no notifications. Times are the server’s time zone.' }), list, dialogActions(h('button', { type: 'button', onclick: close, text: 'Close' }), add)];
+        return [h('p', { class: 'muted small', text: 'Monitors in maintenance aren’t counted as down and send no notifications. Daily and weekly times are the server’s time zone' + (cfg.timeZone ? ` (${cfg.timeZone})` : '') + '.' }), list, dialogActions(h('button', { type: 'button', onclick: close, text: 'Close' }), add)];
       });
     }
     function maintenanceEditor(cfg, existing, onDone) {
@@ -696,8 +704,8 @@
         const whenHolder = h('div', {});
         const remaining = existing?.end ? Math.max(5, Math.ceil((existing.end - Date.now()) / 60000)) : 60;
         const length = inputRow(existing ? 'For (minutes from now)' : 'For (minutes)', { type: 'number', min: 5, value: remaining });
-        const from = inputRow('From', { type: 'time', value: existing?.from ?? '02:00' });
-        const to = inputRow('To', { type: 'time', value: existing?.to ?? '03:00' });
+        const from = inputRow(cfg.timeZone ? `From (${cfg.timeZone})` : 'From', { type: 'time', value: existing?.from ?? '02:00' });
+        const to = inputRow(cfg.timeZone ? `To (${cfg.timeZone})` : 'To', { type: 'time', value: existing?.to ?? '03:00' });
         const days = new Set(existing?.days ?? [0]);
         const dayRow = row('Days', h('div', { class: 'ops-days' }, ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, index) => { const b = h('button', { type: 'button', class: 'ops-chip', 'aria-pressed': String(days.has(index)), text: label }); b.addEventListener('click', () => { if (days.has(index)) days.delete(index); else days.add(index); b.setAttribute('aria-pressed', String(days.has(index))); }); return b; })), { stacked: true });
         function drawWhen() { put(whenHolder, kind === 'now' ? length.row : [from.row, to.row, kind === 'weekly' ? dayRow : null]); }

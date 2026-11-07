@@ -2,6 +2,7 @@ import { withAuth } from "utils/auth";
 import { getPrivateWidgetOptions } from "utils/config/widget-helpers";
 import createLogger from "utils/logger";
 import { parseVersionForUrl } from "utils/proxy/api-helpers";
+import { certificateClass } from "utils/proxy/certificate-check.mjs";
 import { httpProxy } from "utils/proxy/http";
 
 const logger = createLogger("glances");
@@ -26,18 +27,29 @@ async function retrieveFromGlancesAPI(privateWidgetOptions, endpoint) {
   }
   const params = { method: "GET", headers };
 
-  const [status, , data] = await httpProxy(apiUrl, params);
+  // The widget's certificate exception (owner decision D1).
+  const [status, , data] = await httpProxy(apiUrl, {
+    ...params,
+    ...(privateWidgetOptions.skipCertificateCheck ? { checkCertificate: false } : {}),
+  });
 
   if (status === 401) {
-    errorMessage = `Authorization failure getting data from glances API. Data: ${data.toString()}`;
-    logger.error(errorMessage);
+    // The status leads, so the card names the refused login (UI review M3).
+    errorMessage = "HTTP 401: Authorization failure getting data from glances API";
+    logger.error("%s. Data: %s", errorMessage, data.toString().slice(0, 200));
     throw new Error(errorMessage);
   }
 
   if (status !== 200) {
-    errorMessage = `HTTP ${status} getting data from glances API. Data: ${data.toString()}`;
+    // httpProxy's own failure is an object: its plain message, and the
+    // certificate class when that was the cause (UI review M3/M4).
+    const answered = Buffer.isBuffer(data) || typeof data === "string";
+    const said = answered ? String(data).slice(0, 200) : (data?.error?.message ?? "");
+    errorMessage = answered
+      ? `HTTP ${status} getting data from glances API${said ? `: ${said}` : ""}`
+      : `Couldn't reach the glances API${said ? `: ${said}` : ""}`;
     logger.error(errorMessage);
-    throw new Error(errorMessage);
+    throw Object.assign(new Error(errorMessage), { errorClass: certificateClass(data) });
   }
 
   return JSON.parse(Buffer.from(data).toString());
@@ -74,7 +86,7 @@ async function handler(req, res) {
 
     return res.status(200).send(data);
   } catch (e) {
-    return res.status(400).json({ error: e.message });
+    return res.status(400).json({ error: e.message, ...(e.errorClass ? { errorClass: e.errorClass } : {}) });
   }
 }
 

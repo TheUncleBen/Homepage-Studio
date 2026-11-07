@@ -127,6 +127,12 @@ test('adding the same integration twice makes two independent widgets, and a wid
   assert.equal(parent.config.siteMonitor, 'https://fw2.example.test');
   await assert.rejects(store.mutateServiceWidget({ revision: current.revision, action: 'update', id: widget.id, config: {}, service: { name: 'pfSense' } }), /already called “pfSense”/);
   await assert.rejects(store.mutateServiceWidget({ revision: current.revision, action: 'update', id: widget.id, config: {}, service: { widgets: [] } }), /Only the widget's name/);
+  // Owner decision D1 (7 Nov 2026): the per-service certificate exception is on (true) or removed (null), nothing else.
+  current = await store.mutateServiceWidget({ revision: current.revision, action: 'update', id: widget.id, config: {}, service: { skipCertificateCheck: true } });
+  assert.equal((await store.load()).services.find((entry) => entry.name === 'Backup firewall').config.skipCertificateCheck, true);
+  for (const value of [false, 'true', 1]) await assert.rejects(store.mutateServiceWidget({ revision: current.revision, action: 'update', id: widget.id, config: {}, service: { skipCertificateCheck: value } }), /certificate exception is on or off/);
+  current = await store.mutateServiceWidget({ revision: current.revision, action: 'update', id: widget.id, config: {}, service: { skipCertificateCheck: null } });
+  assert.equal('skipCertificateCheck' in (await store.load()).services.find((entry) => entry.name === 'Backup firewall').config, false);
 });
 
 test('one sign-in keeps only its latest few editing sessions, and an undo with nothing to undo creates none', async (t) => {

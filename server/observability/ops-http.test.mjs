@@ -266,6 +266,17 @@ test('keys saved after start, personal keys, widget keys and file secrets are ma
   for (const value of ['LATECONNKEY-777', 'PERSONALKEY-888', 'WIDGETKEY-4242', 'FILESECRET-5151']) assert.doesNotMatch(message, new RegExp(value), `${value} is masked`);
 });
 
+test('widget errors reported by a browser carry their problem class', async t => {
+  const context = await setup(t);
+  const { request, post } = context;
+  const admin = await createAdmin(context);
+  const sent = await post('/studio/api/client-errors', { errors: [{ message: 'Glances: The certificate isn’t trusted', widget: 'glances', errorClass: 'tls-untrusted' }, { message: 'Pi-hole: Name not found · check the address', widget: 'pihole', errorClass: 'made-up' }] }, { cookie: admin.cookie });
+  assert.equal(sent.status, 202, sent.text);
+  const search = async q => (await request('/studio/api/ops/logs/search?range=1h&q=' + encodeURIComponent(q), { cookie: admin.cookie })).json.events ?? [];
+  assert.ok(await eventually(async () => (await search('class:tls-untrusted type:widget.error')).length === 1), 'the class the browser named');
+  assert.equal((await search('class:dns type:widget.error')).length, 1, 'an unknown class falls back to the words');
+});
+
 test('removing a person takes their name out of the logs and incidents', async t => {
   const context = await setup(t);
   const { request, post } = context;

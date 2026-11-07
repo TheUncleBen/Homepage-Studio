@@ -624,7 +624,11 @@ export default function ConfigForm({
   sectioned = false,
   // What to say when there is nothing to fill in (a Spacer).
   emptyNote = "This widget is set up in YAML.",
+  // The widget's certificate exception (owner decision D1): { skip, onChange }.
+  // Shown in Connection under Test connection, which follows it.
+  certificate,
 }) {
+  const skipCertificateCheck = certificate?.skip === true;
   const [tab, setTab] = useState("fields");
   // Whether a saved connection fills the address and key (connections.jsx).
   const [savedConnection, setSavedConnection] = useState(() => Boolean(savedConnectionId(value)));
@@ -674,7 +678,11 @@ export default function ConfigForm({
   const fieldErrorIds = Object.keys(fieldErrors)
     .filter((key) => fieldErrors[key])
     .map((key) => `studio-field-${key}-error`);
-  const known = new Set([...fields.map((field) => field.key), ...knownKeys]);
+  const known = new Set([
+    ...fields.map((field) => field.key),
+    ...knownKeys,
+    ...(certificate ? ["skipCertificateCheck"] : []),
+  ]);
   const additional = Object.keys(value).filter((key) => !known.has(key) && key !== "type");
   const shown = fields.filter((field) => field.key !== "type");
   const picker = (field) => field.type === "array" && (field.choices?.length || field.optionGroups?.length);
@@ -740,6 +748,7 @@ export default function ConfigForm({
                 {testable && connectionKeys.includes("url") && (
                   // A new widget's draft has no type yet; testable names it.
                   <ConnectionTest
+                    skipCertificateCheck={skipCertificateCheck}
                     value={
                       typeof testable === "string" && value.type === undefined ? { ...value, type: testable } : value
                     }
@@ -754,6 +763,7 @@ export default function ConfigForm({
                   />
                 )}
               </div>
+              {certificate && <CertificateSwitch certificate={certificate} />}
             </Group>
           )}
           {pickers.map((field) => (
@@ -801,5 +811,28 @@ export default function ConfigForm({
         </Disclosure>
       )}
     </div>
+  );
+}
+
+// Check its certificate (owner decision D1), and what turning it off means.
+export function CertificateSwitch({ certificate }) {
+  return (
+    <>
+      <Row
+        label="Check its certificate"
+        info="Studio checks the certificate of this address, for the widget's data, Test connection and status check, against the usual public authorities and Administration › Trusted certificates. Turn it off only for an address whose self-signed certificate can’t be added there."
+      >
+        <Switch
+          checked={certificate.skip !== true}
+          label="Check its certificate"
+          onChange={(checked) => certificate.onChange(!checked)}
+        />
+      </Row>
+      {certificate.skip === true && (
+        <p className="studio-certificate-note" role="note">
+          Studio accepts any certificate from this address, so it can’t tell the real service from an impostor.
+        </p>
+      )}
+    </>
   );
 }

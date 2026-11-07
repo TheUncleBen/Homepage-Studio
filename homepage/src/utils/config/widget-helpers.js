@@ -58,7 +58,8 @@ export async function getPrivateWidgetOptions(type, widgetIndex) {
 
   const privateOptions =
     widgets.map((widget) => {
-      const { index, url, username, password, key, apiKey, headers, requestBody, method } = widget.options;
+      const { index, url, username, password, key, apiKey, headers, requestBody, method, skipCertificateCheck } =
+        widget.options;
 
       return {
         type: widget.type,
@@ -72,6 +73,8 @@ export async function getPrivateWidgetOptions(type, widgetIndex) {
           headers,
           requestBody,
           method,
+          // The per-widget certificate exception (owner decision D1).
+          skipCertificateCheck: skipCertificateCheck === true,
         },
       };
     }) || {};

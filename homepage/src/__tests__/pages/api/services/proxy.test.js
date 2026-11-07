@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { state, getServiceWidget, calendarProxy } = vi.hoisted(() => ({
+const { state, getServiceWidget, getServiceItem, calendarProxy } = vi.hoisted(() => ({
   state: {
     genericResult: { ok: true },
   },
   getServiceWidget: vi.fn(),
+  getServiceItem: vi.fn(async () => ({ name: "s" })),
   calendarProxy: vi.fn(),
 }));
 
@@ -12,7 +13,9 @@ vi.mock("utils/logger", () => ({
   default: () => ({ debug: vi.fn(), error: vi.fn() }),
 }));
 
-vi.mock("utils/config/service-helpers", () => ({ default: getServiceWidget }));
+vi.mock("utils/config/service-helpers", () => ({ default: getServiceWidget, getServiceItem }));
+const { getPrivateWidgetOptions } = vi.hoisted(() => ({ getPrivateWidgetOptions: vi.fn(async () => null) }));
+vi.mock("utils/config/widget-helpers", () => ({ getPrivateWidgetOptions }));
 
 const handlerFn = vi.hoisted(() => ({ handler: vi.fn() }));
 vi.mock("utils/proxy/handlers/generic", () => ({ default: handlerFn.handler }));
@@ -63,6 +66,7 @@ vi.mock("widgets/widgets", () => ({
 }));
 
 import servicesProxy from "pages/api/services/proxy";
+import { checksCertificate } from "utils/proxy/certificate-check.mjs";
 
 function createMockRes() {
   const res = {
@@ -153,6 +157,44 @@ describe("pages/api/services/proxy", () => {
     expect(handlerFn.handler).toHaveBeenCalledTimes(1);
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ ok: true });
+  });
+
+  it("checks certificates unless the service opts out (owner decision D1)", async () => {
+    getServiceWidget.mockResolvedValue({ url: "https://service.example.org", type: "linkwarden" });
+    const seen = [];
+    handlerFn.handler.mockImplementation(async (_req, res) => {
+      seen.push(checksCertificate());
+      return res.status(200).json(state.genericResult);
+    });
+    const req = { method: "GET", query: { group: "g", service: "s", index: "0" } };
+    getServiceItem.mockResolvedValueOnce({ name: "s" });
+    await servicesProxy(req, createMockRes());
+    getServiceItem.mockResolvedValueOnce({ name: "s", skipCertificateCheck: true });
+    await servicesProxy(req, createMockRes());
+    // Only true counts as opting out.
+    getServiceItem.mockResolvedValueOnce({ name: "s", skipCertificateCheck: "yes" });
+    await servicesProxy(req, createMockRes());
+    expect(seen).toEqual([true, false, true]);
+    expect(checksCertificate()).toBe(true);
+  });
+
+  it("lets the UniFi console information widget opt out in its own options (owner decision D1)", async () => {
+    const seen = [];
+    getServiceWidget.mockImplementation(async () => {
+      seen.push(checksCertificate());
+      return null;
+    });
+    const req = {
+      method: "GET",
+      query: { group: "unifi_console", service: "unifi_console", query: JSON.stringify({ index: 2 }) },
+    };
+    getPrivateWidgetOptions.mockResolvedValueOnce({ skipCertificateCheck: true });
+    await servicesProxy(req, createMockRes());
+    getPrivateWidgetOptions.mockResolvedValueOnce({ skipCertificateCheck: false });
+    await servicesProxy(req, createMockRes());
+    expect(getPrivateWidgetOptions).toHaveBeenCalledWith("unifi_console", 2);
+    expect(seen).toEqual([false, true]);
+    getServiceWidget.mockReset();
   });
 
   it("applies the calendar exception and always delegates to calendarProxyHandler", async () => {

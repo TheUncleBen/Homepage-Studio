@@ -5,6 +5,7 @@ import { BackgroundAdjust, BackgroundGrid, familyOf, FILL_FAMILIES } from "./bac
 import { PALETTE, partsFormat } from "./card-chart";
 import { useCardTheme } from "./card-look";
 import ColourField from "./colour-field";
+import { certificateRemedy, useStudioAdmin } from "./connections";
 import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
 import { CHART_SHOWS, exactColour, setOverride } from "./look.mjs";
@@ -392,9 +393,10 @@ function SavedLooks({ saved = [], look, onApply, onChange, personal, usage, onUp
 // The status address (T35, U8): empty means derived, from the widget's
 // Connection or its link, shown greyed; typing one overrides it. Check now
 // runs the card's own check on it before saving.
-function StatusAddress({ check, address }) {
+function StatusAddress({ check, address, switchWhere = "" }) {
   const id = useId();
   const [result, setResult] = useState(null);
+  const admin = useStudioAdmin();
   const ping = check === "ping";
   const own = (ping ? address.ping : address.web) || "";
   const derived = address.fallback?.address || address.href || "";
@@ -457,7 +459,11 @@ function StatusAddress({ check, address }) {
               className={`studio-connection-result${result && !result.busy ? (result.ok ? " studio-ok" : " studio-failed") : ""}`}
               role="status"
             >
-              {result && !result.busy ? result.message : ""}
+              {result && !result.busy
+                ? result.kind === "certificate"
+                  ? `${result.message}. ${certificateRemedy(admin, switchWhere)}`
+                  : result.message
+                : ""}
             </p>
           </div>
         )}
@@ -953,6 +959,8 @@ export default function LookEditor({
   // kept on the entry around it like its logo (6a93f66 had it on that entry's
   // own tile).
   docker,
+  // { skip, onChange }: the per-service exception to certificate checking (D1).
+  certificate,
   // An integration widget's own logo and description ({ icon, description,
   // onIcon, onDescription }), shown with the header that draws them.
   identity,
@@ -1254,7 +1262,13 @@ export default function LookEditor({
           />
           {acts.status !== "off" && (
             <Dependent>
-              {statusAddress && <StatusAddress check={acts.status} address={statusAddress} />}
+              {statusAddress && (
+                <StatusAddress
+                  check={acts.status}
+                  address={statusAddress}
+                  switchWhere={certificate ? " below" : " in Connection"}
+                />
+              )}
               <Choice
                 label="Style"
                 value={effective.status}
@@ -1328,6 +1342,24 @@ export default function LookEditor({
                 />
               </Row>
             </>
+          )}
+          {/* A plain tile's switch: only with a web check, the one it affects. */}
+          {certificate && acts.status === "web" && (
+            <Row
+              label="Check its certificate"
+              info="Studio checks the certificate of this service's address, for its data, Test connection and status check, against the usual public authorities and Administration › Trusted certificates. Turn it off only for a service whose self-signed certificate can’t be added there."
+            >
+              <Switch
+                checked={!certificate.skip}
+                label="Check its certificate"
+                onChange={(checked) => certificate.onChange(!checked)}
+              />
+            </Row>
+          )}
+          {certificate?.skip && acts.status === "web" && (
+            <p className="studio-certificate-note" role="note">
+              Studio accepts any certificate from this address, so it can’t tell the real service from an impostor.
+            </p>
           )}
         </Group>
       )}

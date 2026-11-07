@@ -1,17 +1,39 @@
 import { useTranslation } from "next-i18next/pages";
 import { useEffect } from "react";
 
+import { CLASS_SENTENCES, classifyError } from "../../utils/studio/error-classes.mjs";
+
 import CardValues, { lastValues } from "./card-values";
 import { reportClientError } from "./client-errors.mjs";
 
 // A widget that can't load, inside a Studio card. It says what failed in a
 // sentence; people who can edit the widget get a link to fix it. With errors
 // hidden it shows nothing alarming, only that the value is unavailable.
-export function errorSummary(error) {
+function errorDetail(error) {
   let detail = error;
   if (typeof detail === "string") detail = { message: detail };
   else if (typeof detail === "number") detail = { message: `Error ${detail}` };
   if (detail?.data?.error) detail = detail.data.error;
+  if (detail?.error && typeof detail.error === "object") detail = detail.error;
+  else if (typeof detail?.error === "string") detail = { ...detail, message: detail.error };
+  return detail;
+}
+
+// The error's class (utils/studio/error-classes.mjs), from a class the API
+// named, the proxy's own transport code, or the words of the message.
+export function errorClassOf(error) {
+  const detail = errorDetail(error);
+  if (typeof detail?.errorClass === "string" && CLASS_SENTENCES[detail.errorClass]) return detail.errorClass;
+  const raw = detail?.rawError;
+  for (const code of [raw?.code, raw?.causeCode]) {
+    const cls = typeof code === "string" ? classifyError({ code }) : null;
+    if (cls) return cls;
+  }
+  return classifyError({ message: typeof detail?.message === "string" ? detail.message : "" });
+}
+
+export function errorSummary(error) {
+  const detail = errorDetail(error);
   const message = typeof detail?.message === "string" ? detail.message : "";
   const status = /\b(4\d\d|5\d\d)\b/.exec(message)?.[1];
   const hints = {
@@ -23,15 +45,22 @@ export function errorSummary(error) {
     503: "the service is unavailable",
     504: "it took too long to answer",
   };
+  // A class the API named (such as a certificate problem) is the real cause,
+  // even when the proxy reported it with a status.
+  const cls = errorClassOf(error);
+  if (cls === detail?.errorClass && cls !== "http-status") return CLASS_SENTENCES[cls];
   if (status && hints[status]) return `${status} · ${hints[status]}`;
-  if (/ECONNREFUSED/i.test(message)) return "Connection refused · check the address and port";
-  if (/ENOTFOUND|EAI_AGAIN/i.test(message)) return "Name not found · check the address";
-  if (/ETIMEDOUT|timeout/i.test(message)) return "No answer in time";
-  if (/certificate|SSL|TLS/i.test(message)) return "The certificate wasn't accepted";
-  return message.length > 0 && message.length <= 90 ? message : "The service didn't answer as expected";
+  // The same words as monitors, Check now and the logs (one sentence a class).
+  if (cls && cls !== "http-status" && CLASS_SENTENCES[cls]) return CLASS_SENTENCES[cls];
+  return message.length > 0 && message.length <= 90 ? message : CLASS_SENTENCES["bad-response"];
 }
 
-export default function CardError({ card, service, error }) {
+// A certificate problem is fixed in the widget's Connection section.
+const isCertificate = (error) => /^tls-/.test(errorClassOf(error) ?? "");
+
+// compact: an information widget's short card (82 px by default), where the
+// heading and sentence share one line, ellipsised, with Fix under it.
+export default function CardError({ card, service, error, title, compact = false }) {
   const { t } = useTranslation();
   const name = service?.name || "this service";
   const summary = error?.code === "WIDGET_NOT_SET_UP" ? null : errorSummary(error);
@@ -42,7 +71,10 @@ export default function CardError({ card, service, error }) {
         panel: card.id,
         widget: service?.widget?.type ?? service?.name,
         message: `${name}: ${summary}`,
+        errorClass: errorClassOf(error) ?? undefined,
       });
+    // The summary already changes with the error; the class follows it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary, card.id, service?.widget?.type, service?.name, name]);
   // A new widget without its address yet points straight at its settings.
   if (error?.code === "WIDGET_NOT_SET_UP") {
@@ -76,12 +108,28 @@ export default function CardError({ card, service, error }) {
       </div>
     );
   }
+  const heading = title ?? `Can’t reach ${name}`;
   return (
-    <div className="studio-card-state studio-card-error" role="status">
-      <strong>Can’t reach {name}</strong>
-      <span>{errorSummary(error)}</span>
+    <div className={`studio-card-state studio-card-error${compact ? " studio-card-error-compact" : ""}`} role="status">
+      {compact ? (
+        <span className="studio-card-error-line" title={`${heading} · ${summary}`}>
+          <span className="studio-card-error-heading">
+            <strong>{heading}</strong> ·{" "}
+          </span>
+          {summary}
+        </span>
+      ) : (
+        <>
+          <strong>{heading}</strong>
+          <span>{summary}</span>
+        </>
+      )}
       {card.onFix && (
-        <button type="button" className="studio-text-button" onClick={card.onFix}>
+        <button
+          type="button"
+          className="studio-text-button"
+          onClick={() => card.onFix(isCertificate(error) ? "settings" : undefined)}
+        >
           Fix in widget settings
         </button>
       )}

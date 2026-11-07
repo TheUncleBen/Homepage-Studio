@@ -1,5 +1,6 @@
 import { getSettings } from "../../../utils/config/config";
 import createLogger from "../../../utils/logger";
+import { certificateCheck } from "../../../utils/proxy/certificate-check.mjs";
 import { httpProxy } from "../../../utils/proxy/http";
 
 import { withAuth } from "utils/auth";
@@ -69,7 +70,11 @@ async function handler(req, res) {
   }
   const params = { method: "GET", headers };
 
-  const [status, contentType, data] = await httpProxy(apiUrl, params);
+  // providers.longhorn.skipCertificateCheck: true is its certificate exception (D1).
+  const [status, contentType, data] = await certificateCheck.run(
+    { check: longhornSettings.skipCertificateCheck !== true },
+    () => httpProxy(apiUrl, params),
+  );
 
   if (status === 401) {
     logger.error("Authorization failure getting data from Longhorn API. Data: %s", data);
