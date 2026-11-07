@@ -290,3 +290,12 @@ test('deeply nested YAML fails validation without changing files or creating a s
   assert.equal((await store.load()).revision, before.revision);
   assert.deepEqual(await store.listBackups(), []);
 });
+
+// Owner decision D1 (7 Nov 2026): an information widget's certificate
+// exception is on (true) or absent, nothing else.
+test('an information widget certificate exception is true or nothing', async (t) => {
+  const { store } = await fixture(t);
+  let current = await store.mutateInfoWidget({ revision: (await store.load()).revision, action: 'add', type: 'glances', config: { url: 'https://nas.example.test', skipCertificateCheck: true } });
+  assert.equal(current.infoWidgets.at(-1).config.skipCertificateCheck, true);
+  for (const value of [false, 'true', 1]) await assert.rejects(store.mutateInfoWidget({ revision: current.revision, action: 'add', type: 'glances', config: { url: 'https://nas.example.test', skipCertificateCheck: value } }), /certificate exception is on or off/);
+});

@@ -203,6 +203,11 @@ const WIDGET_SERVICE_KEYS = [
   "skipCertificateCheck",
 ];
 // Check now in the Status setting: the card's own check, on the draft address.
+// Information widgets that fetch an address of their own, so they carry the
+// per-widget certificate exception (owner decision D1). Longhorn's address is
+// in settings.yaml (providers.longhorn), so its exception is set there.
+const CERTIFICATE_INFO_WIDGETS = new Set(["glances", "customapi", "unifi_console"]);
+
 const statusCheckNow = (check, address, skipCertificateCheck = false) =>
   studioRequest("/studio/api/connection-test", {
     status: { check, address, ...(skipCertificateCheck ? { skipCertificateCheck: true } : {}) },
@@ -1116,6 +1121,9 @@ export default function ContentEditor({
                   }
                   knownKeys={hiddenKeys}
                   skipCertificateCheck={kind === "serviceWidget" && service?.skipCertificateCheck === true}
+                  certificateOption={
+                    kind === "informationWidget" && CERTIFICATE_INFO_WIDGETS.has(source?.type || entry?.type)
+                  }
                   onValidity={setValid}
                   sectioned
                   connections={kind === "serviceWidget" || kind === "informationWidget"}

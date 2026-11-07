@@ -171,9 +171,17 @@ describe("Check now (status address before saving)", () => {
   it("checks the certificate unless the service opts out, and names a certificate failure (owner decision D1)", async () => {
     httpProxy.mockResolvedValue([200, null, null, {}]);
     await statusCheck({ check: "web", address: "https://a.example.org" });
-    expect(httpProxy).toHaveBeenLastCalledWith("https://a.example.org/", { method: "HEAD", checkCertificate: true });
+    expect(httpProxy).toHaveBeenLastCalledWith("https://a.example.org/", {
+      method: "HEAD",
+      cookieJar: false,
+      checkCertificate: true,
+    });
     await statusCheck({ check: "web", address: "https://a.example.org", skipCertificateCheck: true });
-    expect(httpProxy).toHaveBeenLastCalledWith("https://a.example.org/", { method: "HEAD", checkCertificate: false });
+    expect(httpProxy).toHaveBeenLastCalledWith("https://a.example.org/", {
+      method: "HEAD",
+      cookieJar: false,
+      checkCertificate: false,
+    });
     httpProxy.mockResolvedValue([
       500,
       null,

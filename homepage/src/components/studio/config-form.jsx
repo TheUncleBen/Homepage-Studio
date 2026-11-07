@@ -626,6 +626,9 @@ export default function ConfigForm({
   emptyNote = "This widget is set up in YAML.",
   // The widget's service checks no certificate (D1): Test connection runs so too.
   skipCertificateCheck = false,
+  // An information widget that fetches its own address offers its
+  // certificate exception here, beside the address (D1).
+  certificateOption = false,
 }) {
   const [tab, setTab] = useState("fields");
   // Whether a saved connection fills the address and key (connections.jsx).
@@ -676,7 +679,11 @@ export default function ConfigForm({
   const fieldErrorIds = Object.keys(fieldErrors)
     .filter((key) => fieldErrors[key])
     .map((key) => `studio-field-${key}-error`);
-  const known = new Set([...fields.map((field) => field.key), ...knownKeys]);
+  const known = new Set([
+    ...fields.map((field) => field.key),
+    ...knownKeys,
+    ...(certificateOption ? ["skipCertificateCheck"] : []),
+  ]);
   const additional = Object.keys(value).filter((key) => !known.has(key) && key !== "type");
   const shown = fields.filter((field) => field.key !== "type");
   const picker = (field) => field.type === "array" && (field.choices?.length || field.optionGroups?.length);
@@ -737,6 +744,23 @@ export default function ConfigForm({
                 />
               )}
               {connectionRows.map(fieldRow)}
+              {certificateOption && (
+                <Row
+                  label="Check its certificate"
+                  info="Studio checks the certificate of this widget's address against the usual public authorities and Administration › Trusted certificates. Turn it off only for an address whose self-signed certificate you can't add there."
+                >
+                  <Switch
+                    checked={value.skipCertificateCheck !== true}
+                    label="Check its certificate"
+                    onChange={(checked) => fieldChange("skipCertificateCheck", checked ? undefined : true)}
+                  />
+                </Row>
+              )}
+              {certificateOption && value.skipCertificateCheck === true && (
+                <p className="studio-note studio-certificate-note" role="note">
+                  Studio accepts any certificate from this address, so it can’t tell the real service from an impostor.
+                </p>
+              )}
               {/* Test and Save as a connection share one row. */}
               <div className="studio-connection-actions">
                 {testable && connectionKeys.includes("url") && (

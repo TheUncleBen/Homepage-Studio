@@ -93,4 +93,14 @@ describe("utils/config/widget-helpers", () => {
     expect(Array.isArray(all)).toBe(true);
     expect(all[0].options.url).toBe("http://x");
   });
+
+  it("getPrivateWidgetOptions carries only a true certificate exception (owner decision D1)", async () => {
+    fs.readFile.mockResolvedValueOnce("ignored");
+    yaml.load.mockReturnValueOnce([
+      { glances: { url: "https://a", skipCertificateCheck: true } },
+      { glances: { url: "https://b", skipCertificateCheck: "yes" } },
+    ]);
+    const all = await getPrivateWidgetOptions();
+    expect(all.map((entry) => entry.options.skipCertificateCheck)).toEqual([true, false]);
+  });
 });

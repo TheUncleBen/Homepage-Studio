@@ -32,7 +32,11 @@ async function handler(req, res) {
     params.body = typeof options.requestBody === "object" ? JSON.stringify(options.requestBody) : options.requestBody;
   }
 
-  const [status, , data] = await httpProxy(url, params);
+  // The widget's certificate exception (owner decision D1).
+  const [status, , data] = await httpProxy(url, {
+    ...params,
+    ...(options.skipCertificateCheck ? { checkCertificate: false } : {}),
+  });
 
   if (status >= 400) {
     logger.debug("HTTP Error %d calling %s//%s%s", status, url.protocol, url.host, url.pathname);

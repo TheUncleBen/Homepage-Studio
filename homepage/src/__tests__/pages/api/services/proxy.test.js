@@ -14,6 +14,8 @@ vi.mock("utils/logger", () => ({
 }));
 
 vi.mock("utils/config/service-helpers", () => ({ default: getServiceWidget, getServiceItem }));
+const { getPrivateWidgetOptions } = vi.hoisted(() => ({ getPrivateWidgetOptions: vi.fn(async () => null) }));
+vi.mock("utils/config/widget-helpers", () => ({ getPrivateWidgetOptions }));
 
 const handlerFn = vi.hoisted(() => ({ handler: vi.fn() }));
 vi.mock("utils/proxy/handlers/generic", () => ({ default: handlerFn.handler }));
@@ -174,6 +176,25 @@ describe("pages/api/services/proxy", () => {
     await servicesProxy(req, createMockRes());
     expect(seen).toEqual([true, false, true]);
     expect(checksCertificate()).toBe(true);
+  });
+
+  it("lets the UniFi console information widget opt out in its own options (owner decision D1)", async () => {
+    const seen = [];
+    getServiceWidget.mockImplementation(async () => {
+      seen.push(checksCertificate());
+      return null;
+    });
+    const req = {
+      method: "GET",
+      query: { group: "unifi_console", service: "unifi_console", query: JSON.stringify({ index: 2 }) },
+    };
+    getPrivateWidgetOptions.mockResolvedValueOnce({ skipCertificateCheck: true });
+    await servicesProxy(req, createMockRes());
+    getPrivateWidgetOptions.mockResolvedValueOnce({ skipCertificateCheck: false });
+    await servicesProxy(req, createMockRes());
+    expect(getPrivateWidgetOptions).toHaveBeenCalledWith("unifi_console", 2);
+    expect(seen).toEqual([false, true]);
+    getServiceWidget.mockReset();
   });
 
   it("applies the calendar exception and always delegates to calendarProxyHandler", async () => {

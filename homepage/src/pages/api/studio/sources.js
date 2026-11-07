@@ -10,9 +10,7 @@ async function handler(req, res) {
   try {
     return res.status(200).json(await discoverySourcesResponse());
   } catch {
-    return res
-      .status(503)
-      .json({ error: "Native discovery is temporarily unavailable." });
+    return res.status(503).json({ error: "Native discovery is temporarily unavailable." });
   }
 }
 

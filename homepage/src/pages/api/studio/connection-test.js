@@ -72,11 +72,11 @@ export async function statusCheck({ check, address, skipCertificateCheck }) {
   // Checked as the saved card will be: the certificate too, unless the
   // dialog's Check its certificate is off (D1).
   const checkCertificate = skipCertificateCheck !== true;
-  let [status, , data, headers] = await httpProxy(url.href, { method: "HEAD", checkCertificate });
+  let [status, , data, headers] = await httpProxy(url.href, { method: "HEAD", cookieJar: false, checkCertificate });
   let ms = performance.now() - started;
   if (status > 403) {
     started = performance.now();
-    [status, , data, headers] = await httpProxy(url.href, { checkCertificate });
+    [status, , data, headers] = await httpProxy(url.href, { cookieJar: false, checkCertificate });
     ms = performance.now() - started;
   }
   if (headers === null) {

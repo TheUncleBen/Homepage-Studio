@@ -26,7 +26,11 @@ async function retrieveFromGlancesAPI(privateWidgetOptions, endpoint) {
   }
   const params = { method: "GET", headers };
 
-  const [status, , data] = await httpProxy(apiUrl, params);
+  // The widget's certificate exception (owner decision D1).
+  const [status, , data] = await httpProxy(apiUrl, {
+    ...params,
+    ...(privateWidgetOptions.skipCertificateCheck ? { checkCertificate: false } : {}),
+  });
 
   if (status === 401) {
     errorMessage = `Authorization failure getting data from glances API. Data: ${data.toString()}`;

@@ -953,6 +953,8 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
       const type = named(change.type ?? existing?.type, 'Information widget type');
       const config = change.config ?? {};
       if (!object(config)) fail('Information widget config must be a mapping.');
+      // The certificate exception (owner decision D1) is on (true) or removed.
+      if (config.skipCertificateCheck !== undefined && config.skipCertificateCheck !== null && config.skipCertificateCheck !== true) fail('A widget\'s certificate exception is on or off.');
       if (change.action === 'add') {
         doc.contents.add(doc.createNode({ [type]: Object.fromEntries(Object.entries(config).filter(([, value]) => value !== null)) }));
         identities.push({ id: `info-${randomUUID()}` });

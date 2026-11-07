@@ -1,6 +1,7 @@
 import { withAuth } from "utils/auth";
 import { TEST_GROUP } from "utils/config/connection-test.mjs";
 import getServiceWidget, { getServiceItem } from "utils/config/service-helpers";
+import { getPrivateWidgetOptions } from "utils/config/widget-helpers";
 import createLogger from "utils/logger";
 import { formatApiCall } from "utils/proxy/api-helpers";
 import { certificateCheck, serviceChecksCertificate } from "utils/proxy/certificate-check.mjs";
@@ -50,6 +51,17 @@ function getSafeSegments(rawSegments, allowedSegments) {
 export async function serviceProxy(req, res) {
   const { service, group } = req.query;
   if (group === TEST_GROUP) return proxyFor(req, res);
+  // The UniFi console information widget keeps its exception in widgets.yaml.
+  if (group === "unifi_console" && service === "unifi_console") {
+    let index;
+    try {
+      index = req.query?.query ? JSON.parse(req.query.query).index : undefined;
+    } catch {
+      index = undefined;
+    }
+    const options = await getPrivateWidgetOptions("unifi_console", index).catch(() => null);
+    return certificateCheck.run({ check: options?.skipCertificateCheck !== true }, () => proxyFor(req, res));
+  }
   const item = await getServiceItem(group, service).catch(() => null);
   return certificateCheck.run({ check: serviceChecksCertificate(item) }, () => proxyFor(req, res));
 }

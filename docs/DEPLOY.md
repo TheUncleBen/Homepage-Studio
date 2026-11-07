@@ -668,7 +668,11 @@ off **Check its certificate** under the widget's **Status** (it writes
 `skipCertificateCheck: true` on that service in `services.yaml`). Studio then
 accepts any certificate from that service's address, for its data, tests and
 status check, so it can't tell the real service from an impostor; prefer
-adding the authority.
+adding the authority. The Glances, Custom API and UniFi console information
+widgets have the same switch beside their address (it writes
+`skipCertificateCheck: true` in `widgets.yaml`); for Longhorn, whose address
+is in `settings.yaml`, add `skipCertificateCheck: true` under
+`providers.longhorn`.
 
 ## Monitoring and logs
 

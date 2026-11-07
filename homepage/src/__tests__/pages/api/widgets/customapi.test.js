@@ -75,6 +75,14 @@ describe("pages/api/widgets/customapi", () => {
     expect(res.body).toEqual({ json: { hello: "world" } });
   });
 
+  it("skips the certificate check only when the widget opts out (owner decision D1)", async () => {
+    httpProxy.mockResolvedValue([200, "application/json", json({ ok: 1 })]);
+    await callRoute({ url: "https://self.example.org/api", skipCertificateCheck: true });
+    expect(httpProxy.mock.calls.at(-1)[1].checkCertificate).toBe(false);
+    await callRoute({ url: "https://self.example.org/api", skipCertificateCheck: false });
+    expect("checkCertificate" in httpProxy.mock.calls.at(-1)[1]).toBe(false);
+  });
+
   it("sends a string body as-is and lets config override default headers", async () => {
     httpProxy.mockResolvedValueOnce([200, "application/json", json({ data: { viewer: { login: "shamoon" } } })]);
     const query = '{"query":"{ viewer { login } }"}';
