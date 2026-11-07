@@ -681,7 +681,7 @@
         const reopen = () => { close(); onChanged?.(); maintenanceDialog(onChanged); };
         const list = group({ title: 'Windows' }, cfg.maintenance.length ? cfg.maintenance.map(item => navRow({ title: item.name, detail: `${scopeName(item.scope)} · ${windowText(item)}`, onClick: () => { close(); maintenanceEditor(cfg, item, reopen); } })) : [emptyRow('None yet.')]);
         const add = h('button', { type: 'button', class: 'primary', text: 'New window', onclick: () => { close(); maintenanceEditor(cfg, null, reopen); } });
-        return [h('p', { class: 'muted small', text: 'Monitors in maintenance aren’t counted as down and send no notifications. Times are the server’s time zone.' }), list, dialogActions(h('button', { type: 'button', onclick: close, text: 'Close' }), add)];
+        return [h('p', { class: 'muted small', text: 'Monitors in maintenance aren’t counted as down and send no notifications. Daily and weekly times are the server’s time zone' + (cfg.timeZone ? ` (${cfg.timeZone})` : '') + '.' }), list, dialogActions(h('button', { type: 'button', onclick: close, text: 'Close' }), add)];
       });
     }
     function maintenanceEditor(cfg, existing, onDone) {

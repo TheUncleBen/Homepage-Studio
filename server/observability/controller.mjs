@@ -338,6 +338,8 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
           monitors: defs.monitors.map(publicMonitor), maintenance: defs.maintenance, channels: defs.channels.map(publicChannel), views: defs.views,
           sources: defs.sources.map(({ tokenHash, ...source }) => ({ ...source, tokenSet: Boolean(tokenHash) })), alerts: defs.alerts, settings: defs.settings, overrides: defs.overrides,
           storage, dashboards: access.dashboards.map(({ id, name }) => ({ id, name })),
+          // Daily and weekly maintenance times are in this zone (the stack's TZ).
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? null,
         });
       }
       if (route === 'config' && method === 'POST') {
@@ -402,6 +404,10 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
         if (!value.paused && !value.notify.channels.length) delete draft.overrides[id]; else draft.overrides[id] = value;
         return draft.overrides[id] ?? null;
       });
+      // Pausing a card's check or changing who hears about it is recorded like
+      // any other monitor change.
+      const named = await engine.call('monitor', { id, scopes: null }).catch(() => null);
+      await audit(current, 'card-monitor', 'changed', named?.monitor?.name ?? id);
       await refresh();
       return { override };
     }
@@ -460,7 +466,7 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
     return { ...result, ...(token ? { token } : {}) };
   }
   async function audit(current, kind, action, name) {
-    engine.cast('log', { source_type: 'config', source_id: 'operations', category: 'audit', severity: 5, event_type: `ops.${kind}.${action}`, actor: current.user.username, message: `${current.user.username} ${action === 'save' ? 'saved' : action === 'delete' ? 'deleted' : action === 'token' ? 'made a new token for' : action === 'changed' ? 'changed' : action + 'd'} ${kind} ${name ?? ''}`.trim(), fields: { user_id: current.user.id, ip: current.ip } });
+    engine.cast('log', { source_type: 'config', source_id: 'operations', category: 'audit', severity: 5, event_type: `ops.${kind}.${action}`, actor: current.user.username, message: `${current.user.username} ${action === 'save' ? 'saved' : action === 'delete' ? 'deleted' : action === 'token' ? 'made a new token for' : action === 'changed' ? 'changed' : action + 'd'} ${kind.replace(/-/g, ' ')} ${name ?? ''}`.trim(), fields: { user_id: current.user.id, ip: current.ip } });
   }
 
   async function exportLogs(res, params, format) {
@@ -468,16 +474,24 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
     const cell = value => { const text = value === null || value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value); return /[",\n\r]|^[=+\-@\t]/.test(text) ? `"${(/^[=+\-@\t]/.test(text) ? "'" : '') + text.replace(/"/g, '""')}"` : text; };
     if (format === 'csv') res.write('time,severity,dashboard,source,resource,type,class,message,actor,fields\n');
     let before = null, sent = 0;
-    while (sent < EXPORT_MAX) {
-      const page = await queries.call('search', { ...params, limit: 500, before, budgetMs: 20000 }, 30000);
-      if (!page?.events?.length) break;
-      for (const event of page.events) {
-        if (format === 'csv') res.write([new Date(event.ts).toISOString(), severityLabel(event.severity), event.scope, event.source_type, event.resource, event.event_type, event.error_class, event.message, event.actor, event.fields].map(cell).join(',') + '\n');
-        else res.write(JSON.stringify(event) + '\n');
+    try {
+      while (sent < EXPORT_MAX && !res.destroyed) {
+        const page = await queries.call('search', { ...params, limit: 500, before, budgetMs: 20000 }, 30000);
+        if (!page?.events?.length) break;
+        for (const event of page.events) {
+          if (format === 'csv') res.write([new Date(event.ts).toISOString(), severityLabel(event.severity), event.scope, event.source_type, event.resource, event.event_type, event.error_class, event.message, event.actor, event.fields].map(cell).join(',') + '\n');
+          else res.write(JSON.stringify(event) + '\n');
+        }
+        sent += page.events.length;
+        if (!page.next) break;
+        before = page.next;
       }
-      sent += page.events.length;
-      if (!page.next) break;
-      before = page.next;
+    } catch (error) {
+      // The download has started, so no error answer can follow: cut it off,
+      // so the browser shows a failed download rather than a short file.
+      console.error('A log export stopped:', error.code || error.message);
+      res.destroy();
+      return;
     }
     res.end();
   }

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import http from 'node:http';
 import { createEngineHost } from './host.mjs';
 import { hashToken } from './definitions.mjs';
+import { openMain } from './storage.mjs';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -45,6 +46,16 @@ test('the engine runs monitors, keeps logs per dashboard and answers through the
     await assert.rejects(host.call('nothing'), /Unknown call/);
     const stored = await host.call('storage');
     assert.equal(stored.health.storage, 'ok');
+    // Many newer incidents on a dashboard someone can't see never push their
+    // own out of the list (audit, 7 Nov 2026).
+    const side = openMain(join(root, 'observability'));
+    try {
+      side.run("INSERT INTO incident (id, monitor_id, scope, name, opened) VALUES ('old-home', 'a', 'default', 'a', 1)");
+      for (let i = 0; i < 400; i++) side.run('INSERT INTO incident (id, monitor_id, scope, name, opened) VALUES (?, ?, ?, ?, ?)', `lab-${i}`, 'b', '11111111-1111-4111-8111-111111111111', 'b', 1000 + i);
+    } finally { side.close(); }
+    assert.deepEqual((await host.call('incidents', { scopes: ['default'], limit: 100 })).incidents.map(item => item.id), ['old-home']);
+    assert.equal((await host.call('incidents', { scopes: [], limit: 100 })).incidents.length, 0);
+    assert.equal((await host.call('incidents', { scopes: null, limit: 100 })).incidents.length, 100);
   } finally {
     await host.stop();
     server.close();

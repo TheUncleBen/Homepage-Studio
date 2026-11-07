@@ -101,6 +101,8 @@ function headersWithoutHop(headers) {
 
 function json(res, code, value) {
   if (res.destroyed || res.writableEnded) return;
+  // An error after a streamed answer began: no second answer can follow.
+  if (res.headersSent) { res.destroy(); return; }
   const data = JSON.stringify(value);
   res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(data) });
   res.end(data);
