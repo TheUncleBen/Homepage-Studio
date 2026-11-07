@@ -21,6 +21,9 @@ async function settledNative(page) {
 // Use actual rendered background pixels beside each text run. Computed
 // backgroundColor alone misses the translucent cards over Studio's gradient.
 async function textContrast(page, testInfo, name) {
+  // After a mode change the page reloads; measure only once every sampled
+  // text has rendered again (CI saw a widget value still loading).
+  for (const selector of textSelectors) await expect(page.locator(selector).first()).toBeVisible();
   await settledNative(page);
   const image = await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true });
   return page.evaluate(async ({ png, selectors }) => {
