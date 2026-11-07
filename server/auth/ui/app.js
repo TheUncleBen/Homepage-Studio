@@ -2241,7 +2241,8 @@
     async function drawPreview(holder, entry) {
       let model;
       try { model = await call('/studio/api/preview/' + encodeURIComponent(entry.id)); } catch { return; }
-      if (!holder.isConnected) return;
+      // A page leaving mid-request can hand back an empty body; draw nothing then.
+      if (!holder.isConnected || !model?.tokens || !Array.isArray(model.units)) return;
       const scheme = model.tokens.dark && model.tokens.light ? (prefersLight?.matches ? 'light' : 'dark') : Object.keys(model.tokens)[0];
       const colors = model.tokens[scheme];
       const canvas = h('div', { class: 'preview-canvas' });
