@@ -131,6 +131,9 @@ describe("Test connection results", () => {
     expect(connectionTestResult(transport("ECONNREFUSED")).message).toMatch(/Nothing answered/);
     expect(connectionTestResult(transport("ETIMEDOUT")).message).toMatch(/in time/);
     expect(connectionTestResult(transport("DEPTH_ZERO_SELF_SIGNED_CERT")).kind).toBe("certificate");
+    expect(connectionTestResult(transport("DEPTH_ZERO_SELF_SIGNED_CERT")).errorClass).toBe("tls-untrusted");
+    expect(connectionTestResult(transport("CERT_HAS_EXPIRED")).errorClass).toBe("tls-expired");
+    expect(connectionTestResult({ status: 401, body: { error: "no" } }).errorClass).toBe("auth");
     expect(connectionTestResult(transport("SOMETHING_ELSE")).kind).toBe("unreachable");
     expect(connectionTestResult({ status: 401, body: { error: "x" } }).kind).toBe("key");
     expect(connectionTestResult({ status: 403, body: {} }).kind).toBe("permission");

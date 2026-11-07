@@ -37,6 +37,7 @@ import { createAuthService } from './auth/service.mjs';
 import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendStudioAsset, sendStudioPage } from './auth/routes.mjs';
 import { atLeast, requiredLevel } from './auth/access.mjs';
 import { createObservability } from './observability/controller.mjs';
+import { ERROR_CLASSES, classifyError } from '../homepage/src/utils/studio/error-classes.mjs';
 
 const base = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const studioVersion = (await readFile(join(base, 'VERSION'), 'utf8')).trim();
@@ -823,7 +824,7 @@ function createDashboardHandlers(options = {}) {
           if (!allowed) return json(res, 200, { ok: false, kind: 'address', message: 'A secret or variable reference is only sent to the address it is saved with. Save the widget with this address first, or type the key in to test it.' });
         }
         const tested = await rendererTest(req, dashboard, change.widget, null, change.skipCertificateCheck === true);
-        if (!tested.ok) options.onIntegration?.({ source_type: 'integration', source_id: String(change.widget.type ?? 'widget').slice(0, 64), scope: dashboard.id, resource: String(change.widget.type ?? 'widget').slice(0, 64), category: 'integration', severity: 4, event_type: 'connection.test-failed', actor: req.studioActor, message: `Test connection (${String(change.widget.type ?? 'widget').slice(0, 64)}) failed: ${tested.message || tested.kind}`, fields: { kind: tested.kind } });
+        if (!tested.ok) options.onIntegration?.({ source_type: 'integration', source_id: String(change.widget.type ?? 'widget').slice(0, 64), scope: dashboard.id, resource: String(change.widget.type ?? 'widget').slice(0, 64), category: 'integration', severity: 4, event_type: 'connection.test-failed', actor: req.studioActor, error_class: ERROR_CLASSES.includes(tested.errorClass) ? tested.errorClass : null, message: `Test connection (${String(change.widget.type ?? 'widget').slice(0, 64)}) failed: ${tested.message || tested.kind}`, fields: { kind: tested.kind } });
         return json(res, 200, tested);
       }
       // Saved connections (server/connections.mjs). Administrators only, like
@@ -1614,7 +1615,7 @@ export function createStudioServer(options = {}) {
         const reports = Array.isArray(body?.errors) ? body.errors.slice(0, 10) : [];
         for (const report of reports) {
           if (!report || typeof report.message !== 'string') continue;
-          observability.log({ source_type: 'browser', source_id: route.dashboard.id, scope: route.dashboard.id, category: 'integration', severity: 4, event_type: 'widget.error', panel: typeof report.panel === 'string' ? report.panel.slice(0, 64) : undefined, resource: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined, actor: current.user.username, message: report.message.slice(0, 500), fields: { widget: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined } });
+          observability.log({ source_type: 'browser', source_id: route.dashboard.id, scope: route.dashboard.id, category: 'integration', severity: 4, event_type: 'widget.error', error_class: ERROR_CLASSES.includes(report.errorClass) ? report.errorClass : classifyError({ message: report.message }), panel: typeof report.panel === 'string' ? report.panel.slice(0, 64) : undefined, resource: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined, actor: current.user.username, message: report.message.slice(0, 500), fields: { widget: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined } });
         }
         return json(res, 202, { accepted: reports.length });
       }

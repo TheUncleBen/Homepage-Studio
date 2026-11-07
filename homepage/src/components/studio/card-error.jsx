@@ -58,7 +58,9 @@ export function errorSummary(error) {
 // A certificate problem is fixed in the widget's Connection section.
 const isCertificate = (error) => /^tls-/.test(errorClassOf(error) ?? "");
 
-export default function CardError({ card, service, error, title }) {
+// compact: an information widget's short card (82 px by default), where the
+// heading and sentence share one line, ellipsised, with Fix under it.
+export default function CardError({ card, service, error, title, compact = false }) {
   const { t } = useTranslation();
   const name = service?.name || "this service";
   const summary = error?.code === "WIDGET_NOT_SET_UP" ? null : errorSummary(error);
@@ -69,7 +71,10 @@ export default function CardError({ card, service, error, title }) {
         panel: card.id,
         widget: service?.widget?.type ?? service?.name,
         message: `${name}: ${summary}`,
+        errorClass: errorClassOf(error) ?? undefined,
       });
+    // The summary already changes with the error; the class follows it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary, card.id, service?.widget?.type, service?.name, name]);
   // A new widget without its address yet points straight at its settings.
   if (error?.code === "WIDGET_NOT_SET_UP") {
@@ -103,10 +108,22 @@ export default function CardError({ card, service, error, title }) {
       </div>
     );
   }
+  const heading = title ?? `Can’t reach ${name}`;
   return (
-    <div className="studio-card-state studio-card-error" role="status">
-      <strong>{title ?? `Can’t reach ${name}`}</strong>
-      <span>{errorSummary(error)}</span>
+    <div className={`studio-card-state studio-card-error${compact ? " studio-card-error-compact" : ""}`} role="status">
+      {compact ? (
+        <span className="studio-card-error-line" title={`${heading} · ${summary}`}>
+          <span className="studio-card-error-heading">
+            <strong>{heading}</strong> ·{" "}
+          </span>
+          {summary}
+        </span>
+      ) : (
+        <>
+          <strong>{heading}</strong>
+          <span>{summary}</span>
+        </>
+      )}
       {card.onFix && (
         <button
           type="button"

@@ -15,7 +15,7 @@ import { CardLookContext } from "components/studio/card-look";
 export default function Error({ options, error }) {
   const { t } = useTranslation();
   const card = useContext(CardLookContext);
-  if (card && error) return <CardError card={card} service={{ name: card.title }} error={error} />;
+  if (card && error) return <CardError card={card} service={{ name: card.title }} error={error} compact />;
 
   return (
     <Container options={options} additionalClassNames="information-widget-error">

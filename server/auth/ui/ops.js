@@ -126,8 +126,9 @@
     // The next step for a certificate problem (UI review L4), worded as on the card.
     const certificateHint = (cls, card) => {
       if (!/^tls-/.test(cls ?? '')) return null;
-      const where = card ? 'turn off Check its certificate when you edit the card' : 'turn off Check the certificate in the monitor’s settings';
-      return longRow('Next step', admin ? `Add its authority in Administration › Trusted certificates, or ${where}.` : `Ask an administrator to add its authority in Trusted certificates, or ${where}.`);
+      if (admin) return longRow('Next step', `Add its authority in Administration › Trusted certificates, or ${card ? 'turn off Check its certificate when you edit the card' : 'turn off Check the certificate in the monitor’s settings'}.`);
+      // Someone without the editor may not be able to change the card (review R2).
+      return longRow('Next step', `Ask an administrator to add its authority in Trusted certificates, or ask someone who can edit the ${card ? 'card' : 'monitor'} to turn off its certificate check.`);
     };
     const names = new Map(access.dashboards.map(entry => [entry.id, entry.name]));
     names.set('studio', 'Studio');

@@ -14,12 +14,17 @@ export function enableClientErrors(on) {
   enabled = Boolean(on);
 }
 
-export function reportClientError({ panel, widget, message }) {
+export function reportClientError({ panel, widget, message, errorClass }) {
   if (!enabled || typeof window === "undefined" || !message) return;
   const key = `${panel ?? ""}\u0000${message}`;
   if (seen.has(key) || seen.size >= MAX_PER_PAGE) return;
   seen.add(key);
-  queue.push({ panel: panel ?? undefined, widget: widget ?? undefined, message: String(message).slice(0, 500) });
+  queue.push({
+    panel: panel ?? undefined,
+    widget: widget ?? undefined,
+    message: String(message).slice(0, 500),
+    ...(typeof errorClass === "string" ? { errorClass } : {}),
+  });
   if (!timer) timer = setTimeout(flush, 2000);
 }
 

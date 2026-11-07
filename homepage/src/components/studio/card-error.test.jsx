@@ -41,4 +41,18 @@ describe("card states", () => {
     fireEvent.click(screen.getByRole("button", { name: /Fix/ }));
     expect(onFix).toHaveBeenCalledWith("settings");
   });
+
+  it("fits an information widget's short card on one line", () => {
+    render(
+      <CardError
+        compact
+        card={{ id: "w", onFix: vi.fn() }}
+        service={{ name: "Glances" }}
+        error={{ error: "x", errorClass: "tls-untrusted" }}
+      />,
+    );
+    const line = screen.getByTitle("Can’t reach Glances · The certificate isn’t trusted");
+    expect(line.className).toBe("studio-card-error-line");
+    expect(screen.getByRole("button", { name: /Fix/ })).toBeTruthy();
+  });
 });

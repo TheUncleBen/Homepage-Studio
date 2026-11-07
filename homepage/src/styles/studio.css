@@ -5710,3 +5710,40 @@ svg.studio-chart-gauge {
   line-height: 1.45;
   color: var(--studio-muted);
 }
+
+/* An information widget's error fits its short card: heading and sentence on
+   one line, Fix under it; the card takes the alert look like a failing check
+   (UI review M5). */
+.studio-card-error-compact {
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+  container-type: inline-size;
+}
+/* On a narrow card the sentence matters more than "Can't reach …". */
+@container (max-width: 300px) {
+  .studio-card-error-compact .studio-card-error-heading {
+    display: none;
+  }
+}
+.studio-card-error-compact .studio-card-error-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-card-error-compact .studio-card-error-line,
+.studio-card-error-compact .studio-card-error-heading {
+  color: var(--card-muted-text);
+  font-size: 12.5px;
+}
+.studio-card-error-compact .studio-card-error-line strong {
+  color: var(--card-text);
+  font-size: 13px;
+}
+.studio-card-error-compact .studio-text-button {
+  margin-top: 0;
+}
+.studio-panel:has(.studio-card-error-compact) {
+  border-color: var(--studio-status-problem, #c4554d);
+  --card-bg: color-mix(in srgb, var(--studio-status-problem, #c4554d) 12%, var(--studio-surface));
+}
