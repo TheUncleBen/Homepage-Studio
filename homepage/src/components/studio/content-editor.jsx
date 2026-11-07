@@ -1122,7 +1122,8 @@ export default function ContentEditor({
                   knownKeys={hiddenKeys}
                   skipCertificateCheck={kind === "serviceWidget" && service?.skipCertificateCheck === true}
                   certificateOption={
-                    kind === "informationWidget" && CERTIFICATE_INFO_WIDGETS.has(source?.type || entry?.type)
+                    kind === "informationWidget" &&
+                    CERTIFICATE_INFO_WIDGETS.has(source?.type || selectedEntry?.type || entry?.type)
                   }
                   onValidity={setValid}
                   sectioned
