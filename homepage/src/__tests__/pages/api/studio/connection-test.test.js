@@ -168,6 +168,37 @@ describe("Check now (status address before saving)", () => {
     expect((await statusCheck({ check: "web", address: "https://a.example.org" })).message).toBe("Down · no answer");
   });
 
+  it("checks the certificate unless the service opts out, and names a certificate failure (owner decision D1)", async () => {
+    httpProxy.mockResolvedValue([200, null, null, {}]);
+    await statusCheck({ check: "web", address: "https://a.example.org" });
+    expect(httpProxy).toHaveBeenLastCalledWith("https://a.example.org/", { method: "HEAD", checkCertificate: true });
+    await statusCheck({ check: "web", address: "https://a.example.org", skipCertificateCheck: true });
+    expect(httpProxy).toHaveBeenLastCalledWith("https://a.example.org/", { method: "HEAD", checkCertificate: false });
+    httpProxy.mockResolvedValue([
+      500,
+      null,
+      { error: { message: "self-signed", rawError: { code: "DEPTH_ZERO_SELF_SIGNED_CERT" } } },
+      null,
+    ]);
+    const answer = await statusCheck({ check: "web", address: "https://a.example.org" });
+    expect(answer).toMatchObject({ ok: false, kind: "certificate" });
+  });
+
+  it("runs the widget test with the certificate check the dialog asks for", async () => {
+    const seen = [];
+    serviceProxy.mockImplementation(async (req, res) => {
+      const { checksCertificate } = await import("utils/proxy/certificate-check.mjs");
+      seen.push(checksCertificate());
+      res.status(200).send({ ok: 1 });
+    });
+    await handler(request({ widget: { type: "sonarr", url: "https://tv.example.org", key: "k" } }), createRes());
+    await handler(
+      request({ widget: { type: "sonarr", url: "https://tv.example.org", key: "k" }, skipCertificateCheck: true }),
+      createRes(),
+    );
+    expect(seen).toEqual([true, false]);
+  });
+
   it("pings the host of an address", async () => {
     probe.mockResolvedValue({ alive: true, time: 0.3 });
     expect((await statusCheck({ check: "ping", address: "https://nas.example.org:5001" })).message).toBe("Up · <1 ms");

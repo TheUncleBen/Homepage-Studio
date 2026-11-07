@@ -624,6 +624,8 @@ export default function ConfigForm({
   sectioned = false,
   // What to say when there is nothing to fill in (a Spacer).
   emptyNote = "This widget is set up in YAML.",
+  // The widget's service checks no certificate (D1): Test connection runs so too.
+  skipCertificateCheck = false,
 }) {
   const [tab, setTab] = useState("fields");
   // Whether a saved connection fills the address and key (connections.jsx).
@@ -740,6 +742,7 @@ export default function ConfigForm({
                 {testable && connectionKeys.includes("url") && (
                   // A new widget's draft has no type yet; testable names it.
                   <ConnectionTest
+                    skipCertificateCheck={skipCertificateCheck}
                     value={
                       typeof testable === "string" && value.type === undefined ? { ...value, type: testable } : value
                     }

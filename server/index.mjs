@@ -536,10 +536,10 @@ function createDashboardHandlers(options = {}) {
     upstreamRequest.end(body);
   }
 
-  async function rendererTest(req, dashboard, widget, status) {
+  async function rendererTest(req, dashboard, widget, status, skipCertificateCheck = false) {
     const lease = await acquireNative(String(req.headers.host).toLowerCase(), dashboard);
     try {
-      const body = JSON.stringify(status ? { status } : { widget });
+      const body = JSON.stringify(status ? { status } : { widget, ...(skipCertificateCheck ? { skipCertificateCheck: true } : {}) });
       const transport = lease.origin.protocol === 'https:' ? https : http;
       return await new Promise((resolveTest, rejectTest) => {
         const request = transport.request(lease.origin, { method: 'POST', path: '/api/studio/connection-test', timeout: 30000, headers: { host: req.headers.host, 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), 'x-studio-internal': options.internalToken } }, response => {
@@ -795,13 +795,15 @@ function createDashboardHandlers(options = {}) {
         const change = await readBody(req, 32 * 1024);
         // Check now (Status setting): one address, web or ping, nothing else.
         if (change && typeof change.status === 'object' && change.status !== null && Object.keys(change).length === 1) {
-          const { check, address } = change.status;
-          if (!['web', 'ping'].includes(check) || typeof address !== 'string' || address.length > 2048 || Object.keys(change.status).some(key => !['check', 'address'].includes(key))) throw Object.assign(new Error('Send the check and the address.'), { status: 400 });
+          const { check, address, skipCertificateCheck } = change.status;
+          if (!['web', 'ping'].includes(check) || typeof address !== 'string' || address.length > 2048 || Object.keys(change.status).some(key => !['check', 'address', 'skipCertificateCheck'].includes(key)) || (skipCertificateCheck !== undefined && skipCertificateCheck !== true)) throw Object.assign(new Error('Send the check and the address.'), { status: 400 });
           // A saved connection's address may be checked; never its key or password.
           if (/STUDIO_CONNECTION_/.test(address) && !/^\{\{STUDIO_CONNECTION_[A-F0-9]{16}_URL\}\}$/.test(address)) return json(res, 200, { ok: false, kind: 'address', message: 'Only a saved connection’s address can be checked.' });
-          return json(res, 200, await rendererTest(req, dashboard, null, { check, address }));
+          return json(res, 200, await rendererTest(req, dashboard, null, { check, address, ...(skipCertificateCheck ? { skipCertificateCheck } : {}) }));
         }
-        if (!change || typeof change.widget !== 'object' || change.widget === null || Array.isArray(change.widget) || Object.keys(change).some(key => key !== 'widget')) throw Object.assign(new Error('Send the widget to test.'), { status: 400 });
+        // skipCertificateCheck: the dialog's per-service exception (D1), so the
+        // test runs as the saved widget will.
+        if (!change || typeof change.widget !== 'object' || change.widget === null || Array.isArray(change.widget) || Object.keys(change).some(key => !['widget', 'skipCertificateCheck'].includes(key)) || (change.skipCertificateCheck !== undefined && change.skipCertificateCheck !== true)) throw Object.assign(new Error('Send the widget to test.'), { status: 400 });
         // A saved key, username or password is only ever sent to its own
         // connection's address, so a test can't carry it anywhere else.
         for (const field of ['key', 'username', 'password']) {
@@ -818,7 +820,7 @@ function createDashboardHandlers(options = {}) {
           const allowed = references.every(([field, value]) => saved.some(config => JSON.stringify(config[field] ?? null) === JSON.stringify(value ?? null)));
           if (!allowed) return json(res, 200, { ok: false, kind: 'address', message: 'A secret or variable reference is only sent to the address it is saved with. Save the widget with this address first, or type the key in to test it.' });
         }
-        const tested = await rendererTest(req, dashboard, change.widget);
+        const tested = await rendererTest(req, dashboard, change.widget, null, change.skipCertificateCheck === true);
         if (!tested.ok) options.onIntegration?.({ source_type: 'integration', source_id: String(change.widget.type ?? 'widget').slice(0, 64), scope: dashboard.id, resource: String(change.widget.type ?? 'widget').slice(0, 64), category: 'integration', severity: 4, event_type: 'connection.test-failed', actor: req.studioActor, message: `Test connection (${String(change.widget.type ?? 'widget').slice(0, 64)}) failed: ${tested.message || tested.kind}`, fields: { kind: tested.kind } });
         return json(res, 200, tested);
       }

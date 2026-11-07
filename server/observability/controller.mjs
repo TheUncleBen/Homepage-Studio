@@ -544,7 +544,8 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
       id: `card:${dashboard.id}:${target.panel}`, name: target.name || 'Card', scope: dashboard.id, card: true, panel: target.panel,
       type: target.check === 'ping' ? 'ping' : 'http', interval: CARD_INTERVAL, timeout: 10, failures: 1, retryInterval: CARD_INTERVAL, successes: 1, paused: false, tags: [], family: 'auto', parent: null,
       notify: { channels: [], down: true, up: true, certificate: true, resendMinutes: 0 },
-      ...(target.check === 'ping' ? { ping: { host: target.host, count: 1 } } : { http: { url: target.url, card: true } }),
+      // A card checks the certificate too, unless its service opts out (D1).
+      ...(target.check === 'ping' ? { ping: { host: target.host, count: 1 } } : { http: { url: target.url, card: true, ...(target.checkCertificate === false ? { verifyTls: false } : {}) } }),
     }));
     const key = JSON.stringify(monitors);
     if (cardTargets.get(dashboard.id) === key) return;

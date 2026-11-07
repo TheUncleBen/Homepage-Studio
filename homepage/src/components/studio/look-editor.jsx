@@ -953,6 +953,8 @@ export default function LookEditor({
   // kept on the entry around it like its logo (6a93f66 had it on that entry's
   // own tile).
   docker,
+  // { skip, onChange }: the per-service exception to certificate checking (D1).
+  certificate,
   // An integration widget's own logo and description ({ icon, description,
   // onIcon, onDescription }), shown with the header that draws them.
   identity,
@@ -1328,6 +1330,23 @@ export default function LookEditor({
                 />
               </Row>
             </>
+          )}
+          {certificate && (
+            <Row
+              label="Check its certificate"
+              info="Studio checks the certificate of this service's address, for its data, Test connection and status check, against the usual public authorities and Administration › Trusted certificates. Turn it off only for a service whose self-signed certificate you can't add there."
+            >
+              <Switch
+                checked={!certificate.skip}
+                label="Check its certificate"
+                onChange={(checked) => certificate.onChange(!checked)}
+              />
+            </Row>
+          )}
+          {certificate?.skip && (
+            <p className="studio-note studio-certificate-note" role="note">
+              Studio accepts any certificate from this address, so it can’t tell the real service from an impostor.
+            </p>
           )}
         </Group>
       )}

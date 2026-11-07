@@ -655,11 +655,19 @@ Both add to the public authorities; they don't replace them. Dashboards
 restart their workers after a change, which takes a few seconds. Add the
 certificate *authority*, not the service's own certificate.
 
-What uses them today: the web and certificate monitors you add in
-Operations ([MONITORING.md](MONITORING.md)). Widgets, **Test connection** and
-cards' status checks still accept any certificate, as Homepage does, so the
-list doesn't change them yet; whether they should check certificates is a
-pending choice.
+Everything Studio fetches over `https://` checks the certificate against the
+public authorities plus this list: widgets' data, **Test connection**,
+**Check now**, cards' status checks and card monitors, and the web and
+certificate monitors you add in Operations ([MONITORING.md](MONITORING.md)).
+A certificate that doesn't check out stops the request, and the card or test
+says the certificate isn't trusted.
+
+For a service whose self-signed certificate you can't replace or add, turn
+off **Check its certificate** under the widget's **Status** (it writes
+`skipCertificateCheck: true` on that service in `services.yaml`). Studio then
+accepts any certificate from that service's address, for its data, tests and
+status check, so it can't tell the real service from an impostor; prefer
+adding the authority.
 
 ## Monitoring and logs
 

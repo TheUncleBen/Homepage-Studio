@@ -4,6 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import https from 'node:https';
+import { readFileSync } from 'node:fs';
 import net from 'node:net';
 import { openMain } from './storage.mjs';
 import { availability, createMonitoring, windowActive } from './monitors.mjs';
@@ -154,4 +156,20 @@ test('history says when checks began, to the minute for a new monitor', async t 
   env.tick(60e3);
   env.engine.apply(m, { ok: true, ms: 4 });
   assert.equal(env.engine.history('m1').first, began);
+});
+
+test('a card monitor checks the certificate unless its service opts out (owner decision D1)', async t => {
+  const fixture = name => readFileSync(new URL(`../fixtures/${name}`, import.meta.url));
+  const cert = fixture('self-signed-localhost.pem');
+  const server = https.createServer({ key: fixture('self-signed-localhost.key'), cert }, (req, res) => res.end('ok'));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `https://127.0.0.1:${server.address().port}/`;
+  const checked = await runHttp({ url, card: true }, { timeoutMs: 2000 });
+  assert.equal(checked.ok, false, 'an untrusted certificate is down');
+  const skipped = await runHttp({ url, card: true, verifyTls: false }, { timeoutMs: 2000 });
+  assert.equal(skipped.ok, true, 'the exception accepts it');
+  assert.equal(skipped.warning, undefined, 'and does not keep warning about the choice');
+  assert.equal((await runHttp({ url, verifyTls: false }, { timeoutMs: 2000 })).warning?.cls, 'tls-untrusted', 'a monitor with checking off still warns');
+  assert.equal((await runHttp({ url, card: true }, { timeoutMs: 2000, ca: [cert] })).ok, true, 'a trusted certificate passes');
 });

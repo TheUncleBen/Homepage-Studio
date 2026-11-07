@@ -3,6 +3,7 @@ import { performance } from "perf_hooks";
 import { withAuth } from "utils/auth";
 import { getServiceItem } from "utils/config/service-helpers";
 import createLogger from "utils/logger";
+import { serviceChecksCertificate } from "utils/proxy/certificate-check.mjs";
 import { httpProxy } from "utils/proxy/http";
 import { statusFallback } from "utils/studio/status-address";
 
@@ -36,16 +37,19 @@ export async function siteMonitor(req, res) {
     let startTime = performance.now();
     // No cookies: the widget's own requests may have collected a session for
     // this address, and a status check must not ride on it.
+    // The service's certificate is checked unless it opts out (D1).
+    const checkCertificate = serviceChecksCertificate(serviceItem);
     let [status, , , headers] = await httpProxy(monitorURL, {
       method: "HEAD",
       cookieJar: false,
+      checkCertificate,
     });
     let endTime = performance.now();
 
     if (status > 403) {
       // try one more time as a GET in case HEAD is rejected for whatever reason
       startTime = performance.now();
-      [status, , , headers] = await httpProxy(monitorURL, { cookieJar: false });
+      [status, , , headers] = await httpProxy(monitorURL, { cookieJar: false, checkCertificate });
       endTime = performance.now();
     }
 

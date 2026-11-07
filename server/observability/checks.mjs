@@ -77,10 +77,14 @@ function certExpiry(cert) {
 
 // HTTP(S). With card: true it follows a Studio card's own rule (plan 5.9):
 // HEAD, then GET when the answer is above 403; up at 403 or below;
-// certificate problems are a warning, not down, unless they stop the request.
+// a certificate it doesn't trust is down, unless certificate checking is
+// off for it (then a warning).
 export async function runHttp(config, { timeoutMs, ca, family = 'auto' } = {}) {
   const deadline = AbortSignal.timeout(timeoutMs);
-  const verify = config.card ? false : config.verifyTls !== false;
+  // Certificates are checked (owner decision D1, 7 Nov 2026), a card's too,
+  // unless the monitor or the card's service opts out; then a certificate
+  // problem is a warning, not down.
+  const verify = config.verifyTls !== false;
   const agentOptions = { rejectUnauthorized: verify, ...(ca ? { ca } : {}) };
   const headers = Object.fromEntries((config.headers ?? []).map(header => [header.name, header.value]));
   const accept = config.card ? code => code <= 403 : acceptsStatus(config.accept);
@@ -105,7 +109,9 @@ export async function runHttp(config, { timeoutMs, ca, family = 'auto' } = {}) {
     const result = { ms: round(answer.total), code: answer.status, certExpires: url.startsWith('https:') ? certExpiry(answer.cert) : null };
     if (!verify && url.startsWith('https:') && answer.authorized === false && answer.authorizationError) {
       const cls = classifyError({ code: String(answer.authorizationError) });
-      result.warning = { cls, message: CLASS_SENTENCES[cls] ?? 'The certificate isn\'t trusted' };
+      // A card whose service turned its certificate check off chose that:
+      // only an expired certificate is still worth a warning.
+      if (!config.card || cls === 'tls-expired') result.warning = { cls, message: CLASS_SENTENCES[cls] ?? 'The certificate isn\'t trusted' };
     }
     if (!accept(answer.status)) {
       const cls = classifyError({ status: answer.status }) ?? 'http-status';

@@ -16,6 +16,7 @@ vi.mock("utils/logger", () => ({
 }));
 vi.mock("utils/config/service-helpers", () => ({
   default: getServiceWidget,
+  getServiceItem: vi.fn(async () => null),
 }));
 vi.mock("widgets/calendar/proxy", () => ({
   default: calendarHandler,

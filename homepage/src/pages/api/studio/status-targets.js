@@ -31,7 +31,14 @@ export async function statusTarget(panel, data, lookup = getServiceItem) {
     return { check: "ping", host, name: item.name };
   }
   const url = item.siteMonitor || statusFallback(item);
-  return url ? { check: "web", url, name: item.name } : null;
+  if (!url) return null;
+  // The certificate is checked unless the service opts out (owner decision D1).
+  return {
+    check: "web",
+    url,
+    name: item.name,
+    ...(item.skipCertificateCheck === true ? { checkCertificate: false } : {}),
+  };
 }
 
 async function handler(req, res) {

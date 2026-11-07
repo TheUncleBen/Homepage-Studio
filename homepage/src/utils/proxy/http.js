@@ -6,6 +6,7 @@ import { http, https } from "follow-redirects";
 import cache from "memory-cache";
 
 import { sanitizeErrorURL, sanitizeLogURL } from "./api-helpers";
+import { checksCertificate } from "./certificate-check.mjs";
 import { addCookieToJar, setCookieHeader } from "./cookie-jar";
 
 import createLogger from "utils/logger";
@@ -49,6 +50,10 @@ const TRANSPORT_ERRORS = {
   UNABLE_TO_GET_ISSUER_CERT_LOCALLY: "Certificate issuer is not trusted",
   CERT_HAS_EXPIRED: "Certificate has expired",
   ERR_TLS_CERT_ALTNAME_INVALID: "Certificate does not match the host name",
+  CERT_NOT_YET_VALID: "Certificate is not valid yet",
+  CERT_UNTRUSTED: "Certificate is not trusted",
+  UNABLE_TO_GET_ISSUER_CERT: "Certificate issuer is not trusted",
+  CERT_SIGNATURE_FAILURE: "Certificate signature is not valid",
 };
 
 function transportError(error) {
@@ -373,8 +378,8 @@ function homepageDNSLookupFn() {
 const homepageLookup = homepageDNSLookupFn();
 const agentCache = new Map();
 
-function getAgent(protocol, disableIpv6) {
-  const cacheKey = `${protocol}:${disableIpv6 ? "ipv4" : "auto"}`;
+function getAgent(protocol, disableIpv6, checkCertificate = true) {
+  const cacheKey = `${protocol}:${disableIpv6 ? "ipv4" : "auto"}:${checkCertificate ? "checked" : "unchecked"}`;
   const cachedAgent = agentCache.get(cacheKey);
   if (cachedAgent) {
     return cachedAgent;
@@ -388,25 +393,37 @@ function getAgent(protocol, disableIpv6) {
 
   const agent =
     protocol === "https:"
-      ? new https.Agent({ ...agentOptions, rejectUnauthorized: false })
+      ? // Studio checks certificates (owner decision D1), except for a service
+        // that opts out (utils/proxy/certificate-check.mjs).
+        new https.Agent({ ...agentOptions, rejectUnauthorized: checkCertificate })
       : new http.Agent(agentOptions);
 
   agentCache.set(cacheKey, agent);
   return agent;
 }
 
-export async function httpProxy(url, params = {}) {
+export async function httpProxy(url, allParams = {}) {
+  // checkCertificate: false asks for this one request not to check (a
+  // status check for a service that opts out); otherwise the service being
+  // served decides.
+  const { checkCertificate, ...params } = allParams;
   const constructedUrl = new URL(url);
   const disableIpv6 = process.env.HOMEPAGE_PROXY_DISABLE_IPV6 === "true";
+  const check = checkCertificate === false ? false : checksCertificate();
+  // A redirect to the other scheme takes that scheme's agent, so an address
+  // that redirects to HTTPS is checked as well.
+  const agents = { http: getAgent("http:", disableIpv6, check), https: getAgent("https:", disableIpv6, check) };
   let request = null;
   if (constructedUrl.protocol === "https:") {
     request = httpsRequest(constructedUrl, {
-      agent: getAgent(constructedUrl.protocol, disableIpv6),
+      agent: agents.https,
+      agents,
       ...params,
     });
   } else {
     request = httpRequest(constructedUrl, {
-      agent: getAgent(constructedUrl.protocol, disableIpv6),
+      agent: agents.http,
+      agents,
       ...params,
     });
   }

@@ -7,6 +7,7 @@ import { withAuth } from "utils/auth";
 import { substituteEnvironmentVars } from "utils/config/config";
 import { connectionTest, connectionTestResult, TEST_GROUP } from "utils/config/connection-test.mjs";
 import { resolveWidgetConnection } from "utils/config/studio-connections.mjs";
+import { certificateCheck } from "utils/proxy/certificate-check.mjs";
 import { httpProxy } from "utils/proxy/http";
 import { captureResponse, fromController } from "utils/studio/internal";
 import widgets from "widgets/widgets";
@@ -30,12 +31,21 @@ export function firstEndpoint(definition) {
   return simple?.[0];
 }
 
+// httpProxy's own failure, when it was the certificate (http.js TRANSPORT_ERRORS).
+const CERTIFICATE_CODES = /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|ERR_TLS/;
+const certificateFailure = (data) => {
+  const raw = data?.error?.rawError;
+  return (
+    Boolean(raw) && [raw.code, raw.causeCode].some((code) => typeof code === "string" && CERTIFICATE_CODES.test(code))
+  );
+};
+
 const shortMs = (ms) => (ms < 1 ? "<1 ms" : `${Math.round(ms)} ms`);
 
 // Check now, in the widget's Status setting (U8): the same check the card
 // runs (pages/api/siteMonitor.js, pages/api/ping.js) on the dialog's
 // address before it is saved. Answers with a plain result only.
-export async function statusCheck({ check, address }) {
+export async function statusCheck({ check, address, skipCertificateCheck }) {
   // A saved connection's address, or a Docker secret / variable reference.
   const typed = typeof address === "string" ? address.trim() : "";
   // Secret files never go into an address that is being checked.
@@ -62,14 +72,20 @@ export async function statusCheck({ check, address }) {
   if (!url || !["http:", "https:"].includes(url.protocol) || url.username || url.password)
     return { ok: false, kind: "address", message: "Enter a web address that starts with http:// or https://." };
   let started = performance.now();
-  let [status, , , headers] = await httpProxy(url.href, { method: "HEAD" });
+  // Checked as the saved card will be: the certificate too, unless the
+  // dialog's Check its certificate is off (D1).
+  const checkCertificate = skipCertificateCheck !== true;
+  let [status, , data, headers] = await httpProxy(url.href, { method: "HEAD", checkCertificate });
   let ms = performance.now() - started;
   if (status > 403) {
     started = performance.now();
-    [status, , , headers] = await httpProxy(url.href);
+    [status, , data, headers] = await httpProxy(url.href, { checkCertificate });
     ms = performance.now() - started;
   }
-  if (headers === null) return { ok: false, kind: "down", message: "Down · no answer" };
+  if (headers === null)
+    return certificateFailure(data)
+      ? { ok: false, kind: "certificate", message: "Down · its certificate isn't trusted by Studio" }
+      : { ok: false, kind: "down", message: "Down · no answer" };
   // As the card decides (utils/studio/status-check.js): a sign-in page is up.
   return status <= 403
     ? { ok: true, kind: "up", message: `Up · ${shortMs(ms)}` }
@@ -110,7 +126,11 @@ async function handler(req, res) {
   const started = performance.now();
   let timer;
   const finished = await Promise.race([
-    connectionTest.run({ widget }, () => serviceProxy(request, captured)).then(() => true),
+    connectionTest
+      .run({ widget }, () =>
+        certificateCheck.run({ check: req.body?.skipCertificateCheck !== true }, () => serviceProxy(request, captured)),
+      )
+      .then(() => true),
     new Promise((resolve) => {
       timer = setTimeout(() => resolve(false), TEST_TIMEOUT_MS);
     }),

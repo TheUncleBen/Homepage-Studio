@@ -150,14 +150,19 @@ export function ConnectionChooser({ value, keys, saved, onSaved, onChange }) {
 // Test connection: runs the widget's own first request with what is in the
 // dialog (a saved connection's key stays on the server) and says in plain
 // words what happened. Shown once there is an address to test.
-export function ConnectionTest({ value }) {
+export function ConnectionTest({ value, skipCertificateCheck = false }) {
   const [state, setState] = useState(null);
   const url = typeof value.url === "string" ? value.url.trim() : "";
   if (!url || typeof value.type !== "string") return null;
   const run = async () => {
     setState({ busy: true });
     try {
-      setState(await studioRequest("/studio/api/connection-test", { widget: value }));
+      setState(
+        await studioRequest("/studio/api/connection-test", {
+          widget: value,
+          ...(skipCertificateCheck ? { skipCertificateCheck: true } : {}),
+        }),
+      );
     } catch (failure) {
       setState({ ok: false, message: failure.message });
     }
