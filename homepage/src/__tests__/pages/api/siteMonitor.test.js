@@ -132,6 +132,16 @@ describe("pages/api/siteMonitor", () => {
     });
   });
 
+  it("names a certificate the check refused", async () => {
+    getServiceItem.mockResolvedValueOnce({ siteMonitor: "https://example.com" });
+    perf.now.mockReturnValueOnce(1).mockReturnValueOnce(2).mockReturnValueOnce(5).mockReturnValueOnce(15);
+    const refused = [500, "application/json", { error: { rawError: { code: "DEPTH_ZERO_SELF_SIGNED_CERT" } } }, null];
+    httpProxy.mockResolvedValueOnce(refused).mockResolvedValueOnce(refused);
+    const res = createMockRes();
+    await handler({ query: { groupName: "g", serviceName: "s" } }, res);
+    expect(res.body).toEqual({ status: 500, latency: 10, reachable: false, certificate: "tls-untrusted" });
+  });
+
   it("says nothing answered when the proxy could not reach the address", async () => {
     getServiceItem.mockResolvedValueOnce({ siteMonitor: "http://example.com" });
     perf.now.mockReturnValueOnce(1).mockReturnValueOnce(2).mockReturnValueOnce(5).mockReturnValueOnce(15);

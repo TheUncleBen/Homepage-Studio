@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import { classifyError } from "../studio/error-classes.mjs";
+
 // Certificate checking (owner decision D1, 7 Nov 2026): every HTTPS request
 // a widget, Test connection or status check makes checks the service's
 // certificate against the public authorities and Studio's trusted
@@ -16,4 +18,17 @@ export function checksCertificate() {
 // A service entry's own answer: check unless it says skipCertificateCheck: true.
 export function serviceChecksCertificate(service) {
   return !(service && typeof service === "object" && service.skipCertificateCheck === true);
+}
+
+// When httpProxy failed on the certificate (its TRANSPORT_ERRORS answer), the
+// kind of certificate problem: tls-untrusted, tls-expired or tls-name.
+export function certificateClass(data) {
+  const raw = data?.error?.rawError;
+  if (!raw) return null;
+  for (const code of [raw.code, raw.causeCode]) {
+    if (typeof code !== "string") continue;
+    const cls = classifyError({ code });
+    if (cls?.startsWith("tls-")) return cls;
+  }
+  return null;
 }

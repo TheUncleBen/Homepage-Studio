@@ -1,3 +1,5 @@
+import { CLASS_SENTENCES } from "./error-classes.mjs";
+
 // One status check's answer, as the card shows it and as status history
 // keeps it: up (with its time in ms) or down (with the HTTP code if any).
 // kind is "ping" or "siteMonitor"; data is that endpoint's JSON answer.
@@ -7,7 +9,10 @@ const tenths = (ms) => (Number.isFinite(Number(ms)) ? Math.round(Number(ms) * 10
 export function statusFrom(kind, data) {
   if (!data || data.error) return { state: "down" };
   if (kind === "ping") return data.alive ? { state: "up", ms: tenths(data.time) } : { state: "down" };
-  if (data.reachable === false) return { state: "down" };
+  if (data.reachable === false)
+    return data.certificate && CLASS_SENTENCES[data.certificate]
+      ? { state: "down", text: CLASS_SENTENCES[data.certificate] }
+      : { state: "down" };
   return data.status > 403 ? { state: "down", code: data.status } : { state: "up", ms: tenths(data.latency) };
 }
 

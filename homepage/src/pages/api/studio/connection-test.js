@@ -7,7 +7,7 @@ import { withAuth } from "utils/auth";
 import { substituteEnvironmentVars } from "utils/config/config";
 import { connectionTest, connectionTestResult, TEST_GROUP } from "utils/config/connection-test.mjs";
 import { resolveWidgetConnection } from "utils/config/studio-connections.mjs";
-import { certificateCheck } from "utils/proxy/certificate-check.mjs";
+import { certificateCheck, certificateClass } from "utils/proxy/certificate-check.mjs";
 import { httpProxy } from "utils/proxy/http";
 import { captureResponse, fromController } from "utils/studio/internal";
 import widgets from "widgets/widgets";
@@ -31,13 +31,10 @@ export function firstEndpoint(definition) {
   return simple?.[0];
 }
 
-// httpProxy's own failure, when it was the certificate (http.js TRANSPORT_ERRORS).
-const CERTIFICATE_CODES = /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|ERR_TLS/;
-const certificateFailure = (data) => {
-  const raw = data?.error?.rawError;
-  return (
-    Boolean(raw) && [raw.code, raw.causeCode].some((code) => typeof code === "string" && CERTIFICATE_CODES.test(code))
-  );
+const CERTIFICATE_WORDS = {
+  "tls-untrusted": "its certificate isn't trusted by Studio",
+  "tls-expired": "its certificate has expired",
+  "tls-name": "its certificate is for a different name",
 };
 
 const shortMs = (ms) => (ms < 1 ? "<1 ms" : `${Math.round(ms)} ms`);
@@ -82,10 +79,12 @@ export async function statusCheck({ check, address, skipCertificateCheck }) {
     [status, , data, headers] = await httpProxy(url.href, { checkCertificate });
     ms = performance.now() - started;
   }
-  if (headers === null)
-    return certificateFailure(data)
-      ? { ok: false, kind: "certificate", message: "Down · its certificate isn't trusted by Studio" }
+  if (headers === null) {
+    const certificate = certificateClass(data);
+    return certificate
+      ? { ok: false, kind: "certificate", message: `Down · ${CERTIFICATE_WORDS[certificate]}` }
       : { ok: false, kind: "down", message: "Down · no answer" };
+  }
   // As the card decides (utils/studio/status-check.js): a sign-in page is up.
   return status <= 403
     ? { ok: true, kind: "up", message: `Up · ${shortMs(ms)}` }

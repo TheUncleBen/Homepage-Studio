@@ -9,4 +9,13 @@ describe("status check answers", () => {
     expect(statusFrom("siteMonitor", { status: 200, latency: 45.26 })).toEqual({ state: "up", ms: 45.3 });
     expect(statusFrom("siteMonitor", { status: 502, latency: 3 })).toEqual({ state: "down", code: 502 });
   });
+  it("names a certificate problem instead of no answer", () => {
+    expect(statusFrom("siteMonitor", { status: 500, reachable: false, certificate: "tls-expired" })).toEqual({
+      state: "down",
+      text: "The certificate has expired",
+    });
+    expect(statusFrom("siteMonitor", { status: 500, reachable: false, certificate: "bogus" })).toEqual({
+      state: "down",
+    });
+  });
 });

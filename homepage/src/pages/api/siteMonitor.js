@@ -3,7 +3,7 @@ import { performance } from "perf_hooks";
 import { withAuth } from "utils/auth";
 import { getServiceItem } from "utils/config/service-helpers";
 import createLogger from "utils/logger";
-import { serviceChecksCertificate } from "utils/proxy/certificate-check.mjs";
+import { certificateClass, serviceChecksCertificate } from "utils/proxy/certificate-check.mjs";
 import { httpProxy } from "utils/proxy/http";
 import { statusFallback } from "utils/studio/status-address";
 
@@ -39,7 +39,7 @@ export async function siteMonitor(req, res) {
     // this address, and a status check must not ride on it.
     // The service's certificate is checked unless it opts out (D1).
     const checkCertificate = serviceChecksCertificate(serviceItem);
-    let [status, , , headers] = await httpProxy(monitorURL, {
+    let [status, , data, headers] = await httpProxy(monitorURL, {
       method: "HEAD",
       cookieJar: false,
       checkCertificate,
@@ -49,7 +49,7 @@ export async function siteMonitor(req, res) {
     if (status > 403) {
       // try one more time as a GET in case HEAD is rejected for whatever reason
       startTime = performance.now();
-      [status, , , headers] = await httpProxy(monitorURL, { cookieJar: false, checkCertificate });
+      [status, , data, headers] = await httpProxy(monitorURL, { cookieJar: false, checkCertificate });
       endTime = performance.now();
     }
 
@@ -58,7 +58,10 @@ export async function siteMonitor(req, res) {
       latency: endTime - startTime,
       // httpProxy answers 500 itself when nothing answered (no response
       // headers), so Studio can say "No answer" instead of a status code.
-      ...(headers === null ? { reachable: false } : {}),
+      // A certificate problem is named (tls-untrusted, tls-expired, tls-name).
+      ...(headers === null
+        ? { reachable: false, ...(certificateClass(data) ? { certificate: certificateClass(data) } : {}) }
+        : {}),
     });
   } catch (e) {
     logger.debug("Error attempting http monitor: %s", e);
