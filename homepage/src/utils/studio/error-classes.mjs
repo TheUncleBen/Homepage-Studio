@@ -23,18 +23,18 @@ export const ERROR_CLASSES = [
 export const CLASS_SENTENCES = {
   auth: "The API key or password was refused",
   permission: "The account is missing a permission",
-  "not-found": "The address or API path wasn't found",
+  "not-found": "The address or API path wasn’t found",
   dns: "Name not found · check the address",
   refused: "Connection refused · check the address and port",
   timeout: "No answer in time",
-  "tls-untrusted": "The certificate isn't trusted",
+  "tls-untrusted": "The certificate isn’t trusted",
   "tls-expired": "The certificate has expired",
   "tls-name": "The certificate is for a different name",
   "http-status": "The service answered with an error",
-  "bad-response": "The service didn't answer as expected",
-  assertion: "The answer didn't match what was expected",
-  unreachable: "The network or host can't be reached",
-  internal: "Studio couldn't run the check",
+  "bad-response": "The service didn’t answer as expected",
+  assertion: "The answer didn’t match what was expected",
+  unreachable: "The network or host can’t be reached",
+  internal: "Studio couldn’t run the check",
 };
 
 const STATUS_CLASS = { 401: "auth", 407: "auth", 403: "permission", 404: "not-found", 410: "not-found" };
@@ -47,12 +47,14 @@ export function classifyError({ code, status, message } = {}) {
   if (STATUS_CLASS[httpStatus]) return STATUS_CLASS[httpStatus];
   if (/CERT_HAS_EXPIRED|certificate has expired/i.test(text)) return "tls-expired";
   if (/ERR_TLS_CERT_ALTNAME_INVALID|Hostname\/IP does not match|altnames/i.test(text)) return "tls-name";
-  if (/SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|DEPTH_ZERO|CERT_UNTRUSTED|certificate|SSL|TLS/i.test(text)) return "tls-untrusted";
+  if (/SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|DEPTH_ZERO|CERT_UNTRUSTED|certificate|SSL|TLS/i.test(text))
+    return "tls-untrusted";
   if (/ECONNREFUSED|refused/i.test(text)) return "refused";
   if (/ENOTFOUND|EAI_AGAIN|EAI_NONAME|ENODATA|NXDOMAIN|SERVFAIL|name not found/i.test(text)) return "dns";
   if (/ETIMEDOUT|ESOCKETTIMEDOUT|TimeoutError|timed? ?out|AbortError/i.test(text)) return "timeout";
   if (/EHOSTUNREACH|ENETUNREACH|EHOSTDOWN|ENETDOWN|unreachable/i.test(text)) return "unreachable";
-  if (/ECONNRESET|EPIPE|socket hang up|EPROTO|Parse Error|Invalid JSON|Unexpected token/i.test(text)) return "bad-response";
+  if (/ECONNRESET|EPIPE|socket hang up|EPROTO|Parse Error|Invalid JSON|Unexpected token/i.test(text))
+    return "bad-response";
   if (httpStatus >= 400) return "http-status";
   return null;
 }

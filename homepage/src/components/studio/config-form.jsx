@@ -624,12 +624,11 @@ export default function ConfigForm({
   sectioned = false,
   // What to say when there is nothing to fill in (a Spacer).
   emptyNote = "This widget is set up in YAML.",
-  // The widget's service checks no certificate (D1): Test connection runs so too.
-  skipCertificateCheck = false,
-  // An information widget that fetches its own address offers its
-  // certificate exception here, beside the address (D1).
-  certificateOption = false,
+  // The widget's certificate exception (owner decision D1): { skip, onChange }.
+  // Shown in Connection under Test connection, which follows it.
+  certificate,
 }) {
+  const skipCertificateCheck = certificate?.skip === true;
   const [tab, setTab] = useState("fields");
   // Whether a saved connection fills the address and key (connections.jsx).
   const [savedConnection, setSavedConnection] = useState(() => Boolean(savedConnectionId(value)));
@@ -682,7 +681,7 @@ export default function ConfigForm({
   const known = new Set([
     ...fields.map((field) => field.key),
     ...knownKeys,
-    ...(certificateOption ? ["skipCertificateCheck"] : []),
+    ...(certificate ? ["skipCertificateCheck"] : []),
   ]);
   const additional = Object.keys(value).filter((key) => !known.has(key) && key !== "type");
   const shown = fields.filter((field) => field.key !== "type");
@@ -744,23 +743,6 @@ export default function ConfigForm({
                 />
               )}
               {connectionRows.map(fieldRow)}
-              {certificateOption && (
-                <Row
-                  label="Check its certificate"
-                  info="Studio checks the certificate of this widget's address against the usual public authorities and Administration › Trusted certificates. Turn it off only for an address whose self-signed certificate you can't add there."
-                >
-                  <Switch
-                    checked={value.skipCertificateCheck !== true}
-                    label="Check its certificate"
-                    onChange={(checked) => fieldChange("skipCertificateCheck", checked ? undefined : true)}
-                  />
-                </Row>
-              )}
-              {certificateOption && value.skipCertificateCheck === true && (
-                <p className="studio-note studio-certificate-note" role="note">
-                  Studio accepts any certificate from this address, so it can’t tell the real service from an impostor.
-                </p>
-              )}
               {/* Test and Save as a connection share one row. */}
               <div className="studio-connection-actions">
                 {testable && connectionKeys.includes("url") && (
@@ -781,6 +763,7 @@ export default function ConfigForm({
                   />
                 )}
               </div>
+              {certificate && <CertificateSwitch certificate={certificate} />}
             </Group>
           )}
           {pickers.map((field) => (
@@ -828,5 +811,28 @@ export default function ConfigForm({
         </Disclosure>
       )}
     </div>
+  );
+}
+
+// Check its certificate (owner decision D1), and what turning it off means.
+export function CertificateSwitch({ certificate }) {
+  return (
+    <>
+      <Row
+        label="Check its certificate"
+        info="Studio checks the certificate of this address, for the widget's data, Test connection and status check, against the usual public authorities and Administration › Trusted certificates. Turn it off only for an address whose self-signed certificate can’t be added there."
+      >
+        <Switch
+          checked={certificate.skip !== true}
+          label="Check its certificate"
+          onChange={(checked) => certificate.onChange(!checked)}
+        />
+      </Row>
+      {certificate.skip === true && (
+        <p className="studio-certificate-note" role="note">
+          Studio accepts any certificate from this address, so it can’t tell the real service from an impostor.
+        </p>
+      )}
+    </>
   );
 }

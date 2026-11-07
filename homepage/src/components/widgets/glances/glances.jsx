@@ -35,7 +35,7 @@ export default function Widget({ options }) {
   );
 
   if (error || data?.error) {
-    return <Error options={options} />;
+    return <Error options={options} error={error ?? data} />;
   }
 
   if (!data) {

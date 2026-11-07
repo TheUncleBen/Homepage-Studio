@@ -640,7 +640,7 @@ example a local CA behind Nginx Proxy Manager, Studio needs that authority to
 reach them over `https://`. Studio never trusts a certificate just because a
 service presents it; you add the authority once:
 
-- **Administration → Trusted certificates → Add certificate**: paste the CA
+- **Administration › Trusted certificates › Add certificate**: paste the CA
   certificate (PEM, the text between `-----BEGIN CERTIFICATE-----` and
   `-----END CERTIFICATE-----`) and choose **Trust it**. The list shows each
   one's name and expiry; open one for its issuer, validity and SHA-256
@@ -664,12 +664,13 @@ A certificate that doesn't check out stops the request, and the card or test
 says the certificate isn't trusted.
 
 For a service whose self-signed certificate you can't replace or add, turn
-off **Check its certificate** under the widget's **Status** (it writes
+off **Check its certificate** under the widget's **Connection** (under
+**Status** for a plain tile; it writes
 `skipCertificateCheck: true` on that service in `services.yaml`). Studio then
 accepts any certificate from that service's address, for its data, tests and
 status check, so it can't tell the real service from an impostor; prefer
 adding the authority. The Glances, Custom API and UniFi console information
-widgets have the same switch beside their address (it writes
+widgets have the same switch in their Settings (it writes
 `skipCertificateCheck: true` in `widgets.yaml`); for Longhorn, whose address
 is in `settings.yaml`, add `skipCertificateCheck: true` under
 `providers.longhorn`.

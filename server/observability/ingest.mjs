@@ -6,10 +6,14 @@ const RATE = 200; // events per second per source
 const BURST = 1000;
 const QUEUE_MAX = 10000;
 // Only identical events (same words, level, type, source, resource and
-// dashboard) whose own times are this close are stored once with a count.
-// Events that differ only in numbers stay apart; "Similar together" groups
-// those by fingerprint when reading (UI review H2).
-const DEDUPE_MS = 10000;
+// dashboard) are stored once with a count, while they keep coming: each
+// repeat within REPEAT_GAP_MS of the last one joins the row, for up to
+// GROUP_MAX_MS, then a new row starts (UI review M4, 7 Nov 2026: a failing
+// widget polled every few seconds was a new row every 10 s). Events that
+// differ only in numbers stay apart; "Similar together" groups those by
+// fingerprint when reading (UI review H2).
+const REPEAT_GAP_MS = 30000;
+const GROUP_MAX_MS = 5 * 60000;
 const DEDUPE_MAX = 20000;
 const PERSONAL_KEYS = ['ip', 'username', 'user_id'];
 
@@ -61,11 +65,11 @@ export function createIngest({ storage, redactor, batchMs = 2000, batchMax = 500
     }
     const dedupeKey = JSON.stringify([event.message, event.severity, event.event_type, sourceKey, event.resource, event.panel, event.scope]);
     const seen = recent.get(dedupeKey);
-    if (seen && event.sensitivity !== 'restricted' && event.ts >= seen.event.ts && event.ts - seen.event.ts < DEDUPE_MS) {
-      seen.count++; seen.last = Math.max(seen.last, event.ts); seen.dirty = true;
+    if (seen && event.sensitivity !== 'restricted' && event.ts >= seen.event.ts && event.ts - seen.last < REPEAT_GAP_MS && event.ts - seen.event.ts < GROUP_MAX_MS) {
+      seen.count++; seen.last = Math.max(seen.last, event.ts); seen.seen = event.received; seen.dirty = true;
       return seen.event;
     }
-    if (event.sensitivity !== 'restricted' && recent.size < DEDUPE_MAX) recent.set(dedupeKey, { event, first: event.received, count: 1, last: event.ts, dirty: false });
+    if (event.sensitivity !== 'restricted' && (recent.size < DEDUPE_MAX || seen)) recent.set(dedupeKey, { event, first: event.received, seen: event.received, count: 1, last: event.ts, dirty: false });
     enqueue(event);
     return event;
   }
@@ -103,7 +107,7 @@ export function createIngest({ storage, redactor, batchMs = 2000, batchMax = 500
             storage.main.run('INSERT OR REPLACE INTO event_repeat (id, stream, seq, repeat, last_ts) VALUES (?, ?, ?, ?, ?)', entry.event.id, entry.event.where.stream, entry.event.where.seq, entry.count, entry.last);
             entry.dirty = false;
           }
-          if (t - entry.first >= DEDUPE_MS && !entry.dirty) recent.delete(key);
+          if ((t - entry.seen >= REPEAT_GAP_MS || t - entry.first >= GROUP_MAX_MS) && !entry.dirty) recent.delete(key);
         }
       });
     } catch {}

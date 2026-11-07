@@ -32,7 +32,7 @@ export function firstEndpoint(definition) {
 }
 
 const CERTIFICATE_WORDS = {
-  "tls-untrusted": "its certificate isn't trusted by Studio",
+  "tls-untrusted": "its certificate isn’t trusted by Studio",
   "tls-expired": "its certificate has expired",
   "tls-name": "its certificate is for a different name",
 };

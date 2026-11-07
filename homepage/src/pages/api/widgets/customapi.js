@@ -2,6 +2,7 @@ import { withAuth } from "utils/auth";
 import { getPrivateWidgetOptions } from "utils/config/widget-helpers";
 import createLogger from "utils/logger";
 import { sanitizeErrorURL } from "utils/proxy/api-helpers";
+import { certificateClass } from "utils/proxy/certificate-check.mjs";
 import { httpProxy } from "utils/proxy/http";
 
 const logger = createLogger("customapi");
@@ -40,7 +41,10 @@ async function handler(req, res) {
 
   if (status >= 400) {
     logger.debug("HTTP Error %d calling %s//%s%s", status, url.protocol, url.host, url.pathname);
-    return res.status(status).json({ error: { message: "HTTP Error", url: sanitizeErrorURL(url) } });
+    const errorClass = certificateClass(data);
+    return res
+      .status(status)
+      .json({ error: { message: "HTTP Error", url: sanitizeErrorURL(url), ...(errorClass ? { errorClass } : {}) } });
   }
 
   try {

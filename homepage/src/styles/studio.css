@@ -5701,3 +5701,12 @@ svg.studio-chart-gauge {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8125rem;
 }
+
+/* Under "Check its certificate" when it is off: inset like the row above it. */
+.studio-certificate-note {
+  margin: 0;
+  padding: 0 16px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--studio-muted);
+}

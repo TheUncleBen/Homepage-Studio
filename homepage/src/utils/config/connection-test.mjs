@@ -24,7 +24,7 @@ const TRANSPORT = [
   [
     /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|DEPTH_ZERO|ERR_TLS|certificate/i,
     "certificate",
-    "The address's certificate isn't trusted by Studio. Add its authority in Administration › Trusted certificates.",
+    "The address’s certificate isn’t trusted by Studio.",
   ],
 ];
 

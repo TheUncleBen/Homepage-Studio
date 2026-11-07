@@ -999,7 +999,7 @@ export default function StudioBoard({
   const reloadEditor = () => {
     if (modal) openEditor(modal.type, { panel: modal.panel, entry: modal.entry }, true);
   };
-  const editPanel = async (panel) => {
+  const editPanel = async (panel, { section } = {}) => {
     if (saveInFlight.current || nativeRefreshLock.current) return;
     if (panel.nativeLocator?.discovered) {
       if (!(await flushArrangement())) return;
@@ -1009,8 +1009,9 @@ export default function StudioBoard({
       // With the editor docked the board stays usable: editing another widget
       // switches the panel to it, asking first about unsaved changes.
       if (modal?.type === "content" && modal.panel?.id === panel.id) return;
-      if (modal) requestEditorAction(() => openEditor("content", { panel }));
-      else openEditor("content", { panel });
+      const detail = { panel, ...(section ? { section } : {}) };
+      if (modal) requestEditorAction(() => openEditor("content", detail));
+      else openEditor("content", detail);
     }
   };
   const editStack = (stack) => {
@@ -2833,6 +2834,7 @@ export default function StudioBoard({
                   panel={modal.panel}
                   entry={modal.entry}
                   startDeleting={Boolean(modal.deleting)}
+                  startSection={modal.section}
                   pageId={currentPage}
                   wholeBoard={wholeBoard}
                   renderPreview={(panel, override, extra) => (

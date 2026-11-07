@@ -632,6 +632,8 @@ export default function ContentEditor({
   wholeBoard,
   renderPreview,
   startDeleting = false,
+  // The section to open first ("settings" when a card's Fix names it).
+  startSection,
   onDelete,
   // Docked beside the board (T26): the board's own card shows the draft
   // through onLiveDraft, so the dialog has no preview of its own.
@@ -727,7 +729,9 @@ export default function ContentEditor({
   // Sections stay open until closed, so Values and Look can be open together
   // (F7, 6 Nov 2026: less back and forth; was one at a time, board 24). A new
   // item opens on its settings; an existing one opens with everything summarised.
-  const [openSections, setOpenSections] = useState(startDeleting ? ["manage"] : panel ? [] : ["settings"]);
+  const [openSections, setOpenSections] = useState(
+    startDeleting ? ["manage"] : startSection ? [startSection] : panel ? [] : ["settings"],
+  );
   // Saved looks and widgets are read once Look or Management first opens.
   const [libraryWanted, setLibraryWanted] = useState(false);
   if ((openSections.includes("look") || openSections.includes("manage")) && !libraryWanted) setLibraryWanted(true);
@@ -874,23 +878,19 @@ export default function ContentEditor({
               }
             : undefined,
         // Certificate checking's per-service exception (owner decision D1).
+        // A widget's switch is in Connection (config-form); a plain tile's is here.
         certificate:
-          kind === "serviceWidget"
+          kind === "service"
             ? {
-                skip: service.skipCertificateCheck === true,
-                onChange: (skip) => setService({ ...service, skipCertificateCheck: skip ? true : "" }),
+                skip: draft.skipCertificateCheck === true,
+                onChange: (skip) => {
+                  const next = { ...draft };
+                  if (skip) next.skipCertificateCheck = true;
+                  else delete next.skipCertificateCheck;
+                  setDraft(next);
+                },
               }
-            : kind === "service"
-              ? {
-                  skip: draft.skipCertificateCheck === true,
-                  onChange: (skip) => {
-                    const next = { ...draft };
-                    if (skip) next.skipCertificateCheck = true;
-                    else delete next.skipCertificateCheck;
-                    setDraft(next);
-                  },
-                }
-              : undefined,
+            : undefined,
         statusAddress:
           kind === "serviceWidget"
             ? {
@@ -1120,10 +1120,24 @@ export default function ContentEditor({
                     (source?.type || entry?.type) === "spacer" ? "Nothing to set up. Size it on the board." : undefined
                   }
                   knownKeys={hiddenKeys}
-                  skipCertificateCheck={kind === "serviceWidget" && service?.skipCertificateCheck === true}
-                  certificateOption={
-                    kind === "informationWidget" &&
-                    CERTIFICATE_INFO_WIDGETS.has(source?.type || selectedEntry?.type || entry?.type)
+                  certificate={
+                    kind === "serviceWidget"
+                      ? {
+                          skip: service?.skipCertificateCheck === true,
+                          onChange: (skip) => setService({ ...service, skipCertificateCheck: skip ? true : "" }),
+                        }
+                      : kind === "informationWidget" &&
+                          CERTIFICATE_INFO_WIDGETS.has(source?.type || selectedEntry?.type || entry?.type)
+                        ? {
+                            skip: draft.skipCertificateCheck === true,
+                            onChange: (skip) => {
+                              const next = { ...draft };
+                              if (skip) next.skipCertificateCheck = true;
+                              else delete next.skipCertificateCheck;
+                              setDraft(next);
+                            },
+                          }
+                        : undefined
                   }
                   onValidity={setValid}
                   sectioned

@@ -51,7 +51,10 @@ export function useCardPresentation(panel, data, onEdit, onFullView) {
       errors: behaviour.errors,
       target: behaviour.target,
       refreshMs: REFRESH_MS[behaviour.refresh],
-      onFix: onEdit ? () => onEdit(panel) : undefined,
+      // "Fix" can name the editor section that holds the fix (a certificate
+      // problem opens Connection).
+      onFix: onEdit ? (section) => onEdit(panel, typeof section === "string" ? { section } : undefined) : undefined,
+      title: panel.title,
       reportFields: (fields) => widgetFields.set(panel.id, fields),
       show: look.show,
       chartRange: look.chartRange,

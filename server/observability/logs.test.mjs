@@ -139,3 +139,19 @@ test('the renderer start-up banner is Studio debug output, not a dashboard event
   assert.equal(widget.label, 'httpProxy');
   assert.equal(widget.severity, 3);
 });
+
+test('a repeat that keeps coming stays one row for a few minutes, then starts another (UI review M4)', async t => {
+  const env = await setup(t);
+  // A failing widget, polled every 10 s for 7 minutes.
+  for (let i = 0; i < 42; i++) { env.ingest.add({ message: 'Error calling https://nas: Self-signed certificate', resource: 'glances', severity: 'error', source_type: 'renderer', source_id: 'r' }); env.tick(10000); env.ingest.flush(); }
+  const rows = env.query.search({ query: 'certificate', ...range(env.now), scopes: null, limit: 50 }).events;
+  assert.equal(rows.length, 2, 'one row for the first five minutes, one after');
+  assert.equal(rows.reduce((sum, row) => sum + row.repeat, 0), 42);
+});
+
+test('renderer error lines carry their class (UI review M4)', async () => {
+  const { workerEvent } = await import('./controller.mjs');
+  const event = workerEvent('11111111-1111-4111-8111-111111111111', 'stdout', '[2026-11-07T03:00:00.000Z] error: <httpProxy> Error calling https://nas: Self-signed certificate (DEPTH_ZERO_SELF_SIGNED_CERT)');
+  assert.equal(event.error_class, 'tls-untrusted');
+  assert.equal(workerEvent('default', 'stdout', '[2026-11-07T03:00:00.000Z] info: <x> all good').error_class, undefined);
+});

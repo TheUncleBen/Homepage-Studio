@@ -123,6 +123,12 @@
       return;
     }
     const admin = access.admin;
+    // The next step for a certificate problem (UI review L4), worded as on the card.
+    const certificateHint = (cls, card) => {
+      if (!/^tls-/.test(cls ?? '')) return null;
+      const where = card ? 'turn off Check its certificate when you edit the card' : 'turn off Check the certificate in the monitor’s settings';
+      return longRow('Next step', admin ? `Add its authority in Administration › Trusted certificates, or ${where}.` : `Ask an administrator to add its authority in Trusted certificates, or ${where}.`);
+    };
     const names = new Map(access.dashboards.map(entry => [entry.id, entry.name]));
     names.set('studio', 'Studio');
     const scopeName = scope => names.get(scope) ?? 'Removed dashboard';
@@ -283,6 +289,7 @@
         m.target && !m.card ? row('Target', value(m.target, true)) : null,
         row('Last check', value(m.lastCheck ? `${ago(m.lastCheck)}${m.ms !== null ? ' · ' + ms(m.ms) : ''}${m.code ? ' · HTTP ' + m.code : ''}` : 'Not yet')),
         m.state !== 'up' && m.message ? longRow('Problem', m.message) : null,
+        m.state !== 'up' ? certificateHint(m.errorClass, m.card) : null,
         m.warning ? longRow('Warning', m.warning.message ?? String(m.warning)) : null,
         m.certExpires ? row('Certificate expires', value(new Date(m.certExpires).toLocaleDateString())) : null,
         row('Check every', value(`${m.interval} s`)));
@@ -363,7 +370,7 @@
         h('div', { class: 'ops-head' }, h('h2', { class: 'ops-name', text: incident.name }), stateMark(incident.closed ? 'up' : 'down'), h('span', { class: 'muted small', text: incident.closed ? `lasted ${minutes(Math.max(1, Math.round((incident.closed - incident.opened) / 60000)))}` : `since ${shortTime(incident.opened)}` })),
         toolbar(detail.monitor ? pill('Open monitor', { iconName: 'pulse', onclick: () => open('monitor/' + encodeURIComponent(incident.monitor_id)) }) : null, access.logs ? pill('Logs around it', { iconName: 'search', onclick: () => { pendingLogs = { query: `dashboard:${incident.scope}`, from: incident.opened - 15 * 60e3, to: (incident.closed ?? Date.now()) + 5 * 60e3 }; open('logs'); } }) : null, ack),
         box,
-        group({ title: 'What happened' }, row('Dashboard', value(scopeName(incident.scope))), incident.cause ? longRow('Problem', incident.cause) : null, incident.ack_by ? row('Acknowledged by', value(`${incident.ack_by}, ${ago(incident.ack_at)}`)) : null),
+        group({ title: 'What happened' }, row('Dashboard', value(scopeName(incident.scope))), incident.cause ? longRow('Problem', incident.cause) : null, incident.closed ? null : certificateHint(incident.error_class, detail.monitor?.card), incident.ack_by ? row('Acknowledged by', value(`${incident.ack_by}, ${ago(incident.ack_at)}`)) : null),
         group({ title: 'Timeline' }, detail.timeline.map(item => h('div', { class: 'item-row' }, h('span', { class: 'nav-text' }, h('span', { class: 'nav-title', text: `${KIND_TEXT[item.kind] ?? item.kind}${item.actor ? ' · ' + item.actor : ''}` }), entryText(item) ? h('small', { class: 'ops-wrap', text: entryText(item) }) : null), h('time', { class: 'row-value small', text: shortTime(item.ts) }))),
           h('div', { class: 'ops-note' }, note, addNote)));
     }
@@ -696,8 +703,8 @@
         const whenHolder = h('div', {});
         const remaining = existing?.end ? Math.max(5, Math.ceil((existing.end - Date.now()) / 60000)) : 60;
         const length = inputRow(existing ? 'For (minutes from now)' : 'For (minutes)', { type: 'number', min: 5, value: remaining });
-        const from = inputRow('From', { type: 'time', value: existing?.from ?? '02:00' });
-        const to = inputRow('To', { type: 'time', value: existing?.to ?? '03:00' });
+        const from = inputRow(cfg.timeZone ? `From (${cfg.timeZone})` : 'From', { type: 'time', value: existing?.from ?? '02:00' });
+        const to = inputRow(cfg.timeZone ? `To (${cfg.timeZone})` : 'To', { type: 'time', value: existing?.to ?? '03:00' });
         const days = new Set(existing?.days ?? [0]);
         const dayRow = row('Days', h('div', { class: 'ops-days' }, ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, index) => { const b = h('button', { type: 'button', class: 'ops-chip', 'aria-pressed': String(days.has(index)), text: label }); b.addEventListener('click', () => { if (days.has(index)) days.delete(index); else days.add(index); b.setAttribute('aria-pressed', String(days.has(index))); }); return b; })), { stacked: true });
         function drawWhen() { put(whenHolder, kind === 'now' ? length.row : [from.row, to.row, kind === 'weekly' ? dayRow : null]); }
