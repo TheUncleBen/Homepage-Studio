@@ -38,6 +38,8 @@ import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendS
 import { atLeast, requiredLevel } from './auth/access.mjs';
 import { createObservability } from './observability/controller.mjs';
 import { ERROR_CLASSES, classifyError } from '../homepage/src/utils/studio/error-classes.mjs';
+// Requests that can add, remove or change a card (and so its card monitor).
+const CARD_CHANGING_PATHS = new Set(['/studio/api/board', '/studio/api/save', '/studio/api/undo', '/studio/api/redo', '/studio/api/service', '/studio/api/info-widget', '/studio/api/service-widget', '/studio/api/bookmark', '/studio/api/settings', '/studio/api/restore', '/studio/api/import', '/studio/api/widgets-delete', '/studio/api/widgets-duplicate', '/studio/api/page-delete', '/studio/api/page-duplicate']);
 
 const base = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const studioVersion = (await readFile(join(base, 'VERSION'), 'utf8')).trim();
@@ -675,6 +677,10 @@ function createDashboardHandlers(options = {}) {
           (req.method === 'POST' && (path === '/studio/api/board' || (saveChange && Object.hasOwn(saveChange, 'board'))))) {
         await store.refreshDiscovery(String(req.headers.host).toLowerCase(), dashboard);
       }
+      // A saved change can add a card or change its status check: its card
+      // monitor is set up now, not at the next minute's round (owner feedback
+      // on 53ebc3b: a new response time took minutes to show).
+      if (req.method === 'POST' && CARD_CHANGING_PATHS.has(path)) res.on('finish', () => { if (res.statusCode === 200) options.onBoardChanged?.(); });
       if (path === '/studio/api/state' && req.method === 'GET') return json(res, 200, await store.load());
       if (path === '/studio/api/board' && req.method === 'GET') return json(res, 200, await store.loadBoard());
       if (path === '/studio/api/board' && req.method === 'POST') return json(res, 200, await store.saveBoard(await editBody(req)));
@@ -986,10 +992,13 @@ export function createStudioServer(options = {}) {
   const unpublished = new Map();
   let rendererClosed, applicationClosing = false;
   const closeRenderer = () => (rendererClosed ||= Promise.resolve().then(() => rendererPool.close?.()));
+  // Set below, once card monitoring is ready: syncs one dashboard's card
+  // monitors soon after a change.
+  let cardSyncSoon = () => {};
   function forDashboard(entry) {
     let handler = handlers.get(entry.id);
     if (!handler) {
-      handler = createDashboardHandlers({ ...options, onIntegration: event => observability?.log(event), onSecretsChanged: () => observability?.refreshSecrets(), internalToken, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
+      handler = createDashboardHandlers({ ...options, onIntegration: event => observability?.log(event), onSecretsChanged: () => observability?.refreshSecrets(), onBoardChanged: () => cardSyncSoon(entry.id), internalToken, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
       handlers.set(entry.id, handler);
     }
     // Only immutable-id storage is retained. Each request carries its own
@@ -1703,6 +1712,24 @@ export function createStudioServer(options = {}) {
       if (!failed) reported.clear();
     } catch (error) { collectFailed(error); }
     finally { collecting = false; }
+  };
+  // One dashboard's card monitors, a moment after a change to it (several
+  // quick saves make one sync).
+  const cardSyncTimers = new Map();
+  cardSyncSoon = (id) => {
+    if (!observability || applicationClosing) return;
+    clearTimeout(cardSyncTimers.get(id));
+    const timer = setTimeout(async () => {
+      cardSyncTimers.delete(id);
+      try {
+        const entry = (await prepareRegistry()).dashboards.find(item => item.id === id);
+        if (!entry || entry.archived || (!entry.slug && entry.id !== 'default')) return;
+        const targets = await forDashboard(entry).statusTargets(entry);
+        if (targets) await observability.syncCards(entry, targets);
+      } catch (error) { collectFailed(Object.assign(new Error('status'), { code: 'CARD_MONITORS_' + (error.code || 'FAILED') })); }
+    }, 750);
+    timer.unref?.();
+    cardSyncTimers.set(id, timer);
   };
   const collector = collectMs > 0 ? setInterval(collect, collectMs) : null;
   collector?.unref();

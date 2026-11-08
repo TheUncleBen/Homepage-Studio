@@ -47,13 +47,17 @@ function useStatus(service, groupName, check, connected = false, panelId = null)
     { refreshInterval: 30000, dedupingInterval: 10000 },
   );
   const fromMonitor = monitored?.available ? cardMonitorStatus(monitored.panels?.[panelId]) : null;
-  const own = usable && (!panelId || monitoredError || (monitored && !fromMonitor));
+  // Until the engine has checked a new or changed card, the card checks for
+  // itself, so its status and response time show at once (owner feedback on
+  // 53ebc3b: they took minutes to appear).
+  const waiting = fromMonitor?.state === "pending";
+  const own = usable && (!panelId || monitoredError || (monitored && (!fromMonitor || waiting)));
   const key = own
     ? `/api/${kind}?${new URLSearchParams({ groupName, serviceName: service.name, fallback: "1" })}`
     : null;
   const { data, error } = useSWR(key, { refreshInterval: 30000 });
   if (!usable) return null;
-  if (fromMonitor) return fromMonitor;
+  if (fromMonitor && !waiting) return fromMonitor;
   if (!key) return { state: "pending" };
   if (error || data?.error) return { state: "down", text: "Error" };
   if (!data) return { state: "pending" };
