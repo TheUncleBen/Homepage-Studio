@@ -1716,14 +1716,22 @@ export function createStudioServer(options = {}) {
   // One dashboard's card monitors, a moment after a change to it (several
   // quick saves make one sync).
   const cardSyncTimers = new Map();
+  // A widget newly shown as a chart gets its first numbers now too, not at
+  // the next minute's round (owner feedback on 53ebc3b: "Collecting numbers"
+  // for about two minutes).
   cardSyncSoon = (id) => {
-    if (!observability || applicationClosing) return;
+    if (applicationClosing) return;
     clearTimeout(cardSyncTimers.get(id));
     const timer = setTimeout(async () => {
       cardSyncTimers.delete(id);
+      let entry;
       try {
-        const entry = (await prepareRegistry()).dashboards.find(item => item.id === id);
+        entry = (await prepareRegistry()).dashboards.find(item => item.id === id);
         if (!entry || entry.archived || (!entry.slug && entry.id !== 'default')) return;
+        if (!collecting) await forDashboard(entry).collectHistory(entry);
+      } catch (error) { collectFailed(error); }
+      if (!entry || !observability) return;
+      try {
         const targets = await forDashboard(entry).statusTargets(entry);
         if (targets) await observability.syncCards(entry, targets);
       } catch (error) { collectFailed(Object.assign(new Error('status'), { code: 'CARD_MONITORS_' + (error.code || 'FAILED') })); }

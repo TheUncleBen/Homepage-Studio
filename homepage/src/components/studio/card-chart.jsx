@@ -49,7 +49,9 @@ export function historyRange(look) {
 export function useCardHistory(panel, look) {
   const wanted = panel?.kind === "serviceWidget" && Boolean(panel.id) && needsHistory(look);
   const { data } = useSWR(wanted ? historyPath(panel.id, historyRange(look)) : null, studioRequest, {
-    refreshInterval: 60000,
+    // Until the first numbers arrive (a widget just switched to a chart),
+    // look again every few seconds rather than once a minute.
+    refreshInterval: (latest) => (latest?.latest ? 60000 : 5000),
   });
   return wanted ? data : undefined;
 }
