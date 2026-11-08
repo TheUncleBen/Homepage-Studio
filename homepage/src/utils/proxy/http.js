@@ -1,5 +1,7 @@
 import dns from "node:dns";
+import { readFileSync } from "node:fs";
 import net from "node:net";
+import { rootCertificates } from "node:tls";
 import { createUnzip, constants as zlibConstants } from "node:zlib";
 
 import { http, https } from "follow-redirects";
@@ -376,10 +378,30 @@ function homepageDNSLookupFn() {
 }
 
 const homepageLookup = homepageDNSLookupFn();
+
+// Studio's trusted certificates (Administration › Trusted certificates, the
+// bundle named by NODE_EXTRA_CA_CERTS) with the public authorities. Any
+// trusted certificate may end the chain (allowPartialTrustChain), as in
+// browsers: an intermediate authority, or an app's own certificate added as
+// trusted, is enough on its own (owner T43 on 53ebc3b). Read once per worker;
+// workers start again when the list changes.
+let trustedAuthorities;
+export function trustOptions(bundle = process.env.NODE_EXTRA_CA_CERTS) {
+  if (trustedAuthorities === undefined || bundle !== trustedAuthorities.bundle) {
+    let pem = "";
+    try {
+      pem = bundle ? readFileSync(bundle, "utf8") : "";
+    } catch {
+      pem = "";
+    }
+    trustedAuthorities = { bundle, options: pem.includes("-----BEGIN CERTIFICATE-----") ? { ca: [...rootCertificates, pem], allowPartialTrustChain: true } : {} };
+  }
+  return trustedAuthorities.options;
+}
 const agentCache = new Map();
 
 function getAgent(protocol, disableIpv6, checkCertificate = true) {
-  const cacheKey = `${protocol}:${disableIpv6 ? "ipv4" : "auto"}:${checkCertificate ? "checked" : "unchecked"}`;
+  const cacheKey = `${protocol}:${disableIpv6 ? "ipv4" : "auto"}:${checkCertificate ? "checked" : "unchecked"}:${process.env.NODE_EXTRA_CA_CERTS ?? ""}`;
   const cachedAgent = agentCache.get(cacheKey);
   if (cachedAgent) {
     return cachedAgent;
@@ -395,7 +417,7 @@ function getAgent(protocol, disableIpv6, checkCertificate = true) {
     protocol === "https:"
       ? // Studio checks certificates (owner decision D1), except for a service
         // that opts out (utils/proxy/certificate-check.mjs).
-        new https.Agent({ ...agentOptions, rejectUnauthorized: checkCertificate })
+        new https.Agent({ ...agentOptions, ...(checkCertificate ? trustOptions() : {}), rejectUnauthorized: checkCertificate })
       : new http.Agent(agentOptions);
 
   agentCache.set(cacheKey, agent);

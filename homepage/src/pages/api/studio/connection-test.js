@@ -8,6 +8,7 @@ import { substituteEnvironmentVars } from "utils/config/config";
 import { connectionTest, connectionTestResult, TEST_GROUP } from "utils/config/connection-test.mjs";
 import { resolveWidgetConnection } from "utils/config/studio-connections.mjs";
 import { certificateCheck, certificateClass } from "utils/proxy/certificate-check.mjs";
+import { certificateSentence, fetchCertificate, issuerSentence } from "utils/proxy/certificate-info.mjs";
 import { httpProxy } from "utils/proxy/http";
 import { captureResponse, fromController } from "utils/studio/internal";
 import widgets from "widgets/widgets";
@@ -21,14 +22,48 @@ const TEST_TIMEOUT_MS = 20_000;
 
 export const config = { api: { bodyParser: { sizeLimit: "32kb" } } };
 
-// The first request the widget makes on its own: a mapping without segments,
-// parameters or a method other than GET.
+// The requests Test connection makes: every plain read the widget can make
+// (GET, no path segments; optional parameters are left out), up to
+// MAX_TESTED. A widget picks some of them by its settings (pfSense API v1
+// or v2, Portainer Docker or Kubernetes), so testing only the first one
+// failed for widgets that worked (owner T8/T43 on 53ebc3b).
+export const MAX_TESTED = 6;
+export function testEndpoints(definition) {
+  return Object.entries(definition?.mappings || {})
+    .filter(([, mapping]) => mapping && !mapping.segments && (!mapping.method || mapping.method === "GET"))
+    .slice(0, MAX_TESTED)
+    .map(([name]) => name);
+}
+// Kept for callers that want one: the first of them.
 export function firstEndpoint(definition) {
-  const entries = Object.entries(definition?.mappings || {});
-  const simple = entries.find(
-    ([, mapping]) => !mapping?.segments && !mapping?.params && (!mapping?.method || mapping.method === "GET"),
-  );
-  return simple?.[0];
+  return testEndpoints(definition)[0];
+}
+
+// One answer from several requests. The key or login being refused, or the
+// address not answering at all, applies to the whole widget; a request that
+// only fits another version or mode of the app doesn't, when another works.
+const WIDGET_WIDE = ["certificate", "unreachable", "key", "permission"];
+const ORDER = ["certificate", "unreachable", "key", "permission", "service", "address", "format", "unknown"];
+export function combinedResult(results) {
+  const failures = results.filter((result) => !result.ok);
+  const wide = failures.filter((result) => WIDGET_WIDE.includes(result.kind));
+  const passed = results.filter((result) => result.ok);
+  if (passed.length && !wide.length) {
+    const ms = Math.max(...passed.map((result) => result.ms ?? 0));
+    return {
+      ok: true,
+      kind: "ok",
+      message: `Connected in ${Math.max(1, Math.round(ms))} ms.`,
+    };
+  }
+  const rank = (result) => {
+    const at = ORDER.indexOf(result.kind);
+    return at === -1 ? ORDER.length : at;
+  };
+  const worst = [...failures].sort((left, right) => rank(left) - rank(right))[0];
+  if (!worst) return { ok: false, kind: "unknown", message: "The test didn't get the answer this widget expects. Check the address and key." };
+  const { ms, ...answer } = worst;
+  return answer;
 }
 
 const CERTIFICATE_WORDS = {
@@ -82,7 +117,7 @@ export async function statusCheck({ check, address, skipCertificateCheck }) {
   if (headers === null) {
     const certificate = certificateClass(data);
     return certificate
-      ? { ok: false, kind: "certificate", message: `Down · ${CERTIFICATE_WORDS[certificate]}` }
+      ? withCertificate({ ok: false, kind: "certificate", message: `Down · ${CERTIFICATE_WORDS[certificate]}` }, url.href)
       : { ok: false, kind: "down", message: "Down · no answer" };
   }
   // As the card decides (utils/studio/status-check.js): a sign-in page is up.
@@ -115,30 +150,50 @@ async function handler(req, res) {
   const definition = widgets[type];
   if (!definition) return res.status(400).json({ error: "This widget type can't be tested." });
   const widget = withReferences(resolveWidgetConnection(draft));
-  const endpoint = firstEndpoint(definition);
-  const { res: captured, result } = captureResponse();
-  const request = {
-    method: "GET",
-    headers: {},
-    query: { group: TEST_GROUP, service: "Test", index: "-1", ...(endpoint ? { endpoint } : {}) },
+  const endpoints = testEndpoints(definition);
+  const runOne = async (endpoint) => {
+    const { res: captured, result } = captureResponse();
+    const request = {
+      method: "GET",
+      headers: {},
+      query: { group: TEST_GROUP, service: "Test", index: "-1", ...(endpoint ? { endpoint } : {}) },
+    };
+    const started = performance.now();
+    await connectionTest.run({ widget }, () =>
+      certificateCheck.run({ check: req.body?.skipCertificateCheck !== true }, () => serviceProxy(request, captured)),
+    );
+    const ms = performance.now() - started;
+    return { ...connectionTestResult({ status: result.status, body: result.body, ms }), ms };
   };
-  const started = performance.now();
   let timer;
-  const finished = await Promise.race([
-    connectionTest
-      .run({ widget }, () =>
-        certificateCheck.run({ check: req.body?.skipCertificateCheck !== true }, () => serviceProxy(request, captured)),
-      )
-      .then(() => true),
+  const results = await Promise.race([
+    // One after another (a widget that signs in shouldn't sign in six times
+    // at once); a widget-wide failure answers for the rest.
+    (async () => {
+      const out = [];
+      for (const endpoint of endpoints.length ? endpoints : [undefined]) {
+        const one = await runOne(endpoint);
+        out.push(one);
+        if (!one.ok && WIDGET_WIDE.includes(one.kind)) break;
+      }
+      return out;
+    })(),
     new Promise((resolve) => {
-      timer = setTimeout(() => resolve(false), TEST_TIMEOUT_MS);
+      timer = setTimeout(() => resolve(null), TEST_TIMEOUT_MS);
     }),
   ]);
   clearTimeout(timer);
-  if (!finished)
+  if (!results)
     return res.status(200).json({ ok: false, kind: "unreachable", message: "The address didn't answer in time." });
-  const ms = performance.now() - started;
-  return res.status(200).json(connectionTestResult({ status: result.status, body: result.body, ms }));
+  return res.status(200).json(await withCertificate(combinedResult(results), widget.url));
+}
+
+// A certificate failure says which certificate the address sent (owner T43).
+export async function withCertificate(answer, address) {
+  if (answer?.kind !== "certificate" || typeof address !== "string") return answer;
+  const sent = await fetchCertificate(address).catch(() => null);
+  const sentence = sent ? [certificateSentence(sent.host, sent.info), issuerSentence(sent.info)].filter(Boolean).join(" ") : "";
+  return sentence ? { ...answer, message: `${answer.message} ${sentence}` } : answer;
 }
 
 // The widget as the real one is loaded: services.yaml's {{HOMEPAGE_VAR_…}}
