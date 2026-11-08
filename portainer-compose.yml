@@ -34,7 +34,7 @@ services:
       # whose services use them. Or add them in Administration (docs/DEPLOY.md).
       STUDIO_TRUSTED_CERTIFICATES_FILE: ${STUDIO_TRUSTED_CERTIFICATES_FILE:-}
       # Your time zone (for example Europe/London), for maintenance windows.
-      TZ: ${TZ:-UTC}
+      TZ: ${TIMEZONE:-UTC}
       # Single sign-on with an identity provider (docs/IDP-OTHERS.md;
       # Authentik example: docs/IDP-AUTHENTIK.md). Issuer and client ID
       # turn it on; the client secret is the studio_oidc_client_secret file.

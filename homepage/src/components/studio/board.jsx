@@ -383,6 +383,9 @@ export default function StudioBoard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
+  // Which widget a stack shows after a swipe: for screen readers only (it
+  // showed on the page as "Name, 1 of 2": owner feedback on 53ebc3b).
+  const [stackAnnouncement, setStackAnnouncement] = useState("");
   const [reloadRequired, setReloadRequired] = useState(false);
   // Editing saves as you go (owner decision, 4 Nov 2026). Undo and Redo step
   // through this editing session on the server, content changes included.
@@ -2322,6 +2325,9 @@ export default function StudioBoard({
             ))}
         </div>
       )}
+      <span className="studio-sr-only" aria-live="polite" aria-atomic="true">
+        {stackAnnouncement}
+      </span>
       <div className="studio-status-message" role="status">
         {notice}
         {(refreshWarning || (envelope && nativeContentStale && !draftSourceChanged)) && (
@@ -2499,7 +2505,7 @@ export default function StudioBoard({
           reducedMotion={reducedMotion}
           stackDrags={stackDrags}
           onManualNavigation={(snapshot) =>
-            setNotice(
+            setStackAnnouncement(
               `${boardRef.current.panels.find((panel) => panel.id === snapshot.activeId)?.title || "Widget"}, ${snapshot.activeIndex + 1} of ${snapshot.ids.length}`,
             )
           }

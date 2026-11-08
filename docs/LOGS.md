@@ -121,7 +121,7 @@ that a spreadsheet would treat as a formula are prefixed so they stay text.
 ## Storage
 
 Logs live in `/app/state/observability/` on the state volume (`logs/` and,
-for sign-in and audit events, `audit/`), in SQLite files of about a day each. Defaults: logs 14 days, sign-in and audit events 400
+for sign-in and audit events, `audit/`), in SQLite files of about a day each. Defaults: logs 30 days, sign-in and audit events 365
 days, a 2 GB budget across monitoring and logs, oldest files removed first.
 Change them in Administration › Monitoring and logs › Storage. Logs are not
 part of Studio backups.

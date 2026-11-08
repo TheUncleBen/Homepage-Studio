@@ -334,7 +334,7 @@ is optional and works unset; the comments in the file explain each line.
 | `STUDIO_TRUSTED_PROXIES` | Recommended: the subnet from step 2, for example `10.0.10.0/24`. Remove the `# ` in front of the line |
 | `STUDIO_NETWORK_NAME` | Only if your network isn't called `homepage-studio` |
 | `STUDIO_TRUSTED_CERTIFICATES_FILE` | Optional: a PEM file inside the container with your own certificate authorities, such as a Docker secret ([Trusted certificates](#trusted-certificates)) |
-| `TZ` | Optional: your time zone, for example `Europe/London`, so daily and weekly maintenance windows in Operations use your local time (default UTC) |
+| `TIMEZONE` | Optional: your time zone, for example `Europe/London`, so daily and weekly maintenance windows in Operations use your local time (default UTC) |
 | `STUDIO_CONFIG_PATH`, `STUDIO_STATE_PATH` | Only for host directories (step 3) |
 | `STUDIO_ADMIN_USERNAME` | Recommended: the first administrator's username, for example `admin`. Its password is the `studio_admin_password` secret. Leave it unset if that secret says `off` |
 | `STUDIO_ADMIN_EMAIL` | Optional: that administrator's email. Once you link the account to your identity provider (step 10) it follows the provider's email |

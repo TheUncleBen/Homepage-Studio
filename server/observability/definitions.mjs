@@ -16,7 +16,7 @@ export const LIMITS = { monitors: 1000, maintenance: 200, channels: 50, views: 1
 export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'dns', 'tls', 'push', 'docker', 'group'];
 export const CHANNEL_TYPES = ['email', 'webhook', 'ntfy', 'gotify', 'discord', 'slack', 'teams', 'telegram', 'pushover', 'matrix', 'homeassistant', 'apprise'];
 export const DNS_TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'PTR', 'CAA', 'SOA'];
-export const DEFAULT_SETTINGS = { logDays: 14, auditDays: 400, budgetMB: 2048, batchSeconds: 2, metricDays: 30, syslog: { enabled: false, port: 5514, udp: true, tcp: true } };
+export const DEFAULT_SETTINGS = { logDays: 30, auditDays: 365, budgetMB: 2048, batchSeconds: 2, metricDays: 30, syslog: { enabled: false, port: 5514, udp: true, tcp: true } };
 
 export class DefinitionError extends Error {
   constructor(message, code = 'INVALID_OBSERVABILITY_SETTING', status = 400) { super(message); this.code = code; this.status = status; }
