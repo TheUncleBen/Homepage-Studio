@@ -184,20 +184,25 @@ describe("Coherent native option drafts", () => {
       { key: "format", label: "Shows", type: "object", valueTypes: ["object"], editor: "dateTimeFormat" },
     ];
     const { unmount } = render(<Fixture initial={{ format: { timeStyle: "short", hour12: false } }} fields={fields} />);
-    expect(screen.getByLabelText("Text size")).toHaveValue("lg");
-    fireEvent.change(screen.getByLabelText("Text size"), { target: { value: "xl" } });
+    const pick = (name, option) => {
+      fireEvent.click(screen.getByRole("combobox", { name }));
+      fireEvent.click(screen.getByRole("option", { name: option }));
+    };
+    expect(screen.getByRole("combobox", { name: "Text size" }).textContent).toBe("Large");
+    pick("Text size", "Extra large");
     expect(screen.queryByText("timeStyle")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Time")).toHaveValue("short");
+    expect(screen.getByRole("combobox", { name: "Time" }).textContent).toMatch(/^Short/);
     // With a time shown, no date style means no date.
-    expect(screen.getByLabelText("Date")).toHaveDisplayValue("Off");
-    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "full" } });
+    expect(screen.getByRole("combobox", { name: "Date" }).textContent).toBe("Off");
+    pick("Date", /^Full/);
     expect(JSON.parse(screen.getByTestId("config-value").textContent)).toEqual({
       text_size: "xl",
       format: { timeStyle: "short", hour12: false, dateStyle: "full" },
     });
-    fireEvent.change(screen.getByLabelText("Text size"), { target: { value: "lg" } });
-    fireEvent.change(screen.getByLabelText("Time"), { target: { value: "" } });
-    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "" } });
+    pick("Text size", "Large");
+    pick("Time", "Off");
+    // With no time shown, no date style means numbers.
+    pick("Date", /^Numbers/);
     expect(JSON.parse(screen.getByTestId("config-value").textContent)).toEqual({ format: { hour12: false } });
     unmount();
     // Other Intl options keep the name/value editor, so nothing is lost.

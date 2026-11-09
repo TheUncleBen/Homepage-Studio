@@ -7,7 +7,7 @@ import Guide from "./guide";
 import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
 import { isObject } from "./native-adapter.mjs";
-import { Disclosure, Group, Row, Segmented, Switch } from "./ui";
+import { Disclosure, Group, Row, Segmented, Select, Switch } from "./ui";
 import { IMAGE_REFERENCE, imageReference, UploadedImages } from "./uploaded-images";
 
 export const LINK_FIELDS = [
@@ -181,17 +181,13 @@ function Field({ field, value, onChange, onError }) {
   let control;
   if (choiceList && choiceOptions.length > 4)
     control = (
-      <select
+      <Select
         id={id}
+        label={label}
         value={text || fallback}
-        onChange={(event) => update(event.target.value === fallback ? "" : event.target.value)}
-      >
-        {choiceOptions.map(([option, name]) => (
-          <option key={option} value={option}>
-            {name}
-          </option>
-        ))}
-      </select>
+        onChange={(next) => update(next === fallback ? "" : next)}
+        options={choiceOptions}
+      />
     );
   else if (choiceList)
     control = (
@@ -387,14 +383,13 @@ function DateTimeFormat({ id, value, info, onChange }) {
   };
   const row = (key, label, none, help) => (
     <Row label={label} htmlFor={`${id}-${key}`} info={help}>
-      <select id={`${id}-${key}`} value={value?.[key] ?? ""} onChange={(event) => set(key, event.target.value)}>
-        <option value="">{none}</option>
-        {STYLES.map(([style, name]) => (
-          <option key={style} value={style}>
-            {`${name} · ${example({ [key]: style })}`}
-          </option>
-        ))}
-      </select>
+      <Select
+        id={`${id}-${key}`}
+        label={label}
+        value={value?.[key] ?? ""}
+        onChange={(next) => set(key, next)}
+        options={[["", none], ...STYLES.map(([style, name]) => [style, `${name} · ${example({ [key]: style })}`])]}
+      />
     </Row>
   );
   return (

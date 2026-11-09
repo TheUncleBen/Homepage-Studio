@@ -10,7 +10,7 @@ import { IconField } from "./icon-chooser";
 import StudioIcon from "./icons";
 import { dashboardLanguage, LANGUAGES } from "./languages.mjs";
 import { patchFromDraft } from "./native-adapter.mjs";
-import { ActionRow, Group, Row, Switch } from "./ui";
+import { ActionRow, Group, Row, Select, Switch } from "./ui";
 import WidgetDefaults from "./widget-defaults";
 
 const buildRevision = process.env.NEXT_PUBLIC_REVISION;
@@ -126,17 +126,13 @@ export function BrowserSettings({ settings, onChange }) {
         htmlFor="studio-language"
         info="Words, numbers and dates on this dashboard. Signed-in people can pick their own in Preferences."
       >
-        <select
+        <Select
           id="studio-language"
+          label="Language"
           value={dashboardLanguage(settings)}
-          onChange={(event) => set({ language: event.target.value === "en" ? undefined : event.target.value })}
-        >
-          {languageOptions().map(([code, label]) => (
-            <option key={code} value={code}>
-              {label}
-            </option>
-          ))}
-        </select>
+          onChange={(next) => set({ language: next === "en" ? undefined : next })}
+          options={languageOptions()}
+        />
       </Row>
       <Row label="Tab title" htmlFor="studio-tab-title">
         <input
@@ -399,18 +395,16 @@ export function FilesEditor({ state, onSaved, onClose, onReload }) {
         <ErrorMessage error={error} onReload={onReload} />
         <fieldset disabled={pending || importing} style={editorFieldsetStyle}>
           <div className="studio-file-toolbar">
-            <select
-              aria-label="Configuration file"
+            <Select
+              label="Configuration file"
               value={selected}
-              onChange={(event) => setSelected(event.target.value)}
-            >
-              {FILES.map(([name, key]) => (
-                <option value={key} key={key}>
-                  {name}
-                  {draft[key] !== (state[key] || "") ? " • modified" : ""}
-                </option>
-              ))}
-            </select>
+              onChange={setSelected}
+              options={FILES.map(([name, key]) => [
+                key,
+                name,
+                draft[key] !== (state[key] || "") ? "modified" : undefined,
+              ])}
+            />
             <button
               type="button"
               className="studio-pill-button"

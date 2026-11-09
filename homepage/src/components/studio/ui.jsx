@@ -308,8 +308,30 @@ export function Select({ value, onChange, options, label, id, placeholder, class
     button.current?.focus();
     if (option !== value || placeholder) onChange(option);
   };
+  // Typing letters jumps to the next option that starts with them, as a
+  // system list does.
+  const typed = useRef({ text: "", at: 0 });
+  const typeAhead = (event) => {
+    if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey || event.key === " ") return false;
+    const now = Date.now();
+    const text = (now - typed.current.at < 800 ? typed.current.text : "") + event.key.toLowerCase();
+    typed.current = { text, at: now };
+    const from = open
+      ? active
+      : Math.max(
+          0,
+          options.findIndex(([option]) => option === value),
+        );
+    const order = options.map((_, index) => (from + (text.length > 1 ? 0 : 1) + index) % options.length);
+    const match = order.find((index) => String(options[index][1]).toLowerCase().startsWith(text));
+    if (match === undefined) return true;
+    if (open) setActive(match);
+    else onChange(options[match][0]);
+    return true;
+  };
   const key = (event) => {
     if (disabled) return;
+    if (typeAhead(event)) return;
     if (!open) {
       if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) {
         event.preventDefault();

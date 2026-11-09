@@ -71,6 +71,7 @@ import { SizePreview, SizeStatus, SizeSwitch } from "./size-switch";
 import StackEditor, { PositionEditor } from "./stack-editor";
 import StackShell from "./stack-shell";
 import StudioTopBar, { DASHBOARDS_PAGE } from "./top-bar";
+import { Select } from "./ui";
 import { ImagesEditor } from "./uploaded-images";
 
 const HOME_PAGES = [{ id: "home", name: "Home" }];
@@ -2389,16 +2390,12 @@ export default function StudioBoard({
           {pages.length > 1 && (
             <label className="studio-discovered-page">
               Put {newDiscovered.length === 1 ? "it" : "them"} on
-              <select
+              <Select
+                label={`Put ${newDiscovered.length === 1 ? "it" : "them"} on`}
                 value={pages.some((page) => page.id === discoveredTarget) ? discoveredTarget : currentPage}
-                onChange={(event) => setDiscoveredTarget(event.target.value)}
-              >
-                {pages.map((page) => (
-                  <option key={page.id} value={page.id}>
-                    {page.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setDiscoveredTarget}
+                options={pages.map((page) => [page.id, page.name])}
+              />
             </label>
           )}
           <button type="button" className="studio-button" disabled={controlsDisabled} onClick={placeNewDiscovered}>

@@ -4,6 +4,7 @@ import { PAGE_NAME_LIMIT, pageHash, pageNameProblem, unitsOnPage } from "./geome
 import { IconChooser } from "./icon-chooser";
 import StudioIcon from "./icons";
 import Menu from "./menu";
+import { Select } from "./ui";
 
 import ResolvedIcon from "components/resolvedicon";
 
@@ -487,17 +488,12 @@ export function DeletePageDialog({
             <span>
               <strong>Move its widgets to another page</strong>
               {choice === "move" && (
-                <select
-                  aria-label="Page to move them to"
+                <Select
+                  label="Page to move them to"
                   value={target}
-                  onChange={(event) => setTarget(event.target.value)}
-                >
-                  {others.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setTarget}
+                  options={others.map((item) => [item.id, item.name])}
+                />
               )}
             </span>
           </label>
