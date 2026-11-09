@@ -764,7 +764,7 @@ export default function ContentEditor({
           ? "behaviour"
           : showTab
             ? "show"
-            : "look",
+            : "data",
   );
   const tabsId = useId().replace(/:/g, "");
   const [actionsMenu, setActionsMenu] = useState(null);

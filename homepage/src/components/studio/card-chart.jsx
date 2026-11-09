@@ -58,8 +58,7 @@ export function historyRange(look) {
 }
 
 export function useCardHistory(panel, look) {
-  const wanted =
-    ["serviceWidget", "service"].includes(panel?.kind) && Boolean(panel.id) && needsHistory(look);
+  const wanted = ["serviceWidget", "service"].includes(panel?.kind) && Boolean(panel.id) && needsHistory(look);
   const { data } = useSWR(wanted ? historyPath(panel.id, historyRange(look)) : null, studioRequest, {
     // Until the first numbers arrive (a widget just switched to a chart),
     // look again every few seconds rather than once a minute.
@@ -450,7 +449,7 @@ function Legend({ series, latest, format, share }) {
         return (
           <li key={entry.field.field}>
             <span className="studio-chart-key" style={{ background: entry.colour }} aria-hidden="true" />
-            {entry.name}
+            <span className="studio-chart-name">{entry.name}</span>
             {latest && (
               <strong>
                 {share && total

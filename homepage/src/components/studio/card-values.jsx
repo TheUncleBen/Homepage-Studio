@@ -2,8 +2,8 @@ import { useTranslation } from "next-i18next/pages";
 import { Fragment, useContext, useEffect, useLayoutEffect } from "react";
 
 import { CardChart, PALETTE, StatusHistory, Trend, chartSeries, useFormatValue } from "./card-chart";
-import { CardFitContext, ValueSlotContext } from "./card-look";
 import CardLogs, { useLogsAllowed } from "./card-logs";
+import { CardFitContext, ValueSlotContext } from "./card-look";
 import { COLLECTED_BLOCKS, REST_BLOCKS, VALUE_BLOCKS, blocksOf, ruleLevel } from "./look.mjs";
 
 import Block from "components/services/widget/block";
@@ -124,16 +124,18 @@ function BlockBody({ block, card, fields, byKey, arranged }) {
       return (
         <CardChart
           card={pseudo(block.style || "line", { chartRange: block.range || "24h" })}
-          onOpen={card.onFullView ? () => card.onFullView({ fields, show: block.style || "line", range: block.range }) : undefined}
+          onOpen={
+            card.onFullView
+              ? () => card.onFullView({ fields, show: block.style || "line", range: block.range })
+              : undefined
+          }
         />
       );
     case "bars":
       return <NowBars card={card} fields={fields} labels={block.labels !== false} />;
     case "response":
       return (
-        <CardChart
-          card={{ ...card, show: "line", fields: ["ms"], check: true, chartRange: block.range || "1h" }}
-        />
+        <CardChart card={{ ...card, show: "line", fields: ["ms"], check: true, chartRange: block.range || "1h" }} />
       );
     case "status":
       return <StatusHistory card={{ ...card, chartRange: block.range || "24h" }} />;
@@ -172,8 +174,14 @@ export function CardBlocks({ card, items = [] }) {
       { ...value, ...(value.rules ? { level: ruleLevel(value.rules, latest?.[value.field]) } : {}) },
     ]),
   );
-  const collected = (card.history?.fields || []).map((field) => field.field).filter((key) => !["up", "ms"].includes(key));
-  const fields = blockFields(blocks, items.map((item) => item.key), collected);
+  const collected = (card.history?.fields || [])
+    .map((field) => field.field)
+    .filter((key) => !["up", "ms"].includes(key));
+  const fields = blockFields(
+    blocks,
+    items.map((item) => item.key),
+    collected,
+  );
   // The card fits the blocks it really drew, with how many values each has.
   const drawn = JSON.stringify(blocks.map((block) => [block.id, fields[block.id].length]));
   const report = fit?.report;

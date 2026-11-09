@@ -42,16 +42,33 @@ export function useBlockFit(card) {
   const blocks = blocksOf(effective);
   const [drawn, setDrawn] = useState(null);
   const [tick, setTick] = useState(0);
-  const report = useCallback((list) => setDrawn((old) => (JSON.stringify(old) === JSON.stringify(list) ? old : list)), []);
+  const report = useCallback(
+    (list) => setDrawn((old) => (JSON.stringify(old) === JSON.stringify(list) ? old : list)),
+    [],
+  );
   const context = useMemo(() => ({ blocks, report }), [blocks, report]);
-  const signature = JSON.stringify([effective.blocks, effective.arrange, effective.headerAt, effective.header, effective.text, effective.textSize]);
+  const signature = JSON.stringify([
+    effective.blocks,
+    effective.arrange,
+    effective.headerAt,
+    effective.header,
+    effective.text,
+    effective.textSize,
+  ]);
   useIsoLayoutEffect(() => {
     const node = ref.current;
     if (!node || !box.w) return;
     const counts = Object.fromEntries(drawn || []);
     const shown = drawn ? blocks.filter((block) => Object.hasOwn(counts, block.id)) : [];
     const result = fitCard(node, effective, shown, counts);
-    if (result) publishFit(card.fitId || card.id, { ...result, sizeClass: classOf(box.w, box.h), box, blocks: shown, look: effective });
+    if (result)
+      publishFit(card.fitId || card.id, {
+        ...result,
+        sizeClass: classOf(box.w, box.h),
+        box,
+        blocks: shown,
+        look: effective,
+      });
   }, [box, signature, drawn, tick]);
   // New text (a value arriving, a longer number) can need another pick.
   useEffect(() => {

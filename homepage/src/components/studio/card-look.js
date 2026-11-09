@@ -32,7 +32,7 @@ export function useCardFit(id) {
     window.addEventListener("studio-card-fit", on);
     return () => window.removeEventListener("studio-card-fit", on);
   }, [id]);
-  return id ? cardFits.get(id) ?? null : null;
+  return id ? (cardFits.get(id) ?? null) : null;
 }
 // The values each widget last rendered, by panel id, so the widget dialog can
 // offer them for arranging without asking the integration again.

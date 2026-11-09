@@ -325,7 +325,8 @@ function values(list) {
 
 function block(entry, ids) {
   if (!plain(entry)) fail("Each block must be an object.");
-  if (typeof entry.id !== "string" || !BLOCK_ID.test(entry.id) || ids.has(entry.id)) fail("Each block needs its own id.");
+  if (typeof entry.id !== "string" || !BLOCK_ID.test(entry.id) || ids.has(entry.id))
+    fail("Each block needs its own id.");
   ids.add(entry.id);
   if (!BLOCK_TYPES.includes(entry.type)) fail("A block must be one of the offered kinds.");
   const out = { id: entry.id, type: entry.type };
@@ -337,7 +338,8 @@ function block(entry, ids) {
       if (!Array.isArray(value) || value.length > MAX_VALUES) fail(`A block can show at most ${MAX_VALUES} values.`);
       const seen = new Set();
       for (const field of value)
-        if (typeof field !== "string" || !FIELD.test(field) || seen.has(field)) fail("A block's values must be different fields.");
+        if (typeof field !== "string" || !FIELD.test(field) || seen.has(field))
+          fail("A block's values must be different fields.");
         else seen.add(field);
       if (entry.type === "gauge" && value.length > 1) fail("A gauge shows one value.");
       out.values = [...value];

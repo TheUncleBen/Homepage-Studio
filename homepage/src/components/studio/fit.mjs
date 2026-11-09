@@ -38,12 +38,13 @@ export function fits(card) {
   }
   // A number or a name cut short, a value squeezed to nothing.
   for (const node of card.querySelectorAll(
-    ".studio-card-head, .studio-card-name strong, .studio-value, .studio-value-number, .studio-value-label, .studio-block-legend, .studio-chart-legend li, .studio-bar-label, .studio-bar-value, .studio-block-caption",
+    ".studio-card-head, .studio-card-name strong, .studio-value, .studio-value-number, .studio-value-label, .studio-block-legend, .studio-chart-legend li, .studio-chart-legend li > *, .studio-bar-label, .studio-bar-value, .studio-block-caption",
   ))
     if (node.scrollWidth > node.clientWidth + 1) return false;
   // A chart squeezed too small to read.
+  // A donut's centre number must stay readable (16 of its 100 units).
   for (const node of card.querySelectorAll(".studio-chart-round, svg.studio-chart-gauge"))
-    if (node.getBoundingClientRect().height < 36) return false;
+    if (node.getBoundingClientRect().height < (node.querySelector(".studio-chart-centre") ? 60 : 36)) return false;
   for (const node of card.querySelectorAll(".studio-chart-svg"))
     if (node.getBoundingClientRect().height < 28) return false;
   return true;
@@ -79,7 +80,9 @@ export function blockVariants(block, count, width, height) {
   if (block.type === "pie") {
     const legend = block.legend || "auto";
     if (legend !== "auto") return [{ legend }];
-    return width / height > 1.3 ? [{ legend: "beside" }, { legend: "below" }] : [{ legend: "below" }, { legend: "beside" }];
+    return width / height > 1.3
+      ? [{ legend: "beside" }, { legend: "below" }]
+      : [{ legend: "below" }, { legend: "beside" }];
   }
   return [{}];
 }
@@ -106,7 +109,15 @@ export function candidates(look, blocks, counts, width, height) {
             : ["col", "row"];
   const headerAt = look.headerAt || "auto";
   const inlines =
-    look.header === "hidden" ? [false] : headerAt === "left" ? [true] : headerAt === "top" ? [false] : ratio > 2.4 ? [false, true] : [false];
+    look.header === "hidden"
+      ? [false]
+      : headerAt === "left"
+        ? [true]
+        : headerAt === "top"
+          ? [false]
+          : ratio > 2.4
+            ? [false, true]
+            : [false];
   let combos = [[]];
   for (const block of blocks) {
     const variants = blockVariants(block, counts[block.id] ?? 0, width, height);
@@ -119,7 +130,8 @@ export function candidates(look, blocks, counts, width, height) {
     combos = next;
   }
   const out = [];
-  for (const variants of combos) for (const dir of dirs) for (const inline of inlines) out.push({ variants, dir, inline });
+  for (const variants of combos)
+    for (const dir of dirs) for (const inline of inlines) out.push({ variants, dir, inline });
   return out;
 }
 
@@ -231,5 +243,9 @@ export function fitCard(card, look, blocks, counts) {
   // A hair under the largest that fits, so a pixel of rounding never clips.
   const scale = Math.max(LAST_RESORT, best.scale - (best.scale > floor ? 0.02 : 0));
   apply(card, used.blocks, best, scale);
+  // Below about 110 px a donut's small centre name would be unreadable; the
+  // legend names it anyway.
+  for (const node of card.querySelectorAll(".studio-chart-round"))
+    node.toggleAttribute("data-tiny", node.getBoundingClientRect().height < 110);
   return { pick: best, scale, squeezed, relaxed: relax, fits: true, width, height };
 }

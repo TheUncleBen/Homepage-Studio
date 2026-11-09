@@ -488,7 +488,7 @@ describe("Native board save and draft safety", () => {
     expect(catalogReads()).toBe(2);
   });
 
-  it("Delete under Management closes the dialog and deletes at once, with Undo, like the menu", async () => {
+  it("Delete in the editor's menu closes the dialog and deletes at once, with Undo, like the menu", async () => {
     const write = vi.fn(async () => ({
       ...initialState,
       revision: "after",
@@ -496,8 +496,8 @@ describe("Native board save and draft safety", () => {
     }));
     await mountBoard({ write });
     fireEvent.click(screen.getByRole("button", { name: "Edit Clock" }));
-    fireEvent.click(await screen.findByRole("button", { name: /^Management/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Delete", exact: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "More actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete", exact: true }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.queryByText("Delete Clock?")).not.toBeInTheDocument();
     await screen.findByText("Clock deleted");
@@ -688,7 +688,7 @@ describe("Native board save and draft safety", () => {
   it("guards native widget and position drafts, while Apply explicitly transfers a draft to the arrangement", async () => {
     await mountBoard();
     fireEvent.click(screen.getByRole("button", { name: "Edit Clock" }));
-    fireEvent.click(await screen.findByRole("button", { name: /^Settings/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Data" }));
     const locale = await screen.findByRole("textbox", { name: "Locale" });
     fireEvent.change(locale, { target: { value: "en-GB" } });
     fireEvent.click(
@@ -773,8 +773,8 @@ describe("Native board save and draft safety", () => {
       });
       expect(survivor).toHaveTextContent("SECOND widget");
       fireEvent.click(screen.getByRole("button", { name: "Edit Clock" }));
-      fireEvent.click(await screen.findByRole("button", { name: /^Management/ }));
-      fireEvent.click(await screen.findByRole("button", { name: "Delete", exact: true }));
+      fireEvent.click(await screen.findByRole("button", { name: "More actions" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Delete", exact: true }));
       await screen.findByText(/Your changes were saved, but widget data could not refresh/);
       expect(survivor).toHaveTextContent("SECOND widget");
       expect(survivor.closest(".studio-native-content")).toHaveAttribute("inert");

@@ -1119,20 +1119,36 @@ export default function StudioBoard({
     // last size that did, in whichever direction it was made smaller.
     let lastGood = unit.rect;
     let limited = false;
+    // Dragged smaller both ways past the limit, it first tries keeping each
+    // way in turn, so the corner slides along the limit instead of sticking.
+    let trials = null;
+    // The card's fit at this size: true (fits), false (does not) or null
+    // (not measured yet: only a fit of the size now on the board counts).
+    const fitAt = (now) => {
+      const fit = cardFits.get(id);
+      if (!now || !fit?.box) return null;
+      const pixels = pixelRect(now, width, initialProjection.columns, gap);
+      if (Math.abs(pixels.width - fit.box.w) > 2 || Math.abs(pixels.height - fit.box.h) > 2) return null;
+      return !(fit.squeezed || fit.relaxed || !fit.fits);
+    };
     const onFit = (fitEvent) => {
       if (mode !== "resize" || unit.kind !== "panel" || fitEvent.detail?.id !== id) return;
       const now = unitsForBoard(latest).find((item) => item.id === id)?.rect;
-      const fit = cardFits.get(id);
-      if (!now || !fit?.box) return;
-      // Only a fit of the size now on the board counts.
-      const pixels = pixelRect(now, width, initialProjection.columns, gap);
-      if (Math.abs(pixels.width - fit.box.w) > 2 || Math.abs(pixels.height - fit.box.h) > 2) return;
-      if (!(fit.squeezed || fit.relaxed || !fit.fits)) {
+      const good = fitAt(now);
+      if (good === null) return;
+      if (good) {
         lastGood = now;
+        trials = null;
         return;
       }
       if (now.w >= lastGood.w && now.h >= lastGood.h) return;
-      latest = resizeUnit(initial, id, { ...now, w: Math.max(now.w, lastGood.w), h: Math.max(now.h, lastGood.h) });
+      if (!trials)
+        trials = [
+          { w: now.w, h: Math.max(now.h, lastGood.h) },
+          { w: Math.max(now.w, lastGood.w), h: now.h },
+        ].filter((size) => (size.w < lastGood.w || size.h < lastGood.h) && !(size.w === now.w && size.h === now.h));
+      const size = trials.shift() || { w: Math.max(now.w, lastGood.w), h: Math.max(now.h, lastGood.h) };
+      latest = resizeUnit(initial, id, { ...now, ...size });
       changeBoard(latest, undefined, { record: false });
       if (!limited) {
         limited = true;
@@ -1189,7 +1205,7 @@ export default function StudioBoard({
       const dy = Math.round((moveEvent.clientY - start.y) / (ROW_HEIGHT + gap));
       let rect = clampRect(
         mode === "resize"
-          ? { ...unit.rect, w: unit.rect.w + dx, h: unit.rect.h + dy }
+          ? { ...unit.rect, w: Math.max(1, unit.rect.w + dx), h: Math.max(1, unit.rect.h + dy) }
           : { ...unit.rect, x: unit.rect.x + dx, y: unit.rect.y + dy },
         initialProjection.columns,
       );
@@ -1200,6 +1216,7 @@ export default function StudioBoard({
         if (Math.abs(rect.x - middle) <= 1) rect = { ...rect, x: middle };
       }
       if (!lastCell || lastCell.dx !== dx || lastCell.dy !== dy) {
+        trials = null;
         latest = mode === "move" ? moveUnit(initial, id, rect) : resizeUnit(initial, id, rect);
         lastCell = { dx, dy };
         changeBoard(latest, undefined, { record: false });
@@ -1285,7 +1302,20 @@ export default function StudioBoard({
         } else
           changeBoard(stackBoard(pageBoard(initialWhole, initial.pageId), [target.id, id], uuid()), undefined, quiet);
         setSelection([]);
-      } else changeBoard(latest, undefined, quiet);
+      } else {
+        // Let go before the card measured a smaller size (or on one that does
+        // not fit): it keeps the last size known to fit.
+        const now = unitsForBoard(latest).find((item) => item.id === id)?.rect;
+        if (
+          mode === "resize" &&
+          unit.kind === "panel" &&
+          now &&
+          (now.w < lastGood.w || now.h < lastGood.h) &&
+          !fitAt(now)
+        )
+          latest = resizeUnit(initial, id, { ...now, w: Math.max(now.w, lastGood.w), h: Math.max(now.h, lastGood.h) });
+        changeBoard(latest, undefined, quiet);
+      }
       // One drag is one step to undo: it autosaves once, when it ends.
       operation.current = null;
       setMoving(null);
