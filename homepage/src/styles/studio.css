@@ -3043,9 +3043,10 @@ body {
     justify-self: stretch;
   }
 }
-/* A very narrow card (a folded phone) gives the name the logo's room. */
+/* A very narrow card (a folded phone) gives the name the logo's room. A
+   logo shown on its own (Header: Logo) always stays. */
 @container studio-card (max-width: 120px) {
-  .studio-card .studio-card-logo {
+  .studio-card .studio-card-identity:has(.studio-card-name) .studio-card-logo {
     display: none;
   }
 }

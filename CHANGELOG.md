@@ -71,6 +71,8 @@ in older entries below are history only.
 - While editing, a widget's select box takes its logo's place and Move and
   Edit take the response time's, so nothing moves or is cut when they show;
   a stack's select box sits beside its page dots.
+- A widget whose header shows only its logo keeps the logo however narrow
+  it gets.
 - Auto picks the largest text that fits; the column choices go up to the
   number of values; the size note gives the size in pixels.
 
