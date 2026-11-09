@@ -241,16 +241,21 @@ puts the panel back.
 - The keyboard button in the editing bar lists every shortcut (on devices with
   a keyboard).
 
-Panels snap to the grid and can't overlap. Content has a minimum size, so a
-panel won't shrink below what its widget needs: 3 × 3 for an integration card
-(its name and one value), more for widgets that draw their own content such
-as a calendar or an embedded page. Resizing moves only the
-widget you resize: if it no longer fits where it is, it moves to the nearest
-free space and the others stay put. When a widget has more values than fit,
-the last ones fold away and the card says **+N more**; make it bigger to see
-them. Values never scroll inside a card. A widget that draws its own content,
-such as an embedded page or a calendar, has no values to fold: it shows in
-full and scrolls inside its card.
+Panels snap to the grid and can't overlap. Resizing moves only the widget
+you resize: if it no longer fits where it is, it moves to the nearest free
+space and the others stay put.
+
+A widget always shows everything its settings ask for; nothing folds away
+behind *+N more* and values never scroll inside a card. So the resize corner
+stops at the smallest size the widget's settings can be read at (dragged
+smaller both ways, it slides along that limit). If the widget's settings are
+open beside the board, they say where it stopped and offer one-tap changes
+that would let it go smaller (see [How a widget looks](#how-a-widget-looks)).
+A widget that needs more room than its size gives (on a narrower window, a
+phone or tablet layout, or after you add blocks) is drawn taller and what is
+below it moves down, never cut off; its stored size doesn't change. Widgets
+that draw their own content (a calendar, an embedded page) have a fixed
+minimum instead and scroll inside their card.
 
 ### Saving, undo and redo
 
@@ -293,7 +298,7 @@ Taking one of two panels out turns the other back into an ordinary panel.
 
 | On | Do this |
 | --- | --- |
-| A phone or tablet | Swipe sideways on the stack's header **or on the widget itself** |
+| A phone or tablet | Swipe sideways on the widget |
 | A mouse | Drag sideways |
 | A trackpad | Scroll sideways |
 | A keyboard | Focus the stack and press <kbd>Left</kbd> or <kbd>Right</kbd> |
@@ -302,9 +307,10 @@ The same rule as holding applies to swipes: one that starts on a link, a form
 field, a chart, an embedded page or a sideways-scrolling area belongs to that
 content. Vertical swipes always scroll the page.
 
-Each stack has exactly one **Play/Pause** button. The dots under it show where
-you are; they're indicators, not buttons, and there are no previous/next
-arrows.
+A stack draws as the widget it is showing, at full size, with only a row of
+page dots and a small **Play/Pause** button along its bottom edge. The dots
+show where you are, and each one is a button that shows that widget. There
+are no previous/next arrows.
 
 - **While playing**, changing the slide yourself holds that widget for the
   *manual navigation delay* (30 seconds by default), then the slideshow moves
@@ -320,19 +326,16 @@ arrows.
 None of this is saved: playing, pausing and the slide you're on are yours in
 this browser tab only.
 
-### Choosing a widget by its title
+### Choosing a widget
 
-Tap or click the stack's **title** (or focus it and press <kbd>Enter</kbd> or
-<kbd>Space</kbd>) to open a short list of its widgets, and pick one. It counts
-as changing the slide yourself, so the manual navigation delay applies.
-The arrow keys move through the list. <kbd>Escape</kbd> or <kbd>Tab</kbd>
-closes it and puts focus back on the title; a tap or click outside also
-closes it.
+Tap or click a page dot (or focus it and press <kbd>Enter</kbd>) to show that
+widget; each dot is named after its widget for screen readers. It counts as
+changing the slide yourself, so the manual navigation delay applies.
 
-The list opens only for a deliberate short tap, click or key press. Swiping
-across the title, dragging, a long press, a right-click or a two-finger touch
-never opens it, and neither does anything you do on the widget body. It isn't
-available in the editor.
+In the editor a stack has the same controls as any widget, in the same
+places: its select box at the top left, **Move** and **Edit** at the top
+right and the resize corner. A stack needs one grid row more than its largest
+widget, for the dots.
 
 ### Slideshow settings
 
@@ -366,25 +369,30 @@ if you have unsaved changes), and Esc closes the panel. On narrower
 screens the dialog opens over the board with the widget drawn at the top at
 its real desktop size, on the board's own grid; drag its corner (or focus
 the corner and use the arrow keys) to change that size, never below the
-smallest the widget needs. A widget in a stack keeps the stack's size. Its
-**Name** stays at the top and the rest is in sections, each with a short
-summary when closed; open as many as you like at once:
+smallest the widget's settings allow. A widget in a stack keeps the stack's
+size. On a narrow screen the preview grows taller rather than cut anything
+off.
 
-| Section | What it holds |
+A widget on the board has four tabs (the arrow keys move between them), and
+a **⋯** button beside them with **Duplicate**, **Save as a saved widget** and
+**Delete**:
+
+| Tab | What it holds |
 | --- | --- |
-| **Connection** (**Settings** or **Details** for widgets without one) | The settings below. It says *Needs a fix* when one is wrong |
-| **Values and charts** | Which values show, in what order, and how ([How a widget looks](#how-a-widget-looks)) |
-| **Look** | Background, colour, edge, corners, header and [saved looks](#saved-looks) |
-| **Status and behaviour** (**Link** while adding) | The link, the status check, refresh, what a click does and which layouts show it (Show on: Desktop, Tablet, Phone) |
-| **Page** | The page it's on |
-| **Management** | **Duplicate**, **Save as a saved widget** and **Delete** |
-| **Setting up …** | What the service needs, from Homepage's documentation, with each secret's exact Docker secret name, variable and `{{HOMEPAGE_FILE_...}}` reference and **Copy** buttons |
+| **Data** | The **Name**, the connection and settings below (it says *Needs a fix* when one is wrong) and **Setting up …**: what the service needs, from Homepage's documentation, with each secret's exact Docker secret name, variable and `{{HOMEPAGE_FILE_...}}` reference and **Copy** buttons |
+| **Show** | The widget's blocks: what it shows and how ([How a widget looks](#how-a-widget-looks)) |
+| **Look** | Header, text, background, colour, edge, corners and [saved looks](#saved-looks) |
+| **Behaviour** | The link, the status check, refresh, what a click does, which layouts show it (Show on: Desktop, Tablet, Phone) and the page it's on |
+
+Tap or click any part of the widget while its settings are open to go to
+the setting for that part. While adding a widget, the dialog keeps its
+sections (settings, **Link**, **Setting up …**).
 
 The settings have two tabs:
 
 - **Options**: the connection (address, key, version) and the common native
   options. Once a widget has shown its values, which ones it shows is
-  chosen in **Values and charts**; before that (while adding one), **Values it
+  chosen with the blocks on the **Show** tab; before that (while adding one), **Values it
   includes** starts with one switch, **Its usual set**, turned on. Turn it off
   to pick the widget's fields and their order. **Version**, on widgets
   that speak to more than one release of their app, is a choice between the
@@ -403,7 +411,7 @@ line 12, column 3.* when a save is refused. The message never repeats the text
 of the line, so a secret on that line doesn't end up on screen or in a log. A
 draft with a mistake stays open for you to fix; the saved file isn't touched.
 
-**Delete**, under **Management**, closes the dialog and deletes the widget at
+**Delete**, in the **⋯** menu, closes the dialog and deletes the widget at
 once, as **Delete** in its menu does, with **Undo** in the message that
 follows.
 
@@ -430,58 +438,89 @@ save it first or type the key in.
 
 ### How a widget looks
 
-The widget at the top of the dialog is a live preview. **Look** sets its
-background, colour, edge, corners, header and size of the hero number, and
-**Columns** for the value boxes: **Auto** spreads them evenly for the card's
-size (six values make 3 × 2, not 4 and 2) and redoes it as the card is
-resized; 1 to 4 keeps that many columns while each box still fits.
-An integration's **Logo** and **Description** are set here too.
-**Status** chooses the check (web address, ping or off) and how it shows.
-Its **Address** starts from the widget's Connection address (or its link),
-shown greyed as *From the Connection*; type another to check that instead.
-**Check now** runs the check before you save and says, for example,
-*Up · 42 ms*. **Check its certificate** (on unless you turn it off) makes
-Studio check the address's `https://` certificate for the widget's data,
-tests and status check. It sits under the widget's **Connection**, below
-**Test connection** (for a plain tile, under **Status** once the check is a
-web address); turn it off only for a service whose self-signed certificate
-can't be added in **Administration › Trusted certificates**
-([DEPLOY.md](DEPLOY.md#trusted-certificates)). When a card says its
-certificate isn't trusted, **Fix** opens the Connection with the switch. An
-integration's **Docker server** and **Docker container**
-are under **Status** as well; with both set, the card shows whether the
-container is running;
-**Behaviour** sets refresh, what a click does and **Show on**: the layouts (Desktop, Tablet, Phone) the widget appears on. While you edit a layout, widgets it leaves out are shown faded with "Not shown on this layout".
+The widget on the board (or at the top of the dialog) is a live preview of
+every change.
+
+**Show** composes the widget from **blocks**, up to 12, each with its own
+values and options. The same value can sit in more than one block.
+
+| Block | Shows |
+| --- | --- |
+| **Big number** | One value large, with its name; **Largest size** S to XL and an optional **Trend** (against an hour ago, yesterday or last week) |
+| **Numbers** | Values in boxes; **Arrangement** Auto, Grid, List or Row and **Columns** Auto or 1 to 4 |
+| **Quiet** | Values as small text |
+| **Pie** | A donut or pie of numbers written the same way, with its **Legend** Auto, beside, below or off |
+| **Bars** | Numbers written the same way as bars |
+| **Chart** | A line, area or bar chart over a **Time range** |
+| **Gauge** | One percentage |
+| **Response time**, **Status history** | The status check's answer times and up/down bars over a range |
+| **Logs** | The widget's latest log lines (only for people allowed to see this dashboard's logs, and never with sign-in off) |
+
+Each block card has its type, its values (**+ Value** adds one, **×** takes
+one out, drag or use the arrow keys to reorder) and its options; move a block
+up or down or remove it. **Add a block** offers only what the widget's
+numbers suit: a pie needs two numbers written the same way, a gauge a
+percentage. A plain service tile has only status, response time and logs
+blocks, and can have none (just its header). **Blocks sit** places them side
+by side, stacked or in a grid. Asking for a value the widget doesn't fetch
+yet adds it to the widget's own `fields` list.
+
+Wherever a choice says **Auto**, it also says what Auto picked at the
+widget's current size (for example *Auto · Row*). Text scales with the widget
+down to the smallest size you set.
+
+**Settings for** at the top of **Show** and **Look** chooses **All sizes** or
+one kind of size (**Small**, **Wide**, **Tall**, **Regular**, **Large**; the
+one the widget is at says *now*). A size's own settings win at that size, are
+marked with a dot, and **Use All sizes here** removes them.
+
+When the widget can't go smaller, or its text is drawn below your smallest
+size, a note above the tabs says why and offers one-tap changes for the size
+being set up, such as **Hide labels**, **Allow smaller text**, **Numbers:
+Auto**, **Pie legend: Auto** or **Numbers as quiet**.
+
+**More: each value's name, number style, colour and rules**, under **Show**,
+renames a value, changes how its number reads, picks its colour in charts and
+sets **Rules**: a **Warning from** and **Problem from** level (**Lower is
+worse** turns them round); past a level the value takes that colour and the
+card shows its alert edge. Inside a Studio card Homepage's limit of four
+values doesn't apply, and a pie never uses a total as a slice.
+
+**Look** sets the header (logo, name, logo position, whether it sits on top
+or beside the blocks, description), the text (**Scales** with the widget or
+**Fixed**, its smallest or fixed size, how values line up, the numbers font)
+and the style, which is the same at every size: saved looks, background,
+colour, edge and corners. An integration's **Logo** and **Description** are
+set here too.
+
+**Behaviour** has **Status**: the check (web address, ping or off) and how it
+shows. Its **Address** starts from the widget's Connection address (or its
+link), shown greyed as *From the Connection*; type another to check that
+instead. **Check now** runs the check before you save and says, for example,
+*Up · 42 ms*. With the check off, Studio warns if a status or response time
+block would have nothing to show. **Check its certificate** (on unless you
+turn it off) makes Studio check the address's `https://` certificate for the
+widget's data, tests and status check. It sits under the widget's
+connection, below **Test connection** (for a plain tile, under **Status**
+once the check is a web address); turn it off only for a service whose
+self-signed certificate can't be added in **Administration › Trusted
+certificates** ([DEPLOY.md](DEPLOY.md#trusted-certificates)). When a card
+says its certificate isn't trusted, **Fix** opens the connection with the
+switch. An integration's **Docker server** and **Docker container** are
+under **Status** as well; with both set, the card shows whether the container
+is running. **Behaviour** also sets refresh, what a click does, **Show on**
+(the layouts the widget appears on; while you edit a layout, widgets it
+leaves out are shown faded with "Not shown on this layout") and the page.
 A choice that matches the dashboard's default is not stored, so changing the
 default in **Dashboard settings → Widget defaults** changes every widget that
 didn't choose otherwise.
 
-**Status history**, under **Status** on a service tile or in **Show as** on
-an integration, shows a bar for each status check (about one a minute, the
-last hour) and the share of checks that were up over a range you choose.
-
-**Values and charts** lists every value the integration provides, including
-ones it isn't showing yet, in your order. Each value is **Hero**, **Below** or
-**Hidden** (with a hero), **Shown** or **Hidden**, or on a chart **Chart**,
-**Number** (beside the chart) or **Hidden**. Showing, hiding or reordering a
-value keeps the widget's own `fields` list in step, so the YAML always says
-what the card shows. A pie or donut never uses a total as a slice. You can
-also rename a value or change how its number reads. Inside a Studio card
-Homepage's limit of four values doesn't apply. **Show as** draws
-the numbers as **Numbers**, a **Table**, a **Line**, **Area** or **Bar**
-chart, a **Donut**, a **Pie** or a **Gauge**, offering only the ones the
-widget's numbers suit. Charts have a **Time range** and a colour per line.
-A hero number can show a **Trend** (against an hour ago, yesterday or last
-week). **Rules** on a value set a **Warning from** and **Problem from**
-level (**Lower is worse** turns them round); past a level the value takes
-that colour and the card shows its alert edge.
-
-Studio keeps the numbers these need once a minute, only for widgets that use
-them, for 7, 30 or 90 days (**Dashboard settings → Widget defaults → Chart
-history**, 30 by default). A new chart says *Collecting numbers* until it has
-some. Select a line, area or bar chart to open it full size, with other time ranges
-and the exact values under your pointer. While editing, the widget's menu has
-**Open full view** (<kbd>Space</kbd>).
+Studio keeps the numbers charts, trends and rules need once a minute, only
+for widgets that use them, for 7, 30 or 90 days (**Dashboard settings →
+Widget defaults → Chart history**, 30 by default). A new chart gets its first
+numbers within seconds of being saved. Select a line, area or bar chart to
+open it full size, with other time ranges and the exact values under your
+pointer.
 
 ### Saved looks
 
@@ -497,7 +536,7 @@ Studio asks whether to update them too (**Leave them** or **Update them**).
 
 ### Saved widgets
 
-**Management → Save as a saved widget** keeps a widget's configuration to
+**⋯ → Save as a saved widget** keeps a widget's configuration to
 place again: its type, settings, values, look, link, status check and any
 saved connection it uses. Never its size or place, which belong to each
 layout. **Who can use it** is **Just me**, **This dashboard** or **Everyone**

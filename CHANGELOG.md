@@ -14,6 +14,42 @@ the volumes and follow [docs/DEPLOY.md](docs/DEPLOY.md) from the start. Studio
 carries no conversions for data from earlier candidates, and the upgrade notes
 in older entries below are history only.
 
+### Widgets you shape: blocks, any size, a note when a size can't fit
+
+- **Show tab** ([docs/USING.md](docs/USING.md#how-a-widget-looks)). A widget
+  is built from up to 12 blocks: big number, numbers, quiet numbers, pie,
+  bars, chart over time, gauge, response time, status and (with logs access)
+  logs. Each block has its own values and style, with a live preview.
+  **Settings for** keeps one set for all sizes or a set per size (small,
+  wide, tall, regular, large).
+- **Any shape, never clipped.** A widget shrinks continuously down to the
+  smallest size its settings allow. Text shrinks before anything is cut;
+  where a layout still can't fit (on a phone, for example) the widget grows
+  taller and the widgets below move down. Resizing stops at the last size
+  that fits, and with the widget's settings open a note says why, with
+  one-tap changes (hide labels, allow smaller text, let blocks sit
+  automatically, and others) for the size being set up.
+- **Stacks** have no header bar: the widget fills the stack, with page dots
+  that jump to a widget and a small Play/Pause at the bottom. The stack-title
+  picker is gone; the dots replace it.
+- **Every dropdown** in Studio uses the themed list, with type-ahead.
+- **Tabs in the widget editor**: Data, Show, Look and Behaviour, with
+  Duplicate, Save as a saved widget and Delete under **⋯**.
+
+### Fixes since candidate 53ebc3b
+
+- **Test connection** tries each of the widget's own plain reads in turn, so
+  widgets such as pfSense API v2 and Portainer no longer fail a test while
+  they work.
+- A certificate failure names the certificate the address sent and whether
+  its issuer is trusted. A trusted certificate may end the chain, as in
+  browsers.
+- Status, response time and charts appear within seconds after a change,
+  instead of at the next minute's round.
+- `TIMEZONE` in the Portainer deployment files (passed to the container as
+  `TZ`). Default retention: logs 30 days, sign-in and audit events 365 days.
+- A swipe on a stack is announced to screen readers only.
+
 ### Built-in monitoring and logs; a docked widget editor, saved items and filler widgets
 
 - **Monitoring** ([docs/MONITORING.md](docs/MONITORING.md)). Every card with

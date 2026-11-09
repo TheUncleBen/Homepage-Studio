@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { publishFit } from "./card-look";
-import { fitCard, layout } from "./fit.mjs";
+import { apply, candidates, ceilingOf, fitCard, floorOf, LAST_RESORT, layout, relaxed, standsUp } from "./fit.mjs";
 import { blocksOf, classOf, lookAt } from "./look.mjs";
 
 const NONE = Object.freeze({});
@@ -30,29 +30,57 @@ function useBox(ref) {
 // The height (px, of the widget box) the card needs to show its settings at
 // the usual text size, or 0 when the height it was given is enough. Tries
 // heights on the widget box itself and puts its own height back after.
-const MAX_GROWTH = 4;
+const MAX_GROWTH = 6;
 function neededHeight(node, base, look, blocks, counts) {
   const panel = node.closest(".studio-panel, .studio-card-preview");
   if (!panel || !blocks.length) return 0;
   const kept = panel.style.height;
   const width = node.clientWidth;
   const extra = panel.offsetHeight - node.clientHeight;
-  const good = (height) => {
+  const floor = floorOf(look);
+  const cap = ceilingOf(look);
+  // Fits at this height with text no smaller than `smallest`?
+  const fitsAt = (height, way, smallest) => {
     panel.style.height = `${height}px`;
-    return Boolean(layout(node, look, blocks, counts, width, height - extra));
+    return Boolean(
+      layout(node, way.look, way.blocks, counts, width, height - extra, smallest, Math.max(smallest, cap)),
+    );
   };
+  const yours = { look, blocks };
   let need = 0;
-  if (!good(base)) {
-    let low = base;
-    let high = base * MAX_GROWTH;
-    if (good(high)) {
-      for (let i = 0; i < 8 && high - low > 4; i += 1) {
-        const mid = Math.round((low + high) / 2);
-        if (good(mid)) high = mid;
+  if (!fitsAt(base, yours, floor)) {
+    const high = Math.round(base * MAX_GROWTH);
+    // Taller at your smallest text; where the width alone is too little for
+    // that (a narrow window), taller with smaller text, then with Auto for
+    // every choice, as fitCard does, so nothing is ever cut off.
+    let found = null;
+    for (const way of [yours, relaxed(look, blocks)]) {
+      for (let smallest = floor; !found && smallest >= LAST_RESORT - 0.001; smallest -= 0.05)
+        if (fitsAt(high, way, smallest)) found = { way, smallest };
+      if (found) break;
+    }
+    // Too narrow for anything to fit fully, even with the smallest text: at
+    // least as tall as Auto at the smallest text needs, so nothing is cut off
+    // at the bottom.
+    const test = found
+      ? (height) => fitsAt(height, found.way, found.smallest)
+      : (height) => {
+          const way = relaxed(look, blocks);
+          panel.style.height = `${height}px`;
+          const pick = candidates(way.look, way.blocks, counts, width, height - extra)[0];
+          apply(node, way.blocks, pick, LAST_RESORT);
+          return standsUp(node);
+        };
+    if (found || test(high)) {
+      let low = base;
+      let top = high;
+      for (let i = 0; i < 9 && top - low > 4; i += 1) {
+        const mid = Math.round((low + top) / 2);
+        if (test(mid)) top = mid;
         else low = mid;
       }
-      need = high;
-    }
+      need = top;
+    } else need = high;
   }
   panel.style.height = kept;
   return need;

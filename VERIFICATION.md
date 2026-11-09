@@ -124,7 +124,7 @@ Their temporary loopback registry and Docker socket belong to the disposable
 test setup only and never become product mounts.
 
 Chromium runs the full production suite, including scoped dashboards, touch
-holds and swipes on panel bodies, and the intentional stack-title picker.
+holds and swipes on panel bodies, and stack page dots.
 Firefox and WebKit run the `@cross-engine` desktop scenarios. A headed browser
 checks real hidden-document timer suspension. The full suite has a 15-minute
 aggregate budget and a 16-minute parent deadline, individual test and action

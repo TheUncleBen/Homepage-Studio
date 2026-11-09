@@ -11,7 +11,7 @@
 export const TEXT_FLOOR = Object.freeze({ small: 0.8, medium: 0.9, large: 1 });
 export const FIXED_TEXT = Object.freeze({ small: 0.85, medium: 1, large: 1.2 });
 export const MAX_SCALE = 1.6;
-const LAST_RESORT = 0.4;
+export const LAST_RESORT = 0.4;
 const MAX_COMBOS = 48;
 
 export const floorOf = (look) => (look.text === "fixed" ? FIXED_TEXT : TEXT_FLOOR)[look.textSize] ?? 0.9;
@@ -41,12 +41,27 @@ export function fits(card) {
     ".studio-card-head, .studio-card-name strong, .studio-value, .studio-value-number, .studio-value-label, .studio-block-legend, .studio-chart-legend li, .studio-chart-legend li > *, .studio-bar-label, .studio-bar-value, .studio-block-caption",
   ))
     if (node.scrollWidth > node.clientWidth + 1) return false;
-  // A chart squeezed too small to read.
-  // A donut's centre number must stay readable (16 of its 100 units).
+  // A chart squeezed too small to read, measured against the text: a donut's
+  // centre number (16 of its 100 units) as readable as the text around it.
+  const scale = Math.min(1, Number.parseFloat(card.style.getPropertyValue("--s")) || 1);
   for (const node of card.querySelectorAll(".studio-chart-round, svg.studio-chart-gauge"))
-    if (node.getBoundingClientRect().height < (node.querySelector(".studio-chart-centre") ? 60 : 36)) return false;
+    if (node.getBoundingClientRect().height < (node.querySelector(".studio-chart-centre") ? 60 : 36) * scale)
+      return false;
   for (const node of card.querySelectorAll(".studio-chart-svg"))
-    if (node.getBoundingClientRect().height < 28) return false;
+    if (node.getBoundingClientRect().height < 28 * scale) return false;
+  return true;
+}
+
+// Tall enough: nothing runs past the bottom of the card or of a block, width
+// aside. Used to grow a card that is too narrow for anything to fit fully, so
+// it is at least never cut off at the bottom.
+export function standsUp(card) {
+  const short = (node) => node.scrollHeight > node.clientHeight + 1;
+  if (short(card)) return false;
+  const body = card.querySelector(".studio-blocks");
+  if (body && short(body)) return false;
+  for (const block of card.querySelectorAll(".studio-block"))
+    if (block.dataset.clip === undefined && !block.querySelector(".studio-chart-note") && short(block)) return false;
   return true;
 }
 
@@ -236,6 +251,9 @@ export function fitCard(card, look, blocks, counts) {
     }
   }
   if (!best) {
+    // Nothing fits even with Auto and the smallest text: draw Auto at the
+    // smallest text, the most that can show.
+    used = relaxed(look, blocks);
     const first = candidates(used.look, used.blocks, counts, width, height)[0];
     apply(card, used.blocks, first, LAST_RESORT);
     return { pick: first, scale: LAST_RESORT, squeezed: true, relaxed: true, fits: false, width, height };

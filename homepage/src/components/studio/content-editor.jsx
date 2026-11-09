@@ -335,7 +335,7 @@ function SavedWidgets({ library, query, catalog, onPlace, busy, canManage = true
     return (
       <p className="studio-empty-note">
         {canManage
-          ? "No saved widgets yet. To save one, open a widget and choose Save as a saved widget under Management."
+          ? "No saved widgets yet. To save one, open a widget, then choose Save as a saved widget from its ⋯ menu."
           : "No saved widgets yet. An administrator saves them; then they appear here for you to place."}
       </p>
     );

@@ -3067,7 +3067,7 @@ body {
 /* The header grows and shrinks with the card's text, within limits, so a
    card with little in it never gets a shouting title. */
 .studio-card {
-  --sh: clamp(0.85, var(--s, 1), 1.25);
+  --sh: clamp(0.7, var(--s, 1), 1.25);
 }
 .studio-card-logo {
   display: inline-grid;
@@ -3535,6 +3535,7 @@ body {
 .studio-chart-round {
   height: 100%;
   max-height: 140px;
+  max-width: 100%;
   aspect-ratio: 1;
 }
 .studio-chart-parts .studio-chart-legend {
@@ -6248,4 +6249,48 @@ svg.studio-chart-gauge {
 .studio-chip:focus-visible {
   outline: 2px solid var(--studio-focus);
   outline-offset: 2px;
+}
+
+/* Inside a card, chart legends, keys and notes scale with the card's text
+   (--s) like every other block, so a narrow card can always fit them. */
+.studio-card .studio-chart-legend {
+  font-size: calc(12px * var(--s, 1));
+  gap: calc(2px * var(--s, 1)) calc(12px * var(--s, 1));
+}
+.studio-card .studio-chart-parts {
+  gap: calc(14px * var(--s, 1));
+}
+.studio-card .studio-chart-parts .studio-chart-legend {
+  gap: calc(6px * var(--s, 1));
+}
+.studio-card .studio-chart-parts .studio-chart-legend li {
+  grid-template-columns: calc(8px * var(--s, 1)) minmax(0, 1fr) auto;
+  gap: calc(8px * var(--s, 1));
+}
+.studio-card .studio-chart-key {
+  width: calc(8px * var(--s, 1));
+  height: calc(8px * var(--s, 1));
+}
+.studio-card .studio-chart-foot {
+  gap: calc(12px * var(--s, 1));
+}
+.studio-card .studio-chart-range {
+  font-size: calc(11.5px * var(--s, 1));
+}
+/* The status history's uptime line scales too, and on a card too narrow for
+   it beside the bars it moves under them, then wraps, rather than spilling
+   past the edge. */
+.studio-card .studio-status-history {
+  flex-wrap: wrap;
+  gap: calc(4px * var(--s, 1)) calc(8px * var(--s, 1));
+}
+.studio-card .studio-status-bars {
+  flex-basis: calc(60px * var(--s, 1));
+}
+.studio-card .studio-status-uptime {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: calc(11.5px * var(--s, 1));
 }
