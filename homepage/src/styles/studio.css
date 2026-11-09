@@ -3883,11 +3883,12 @@ svg.studio-chart-gauge {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--card-text, var(--studio-text)) 12%, transparent);
-  color: var(--card-text, var(--studio-text));
+  /* Solid, as on a stack: what they sit over never shows through. */
+  background: color-mix(in srgb, var(--studio-text) 12%, var(--studio-surface));
+  color: var(--studio-text);
 }
 .studio-edit-mode .studio-panel-header .studio-icon-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--card-text, var(--studio-text)) 20%, transparent);
+  background: color-mix(in srgb, var(--studio-text) 20%, var(--studio-surface));
 }
 .studio-select-target.studio-select-corner {
   position: absolute;
@@ -3927,25 +3928,30 @@ svg.studio-chart-gauge {
   outline: 2px solid var(--studio-accent);
   outline-offset: 2px;
 }
-/* The controls take the place of the response time and make room beside
-   the logo while they show. */
+/* The controls take the place of the response time, and the select box
+   the logo's, while they show: nothing else moves, so a name that fits at
+   rest is never cut by them (UI review R1). */
 .studio-edit-mode .studio-panel:is(:focus-within, .studio-selected, .studio-tools-shown) .studio-card-tags {
   visibility: hidden;
 }
 .studio-edit-mode
   .studio-panel:not(.studio-stacked-panel):is(:focus-within, .studio-selected, .studio-tools-shown)
-  .studio-card-identity {
-  padding-left: 30px;
+  .studio-card-head:not([data-logo="above"])
+  .studio-card-logo {
+  opacity: 0;
 }
-.studio-edit-mode .studio-panel:not(.studio-stacked-panel) .studio-card-identity {
-  transition: padding 120ms ease;
+.studio-edit-mode .studio-panel:not(.studio-stacked-panel) .studio-card-logo {
+  transition: opacity 120ms ease;
 }
 @media (hover: hover) {
   .studio-edit-mode .studio-panel:hover .studio-card-tags {
     visibility: hidden;
   }
-  .studio-edit-mode .studio-panel:not(.studio-stacked-panel):hover .studio-card-identity {
-    padding-left: 30px;
+  .studio-edit-mode
+    .studio-panel:not(.studio-stacked-panel):hover
+    .studio-card-head:not([data-logo="above"])
+    .studio-card-logo {
+    opacity: 0;
   }
   .studio-edit-mode
     .studio-panel:not(.studio-stacked-panel):not(:hover):not(:focus-within):not(.studio-selected)
@@ -3983,7 +3989,7 @@ svg.studio-chart-gauge {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .studio-edit-mode .studio-panel:not(.studio-stacked-panel) .studio-card-identity {
+  .studio-edit-mode .studio-panel:not(.studio-stacked-panel) .studio-card-logo {
     transition: none;
   }
 }
@@ -6231,11 +6237,37 @@ svg.studio-chart-gauge {
 
 /* A stack's select box and Move and Edit always show while editing (they
    stand for the stack, not one widget): its widgets make room for them. */
-.studio-edit-mode .studio-stacked-panel .studio-card-identity {
-  padding-left: 30px;
+/* A stack's select box sits at the left of its page dots, clear of the
+   widget's name and logo (UI review R3). */
+.studio-stack-shell > .studio-select-target.studio-select-corner {
+  top: auto;
+  bottom: 0;
+  left: 4px;
+  width: 26px;
+  height: 24px;
+}
+.studio-stack-shell > .studio-select-target.studio-select-corner .studio-select-box {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+}
+@media (pointer: coarse) {
+  .studio-stack-shell > .studio-select-target.studio-select-corner {
+    left: 0;
+    width: 44px;
+    height: 44px;
+  }
 }
 .studio-edit-mode .studio-stacked-panel .studio-card-tags {
   visibility: hidden;
+  /* Move and Edit (two buttons, 10px in from the edge) always show on a
+     stack, so its widgets' names stop short of them (UI review R3). */
+  min-width: calc(var(--studio-stack-tool, 30px) * 2 + 4px);
+}
+/* With the header beside the values, the values start below them. */
+.studio-edit-mode .studio-stacked-panel .studio-card[data-inline] > .studio-card-body,
+.studio-edit-mode .studio-stacked-panel .studio-card:not(:has(> .studio-card-head)) > .studio-card-body {
+  padding-top: calc(var(--studio-stack-tool, 30px) + 4px);
 }
 
 /* Why a widget stopped shrinking, with one-tap changes (mock-ups v4, Board 1). */
@@ -6344,6 +6376,6 @@ svg.studio-chart-gauge {
   opacity: 0;
   pointer-events: none;
 }
-.studio-edit-mode.studio-resizing .studio-panel:not(.studio-stacked-panel) .studio-card-identity {
-  padding-left: 0;
+.studio-edit-mode.studio-resizing .studio-panel .studio-card-logo {
+  opacity: 1;
 }

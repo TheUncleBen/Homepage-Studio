@@ -133,7 +133,7 @@ export function useBlockFit(card) {
     // A value's text changing (every refresh) refits only when the card no
     // longer fits as it is; a clean fit is kept, which keeps the live board
     // light (UI review L5).
-    const key = JSON.stringify([box, signature, drawn, card.baseHeight]);
+    const key = JSON.stringify([box, signature, drawn, card.baseHeight, card.editing]);
     if (key === last.current.key && last.current.clean && fits(node)) return;
     const counts = Object.fromEntries(drawn || []);
     const shown = drawn ? blocks.filter((block) => Object.hasOwn(counts, block.id)) : [];
@@ -153,7 +153,7 @@ export function useBlockFit(card) {
         look: effective,
         need,
       });
-  }, [box, signature, drawn, tick, card.baseHeight]);
+  }, [box, signature, drawn, tick, card.baseHeight, card.editing]);
   // New text (a value arriving, a longer number) can need another pick.
   useEffect(() => {
     const node = ref.current;

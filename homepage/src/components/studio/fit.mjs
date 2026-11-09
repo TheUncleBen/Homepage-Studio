@@ -17,6 +17,21 @@ const MAX_COMBOS = 48;
 export const floorOf = (look) => (look.text === "fixed" ? FIXED_TEXT : TEXT_FLOOR)[look.textSize] ?? 0.9;
 export const ceilingOf = (look) => (look.text === "fixed" ? floorOf(look) : MAX_SCALE);
 
+// With wrapping only between words, does any line run past the node? Lines
+// are measured to the subpixel, since a word under a pixel too wide is still
+// broken by the browser (UI review R1); without line boxes (a test DOM), its
+// scroll width says.
+function overruns(node) {
+  const range = typeof document !== "undefined" && document.createRange?.();
+  if (range && typeof range.getClientRects === "function") {
+    range.selectNodeContents(node);
+    const box = node.getBoundingClientRect();
+    const rects = [...range.getClientRects()];
+    if (rects.length) return rects.some((rect) => rect.right > box.right + 0.02 || rect.left < box.left - 0.02);
+  }
+  return node.scrollWidth > node.clientWidth;
+}
+
 // Does everything show in full? Overflow anywhere (the card, a block, a
 // value, a label) means no. Log lines may be cut at the bottom, but at least
 // two must show.
@@ -48,13 +63,12 @@ export function fits(card) {
   // breaks rather than shrinking every value with it.
   const header = Number.parseFloat(card.style.getPropertyValue("--s")) || 1;
   if (header > 0.7)
-    for (const node of card.querySelectorAll(".studio-card-name strong, .studio-card-note")) {
+    for (const node of card.querySelectorAll(".studio-card-name strong, .studio-card-name small, .studio-card-note")) {
       if (node.scrollHeight > node.clientHeight + 1) return false;
       const { overflowWrap, wordBreak } = node.style;
       node.style.overflowWrap = "normal";
       node.style.wordBreak = "normal";
-      // No pixel of slack here: a word one pixel too wide is broken.
-      const broken = node.scrollWidth > node.clientWidth;
+      const broken = overruns(node);
       node.style.overflowWrap = overflowWrap;
       node.style.wordBreak = wordBreak;
       if (broken) return false;

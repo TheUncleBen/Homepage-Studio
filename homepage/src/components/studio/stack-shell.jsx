@@ -138,7 +138,8 @@ export default function StackShell({
     >
       {/* Board 4: the stack draws as the widget it is showing, with no bar of
           its own. While editing, it has the same select, move and edit
-          controls as any widget, in the same places. */}
+          controls as any widget: Move and Edit where a widget's are, the
+          select box beside the page dots, clear of the widget's name. */}
       {editing && onSelect && (
         <label className="studio-select-target studio-select-corner studio-stack-control">
           <input
