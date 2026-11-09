@@ -83,6 +83,47 @@ describe("Custom API empty mappings hint", () => {
   });
 });
 
+describe("Adding with starting settings", () => {
+  it("sends a new widget's starting settings, as a duplicate's copied settings, not only what was changed", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ revision: "r2" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const onSaved = vi.fn();
+    const copy = {
+      kind: "informationWidget",
+      type: "greeting",
+      name: "Greeting",
+      defaults: { text: "Hello", text_size: "xl" },
+      fields: [{ key: "text", label: "Text", type: "string" }],
+    };
+    render(
+      <ContentEditor
+        state={{ revision: "r1", services: [], groups: [], bookmarks: [] }}
+        catalog={{ service: [], info: [copy] }}
+        entry={copy}
+        onSaved={onSaved}
+        onCancel={vi.fn()}
+        onReload={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Add/ }));
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const [, init] = fetchMock.mock.calls.find(([, options]) => options?.method === "POST");
+    expect(JSON.parse(init.body)).toMatchObject({
+      action: "add",
+      type: "greeting",
+      config: { text: "Hello", text_size: "xl" },
+    });
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("Content picker names", () => {
   it("starts a new Resources widget showing CPU and memory, not an empty card", () => {
     const onChoose = vi.fn();

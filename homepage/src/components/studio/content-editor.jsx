@@ -1115,7 +1115,9 @@ export default function ContentEditor({
         revision,
         action,
         ...(source ? { id: source.id } : {}),
-        config: patchFromDraft(initial, draft),
+        // A new widget's starting settings (a duplicate's copy, a starter)
+        // are all sent; an update sends only what changed.
+        config: action === "update" ? patchFromDraft(initial, draft) : patchFromDraft({}, draft),
       };
       // New content lands on the page being edited.
       if (pageId && !source) body.pageId = pageId;

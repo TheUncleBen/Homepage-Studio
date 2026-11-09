@@ -63,6 +63,8 @@ in older entries below are history only.
   widget never shows a word broken in the middle or a line cut off.
 - A new Resources widget starts showing CPU and memory, instead of an
   empty card; with nothing chosen it says to pick what to show.
+- **Duplicate** keeps every setting of the widget it copies; the copy
+  was saved with only the settings changed in the dialog.
 - A block with no values (for example a one-value widget's default
   Numbers) is left out on the dashboard; while editing it still says what
   to pick.
