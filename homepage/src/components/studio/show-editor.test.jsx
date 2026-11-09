@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { BUILT_IN_LOOK, DEFAULT_BLOCKS } from "./look.mjs";
-import ShowEditor, { chartPool, scoped, startValues } from "./show-editor";
+import ShowEditor, { chartPool, LimitNote, remedies, scoped, startValues } from "./show-editor";
 
 vi.mock("components/resolvedicon", () => ({ default: () => null }));
 
@@ -141,5 +141,64 @@ describe("ShowEditor", () => {
     const look = onLook.mock.calls.at(-1)[0];
     expect(look.blocks).toBeUndefined();
     expect(look.sizes.small.blocks).toHaveLength(3);
+  });
+});
+
+describe("remedies and the limit note", () => {
+  it("offers only changes that apply", () => {
+    const fixes = remedies({
+      blocks: [
+        { id: "a", type: "big" },
+        { id: "b", type: "numbers", arrange: "row" },
+        { id: "c", type: "pie", legend: "beside" },
+      ],
+      arrange: "row",
+      text: "scale",
+      textSize: "medium",
+    }).map(([label]) => label);
+    expect(fixes).toEqual([
+      "Hide labels",
+      "Allow smaller text",
+      "Numbers: Auto",
+      "Pie legend: Auto",
+      "Blocks sit: Auto",
+      "Numbers as quiet",
+    ]);
+    expect(remedies({ blocks: [{ id: "s", type: "status" }], text: "fixed" }).map(([label]) => label)).toEqual([
+      "Let text shrink",
+    ]);
+  });
+
+  it("says where the corner stopped and applies a change at the size being set up", () => {
+    const onLook = vi.fn();
+    render(
+      <LimitNote
+        look={{
+          blocks: [
+            { id: "a", type: "big" },
+            { id: "b", type: "numbers" },
+          ],
+        }}
+        inheritedLook={BUILT_IN_LOOK}
+        scope="small"
+        fit={{ fits: true, sizeClass: "small" }}
+        limited={{ w: 4, h: 3 }}
+        onLook={onLook}
+      />,
+    );
+    expect(screen.getByRole("status").textContent).toMatch(/Stopped at 4 × 3.*for Small sizes/);
+    fireEvent.click(screen.getByRole("button", { name: "Hide labels" }));
+    const look = onLook.mock.calls[0][0];
+    expect(look.sizes.small.blocks.every((block) => block.labels === false)).toBe(true);
+    expect(look.blocks.some((block) => block.labels === false)).toBe(false);
+  });
+
+  it("explains smaller text and shows nothing while the settings fit", () => {
+    const { rerender } = render(
+      <LimitNote look={{}} inheritedLook={BUILT_IN_LOOK} fit={{ fits: true, squeezed: true }} onLook={() => {}} />,
+    );
+    expect(screen.getByRole("status").textContent).toMatch(/text is drawn smaller/);
+    rerender(<LimitNote look={{}} inheritedLook={BUILT_IN_LOOK} fit={{ fits: true }} onLook={() => {}} />);
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

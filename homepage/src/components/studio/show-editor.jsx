@@ -676,3 +676,97 @@ export default function ShowEditor({
     </div>
   );
 }
+
+// Settings that would let a widget go smaller (mock-ups v4, Board 1), each a
+// one-tap change at the size being set up.
+const LABELLED = ["big", "numbers", "quiet", "bars"];
+export function remedies(effective = {}) {
+  const blocks = Array.isArray(effective.blocks) ? effective.blocks : DEFAULT_BLOCKS;
+  const out = [];
+  const map = (change) => ({ blocks: blocks.map((block) => change(block) || block) });
+  if (blocks.some((block) => LABELLED.includes(block.type) && block.labels !== false))
+    out.push(["Hide labels", map((block) => LABELLED.includes(block.type) && { ...block, labels: false })]);
+  if (effective.text === "fixed") out.push(["Let text shrink", { text: "scale", textSize: "small" }]);
+  else if (effective.textSize !== "small") out.push(["Allow smaller text", { textSize: "small" }]);
+  if (blocks.some((block) => block.type === "numbers" && (block.arrange || block.columns)))
+    out.push([
+      "Numbers: Auto",
+      map((block) => {
+        if (block.type !== "numbers") return null;
+        const { arrange: _arrange, columns: _columns, ...rest } = block;
+        return rest;
+      }),
+    ]);
+  if (blocks.some((block) => block.type === "pie" && ["beside", "below"].includes(block.legend)))
+    out.push([
+      "Pie legend: Auto",
+      map((block) => {
+        if (block.type !== "pie") return null;
+        const { legend: _legend, ...rest } = block;
+        return rest;
+      }),
+    ]);
+  if (blocks.length > 1 && effective.arrange && effective.arrange !== "auto")
+    out.push(["Blocks sit: Auto", { arrange: "auto" }]);
+  if (blocks.some((block) => block.type === "numbers"))
+    out.push([
+      "Numbers as quiet",
+      map(
+        (block) =>
+          block.type === "numbers" && {
+            id: block.id,
+            type: "quiet",
+            ...(block.values ? { values: block.values } : {}),
+            ...(block.labels === false ? { labels: false } : {}),
+          },
+      ),
+    ]);
+  return out;
+}
+
+// Why the widget stopped where it did, or why its text is smaller than you
+// set, and one-tap changes that would let it go smaller.
+export function LimitNote({ look = {}, inheritedLook = {}, scope = "all", fit, limited, onLook }) {
+  const squeezed = Boolean(fit?.squeezed || fit?.relaxed || fit?.fits === false);
+  if (!fit || (!limited && !squeezed)) return null;
+  // Changes go to the size being set up, or to the size the widget is at when
+  // that size has its own settings, else to every size.
+  const own = (key) => Boolean(look.sizes?.[key] && Object.keys(look.sizes[key]).length);
+  const target = scope !== "all" ? scope : own(fit.sizeClass) ? fit.sizeClass : "all";
+  const { read, write } = scoped(look, inheritedLook, target);
+  const effective = Object.fromEntries(["blocks", "arrange", "text", "textSize"].map((key) => [key, read(key)]));
+  const fixes = remedies(effective);
+  const message = fit.relaxed
+    ? "Your blocks can't fit this space even at the smallest text, so Auto arranges them here and nothing is cut off."
+    : squeezed
+      ? "These settings need more room than this space has, so the text is drawn smaller than your smallest size for now. Nothing is cut off."
+      : `Stopped at ${limited.w} × ${limited.h}, the smallest size for these settings.`;
+  return (
+    <div className="studio-limit-note" role="status">
+      <p>
+        <StudioIcon name="info" size={14} /> {message}
+        {fixes.length > 0 &&
+          ` To go smaller, change a setting${target === "all" ? "" : ` for ${SIZE_NAMES[target]} sizes`}:`}
+      </p>
+      {fixes.length > 0 && (
+        <div className="studio-limit-fixes">
+          {fixes.map(([label, patch]) => (
+            <button
+              key={label}
+              type="button"
+              className="studio-chip"
+              onClick={() => {
+                let next = look;
+                for (const [key, value] of Object.entries(patch))
+                  next = scoped(next || {}, inheritedLook, target).write(key, value);
+                onLook(next);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

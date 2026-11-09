@@ -444,6 +444,9 @@ export default function StudioBoard({
   }, []);
   const sizeSwitchShown = sizeForWidth(screenWidth) === "desktop";
   const [moving, setMoving] = useState(null);
+  // The widget whose corner is being dragged: drawn at the size being asked
+  // for, never grown, so the corner stops where its settings stop fitting.
+  const [resizing, setResizing] = useState(null);
   const [stackTarget, setStackTarget] = useState(null);
   const [stackDrags, setStackDrags] = useState({});
   const canvas = useRef(null);
@@ -608,11 +611,11 @@ export default function StudioBoard({
     [board, layoutSize, editing, settings],
   );
   const gap = gapOf(settings);
-  // A widget grows taller instead of clipping when its settings need more
-  // room (Board 6) on the live dashboard, and while editing a phone or
-  // tablet layout made from the desktop one. Where you arrange sizes
-  // yourself, the resize corner stops at what the settings allow instead.
-  const grows = !editing || (layoutSize !== "desktop" && followsDesktop(wholeBoard, layoutSize));
+  // A widget is never drawn clipped (Board 6): when its settings need more
+  // room than its size gives (a narrower screen, a phone layout, a size set
+  // before its settings changed), it grows taller and what is below moves
+  // down. Only the widget being resized is drawn at the size asked for, and
+  // its corner stops at the smallest size its settings allow.
   const [needs, setNeeds] = useState(() => new Map());
   useEffect(() => {
     const onFit = (event) => {
@@ -626,9 +629,10 @@ export default function StudioBoard({
     return () => window.removeEventListener("studio-card-fit", onFit);
   }, [gap]);
   const projection = useMemo(() => {
-    if (!grows || !needs.size) return laidOut;
+    if (!needs.size) return laidOut;
     const rows = new Map();
     for (const unit of laidOut.units) {
+      if (unit.id === resizing) continue;
       const ids =
         unit.kind === "stack" ? board.stacks.find((stack) => stack.id === unit.id)?.panelIds || [] : [unit.id];
       const most = Math.max(0, ...ids.map((id) => needs.get(id) || 0));
@@ -637,14 +641,15 @@ export default function StudioBoard({
     if (!rows.size) return laidOut;
     const units = grownUnits(laidOut.units, rows);
     return { ...laidOut, units, rows: Math.max(8, ...units.map((unit) => unit.rect.y + unit.rect.h)) };
-  }, [laidOut, grows, needs, board]);
+  }, [laidOut, needs, board, resizing]);
+  const shown = useRef(projection);
+  useLayoutEffect(() => {
+    shown.current = projection;
+  }, [projection]);
   // The height each widget was laid out at, which it measures its needs at.
   const baseHeights = useMemo(
-    () =>
-      grows
-        ? new Map(laidOut.units.map((unit) => [unit.id, pixelRect(unit.rect, width, laidOut.columns, gap).height]))
-        : null,
-    [grows, laidOut, width, gap],
+    () => new Map(laidOut.units.map((unit) => [unit.id, pixelRect(unit.rect, width, laidOut.columns, gap).height])),
+    [laidOut, width, gap],
   );
   // While editing: the widgets this layout leaves out (shown faded).
   const offLayout = useMemo(
@@ -1153,7 +1158,15 @@ export default function StudioBoard({
     let targetTime = 0;
     let stackReady = false;
     let dwell;
+    // A widget drawn taller than its size (it grew to fit) is resized from
+    // the size it is drawn at.
+    const drawn = shown.current.units.find((item) => item.id === id)?.rect;
+    if (mode === "resize" && drawn && drawn.h > unit.rect.h) {
+      initial = resizeUnit(initial, id, { ...unit.rect, h: drawn.h });
+      unit = unitsForBoard(initial).find((item) => item.id === id);
+    }
     setMoving(id);
+    if (mode === "resize") setResizing(id);
     setSelection([id]);
     // Mock-ups v4: a widget shrinks down to the smallest size its settings
     // allow and stops there. Its card says, each time it fits itself, when
@@ -1192,7 +1205,15 @@ export default function StudioBoard({
       const size = trials.shift() || { w: Math.max(now.w, lastGood.w), h: Math.max(now.h, lastGood.h) };
       latest = resizeUnit(initial, id, { ...now, ...size });
       changeBoard(latest, undefined, { record: false });
-      if (!limited) {
+      // The widget's settings, when open beside the board, say what would
+      // let it go smaller (show-editor.jsx LimitNote).
+      const stopped = unitsForBoard(latest).find((item) => item.id === id)?.rect;
+      // An open editor for it takes the event (preventDefault) and says so
+      // itself; otherwise a toast does.
+      const told = !window.dispatchEvent(
+        new CustomEvent("studio-card-limit", { cancelable: true, detail: { id, w: stopped?.w, h: stopped?.h } }),
+      );
+      if (!limited && !told) {
         limited = true;
         showToast("That's as small as its settings allow. Smaller text or fewer blocks let it go smaller.");
       }
@@ -1361,6 +1382,7 @@ export default function StudioBoard({
       // One drag is one step to undo: it autosaves once, when it ends.
       operation.current = null;
       setMoving(null);
+      setResizing(null);
       setStackTarget(null);
     };
     const onUp = (upEvent) => finish(upEvent);

@@ -26,7 +26,7 @@ import { SCOPE_LABEL, useLibrary } from "./library";
 import LookEditor, { contentOnly, lookOnly, lookSections, sameLook, valuesPartShown } from "./look-editor";
 import Menu from "./menu";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
-import ShowEditor from "./show-editor";
+import ShowEditor, { LimitNote } from "./show-editor";
 import { ActionRow, Disclosure, Group, revealForm, Row, Section, Segmented } from "./ui";
 
 import { SettingsContext } from "utils/contexts/settings";
@@ -66,7 +66,12 @@ export function ResizeCorner({ rect, minimum, columns, onChange, describedBy, fi
       }
       const last = good.current;
       if (now.w >= last.w && now.h >= last.h) return;
-      onChange((value) => ({ ...value, w: Math.max(value.w, last.w), h: Math.max(value.h, last.h) }));
+      const w = Math.max(now.w, last.w);
+      const h = Math.max(now.h, last.h);
+      onChange((value) => ({ ...value, w, h }));
+      window.dispatchEvent(
+        new CustomEvent("studio-card-limit", { detail: { id: fitId.replace(/^preview:/, ""), w, h } }),
+      );
     };
     window.addEventListener("studio-card-fit", check);
     return () => window.removeEventListener("studio-card-fit", check);
@@ -772,6 +777,25 @@ export default function ContentEditor({
   // what the card on the board (docked) or the preview last fitted.
   const [scope, setScope] = useState("all");
   const fit = useCardFit(boardPanel ? (docked ? boardPanel.id : `preview:${boardPanel.id}`) : null);
+  // Where the resize corner last stopped because of these settings (on the
+  // board or the preview); a change to the settings clears it.
+  const [limited, setLimited] = useState(null);
+  const limitId = boardPanel?.id;
+  useEffect(() => {
+    if (!limitId) return undefined;
+    const on = (event) => {
+      if (event.detail?.id !== limitId) return;
+      event.preventDefault();
+      setLimited({ w: event.detail.w, h: event.detail.h });
+    };
+    window.addEventListener("studio-card-limit", on);
+    return () => window.removeEventListener("studio-card-limit", on);
+  }, [limitId]);
+  const [limitedLook, setLimitedLook] = useState(look);
+  if (limitedLook !== look) {
+    setLimitedLook(look);
+    setLimited(null);
+  }
   // Sections stay open until closed, so Values and Look can be open together
   // (F7, 6 Nov 2026: less back and forth; was one at a time, board 24). A new
   // item opens on its settings; an existing one opens with everything summarised.
@@ -1392,6 +1416,16 @@ export default function ContentEditor({
                   />
                 )}
                 {deleting && deleteQuestion}
+                {showTab && (
+                  <LimitNote
+                    look={look}
+                    inheritedLook={lookProps.inheritedLook}
+                    scope={scope}
+                    fit={fit}
+                    limited={limited}
+                    onLook={setLook}
+                  />
+                )}
                 <div
                   role="tabpanel"
                   id={`${tabsId}-data-panel`}

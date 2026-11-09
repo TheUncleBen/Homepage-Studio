@@ -6206,3 +6206,46 @@ svg.studio-chart-gauge {
 .studio-edit-mode .studio-stacked-panel .studio-card-tags {
   visibility: hidden;
 }
+
+/* Why a widget stopped shrinking, with one-tap changes (mock-ups v4, Board 1). */
+.studio-limit-note {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--studio-accent-line);
+  border-radius: 12px;
+  background: var(--studio-accent-soft);
+  color: var(--studio-text);
+  font-size: 13px;
+}
+.studio-limit-note p {
+  margin: 0;
+}
+.studio-limit-note svg {
+  vertical-align: -2px;
+  color: var(--studio-accent);
+}
+.studio-limit-fixes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.studio-chip {
+  min-height: 30px;
+  padding: 4px 11px;
+  border: 1px solid var(--studio-accent-line);
+  border-radius: 999px;
+  background: var(--studio-surface);
+  color: var(--studio-text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.studio-chip:hover {
+  border-color: var(--studio-accent);
+}
+.studio-chip:focus-visible {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 2px;
+}
