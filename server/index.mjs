@@ -29,7 +29,7 @@ const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'pass
 import { createPersonalStore } from './personal.mjs';
 import { connectionIdsOf, createLibrary, LibraryError, MAX_SAVED_WIDGETS, publicEntry, SCOPES, SHARED_LIBRARY_FILE } from './library.mjs';
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
-import { LookError, STATUS_SHOW, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
+import { LookError, allBlocks, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
 import { BACKGROUND_CHOICES, BASE_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
@@ -624,17 +624,22 @@ function createDashboardHandlers(options = {}) {
     return value;
   }
   // The widgets the collector polls: charts, trends and colour rules read
-  // the widget's values; status history runs its status check instead.
+  // the widget's values; status history and response time run its status
+  // check too. A widget can have both (blocks, mock-ups v4).
   const historyPanels = state => {
     const card = readLook(state.settingsConfig?.studioTheme?.card);
     const acts = readBehaviour(state.settingsConfig?.studioDefaults);
     const out = [];
     for (const panel of state.board?.panels || []) {
       const look = inheritedLook(card, panel.look);
-      if (look.show === STATUS_SHOW && ['service', 'serviceWidget'].includes(panel.kind)) {
-        const check = inheritedBehaviour(acts, panel.behaviour).status;
-        if (check === 'web' || check === 'ping') out.push({ ...panel, check });
-      } else if (panel.kind === 'serviceWidget' && needsHistory(look)) out.push(panel);
+      if (!['service', 'serviceWidget'].includes(panel.kind) || !needsHistory(look)) continue;
+      const blocks = allBlocks(look);
+      const statusCheck = blocks.some(block => block.type === 'status' || block.type === 'response');
+      const values = panel.kind === 'serviceWidget' && (blocks.some(block => !['status', 'response', 'logs'].includes(block.type) && needsHistory({ blocks: [block] })) || look.values?.some(value => value.rules));
+      const check = statusCheck ? inheritedBehaviour(acts, panel.behaviour).status : null;
+      const checked = check === 'web' || check === 'ping';
+      if (checked) out.push({ ...panel, check, ...(values ? { values: true } : {}) });
+      else if (values) out.push(panel);
     }
     return out;
   };
@@ -645,13 +650,13 @@ function createDashboardHandlers(options = {}) {
     // History is kept only for widgets that still need it.
     await history.keepOnly(panels.map(panel => panel.id));
     if (!panels.length) return;
-    const results = await rendererCollect(dashboard, panels.map(({ id, kind, nativeLocator, available, check }) => ({ id, kind, nativeLocator, ...(available === false ? { available } : {}), ...(check ? { check } : {}) })));
+    const results = await rendererCollect(dashboard, panels.map(({ id, kind, nativeLocator, available, check, values }) => ({ id, kind, nativeLocator, ...(available === false ? { available } : {}), ...(check ? { check } : {}), ...(check && values ? { values: true } : {}) })));
     const at = Date.now();
     // A widget whose numbers can't be fetched is an integration problem for
     // the dashboard's logs (status checks have their own monitors).
     const FAILURES = { timeout: 'took too long to answer', service: 'did not answer as expected', render: 'could not be read' };
     for (const panel of panels) {
-      const failure = !panel.check && FAILURES[results[panel.id]?.error];
+      const failure = (!panel.check || panel.values) && FAILURES[results[panel.id]?.error];
       if (failure) options.onIntegration?.({ source_type: 'integration', source_id: panel.nativeLocator?.type ?? 'widget', scope: dashboard.id, resource: panel.title || panel.nativeLocator?.type || 'Widget', panel: panel.id, category: 'integration', severity: 4, event_type: 'widget.collect-failed', error_class: results[panel.id].error === 'timeout' ? 'timeout' : null, message: `${panel.title || 'A widget'}: its history ${failure}` });
     }
     for (const panel of panels) {

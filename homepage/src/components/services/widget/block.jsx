@@ -47,7 +47,8 @@ export default function Block({ value, highlightValue, label, field }) {
     // A number the widget couldn't work out (missing fields) never shows as "NaN".
     const unknown = value === null || (typeof value === "string" ? /\bNaN\b/.test(value) : Number.isNaN(value));
     const shown = loading || unknown ? "-" : formatValue(value, slot.format);
-    const { number, unit } = slot.slot === "hero" ? splitValue(shown) : { number: shown, unit: "" };
+    // A Big number writes its unit smaller beside the number.
+    const { number, unit } = slot.slot === "big" ? splitValue(shown) : { number: shown, unit: "" };
     const text = slot.label || t(label);
     return (
       <div
@@ -59,6 +60,8 @@ export default function Block({ value, highlightValue, label, field }) {
           "service-block",
         )}
         data-rule={slot.level || undefined}
+        // A Big number sizes itself to its room by its length (studio.css).
+        style={slot.slot === "big" ? { "--n": Math.max(2, String(number ?? "").length) } : undefined}
         data-highlight-level={highlight?.level}
         data-highlight-source={highlight?.source}
       >
@@ -73,7 +76,7 @@ export default function Block({ value, highlightValue, label, field }) {
           {number}
           {unit && <span className="studio-value-unit">{unit}</span>}
         </span>
-        <span className="studio-value-label service-block-label">{text}</span>
+        {!slot.noLabel && <span className="studio-value-label service-block-label">{text}</span>}
       </div>
     );
   }

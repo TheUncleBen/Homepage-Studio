@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 import StudioIcon from "./icons";
 
@@ -243,4 +243,141 @@ export function revealForm(element) {
   if (!element) return;
   element.scrollIntoView?.({ block: "nearest" });
   element.querySelector("input, textarea, select")?.focus({ preventScroll: true });
+}
+
+// A themed dropdown (mock-ups v4: every dropdown in Studio is this list, never
+// the white system one). options are [value, text, detail?]. With a
+// placeholder and no matching value it is a menu ("+ Add a block").
+export function Select({ value, onChange, options, label, id, placeholder, className = "", disabled = false }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const root = useRef(null);
+  const button = useRef(null);
+  const listId = useId();
+  const chosen = options.find(([option]) => option === value);
+  // The list floats (position: fixed) under the button, or above it when
+  // there is more room there, and follows it while anything scrolls.
+  const [place, setPlace] = useState(null);
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const measure = () => {
+      const box = button.current?.getBoundingClientRect();
+      if (!box) return;
+      const below = window.innerHeight - box.bottom - 8;
+      const above = box.top - 8;
+      const up = below < 200 && above > below;
+      const width = Math.max(box.width, 180);
+      setPlace({
+        left: Math.max(8, Math.min(box.left, window.innerWidth - width - 8)),
+        minWidth: width,
+        maxWidth: Math.max(width, Math.min(360, window.innerWidth - 16)),
+        maxHeight: Math.max(120, Math.min(320, (up ? above : below) - 4)),
+        ...(up ? { bottom: window.innerHeight - box.top + 4 } : { top: box.bottom + 4 }),
+      });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    document.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      document.removeEventListener("scroll", measure, true);
+    };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (event) => {
+      if (!root.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  useEffect(() => {
+    if (open) root.current?.querySelectorAll('[role="option"]')[active]?.scrollIntoView?.({ block: "nearest" });
+  }, [open, active]);
+  const show = () => {
+    setActive(
+      Math.max(
+        0,
+        options.findIndex(([option]) => option === value),
+      ),
+    );
+    setOpen(true);
+  };
+  const choose = (option) => {
+    setOpen(false);
+    button.current?.focus();
+    if (option !== value || placeholder) onChange(option);
+  };
+  const key = (event) => {
+    if (disabled) return;
+    if (!open) {
+      if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) {
+        event.preventDefault();
+        show();
+      }
+      return;
+    }
+    const last = options.length - 1;
+    const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+    if (step) {
+      event.preventDefault();
+      setActive((index) => Math.min(last, Math.max(0, index + step)));
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      setActive(event.key === "Home" ? 0 : last);
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (options[active]) choose(options[active][0]);
+    } else if (event.key === "Escape" || event.key === "Tab") {
+      if (event.key === "Escape") event.preventDefault();
+      setOpen(false);
+    }
+  };
+  return (
+    <div ref={root} className={`studio-select ${className}`.trim()}>
+      <button
+        ref={button}
+        id={id}
+        type="button"
+        className="studio-select-button"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-label={label}
+        aria-activedescendant={open ? `${listId}-${active}` : undefined}
+        disabled={disabled}
+        onClick={() => (open ? setOpen(false) : show())}
+        onKeyDown={key}
+      >
+        <span className="studio-select-text">{chosen ? chosen[1] : placeholder}</span>
+        <StudioIcon name="chevronDown" size={14} />
+      </button>
+      {open && (
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label={label}
+          className="studio-select-list"
+          style={place || { visibility: "hidden" }}
+        >
+          {options.map(([option, text, detail], index) => (
+            <li
+              key={String(option)}
+              id={`${listId}-${index}`}
+              role="option"
+              aria-selected={option === value}
+              className={index === active ? "is-active" : undefined}
+              onPointerDown={(event) => event.preventDefault()}
+              onPointerEnter={() => setActive(index)}
+              onClick={() => choose(option)}
+            >
+              <span>{text}</span>
+              {detail && <small>{detail}</small>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }

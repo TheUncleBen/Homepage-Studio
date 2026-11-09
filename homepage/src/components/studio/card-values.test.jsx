@@ -2,7 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import CardValues from "./card-values";
+import CardValues, { blockFields } from "./card-values";
 
 import Block from "components/services/widget/block";
 
@@ -33,34 +33,77 @@ describe("card values", () => {
     expect(container.querySelector("[hidden]")).toBeNull();
   });
 
-  it("still arranges values into a hero and the rest", () => {
+  it("draws the default blocks: the first value large and the rest below, nothing folded", () => {
     const { container } = render(
       <div className="studio-native-content">
         <CardValues
           card={{ id: "values" }}
-          items={[<Block key="a" label="First" value="1" />, <Block key="b" label="Second" value="2" />]}
+          items={[
+            <Block key="a" label="First" value="1" />,
+            <Block key="b" label="Second" value="2" />,
+            <Block key="c" label="Third" value="3" />,
+          ]}
         />
       </div>,
     );
-    expect(container.querySelector(".studio-values-hero")).toBeTruthy();
-    expect(container.querySelector(".studio-values-below .studio-fold-item")).toBeTruthy();
+    const blocks = [...container.querySelectorAll(".studio-block")];
+    expect(blocks.map((block) => block.dataset.type)).toEqual(["big", "numbers"]);
+    expect(blocks[0].textContent).toContain("First");
+    expect(blocks[1].textContent).toContain("Second");
+    expect(blocks[1].textContent).toContain("Third");
+    expect(container.textContent).not.toMatch(/\+\d/);
+  });
+
+  it("shows a value in every block that picks it, and a note in a block with none", () => {
+    const { container } = render(
+      <CardValues
+        card={{
+          id: "mixed",
+          blocks: [
+            { id: "q", type: "quiet", values: ["b", "a"] },
+            { id: "n", type: "numbers", values: ["a"] },
+            { id: "e", type: "big", values: ["gone"] },
+          ],
+        }}
+        items={[<Block key="a" field="a" label="A" value="1" />, <Block key="b" field="b" label="B" value="2" />]}
+      />,
+    );
+    const [quiet, numbers, empty] = container.querySelectorAll(".studio-block");
+    expect(quiet.textContent).toBe("B 2A 1");
+    expect(numbers.textContent).toBe("A 1");
+    expect(empty.textContent).toBe("Pick a value for this Big number");
   });
 });
 
-describe("balanced value boxes (U7)", () => {
-  it("spreads boxes evenly over the fewest rows that fit", async () => {
-    const { balancedColumns } = await import("./card-values");
-    expect(balancedColumns(6, 4)).toBe(3);
-    expect(balancedColumns(5, 4)).toBe(3);
-    expect(balancedColumns(4, 4)).toBe(4);
-    expect(balancedColumns(7, 3)).toBe(3);
-    expect(balancedColumns(2, 6)).toBe(2);
-    expect(balancedColumns(9, 1)).toBe(1);
+describe("which values each block shows", () => {
+  const keys = ["a", "b", "c", "d"];
+  it("gives Numbers and Quiet with none picked the values no other block shows", () => {
+    const fields = blockFields(
+      [
+        { id: "1", type: "big", first: true },
+        { id: "2", type: "pie", values: ["c"] },
+        { id: "3", type: "numbers" },
+      ],
+      keys,
+      ["c"],
+    );
+    // A chart's values don't count as shown: they are drawn, not written.
+    expect(fields).toEqual({ 1: ["a"], 2: ["c"], 3: ["b", "c", "d"] });
   });
-  it("keeps a chosen number of columns while the boxes fit", async () => {
-    const { balancedColumns } = await import("./card-values");
-    expect(balancedColumns(6, 4, "2")).toBe(2);
-    expect(balancedColumns(6, 3, "4")).toBe(3);
-    expect(balancedColumns(2, 4, "4")).toBe(2);
+  it("keeps a block's own order and drops values the widget no longer has", () => {
+    expect(blockFields([{ id: "1", type: "numbers", values: ["d", "x", "a"] }], keys)).toEqual({ 1: ["d", "a"] });
+  });
+  it("draws every collected number on a chart with none picked, and one on a gauge", () => {
+    expect(
+      blockFields(
+        [
+          { id: "1", type: "chart" },
+          { id: "2", type: "gauge" },
+          { id: "3", type: "status" },
+        ],
+        keys,
+        ["b", "c"],
+      ),
+    ).toEqual({ 1: ["b", "c"], 2: ["b"], 3: [] });
   });
 });

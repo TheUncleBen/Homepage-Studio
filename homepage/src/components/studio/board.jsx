@@ -8,7 +8,7 @@ import { PageBackgroundEditor } from "./background-picker";
 import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm, widgetCount } from "./bulk-bar";
 import CardBackground from "./card-background";
 import { ChartFullView, chartRanges } from "./card-chart";
-import { canRefresh, refreshCards, resolvedBehaviour, resolvedLook, useCardTheme } from "./card-look";
+import { canRefresh, cardFits, refreshCards, resolvedBehaviour, resolvedLook, useCardTheme } from "./card-look";
 import { enableClientErrors } from "./client-errors.mjs";
 import { ConnectionsEditor } from "./connections";
 import ContentEditor, { ContentPicker, duplicateEntry } from "./content-editor";
@@ -57,7 +57,7 @@ import {
   sizeProjection,
   sizeView,
 } from "./layouts.mjs";
-import { CHART_SHOWS, needsHistory, readLook, showsOn, statusColours } from "./look.mjs";
+import { allBlocks, needsHistory, readLook, showsOn, statusColours } from "./look.mjs";
 import Menu from "./menu";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
@@ -231,14 +231,22 @@ export function PanelLayer({
 }
 
 // A chart widget full size, with its own look (names, colours, format).
-function FullViewHost({ panel, data, settings, onClose }) {
+// The first chart over time a widget shows, at any size, for Open full view.
+function firstChart(look) {
+  const block = allBlocks(look).find((item) => item.type === "chart");
+  return block ? { fields: block.values, show: block.style || "line", range: block.range || "24h" } : null;
+}
+
+// chart: the chart block opened (its values, style and range).
+function FullViewHost({ panel, chart, data, settings, onClose }) {
   const { card } = useCardPresentation(panel, data);
+  const shown = { ...card, fields: chart?.fields, show: chart?.show || "line", chartRange: chart?.range || "24h" };
   return (
     <ChartFullView
       panel={panel}
-      card={card}
+      card={shown}
       title={panel.title || "Chart"}
-      ranges={chartRanges(settings, card.chartRange)}
+      ranges={chartRanges(settings, shown.chartRange)}
       onClose={onClose}
     />
   );
@@ -1105,6 +1113,33 @@ export default function StudioBoard({
     let dwell;
     setMoving(id);
     setSelection([id]);
+    // Mock-ups v4: a widget shrinks down to the smallest size its settings
+    // allow and stops there. Its card says, each time it fits itself, when
+    // its settings no longer fit (fit.mjs); the corner then goes back to the
+    // last size that did, in whichever direction it was made smaller.
+    let lastGood = unit.rect;
+    let limited = false;
+    const onFit = (fitEvent) => {
+      if (mode !== "resize" || unit.kind !== "panel" || fitEvent.detail?.id !== id) return;
+      const now = unitsForBoard(latest).find((item) => item.id === id)?.rect;
+      const fit = cardFits.get(id);
+      if (!now || !fit?.box) return;
+      // Only a fit of the size now on the board counts.
+      const pixels = pixelRect(now, width, initialProjection.columns, gap);
+      if (Math.abs(pixels.width - fit.box.w) > 2 || Math.abs(pixels.height - fit.box.h) > 2) return;
+      if (!(fit.squeezed || fit.relaxed || !fit.fits)) {
+        lastGood = now;
+        return;
+      }
+      if (now.w >= lastGood.w && now.h >= lastGood.h) return;
+      latest = resizeUnit(initial, id, { ...now, w: Math.max(now.w, lastGood.w), h: Math.max(now.h, lastGood.h) });
+      changeBoard(latest, undefined, { record: false });
+      if (!limited) {
+        limited = true;
+        showToast("That's as small as its settings allow. Smaller text or fewer blocks let it go smaller.");
+      }
+    };
+    window.addEventListener("studio-card-fit", onFit);
     const cancelDwell = () => {
       clearTimeout(dwell);
       dwell = null;
@@ -1212,6 +1247,7 @@ export default function StudioBoard({
     const finish = (upEvent, cancel = false) => {
       if (upEvent.pointerId !== undefined && upEvent.pointerId !== start.pointerId) return;
       cancelDwell();
+      window.removeEventListener("studio-card-fit", onFit);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
@@ -1861,12 +1897,12 @@ export default function StudioBoard({
           ),
       },
       "-",
-      CHART_SHOWS.includes(resolvedLook(settings, panel).show) && {
+      firstChart(resolvedLook(settings, panel)) && {
         id: "full-view",
         icon: "expand",
         label: "Open full view",
         shortcut: "Space",
-        onSelect: () => setFullView(panel),
+        onSelect: () => setFullView({ panel, chart: firstChart(resolvedLook(settings, panel)) }),
       },
       canRefresh(panel.id) && {
         id: "refresh",
@@ -1957,8 +1993,8 @@ export default function StudioBoard({
       if (command || event.shiftKey) return;
       if (lower === "e" && (isAdmin || panel.nativeLocator?.discovered)) return run(() => editPanel(panel));
       if (lower === "r" && canRefresh(panel.id)) return run(() => refreshNow([panel.id]));
-      if (event.key === " " && CHART_SHOWS.includes(resolvedLook(settings, panel).show))
-        return run(() => setFullView(panel));
+      if (event.key === " " && firstChart(resolvedLook(settings, panel)))
+        return run(() => setFullView({ panel, chart: firstChart(resolvedLook(settings, panel)) }));
       if ((event.key === "Delete" || event.key === "Backspace") && canChange) return run(() => deletePanel(panel));
     };
     window.addEventListener("keydown", key);
@@ -2511,7 +2547,7 @@ export default function StudioBoard({
           }
           onStackDrag={onStackDrag}
           onEdit={editPanel}
-          onFullView={editing ? undefined : setFullView}
+          onFullView={editing ? undefined : (panel, chart) => setFullView({ panel, chart })}
           canEdit={(panel) => isAdmin || Boolean(panel.nativeLocator?.discovered)}
           onSelect={select}
           onManipulate={manipulate}
@@ -2571,7 +2607,8 @@ export default function StudioBoard({
       )}
       {fullView && (
         <FullViewHost
-          panel={fullView}
+          panel={fullView.panel}
+          chart={fullView.chart}
           data={renderedNativeData}
           settings={settings}
           onClose={() => setFullView(null)}

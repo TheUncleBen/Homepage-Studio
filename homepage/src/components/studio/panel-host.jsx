@@ -15,7 +15,7 @@ import Freshness from "./freshness";
 import { COLUMNS, GAP, ROW_HEIGHT } from "./geometry.mjs";
 import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
-import { CHART_SHOWS, REFRESH_MS, ruleLevel } from "./look.mjs";
+import { REFRESH_MS, ruleLevel } from "./look.mjs";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import NativePanel from "./native-panel";
 
@@ -41,8 +41,10 @@ export function useCardPresentation(panel, data, onEdit, onFullView) {
   const card = useMemo(
     () => ({
       id: panel.id,
-      layout: look.layout,
-      columns: look.columns,
+      kind: panel.kind,
+      // The whole look: its blocks and each size's own layout are worked out
+      // at the card's size (card-fit.js).
+      look,
       values: look.values,
       header: look.header,
       description: look.description,
@@ -56,12 +58,10 @@ export function useCardPresentation(panel, data, onEdit, onFullView) {
       onFix: onEdit ? (section) => onEdit(panel, typeof section === "string" ? { section } : undefined) : undefined,
       title: panel.title,
       reportFields: (fields) => widgetFields.set(panel.id, fields),
-      show: look.show,
-      chartRange: look.chartRange,
-      trend: look.layout === "hero" ? look.trend : "off",
       history,
       ruleAlert,
-      onFullView: onFullView && CHART_SHOWS.includes(look.show) ? () => onFullView(panel) : undefined,
+      // A chart block opens full size with its own values and range.
+      onFullView: onFullView ? (chart) => onFullView(panel, chart) : undefined,
     }),
     [panel, look, behaviour, onEdit, onFullView, history, ruleAlert],
   );
@@ -69,13 +69,11 @@ export function useCardPresentation(panel, data, onEdit, onFullView) {
     (look.fill === "picture" || look.fill === "pattern") && Boolean(backgroundSource(look.background, theme));
   const backdrop = pictured ? <CardBackground background={look.background} tokens={theme} /> : null;
   const attributes = {
-    "data-layout": look.layout,
     "data-fill": colours || pictured ? look.fill : "plain",
     "data-edge": look.edge,
     "data-corners": look.corners,
     "data-numbers": look.numbers,
     "data-align": look.align,
-    "data-hero": look.heroSize,
   };
   const colourStyle = colours
     ? { "--card-fill": colours.fill, "--card-ink": colours.ink, "--card-muted": colours.muted }
@@ -106,7 +104,7 @@ export function CardPreview({ panel, data, override, grid = {}, children, render
       <div className="studio-panel-slide">
         {backdrop}
         <div className="studio-native-content" inert>
-          <CardLookContext.Provider value={{ ...card, reportFields: undefined }}>
+          <CardLookContext.Provider value={{ ...card, reportFields: undefined, fitId: `preview:${panel.id}` }}>
             <RenderNative panel={panel} data={data} override={override} />
           </CardLookContext.Provider>
         </div>

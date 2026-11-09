@@ -13,6 +13,27 @@ export const CardLookContext = createContext(null);
 // One value's place inside a card: hero, below or hidden, with its label and
 // number style. Set by Container for each Block.
 export const ValueSlotContext = createContext(null);
+// The card being fitted (studio-card.jsx): the blocks in force at its size
+// and a way for the blocks to say which they drew and with how many values.
+export const CardFitContext = createContext(null);
+// The last fit of each card, by panel id, for the editor beside the board: the
+// size kind, what Auto picked, the text scale, and whether the settings fit.
+export const cardFits = new Map();
+export function publishFit(id, result) {
+  if (!id) return;
+  cardFits.set(id, result);
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("studio-card-fit", { detail: { id } }));
+}
+export function useCardFit(id) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!id || typeof window === "undefined") return undefined;
+    const on = (event) => event.detail?.id === id && setTick((n) => n + 1);
+    window.addEventListener("studio-card-fit", on);
+    return () => window.removeEventListener("studio-card-fit", on);
+  }, [id]);
+  return id ? cardFits.get(id) ?? null : null;
+}
 // The values each widget last rendered, by panel id, so the widget dialog can
 // offer them for arranging without asking the integration again.
 export const widgetFields = new Map();

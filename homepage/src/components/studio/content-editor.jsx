@@ -1,9 +1,8 @@
-import { useContext, useEffect, useId, useRef, useState } from "react";
+import { useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import useSWR from "swr";
 
 import { studioRequest } from "./api.mjs";
-import { chartRanges } from "./card-chart";
-import { resolvedBehaviour, resolvedLook, widgetFields } from "./card-look";
+import { cardFits, resolvedBehaviour, resolvedLook, useCardFit, widgetFields } from "./card-look";
 import ConfigForm, { LINK_FIELDS, SERVICE_FIELDS } from "./config-form";
 import { ErrorMessage } from "./dialog";
 import { editorDraftChanged, editorFieldsetStyle, useEditorDraft } from "./draft-guard";
@@ -24,9 +23,11 @@ import { loadIndex } from "./icon-chooser";
 import { builtInIconUrl } from "./icon-source.mjs";
 import StudioIcon from "./icons";
 import { SCOPE_LABEL, useLibrary } from "./library";
-import LookEditor, { lookOnly, lookSections, lookSummaries, sameLook, valuesPartShown } from "./look-editor";
+import LookEditor, { contentOnly, lookOnly, lookSections, sameLook, valuesPartShown } from "./look-editor";
+import Menu from "./menu";
 import { patchFromDraft, sourceForPanel } from "./native-adapter.mjs";
-import { ActionRow, Group, revealForm, Row, Section, Segmented } from "./ui";
+import ShowEditor from "./show-editor";
+import { ActionRow, Disclosure, Group, revealForm, Row, Section, Segmented } from "./ui";
 
 import { SettingsContext } from "utils/contexts/settings";
 
@@ -43,7 +44,33 @@ export function customApiMappingsMissing(type, config) {
 
 // The preview's corner: drag it, or use the arrow keys on it, to change the
 // widget's size in grid steps, never below its smallest size.
-export function ResizeCorner({ rect, minimum, columns, onChange, describedBy }) {
+export function ResizeCorner({ rect, minimum, columns, onChange, describedBy, fitId }) {
+  // Mock-ups v4: it also stops at the smallest size the widget's settings
+  // allow. The preview says, each time it fits itself, when they no longer
+  // fit; the size then goes back to the last one that did.
+  const current = useRef(rect);
+  useLayoutEffect(() => {
+    current.current = rect;
+  }, [rect]);
+  const good = useRef(rect);
+  useEffect(() => {
+    if (!fitId || typeof window === "undefined") return undefined;
+    const check = (event) => {
+      if (event.detail?.id !== fitId) return;
+      const fit = cardFits.get(fitId);
+      const now = current.current;
+      if (!fit || !now) return;
+      if (!(fit.squeezed || fit.relaxed || !fit.fits)) {
+        good.current = now;
+        return;
+      }
+      const last = good.current;
+      if (now.w >= last.w && now.h >= last.h) return;
+      onChange((value) => ({ ...value, w: Math.max(value.w, last.w), h: Math.max(value.h, last.h) }));
+    };
+    window.addEventListener("studio-card-fit", check);
+    return () => window.removeEventListener("studio-card-fit", check);
+  }, [fitId, onChange]);
   const clamp = (w, h) => ({
     w: Math.max(Math.min(minimum.w, columns), Math.min(columns, w)),
     h: Math.max(minimum.h, Math.min(200, h)),
@@ -684,9 +711,7 @@ export default function ContentEditor({
       panels: wholeBoard.panels.map((item) => {
         if (item.id !== boardPanel.id) {
           const swap = item.look && lookSwaps.findLast((entry) => sameLook(lookOnly(item.look), entry.from));
-          return swap
-            ? { ...item, look: { ...swap.to, ...(item.look.values ? { values: item.look.values } : {}) } }
-            : item;
+          return swap ? { ...item, look: { ...swap.to, ...contentOnly(item.look) } } : item;
         }
         const { look: _look, behaviour: _behaviour, ...rest } = item;
         return { ...rest, ...(look ? { look } : {}), ...(behaviour ? { behaviour } : {}) };
@@ -726,6 +751,27 @@ export default function ContentEditor({
   const [deleting, setDeleting] = useState(startDeleting);
   const sizeNoteId = useId();
   const [savingAs, setSavingAs] = useState(false);
+  // Existing widgets edit in tabs (mock-ups v4, board 1): Data, Show (what it
+  // shows, at each size), Look and Behaviour; Duplicate, Save as a saved
+  // widget and Delete sit in the More actions menu beside them.
+  const showTab = Boolean(boardPanel) && (kind === "serviceWidget" || kind === "service");
+  const [tab, setTab] = useState(() =>
+    startDeleting || !boardPanel
+      ? "data"
+      : startSection === "look"
+        ? "look"
+        : startSection === "status"
+          ? "behaviour"
+          : showTab
+            ? "show"
+            : "look",
+  );
+  const tabsId = useId().replace(/:/g, "");
+  const [actionsMenu, setActionsMenu] = useState(null);
+  // The size being set up in Show and Look ("all" or one kind of size), and
+  // what the card on the board (docked) or the preview last fitted.
+  const [scope, setScope] = useState("all");
+  const fit = useCardFit(boardPanel ? (docked ? boardPanel.id : `preview:${boardPanel.id}`) : null);
   // Sections stay open until closed, so Values and Look can be open together
   // (F7, 6 Nov 2026: less back and forth; was one at a time, board 24). A new
   // item opens on its settings; an existing one opens with everything summarised.
@@ -734,7 +780,7 @@ export default function ContentEditor({
   );
   // Saved looks and widgets are read once Look or Management first opens.
   const [libraryWanted, setLibraryWanted] = useState(false);
-  if ((openSections.includes("look") || openSections.includes("manage")) && !libraryWanted) setLibraryWanted(true);
+  if ((tab === "look" || savingAs || openSections.includes("manage")) && !libraryWanted) setLibraryWanted(true);
   const library = useLibrary(Boolean(boardPanel) && libraryWanted);
   const sectionProps = (id) => ({
     open: openSections.includes(id),
@@ -761,6 +807,45 @@ export default function ContentEditor({
       deleteButton.current?.focus();
     }
   }, [deleting]);
+  // Tapping a part of the widget being edited (on the board beside a docked
+  // editor, or in the preview) opens its setting and flashes it (mock-ups v4).
+  const tabsRef = useRef(null);
+  useEffect(() => {
+    if (!boardPanel || typeof document === "undefined") return undefined;
+    const tap = (event) => {
+      const host = event.target?.closest?.(
+        `[data-panel-id="${CSS.escape(boardPanel.id)}"], .studio-look-preview .studio-card-preview`,
+      );
+      if (!host || event.target.closest(".studio-preview-resize, .studio-resize-handle, .studio-move-handle")) return;
+      // The preview's content is inert, so the part is found by position.
+      const part = [...host.querySelectorAll("[data-pick]")].find((element) => {
+        const box = element.getBoundingClientRect();
+        return (
+          event.clientX >= box.left &&
+          event.clientX <= box.right &&
+          event.clientY >= box.top &&
+          event.clientY <= box.bottom
+        );
+      });
+      const pick = part?.dataset.pick;
+      if (!pick) return;
+      const next = pick === "header" ? "look" : pick.startsWith("block-") && showTab ? "show" : null;
+      if (!next) return;
+      setTab(next);
+      requestAnimationFrame(() => {
+        const target = tabsRef.current
+          ?.closest("form")
+          ?.querySelector(`[data-key="${CSS.escape(pick === "header" ? "header" : pick)}"]`);
+        if (!target) return;
+        target.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+        target.classList.remove("studio-flash");
+        void target.offsetWidth;
+        target.classList.add("studio-flash");
+      });
+    };
+    document.addEventListener("click", tap, true);
+    return () => document.removeEventListener("click", tap, true);
+  }, [boardPanel, showTab]);
   useEditorDraft(
     !valid || name !== initialName || serviceChanged || editorDraftChanged(initial, draft) || lookChanged,
     pending,
@@ -835,7 +920,6 @@ export default function ContentEditor({
     ? {
         kind,
         chartFields: chartProbe?.values,
-        rangeChoices: chartRanges(settings, look?.chartRange),
         look,
         behaviour,
         inheritedLook: resolvedLook(settings, null),
@@ -927,15 +1011,7 @@ export default function ContentEditor({
       }
     : null;
   const sections = lookSections(kind);
-  const valuesShown =
-    Boolean(boardPanel) &&
-    valuesPartShown({
-      show: sections,
-      fields: reportedValues,
-      nativeValues,
-      effective: { ...lookProps.inheritedLook, ...look },
-    });
-  const summaries = boardPanel ? lookSummaries({ ...lookProps, savedLooks }) : {};
+  const valuesShown = Boolean(boardPanel) && valuesPartShown({ show: sections, fields: reportedValues });
   const has = (...keys) => fields.some((field) => keys.includes(field.key));
   const sentence = (parts) => {
     const text = parts.filter(Boolean).join(", ");
@@ -963,16 +1039,6 @@ export default function ContentEditor({
             detail: sentence(["address", "description", "icon", kind === "service" && "Docker container"]),
             summary: hostOf(draft.href),
           };
-  const behaviourDetail = boardPanel
-    ? sentence([
-        sections.status && "status check",
-        kind === "serviceWidget" && "link",
-        sections.link && "on click",
-        sections.values && "refresh",
-        "which layouts show it",
-      ])
-    : "Where the card's name takes you";
-  if (!boardPanel) summaries.status = hostOf(service?.href);
   const guideName = selectedEntry?.name;
   const guided = Boolean(
     selectedEntry &&
@@ -981,6 +1047,25 @@ export default function ContentEditor({
       selectedEntry.secrets?.length > 0 ||
       selectedEntry.docs),
   );
+  const guideTitle =
+    selectedEntry?.documentationStatus === "studio"
+      ? `About ${guideName}`
+      : guideName
+        ? `Setting up ${guideName}`
+        : "Setting it up";
+  const guideDetail =
+    selectedEntry?.documentationStatus === "studio"
+      ? "What it's for"
+      : selectedEntry?.secrets?.length
+        ? `What ${guideName || "it"} needs and how to name its secrets`
+        : `What ${guideName || "it"} needs`;
+  const tabList = [
+    ["data", "Data"],
+    ...(showTab ? [["show", "Show"]] : []),
+    ["look", "Look"],
+    ["behaviour", "Behaviour"],
+  ];
+  const selectTab = (key) => setTab(key);
   const submit = async (action = source ? "update" : "add") => {
     if (pending) return;
     setError(null);
@@ -1047,6 +1132,118 @@ export default function ContentEditor({
           ? { options: draft }
           : null;
   const liveKey = docked && previewPanel && onLiveDraft ? JSON.stringify([previewPanel, previewOverride]) : null;
+  const nameGroup = requiresName ? (
+    <Group>
+      <Row label="Name" htmlFor="studio-source-name">
+        <input
+          id="studio-source-name"
+          autoFocus
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          required
+          maxLength={200}
+          placeholder="Required"
+        />
+      </Row>
+    </Group>
+  ) : null;
+  const configForm = (
+    <>
+      <ConfigForm
+        value={draft}
+        onChange={setDraft}
+        fields={fields}
+        emptyNote={(source?.type || entry?.type) === "spacer" ? "Nothing to set up. Size it on the board." : undefined}
+        knownKeys={hiddenKeys}
+        certificate={
+          kind === "serviceWidget"
+            ? {
+                skip: service?.skipCertificateCheck === true,
+                onChange: (skip) => setService({ ...service, skipCertificateCheck: skip ? true : "" }),
+              }
+            : kind === "informationWidget" &&
+                CERTIFICATE_INFO_WIDGETS.has(source?.type || selectedEntry?.type || entry?.type)
+              ? {
+                  skip: draft.skipCertificateCheck === true,
+                  onChange: (skip) => {
+                    const next = { ...draft };
+                    if (skip) next.skipCertificateCheck = true;
+                    else delete next.skipCertificateCheck;
+                    setDraft(next);
+                  },
+                }
+              : undefined
+        }
+        onValidity={setValid}
+        sectioned
+        connections={kind === "serviceWidget" || kind === "informationWidget"}
+        testable={kind === "serviceWidget" && (source?.type || selectedEntry?.type || true)}
+      />
+      {(kind === "serviceWidget" || kind === "informationWidget") &&
+        customApiMappingsMissing(source?.type || entry?.type, draft) && (
+          <p className="studio-callout studio-callout-warn" role="status">
+            This Custom API widget has no <code>mappings</code> yet, so its panel will be empty. Add at least one in
+            YAML. You can still save it now.
+          </p>
+        )}
+    </>
+  );
+  const linkGroup =
+    kind === "serviceWidget" ? (
+      <Group>
+        <Row
+          label="Link"
+          htmlFor="studio-widget-link"
+          info="Where the card's name takes you, and where On click opens."
+        >
+          <input
+            id="studio-widget-link"
+            type="url"
+            inputMode="url"
+            value={service.href}
+            onChange={(event) => setService({ ...service, href: event.target.value })}
+            placeholder="https://"
+          />
+        </Row>
+      </Group>
+    ) : null;
+  const deleteQuestion = (
+    <div ref={deleteConfirm} className="studio-delete-confirm" role="alert">
+      <strong>Delete {panel?.title || "this item"}?</strong>
+      <p>
+        {kind === "service"
+          ? "This removes the service and its widgets. The rest of the dashboard stays."
+          : "A snapshot is kept, so you can restore it from dashboard settings under Snapshots & restore."}
+      </p>
+      <div className="studio-inline-actions">
+        <button
+          ref={keepButton}
+          type="button"
+          className="studio-button studio-quiet"
+          onClick={() => setDeleting(false)}
+        >
+          Keep it
+        </button>
+        <button
+          type="button"
+          className="studio-button studio-danger"
+          disabled={pending}
+          onClick={() => submit("delete")}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+  const guide = (
+    <Guide
+      blocks={selectedEntry?.guide}
+      notes={selectedEntry?.setupNotes}
+      secrets={selectedEntry?.secrets}
+      name={guideName}
+      docs={selectedEntry?.docs}
+    />
+  );
   return (
     <form
       onSubmit={(event) => {
@@ -1071,6 +1268,7 @@ export default function ContentEditor({
                   columns={gridColumns(pageBoard(wholeBoard, initialPage))}
                   onChange={setRect}
                   describedBy={sizeNoteId}
+                  fitId={`preview:${boardPanel.id}`}
                 />
               ),
             )}
@@ -1079,8 +1277,7 @@ export default function ContentEditor({
                 <strong>
                   {rect.w} × {rect.h}
                 </strong>{" "}
-                Desktop size. Drag the corner to change it. Smallest: {unitMinimum(wholeBoard, boardPanel.id).w} ×{" "}
-                {unitMinimum(wholeBoard, boardPanel.id).h}.
+                Desktop size. Drag the corner to change it; it stops at the smallest size these settings allow.
               </p>
             )}
             {stacked && <p className="studio-preview-size">In a stack, it takes the stack&apos;s size.</p>}
@@ -1089,245 +1286,237 @@ export default function ContentEditor({
         <div className="studio-widget-settings">
           <ErrorMessage error={error} onReload={onReload} />
           <fieldset disabled={pending} style={editorFieldsetStyle}>
-            {requiresName && (
-              <Group>
-                <Row label="Name" htmlFor="studio-source-name">
-                  <input
-                    id="studio-source-name"
-                    autoFocus
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    required
-                    maxLength={200}
-                    placeholder="Required"
-                  />
-                </Row>
-              </Group>
-            )}
-            <div className="studio-sections">
-              <Section
-                title={settingsSection.title}
-                detail={settingsSection.detail}
-                summary={settingsSection.summary}
-                attention={valid ? null : "Needs a fix"}
-                {...sectionProps("settings")}
-              >
-                <ConfigForm
-                  value={draft}
-                  onChange={setDraft}
-                  fields={fields}
-                  emptyNote={
-                    (source?.type || entry?.type) === "spacer" ? "Nothing to set up. Size it on the board." : undefined
-                  }
-                  knownKeys={hiddenKeys}
-                  certificate={
-                    kind === "serviceWidget"
-                      ? {
-                          skip: service?.skipCertificateCheck === true,
-                          onChange: (skip) => setService({ ...service, skipCertificateCheck: skip ? true : "" }),
-                        }
-                      : kind === "informationWidget" &&
-                          CERTIFICATE_INFO_WIDGETS.has(source?.type || selectedEntry?.type || entry?.type)
-                        ? {
-                            skip: draft.skipCertificateCheck === true,
-                            onChange: (skip) => {
-                              const next = { ...draft };
-                              if (skip) next.skipCertificateCheck = true;
-                              else delete next.skipCertificateCheck;
-                              setDraft(next);
-                            },
-                          }
-                        : undefined
-                  }
-                  onValidity={setValid}
-                  sectioned
-                  connections={kind === "serviceWidget" || kind === "informationWidget"}
-                  testable={kind === "serviceWidget" && (source?.type || selectedEntry?.type || true)}
-                />
-                {(kind === "serviceWidget" || kind === "informationWidget") &&
-                  customApiMappingsMissing(source?.type || entry?.type, draft) && (
-                    <p className="studio-callout studio-callout-warn" role="status">
-                      This Custom API widget has no <code>mappings</code> yet, so its panel will be empty. Add at least
-                      one in YAML. You can still save it now.
-                    </p>
-                  )}
-              </Section>
-              {boardPanel && valuesShown && (
-                <Section
-                  title="Values and charts"
-                  detail={
-                    sections.charts
-                      ? "Which values show, their order, charts, warnings"
-                      : "Which values show, their order, warnings"
-                  }
-                  summary={summaries.values}
-                  {...sectionProps("values")}
-                >
-                  <LookEditor part="values" {...lookProps} />
-                </Section>
-              )}
-              {boardPanel && (
-                <Section
-                  title="Look"
-                  detail={`Saved looks, fill, colour, edge, corners${sections.logo ? ", header" : ""}`}
-                  summary={summaries.look}
-                  {...sectionProps("look")}
-                >
-                  <LookEditor part="look" {...lookProps} />
-                </Section>
-              )}
-              {(boardPanel || kind === "serviceWidget") && (
-                <Section
-                  title={!boardPanel ? "Link" : sections.status ? "Status and behaviour" : "Behaviour"}
-                  detail={behaviourDetail}
-                  summary={summaries.status}
-                  {...sectionProps("status")}
-                >
-                  {kind === "serviceWidget" && (
-                    <Group>
-                      <Row
-                        label="Link"
-                        htmlFor="studio-widget-link"
-                        info="Where the card's name takes you, and where On click opens."
+            {boardPanel ? (
+              <>
+                <div className="studio-editor-tabbar" ref={tabsRef}>
+                  <div
+                    role="tablist"
+                    aria-label="Widget settings"
+                    className="studio-tabs studio-editor-tabs"
+                    onKeyDown={(event) => {
+                      const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+                      if (!step) return;
+                      event.preventDefault();
+                      const keys = tabList.map(([key]) => key);
+                      const next = keys[(keys.indexOf(tab) + step + keys.length) % keys.length];
+                      selectTab(next);
+                      event.currentTarget.querySelector(`#${CSS.escape(`${tabsId}-${next}`)}`)?.focus();
+                    }}
+                  >
+                    {tabList.map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        role="tab"
+                        id={`${tabsId}-${key}`}
+                        aria-selected={tab === key}
+                        aria-controls={`${tabsId}-${key}-panel`}
+                        tabIndex={tab === key ? 0 : -1}
+                        className={tab === key ? "studio-tab-active" : ""}
+                        onClick={() => selectTab(key)}
                       >
-                        <input
-                          id="studio-widget-link"
-                          type="url"
-                          inputMode="url"
-                          value={service.href}
-                          onChange={(event) => setService({ ...service, href: event.target.value })}
-                          placeholder="https://"
-                        />
-                      </Row>
-                    </Group>
-                  )}
-                  {boardPanel && <LookEditor part="status" {...lookProps} />}
-                </Section>
-              )}
-              {boardPanel && !stacked && lookProps.pages.length > 1 && (
-                <Section
-                  title="Page"
-                  detail="Which page it is on"
-                  summary={lookProps.pages.find((item) => item.id === page)?.name}
-                  {...sectionProps("page")}
-                >
-                  <LookEditor part="page" {...lookProps} />
-                </Section>
-              )}
-              {source && (
-                <Section
-                  title="Management"
-                  detail={
-                    (kind === "serviceWidget" || kind === "informationWidget") && boardPanel
-                      ? "Duplicate, save or delete"
-                      : "Duplicate or delete"
-                  }
-                  {...sectionProps("manage")}
-                >
-                  <Group className="studio-item-actions">
-                    <ActionRow
-                      icon="copy"
+                        {label}
+                        {key === "data" && !valid && <i className="studio-tab-attention" aria-label="needs a fix" />}
+                      </button>
+                    ))}
+                  </div>
+                  {source && (
+                    <button
+                      ref={deleteButton}
+                      type="button"
+                      className="studio-icon-button"
+                      aria-label="More actions"
+                      aria-haspopup="menu"
+                      aria-expanded={Boolean(actionsMenu)}
                       disabled={pending}
-                      onClick={() => {
-                        // Duplicate the saved source. Switching away from an edited
-                        // source asks before discarding its local changes.
-                        onDuplicate(duplicateEntry(panel, state, catalog));
+                      onClick={(event) => {
+                        const box = event.currentTarget.getBoundingClientRect();
+                        setLibraryWanted(true);
+                        setActionsMenu({
+                          x: box.right - 230,
+                          y: box.bottom + 4,
+                          above: box.top - 4,
+                          from: event.currentTarget,
+                        });
                       }}
                     >
-                      Duplicate
-                    </ActionRow>
-                    {(kind === "serviceWidget" || kind === "informationWidget") && boardPanel && (
-                      <ActionRow
-                        icon="tag"
-                        disabled={pending}
-                        aria-expanded={savingAs}
-                        onClick={() => setSavingAs((value) => !value)}
-                      >
-                        Save as a saved widget
-                      </ActionRow>
-                    )}
-                    <ActionRow
-                      ref={deleteButton}
-                      icon="trash"
-                      danger
-                      disabled={pending}
-                      // A widget on the board goes at once, with Undo, as from
-                      // its menu (board 23): one Delete, one behaviour.
-                      aria-expanded={onDelete && boardPanel ? undefined : deleting}
-                      onClick={() => (onDelete && boardPanel ? onDelete(boardPanel) : setDeleting(true))}
-                    >
-                      Delete
-                    </ActionRow>
-                  </Group>
-                  {savingAs && (
-                    <SaveAsWidget
-                      library={library}
-                      defaultName={name || panel?.title || ""}
-                      panelId={boardPanel.id}
-                      changed={
-                        name !== initialName || serviceChanged || editorDraftChanged(initial, draft) || lookChanged
-                      }
-                      onDone={() => setSavingAs(false)}
-                    />
+                      <StudioIcon name="more" />
+                    </button>
                   )}
-                  {deleting && (
-                    <div ref={deleteConfirm} className="studio-delete-confirm" role="alert">
-                      <strong>Delete {panel?.title || "this item"}?</strong>
-                      <p>
-                        {kind === "service"
-                          ? "This removes the service and its widgets. The rest of the dashboard stays."
-                          : "A snapshot is kept, so you can restore it from dashboard settings under Snapshots & restore."}
-                      </p>
-                      <div className="studio-inline-actions">
-                        <button
-                          ref={keepButton}
-                          type="button"
-                          className="studio-button studio-quiet"
-                          onClick={() => setDeleting(false)}
-                        >
-                          Keep it
-                        </button>
-                        <button
-                          type="button"
-                          className="studio-button studio-danger"
+                </div>
+                {actionsMenu && (
+                  <Menu
+                    anchor={actionsMenu}
+                    label="Widget actions"
+                    returnFocus={actionsMenu.from}
+                    onClose={() => setActionsMenu(null)}
+                    items={[
+                      {
+                        id: "duplicate",
+                        icon: "copy",
+                        label: "Duplicate",
+                        // Switching away from an edited source asks before
+                        // discarding its local changes.
+                        onSelect: () => onDuplicate(duplicateEntry(panel, state, catalog)),
+                      },
+                      (kind === "serviceWidget" || kind === "informationWidget") && {
+                        id: "save",
+                        icon: "tag",
+                        label: "Save as a saved widget",
+                        keepFocus: true,
+                        onSelect: () => setSavingAs(true),
+                      },
+                      "-",
+                      {
+                        id: "delete",
+                        icon: "trash",
+                        label: "Delete",
+                        danger: true,
+                        keepFocus: true,
+                        // A widget on the board goes at once, with Undo, as
+                        // from its menu (board 23): one Delete, one behaviour.
+                        onSelect: () => (onDelete ? onDelete(boardPanel) : setDeleting(true)),
+                      },
+                    ]}
+                  />
+                )}
+                {savingAs && (
+                  <SaveAsWidget
+                    library={library}
+                    defaultName={name || panel?.title || ""}
+                    panelId={boardPanel.id}
+                    changed={
+                      name !== initialName || serviceChanged || editorDraftChanged(initial, draft) || lookChanged
+                    }
+                    onDone={() => setSavingAs(false)}
+                  />
+                )}
+                {deleting && deleteQuestion}
+                <div
+                  role="tabpanel"
+                  id={`${tabsId}-data-panel`}
+                  aria-labelledby={`${tabsId}-data`}
+                  className="studio-tab-panel"
+                  hidden={tab !== "data"}
+                >
+                  {nameGroup}
+                  {configForm}
+                  {guided && <Disclosure title={guideTitle}>{guide}</Disclosure>}
+                </div>
+                {showTab && (
+                  <div
+                    role="tabpanel"
+                    id={`${tabsId}-show-panel`}
+                    aria-labelledby={`${tabsId}-show`}
+                    className="studio-tab-panel"
+                    hidden={tab !== "show"}
+                  >
+                    <ShowEditor
+                      kind={kind}
+                      look={look}
+                      inheritedLook={lookProps.inheritedLook}
+                      onLook={setLook}
+                      fields={reportedValues}
+                      numbers={
+                        Array.isArray(chartProbe?.values) ? chartProbe.values.map((value) => value.field) : undefined
+                      }
+                      formats={Object.fromEntries(
+                        (Array.isArray(chartProbe?.values) ? chartProbe.values : []).map((value) => [
+                          value.field,
+                          value.format,
+                        ]),
+                      )}
+                      fit={fit}
+                      scope={scope}
+                      onScope={setScope}
+                      choices={nativeValues?.choices}
+                      prefix={nativeValues?.prefix}
+                      nativeFields={nativeValues?.fields}
+                      onNativeFields={nativeValues?.onChange}
+                    />
+                    {valuesShown && (
+                      <Disclosure title="More: each value's name, number style, colour and rules">
+                        <LookEditor part="values" {...lookProps} />
+                      </Disclosure>
+                    )}
+                  </div>
+                )}
+                <div
+                  role="tabpanel"
+                  id={`${tabsId}-look-panel`}
+                  aria-labelledby={`${tabsId}-look`}
+                  className="studio-tab-panel"
+                  hidden={tab !== "look"}
+                >
+                  <LookEditor part="look" {...lookProps} scope={scope} onScope={setScope} fit={fit} />
+                </div>
+                <div
+                  role="tabpanel"
+                  id={`${tabsId}-behaviour-panel`}
+                  aria-labelledby={`${tabsId}-behaviour`}
+                  className="studio-tab-panel"
+                  hidden={tab !== "behaviour"}
+                >
+                  {linkGroup}
+                  <LookEditor part="status" {...lookProps} />
+                  {!stacked && <LookEditor part="page" {...lookProps} />}
+                </div>
+              </>
+            ) : (
+              <>
+                {nameGroup}
+                <div className="studio-sections">
+                  <Section
+                    title={settingsSection.title}
+                    detail={settingsSection.detail}
+                    summary={settingsSection.summary}
+                    attention={valid ? null : "Needs a fix"}
+                    {...sectionProps("settings")}
+                  >
+                    {configForm}
+                  </Section>
+                  {kind === "serviceWidget" && (
+                    <Section
+                      title="Link"
+                      detail="Where the card's name takes you"
+                      summary={hostOf(service?.href)}
+                      {...sectionProps("status")}
+                    >
+                      {linkGroup}
+                    </Section>
+                  )}
+                  {source && (
+                    <Section title="Management" detail="Duplicate or delete" {...sectionProps("manage")}>
+                      <Group className="studio-item-actions">
+                        <ActionRow
+                          icon="copy"
                           disabled={pending}
-                          onClick={() => submit("delete")}
+                          onClick={() => onDuplicate(duplicateEntry(panel, state, catalog))}
+                        >
+                          Duplicate
+                        </ActionRow>
+                        <ActionRow
+                          ref={deleteButton}
+                          icon="trash"
+                          danger
+                          disabled={pending}
+                          aria-expanded={deleting}
+                          onClick={() => setDeleting(true)}
                         >
                           Delete
-                        </button>
-                      </div>
-                    </div>
+                        </ActionRow>
+                      </Group>
+                      {deleting && deleteQuestion}
+                    </Section>
                   )}
-                </Section>
-              )}
-              {guided && (
-                <Section
-                  title={
-                    selectedEntry?.documentationStatus === "studio"
-                      ? `About ${guideName}`
-                      : guideName
-                        ? `Setting up ${guideName}`
-                        : "Setting it up"
-                  }
-                  detail={
-                    selectedEntry?.documentationStatus === "studio"
-                      ? "What it's for"
-                      : selectedEntry?.secrets?.length
-                        ? `What ${guideName || "it"} needs and how to name its secrets`
-                        : `What ${guideName || "it"} needs`
-                  }
-                  {...sectionProps("guide")}
-                >
-                  <Guide
-                    blocks={selectedEntry?.guide}
-                    notes={selectedEntry?.setupNotes}
-                    secrets={selectedEntry?.secrets}
-                    name={guideName}
-                    docs={selectedEntry?.docs}
-                  />
-                </Section>
-              )}
-            </div>
+                  {guided && (
+                    <Section title={guideTitle} detail={guideDetail} {...sectionProps("guide")}>
+                      {guide}
+                    </Section>
+                  )}
+                </div>
+              </>
+            )}
           </fieldset>
         </div>
       </div>

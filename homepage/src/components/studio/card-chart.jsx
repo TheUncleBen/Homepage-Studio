@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { studioRequest } from "./api.mjs";
 import { dashboardPath } from "./dashboard-path.mjs";
 import StudioDialog from "./dialog";
-import { CHART_SHOWS, needsHistory, ruleLevel } from "./look.mjs";
+import { allBlocks, needsHistory, ruleLevel } from "./look.mjs";
 import { Segmented } from "./ui";
 
 // Charts (boards 6, 10, 15): drawn from the history Studio's collector keeps
@@ -19,6 +19,7 @@ export const RANGE_LABELS = {
   "7d": "Last 7 days",
   "30d": "Last 30 days",
 };
+export const CHART_SHOWS = Object.freeze(["line", "area", "bar"]);
 const RANGE_SPAN = { "1h": 3600e3, "6h": 6 * 3600e3, "24h": 86400e3, "7d": 7 * 86400e3, "30d": 30 * 86400e3 };
 
 // The ranges the dashboard keeps history for (Chart history: 7, 30 or 90
@@ -37,17 +38,28 @@ export const PALETTE = ["#5aa9e6", "#e0a03b", "#b48ead", "#6cc1a5", "#e07a5f", "
 const historyPath = (panelId, range) =>
   dashboardPath(`/studio/api/history?${new URLSearchParams({ panel: panelId, range })}`);
 
-// The range a card reads: its chart's, or long enough for its trend.
+// The range a card reads: the longest its blocks need, at any size (a chart's
+// range, response time's, or long enough for a trend). Status history reads
+// its own.
+const TREND_RANGE = { hour: "6h", day: "7d", week: "30d" };
 export function historyRange(look) {
-  if (CHART_SHOWS.includes(look.show)) return look.chartRange;
-  if (look.show === "numbers" && look.layout === "hero" && look.trend === "week") return "30d";
-  if (look.show === "numbers" && look.layout === "hero" && look.trend === "day") return "7d";
-  if (look.show === "numbers" && look.layout === "hero" && look.trend === "hour") return "6h";
-  return "1h";
+  const order = Object.keys(RANGE_SPAN);
+  let wanted = "1h";
+  for (const block of allBlocks(look)) {
+    const range =
+      block.type === "chart" || block.type === "response"
+        ? block.range || (block.type === "chart" ? "24h" : "1h")
+        : block.type === "big" && TREND_RANGE[block.trend]
+          ? TREND_RANGE[block.trend]
+          : null;
+    if (range && order.indexOf(range) > order.indexOf(wanted)) wanted = range;
+  }
+  return wanted;
 }
 
 export function useCardHistory(panel, look) {
-  const wanted = panel?.kind === "serviceWidget" && Boolean(panel.id) && needsHistory(look);
+  const wanted =
+    ["serviceWidget", "service"].includes(panel?.kind) && Boolean(panel.id) && needsHistory(look);
   const { data } = useSWR(wanted ? historyPath(panel.id, historyRange(look)) : null, studioRequest, {
     // Until the first numbers arrive (a widget just switched to a chart),
     // look again every few seconds rather than once a minute.
@@ -98,22 +110,25 @@ export function Trend({ history, field, trend }) {
   );
 }
 
-// Which of the history's values a chart draws: the ones the widget shows, in
-// its order, with their own names and colours.
+// Which of the history's values a chart draws: the block's values (card.fields)
+// in its order, or every collected number, with their own names and colours.
+// The status check's own fields (up, ms) are never a value's series.
+const CHECK_FIELDS = new Set(["up", "ms"]);
 export function chartSeries(history, card, labelOf) {
   if (!history?.fields?.length) return [];
-  const arranged = new Map((card.values || []).map((value, order) => [value.field, { ...value, order }]));
-  // A value's colour follows its place among all values, hidden ones
-  // included, so hiding one recolours nothing.
-  return history.fields
-    .map((field, index) => ({ field, index, arranged: arranged.get(field.field) }))
-    .sort((a, b) => (a.arranged?.order ?? Infinity) - (b.arranged?.order ?? Infinity))
-    .map((entry, position) => ({
-      ...entry,
-      name: entry.arranged?.label || labelOf(entry.field.label || entry.field.field),
-      colour: entry.arranged?.colour || PALETTE[position % PALETTE.length],
-    }))
-    .filter((entry) => entry.arranged?.slot !== "hidden" && entry.arranged?.slot !== "number");
+  const arranged = new Map((card.values || []).map((value) => [value.field, value]));
+  const own = history.fields.filter((field) => card.check || !CHECK_FIELDS.has(field.field));
+  // A value's colour follows its place among all the widget's numbers, so
+  // picking or dropping one recolours nothing.
+  const all = own.map((field, position) => ({
+    field,
+    index: history.fields.indexOf(field),
+    arranged: arranged.get(field.field),
+    name: arranged.get(field.field)?.label || labelOf(field.label || field.field),
+    colour: arranged.get(field.field)?.colour || PALETTE[position % PALETTE.length],
+  }));
+  if (!Array.isArray(card.fields)) return all;
+  return card.fields.map((key) => all.find((entry) => entry.field.field === key)).filter(Boolean);
 }
 
 // Board 27: a value that is the sum of others (a total) is never a slice of
@@ -121,20 +136,11 @@ export function chartSeries(history, card, labelOf) {
 export const isTotal = (field) =>
   [field.field, field.label].some((key) => typeof key === "string" && /(^|[._-])total$/i.test(key));
 
-// The values a card shows as numbers beside its chart: those set to Number,
-// and on a pie or donut the totals it leaves out.
+// On a pie or donut a total is never a slice; it stands beside the chart.
 export function besideSeries(history, card, labelOf) {
-  if (!history?.fields?.length) return [];
-  const arranged = new Map((card.values || []).map((value, order) => [value.field, { ...value, order }]));
   const round = card.show === "donut" || card.show === "pie";
-  return history.fields
-    .map((field) => ({ field, arranged: arranged.get(field.field) }))
-    .filter(
-      (entry) =>
-        entry.arranged?.slot === "number" || (round && entry.arranged?.slot !== "hidden" && isTotal(entry.field)),
-    )
-    .sort((a, b) => (a.arranged?.order ?? Infinity) - (b.arranged?.order ?? Infinity))
-    .map((entry) => ({ ...entry, name: entry.arranged?.label || labelOf(entry.field.label || entry.field.field) }));
+  if (!round) return [];
+  return chartSeries(history, card, labelOf).filter((entry) => isTotal(entry.field));
 }
 
 const W = 300;
@@ -476,14 +482,10 @@ export function partsFormat(fields = []) {
   return best;
 }
 
-// The value a gauge or a donut's middle shows: the chosen hero, else (for a
-// gauge) the first percentage, else the first value.
-export function heroSeries(series, gauge = false) {
-  return (
-    series.find((entry) => entry.arranged?.slot === "hero") ||
-    (gauge && series.find((entry) => entry.field.format === "percent")) ||
-    series[0]
-  );
+// The value a gauge or a donut's middle shows: the block's first value, else
+// (for a gauge with none picked) the first percentage.
+export function heroSeries(series, gauge = false, picked = false) {
+  return (!picked && gauge && series.find((entry) => entry.field.format === "percent")) || series[0];
 }
 
 // Times in the dashboard's language, like its numbers.
@@ -529,14 +531,14 @@ export function CardChart({ card, onOpen }) {
   const from = since ?? rangeFrom;
   let body;
   if (show === "gauge") {
-    const entry = heroSeries(series, true);
+    const entry = heroSeries(series, true, Array.isArray(card.fields));
     const value = history.latest.values?.[entry.field.field];
     const rule = (card.values || []).find((item) => item.field === entry.field.field)?.rules;
     body = <Gauge entry={entry} value={value} text={format(entry.field, value)} level={ruleLevel(rule, value)} />;
   } else if (round) {
     const unit = partsFormat(history.fields);
     const parts = series.filter((entry) => (entry.field.format || "plain") === unit && !isTotal(entry.field));
-    const hero = heroSeries(parts);
+    const hero = heroSeries(parts, false, true);
     const total = parts.reduce((sum, entry) => {
       const value = history.latest.values?.[entry.field.field];
       return sum + (Number.isFinite(value) && value > 0 ? value : 0);

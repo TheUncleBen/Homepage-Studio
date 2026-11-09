@@ -1,10 +1,11 @@
 import { useTranslation } from "next-i18next/pages";
-import { useContext } from "react";
+import { useContext, useMemo } from "react";
 import useSWR from "swr";
 
 import { studioRequest } from "./api.mjs";
-import { StatusHistory } from "./card-chart";
-import { CardLookContext } from "./card-look";
+import { useBlockFit } from "./card-fit";
+import { CardFitContext, CardLookContext } from "./card-look";
+import { CardBlocks } from "./card-values";
 import { usePreferences } from "./preferences";
 
 import ResolvedIcon from "components/resolvedicon";
@@ -122,7 +123,7 @@ export function CardHead({ icon, name, description, note, href, card, status, ex
   const linked = href && href !== "#" && target;
   if (card.header === "hidden" && !status && !extra) return null;
   return (
-    <header className="studio-card-head">
+    <header className="studio-card-head" data-logo={card.logoPos === "above" ? "above" : undefined} data-pick="header">
       {card.header !== "hidden" &&
         (linked ? (
           <a className="studio-card-identity" href={href} target={target} rel="noreferrer">
@@ -170,26 +171,45 @@ export function ServiceCard({ service, groupName, children, connected = false })
   const note = down
     ? `${status.code ? `Answered ${status.code}` : status.text && status.text !== "Error" ? status.text : "No answer"}${since ? ` since ${since.toLocaleTimeString(i18n.language || [], { hour: "2-digit", minute: "2-digit", ...(clock !== "dashboard" ? { hour12: clock === "12" } : {}) })}` : ""}`
     : null;
-  // Status history takes the place of an integration's own values.
-  const body = card.show === "status" && card.statusCheck !== "off" ? <StatusHistory card={card} /> : children;
+  // The card's blocks at its size (mock-ups v4). An integration widget draws
+  // them with its values; a service card has only status, response time and
+  // logs blocks to draw.
+  const { ref, effective, context } = useBlockFit(card);
+  const sized = useMemo(
+    () => ({
+      ...card,
+      header: effective.header,
+      logoPos: effective.logoPos,
+      align: effective.align,
+      blocks: effective.blocks,
+    }),
+    [card, effective],
+  );
+  const body = children ?? <CardBlocks card={sized} />;
   return (
-    <div
-      className="studio-card"
-      data-alert={down || card.ruleAlert || undefined}
-      data-has-body={Boolean(body) || undefined}
-    >
-      <CardHead
-        icon={service.icon}
-        name={service.name}
-        description={service.description}
-        note={note}
-        href={service.href}
-        card={card}
-        status={status}
-        extra={extra}
-      />
-      {body && <div className="studio-card-body">{body}</div>}
-    </div>
+    <CardLookContext.Provider value={sized}>
+      <CardFitContext.Provider value={context}>
+        <div
+          ref={ref}
+          className="studio-card"
+          data-alert={down || card.ruleAlert || undefined}
+          data-has-body={Boolean(body) || undefined}
+          data-align={effective.align}
+        >
+          <CardHead
+            icon={service.icon}
+            name={service.name}
+            description={service.description}
+            note={note}
+            href={service.href}
+            card={sized}
+            status={status}
+            extra={extra}
+          />
+          {body && <div className="studio-card-body">{body}</div>}
+        </div>
+      </CardFitContext.Provider>
+    </CardLookContext.Provider>
   );
 }
 

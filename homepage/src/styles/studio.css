@@ -3027,9 +3027,43 @@ body {
 .studio-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-height: 100%;
+  gap: calc(10px * var(--s, 1));
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   container: studio-card / inline-size;
+}
+/* Header beside the blocks (Header sits: Beside, or Auto on a wide card). */
+.studio-card[data-inline] {
+  flex-direction: row;
+  align-items: stretch;
+}
+.studio-card[data-inline] > .studio-card-head {
+  flex-direction: column;
+  justify-content: center;
+  max-width: 40%;
+}
+.studio-card[data-inline] > .studio-card-body {
+  min-width: 0;
+}
+/* Logo centred above the name. */
+.studio-card-head[data-logo="above"] .studio-card-identity {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: calc(4px * var(--s, 1));
+}
+.studio-card-head[data-logo="above"] {
+  position: relative;
+  justify-content: center;
+}
+.studio-card-head[data-logo="above"] .studio-card-tags {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+.studio-card-body:empty {
+  display: none;
 }
 /* A narrow card (a half-width tile on a phone): the name may take two lines,
    the status keeps its dot (its words stay in the label and tooltip), and a
@@ -3069,17 +3103,11 @@ body {
     display: none;
   }
 }
-/* A hero number stays on one line on a narrow card. */
-@container studio-card (max-width: 150px) {
-  .studio-card .studio-value-hero .studio-value-number {
-    font-size: 24px;
-  }
-}
 
 .studio-card-head {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: calc(10px * var(--s, 1));
   min-width: 0;
 }
 .studio-card-identity {
@@ -3102,12 +3130,12 @@ body {
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: calc(28px * var(--s, 1));
+  height: calc(28px * var(--s, 1));
 }
 .studio-card-logo > * {
-  max-width: 28px;
-  max-height: 28px;
+  max-width: 100%;
+  max-height: 100%;
 }
 .studio-card-name {
   display: grid;
@@ -3115,7 +3143,7 @@ body {
   gap: 1px;
 }
 .studio-card-name strong {
-  font-size: 14.5px;
+  font-size: calc(14.5px * var(--s, 1));
   font-weight: 650;
   line-height: 1.3;
   overflow: hidden;
@@ -3124,7 +3152,7 @@ body {
 }
 .studio-card-name small {
   color: var(--card-muted-text);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--s, 1));
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3135,14 +3163,14 @@ body {
   align-items: center;
   gap: 8px;
   flex: none;
-  min-height: 28px;
+  min-height: calc(28px * var(--s, 1));
 }
 .studio-card-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--card-muted-text);
-  font-size: 12px;
+  font-size: calc(12px * var(--s, 1));
   font-variant-numeric: tabular-nums;
 }
 .studio-status-dot {
@@ -3190,125 +3218,301 @@ body {
   min-height: 0;
 }
 
-/* Values: Hero (one large, the rest below a line) or Quiet (equal boxes). */
-.studio-values {
+/* Blocks (widget redesign, mock-ups v4): a card is a stack of blocks, each
+   drawn in full. card-fit.js picks how they sit and the text scale (--s) for
+   the card's size; every size here is a multiple of --s so text grows and
+   shrinks with the card. Nothing folds and nothing scrolls. */
+.studio-blocks {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(10px * var(--s, 1));
   width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.studio-blocks[data-dir="row"] {
+  flex-direction: row;
+}
+.studio-blocks[data-dir="grid"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: stretch;
+}
+.studio-blocks[data-dir="grid"] > .studio-block {
+  flex: 1 1 calc(50% - 5px * var(--s, 1));
+}
+.studio-block {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: safe center;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.studio-block > * {
+  flex-shrink: 0;
+}
+/* Charts take the block's room and give way first. */
+.studio-block:is([data-type="pie"], [data-type="chart"], [data-type="gauge"], [data-type="response"]) > * {
+  flex: 1 1 auto;
+}
+.studio-block-values {
+  display: flex;
+  min-width: 0;
 }
 .studio-value {
   display: flex;
   flex-direction: column;
+  align-items: safe center;
+  justify-content: safe center;
   min-width: 0;
+  overflow: hidden;
+  padding-inline: calc(2px * var(--s, 1));
+  text-align: center;
+}
+.studio-card[data-align="left"] .studio-value {
+  align-items: flex-start;
+  text-align: left;
 }
 .studio-value-number {
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  font-weight: 650;
+  white-space: nowrap;
 }
 .studio-panel[data-numbers="mono"] .studio-value-number {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
 }
 .studio-value-label {
   color: var(--card-muted-text);
-  font-size: 12px;
-  line-height: 1.35;
-}
-.studio-value-hero .studio-value-number {
-  font-size: 34px;
-  font-weight: 450;
-  line-height: 1.05;
-  letter-spacing: 0.01em;
-}
-.studio-panel[data-hero="s"] .studio-value-hero .studio-value-number {
-  font-size: 24px;
-}
-.studio-panel[data-hero="l"] .studio-value-hero .studio-value-number {
-  font-size: 46px;
-}
-.studio-panel[data-hero="xl"] .studio-value-hero .studio-value-number {
-  font-size: 60px;
+  font-size: calc(11.5px * var(--s, 1));
+  line-height: 1.3;
+  white-space: nowrap;
 }
 .studio-value-unit {
-  margin-left: 4px;
+  margin-left: 0.12em;
   color: var(--card-muted-text);
   font-size: 0.42em;
   font-weight: 500;
   letter-spacing: 0;
 }
-.studio-value-hero .studio-value-label {
-  margin-top: 4px;
-  font-size: 13px;
+/* Big number: as large as its room allows (by its length), between a floor
+   and its size's ceiling, both scaled with the card. */
+.studio-block[data-type="big"] .studio-block-values {
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: calc(2px * var(--s, 1)) calc(16px * var(--s, 1));
+  container-type: inline-size;
+  width: 100%;
 }
-/* Tighter, before values fold (card-values useFold). */
-.studio-native-content[data-tight] .studio-card {
-  gap: 6px;
+.studio-card[data-align="left"] .studio-block[data-type="big"] .studio-block-values {
+  justify-content: flex-start;
 }
-.studio-native-content[data-tight] .studio-values {
-  gap: 5px;
+.studio-block[data-type="big"] {
+  --big: 34px;
 }
-/* Only the default hero size gives way; a chosen size stays as chosen. */
-.studio-panel:not([data-hero]) .studio-native-content[data-tight] .studio-value-hero .studio-value-number {
-  font-size: 28px;
+.studio-block[data-type="big"][data-size="s"] {
+  --big: 24px;
 }
-.studio-native-content[data-tight] .studio-value-hero .studio-value-label {
-  margin-top: 2px;
+.studio-block[data-type="big"][data-size="l"] {
+  --big: 46px;
 }
-.studio-native-content[data-tight] .studio-values-below {
-  padding-top: 5px;
+.studio-block[data-type="big"][data-size="xl"] {
+  --big: 60px;
 }
-/* Values without the rule, when the band is too short for it (card-values.jsx). */
-.studio-native-content .studio-values-below[data-bare] {
-  border-top: 0;
-  padding-top: 0;
+.studio-value-big {
+  max-width: 100%;
 }
-.studio-native-content .studio-values-below[data-empty] {
-  /* Only "+N more" is left: no rule, and it tucks up beside the hero's label. */
-  border-top: 0;
-  padding-top: 0;
-  margin-top: -8px;
+.studio-value-big .studio-value-number {
+  font-size: clamp(calc(20px * var(--s, 1)), calc(94cqi / (var(--n, 4) * 0.62)), calc(var(--big) * var(--s, 1)));
+  font-weight: 450;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
 }
-.studio-values-below {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
-  gap: 8px 18px;
-  padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--card-text) 14%, transparent);
+.studio-value-big .studio-value-label {
+  margin-top: calc(3px * var(--s, 1));
+  font-size: calc(12.5px * var(--s, 1));
 }
-/* A word value stays whole on one line; the full text is its tooltip. */
-.studio-value-below .studio-value-number,
+/* Numbers: grid, list or row (fit.mjs sets data-arrange and --columns). */
+.studio-value-number,
 .studio-value-quiet .studio-value-number {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-overflow: clip;
 }
-.studio-value-below .studio-value-number {
-  font-size: 15px;
-  font-weight: 600;
+.studio-value-number:where(.studio-value-number) {
+  font-size: calc(15px * var(--s, 1));
   line-height: 1.25;
 }
-.studio-value-below .studio-value-label {
-  font-size: 11.5px;
+.studio-block[data-type="numbers"] .studio-block-values {
+  gap: calc(8px * var(--s, 1));
+  width: 100%;
 }
-/* Table: every value as a row, its name left and its number right. */
-.studio-values-table {
-  gap: 0;
+.studio-block[data-type="numbers"][data-arrange="grid"] .studio-block-values {
+  flex-wrap: wrap;
+  justify-content: center;
 }
-.studio-values-table .studio-value {
+.studio-block[data-type="numbers"][data-arrange="grid"] .studio-value {
+  flex: 0 0 calc((100% - (var(--columns, 1) - 1) * 8px * var(--s, 1)) / var(--columns, 1));
+  padding: calc(7px * var(--s, 1)) calc(5px * var(--s, 1));
+  border-radius: calc(9px * var(--s, 1));
+  background: color-mix(in srgb, var(--card-text) 5%, transparent);
+}
+.studio-card[data-align="left"] .studio-block[data-type="numbers"][data-arrange="grid"] .studio-block-values {
+  justify-content: flex-start;
+}
+.studio-block[data-type="numbers"][data-arrange="list"] .studio-block-values {
+  display: grid;
+  grid-template-columns: repeat(var(--columns, 1), minmax(0, 1fr));
+  column-gap: calc(18px * var(--s, 1));
+  row-gap: 0;
+}
+.studio-block[data-type="numbers"][data-arrange="list"] .studio-value {
   flex-direction: row-reverse;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
-  padding: 5px 0;
+  gap: calc(12px * var(--s, 1));
+  padding: calc(4px * var(--s, 1)) 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--card-text) 8%, transparent);
+  text-align: left;
 }
-/* A line between rows; each row sits in its own fold item. */
-.studio-values-table .studio-fold-item + .studio-fold-item .studio-value {
-  border-top: 1px solid color-mix(in srgb, var(--card-text) 10%, transparent);
+/* The number never gives way; a name too long shows the card is too narrow. */
+.studio-block[data-type="numbers"][data-arrange="list"] .studio-value-number {
+  flex: none;
 }
-.studio-values-table .studio-value-number {
-  font-size: 14px;
-  font-weight: 600;
+.studio-block[data-type="numbers"][data-arrange="list"] .studio-value-label {
+  min-width: 0;
+  overflow: hidden;
+}
+.studio-block .studio-chart-note {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--card-muted-text);
+  font-size: calc(11.5px * var(--s, 1));
+  line-height: 1.35;
+}
+.studio-block[data-type="numbers"][data-arrange="row"] .studio-block-values {
+  justify-content: space-around;
+  gap: calc(6px * var(--s, 1));
+}
+.studio-block[data-type="numbers"][data-arrange="row"] .studio-value {
+  flex: 1 1 0;
+}
+/* Quiet numbers: small and muted, wrapped onto lines. */
+.studio-block[data-type="quiet"] .studio-block-values {
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: calc(2px * var(--s, 1)) calc(14px * var(--s, 1));
+  width: 100%;
+}
+.studio-card[data-align="left"] .studio-block[data-type="quiet"] .studio-block-values {
+  justify-content: flex-start;
+}
+.studio-value-quiet {
+  flex-direction: row-reverse;
+  align-items: baseline;
+  gap: calc(4px * var(--s, 1));
+}
+.studio-value-quiet .studio-value-number {
+  font-size: calc(13px * var(--s, 1));
+  font-weight: 650;
+}
+.studio-value-quiet .studio-value-label {
+  font-size: calc(12px * var(--s, 1));
+}
+/* Bars: each value's latest number against the largest. */
+.studio-bars-now {
+  display: grid;
+  grid-template-columns: auto minmax(calc(28px * var(--s, 1)), 1fr) auto;
+  align-items: center;
+  column-gap: calc(10px * var(--s, 1));
+  row-gap: calc(7px * var(--s, 1));
+  font-size: calc(13px * var(--s, 1));
+}
+.studio-bars-now[data-labels="off"] {
+  grid-template-columns: minmax(calc(28px * var(--s, 1)), 1fr) auto;
+}
+.studio-bar-label {
+  min-width: 0;
+  color: var(--card-muted-text);
+  white-space: nowrap;
+}
+.studio-bar-track {
+  height: calc(8px * var(--s, 1));
+  overflow: hidden;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--card-text) 8%, transparent);
+}
+.studio-bar-track > i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+}
+.studio-bar-value {
+  font-variant-numeric: tabular-nums;
   text-align: right;
+  white-space: nowrap;
+}
+/* Recent logs: as many lines as fit, at least two (fit.mjs). */
+.studio-card-logs {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--s, 1));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font:
+    calc(11.5px * var(--s, 1)) / 1.45 "IBM Plex Mono",
+    ui-monospace,
+    monospace;
+}
+.studio-log-line {
+  display: flex;
+  gap: calc(8px * var(--s, 1));
+  min-width: 0;
+  white-space: nowrap;
+}
+.studio-log-level {
+  flex: none;
+  color: var(--card-muted-text);
+}
+.studio-log-line[data-severity="4"] .studio-log-level {
+  color: var(--studio-status-warn, #d9a33b);
+}
+.studio-log-line:is([data-severity="0"], [data-severity="1"], [data-severity="2"], [data-severity="3"])
+  .studio-log-level {
+  color: var(--studio-status-problem, #e5604f);
+}
+.studio-log-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.studio-block[data-type="logs"] {
+  justify-content: flex-start;
+}
+/* Pie and donut: the legend beside or below the shape (fit.mjs). */
+.studio-block[data-type="pie"][data-legend="below"] .studio-chart-parts {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  justify-items: center;
+}
+.studio-block[data-type="pie"][data-legend="off"] .studio-chart-parts {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+.studio-block[data-type="pie"][data-legend="off"] .studio-chart-legend {
+  display: none;
+}
+.studio-block[data-type="pie"][data-legend="below"] .studio-chart-parts .studio-chart-legend {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: calc(12px * var(--s, 1));
 }
 /* Colour rules: the number takes the dashboard's warning or problem colour. */
 .studio-value[data-rule="warn"] .studio-value-number {
@@ -3327,10 +3531,6 @@ body {
   color: var(--card-text);
 }
 /* Charts: drawn from the history Studio keeps. */
-.studio-values-charted {
-  flex: 1;
-  min-height: 0;
-}
 .studio-chart-open,
 .studio-chart-wrap {
   display: flex;
@@ -3357,30 +3557,9 @@ body {
 .studio-chart {
   position: relative;
   flex: 1;
-  min-height: 40px;
+  min-height: calc(40px * var(--s, 1));
 }
-/* A chart card fits its tile: the chart gives way, nothing scrolls, so
-   focusing or tapping the chart never scrolls the header out of view. */
-.studio-card:has(.studio-values-charted) {
-  height: 100%;
-  min-height: 0;
-  gap: 6px;
-}
-.studio-values-charted {
-  gap: 4px;
-}
-.studio-values-charted .studio-chart-line,
-.studio-values-charted .studio-chart-area,
-.studio-values-charted .studio-chart-bar {
-  min-height: 20px;
-}
-.studio-card:has(.studio-values-charted) .studio-card-body,
-.studio-values-charted {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.studio-native-content:has(> .studio-card .studio-values-charted) {
+.studio-native-content:has(> .studio-card) {
   overflow: clip;
 }
 .studio-chart-grid line {
@@ -3399,7 +3578,7 @@ body {
 .studio-chart-donut,
 .studio-chart-pie,
 .studio-chart-gauge {
-  min-height: 72px;
+  min-height: calc(64px * var(--s, 1));
 }
 .studio-chart-parts {
   position: absolute;
@@ -3655,33 +3834,6 @@ svg.studio-chart-gauge {
 }
 .studio-rules-toggle.is-set {
   color: var(--studio-accent);
-}
-.studio-values-quiet {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
-  gap: 8px;
-}
-.studio-value-quiet {
-  align-items: center;
-  justify-content: center;
-  padding: 10px 6px;
-  border-radius: calc(var(--card-radius) * 0.6);
-  background: color-mix(in srgb, var(--card-text) 6%, transparent);
-  text-align: center;
-}
-/* A long value (an IP address) shrinks to fit its box before it is cut
-   short, and never runs out of it (owner T8 on 65f724c). */
-.studio-value-quiet {
-  container-type: inline-size;
-  overflow: hidden;
-}
-.studio-value-quiet .studio-value-number {
-  max-width: 100%;
-  font-size: clamp(11px, 13cqi, 15px);
-  font-weight: 600;
-}
-.studio-value-quiet .studio-value-label {
-  font-size: 11px;
 }
 .studio-panel[data-align="centre"] .studio-value:not(.studio-value-quiet) {
   align-items: center;
@@ -4609,7 +4761,7 @@ svg.studio-chart-gauge {
 }
 /* On a chart or status history the note sits in the header row, so it
    never covers what is drawn. */
-.studio-panel:has(.studio-values-charted, .studio-status-history) .studio-freshness {
+.studio-panel:has(.studio-chart, .studio-status-history) .studio-freshness {
   top: 8px;
   bottom: auto;
 }
@@ -5518,26 +5670,6 @@ svg.studio-chart-gauge {
   border-radius: 12px;
   background: var(--studio-raised);
 }
-/* Values fold, never scroll (board 28): what doesn't fit is counted. */
-.studio-fold-item {
-  display: contents;
-}
-.studio-fold-item[hidden] {
-  display: none;
-}
-.studio-values-more {
-  /* The last column of the first row with room: beside the values that stay
-     when there is space, on its own row only when there isn't. */
-  grid-column: auto / -1;
-  align-self: flex-end;
-  justify-self: end;
-  color: var(--card-muted-text);
-  font-size: 12px;
-  line-height: 18px;
-}
-.studio-native-content:has(.studio-values) {
-  overflow: hidden;
-}
 /* A widget's own content (embedded page, calendar, list) keeps Homepage's
    flow and scrolls inside the card. */
 .studio-card-content {
@@ -5746,4 +5878,373 @@ svg.studio-chart-gauge {
 .studio-panel:has(.studio-card-error-compact) {
   border-color: var(--studio-status-problem, #c4554d);
   --card-bg: color-mix(in srgb, var(--studio-status-problem, #c4554d) 12%, var(--studio-surface));
+}
+
+/* ---- Widget editor tabs and Show (mock-ups v4, approved 9 Nov 2026) ---- */
+.studio-editor-tabbar {
+  position: sticky;
+  top: -24px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: -24px -27px 18px;
+  padding: 0 19px 0 21px;
+  background: var(--studio-surface);
+  border-bottom: 1px solid var(--studio-line);
+}
+.studio-tabs.studio-editor-tabs {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  margin: 0;
+  border-bottom: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.studio-editor-tabs button {
+  position: relative;
+  min-height: 44px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.studio-editor-tabs button:focus-visible {
+  outline: 2px solid var(--studio-focus, var(--studio-accent));
+  outline-offset: -4px;
+  border-radius: 8px;
+}
+.studio-tab-attention {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  vertical-align: 2px;
+  border-radius: 50%;
+  background: var(--studio-status-problem, #e5604f);
+}
+@media (max-width: 720px) {
+  .studio-editor-tabbar {
+    top: -20px;
+    margin: -20px -20px 16px;
+    padding: 0 12px 0 14px;
+  }
+}
+
+/* The themed dropdown: the list floats over the dialog (fixed), so a group's
+   rounded clipping never cuts it off. */
+.studio-select {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+}
+.studio-select-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 4px 10px 4px 12px;
+  border: 1px solid var(--studio-line-strong, var(--studio-line));
+  border-radius: 9px;
+  background: var(--studio-input, var(--studio-surface));
+  color: var(--studio-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.studio-select-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.studio-select-button[aria-expanded="true"] {
+  border-color: var(--studio-accent-line, var(--studio-accent));
+}
+.studio-select-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-select-button > svg {
+  flex: none;
+  color: var(--studio-muted);
+}
+.studio-select-list {
+  position: fixed;
+  z-index: 60;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  overflow: auto;
+  border: 1px solid var(--studio-line-strong, var(--studio-line));
+  border-radius: 11px;
+  background: var(--studio-surface);
+  box-shadow: 0 14px 40px #0007;
+}
+.studio-select-list > li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--studio-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.studio-select-list > li small {
+  color: var(--studio-muted);
+  font-size: 11px;
+}
+.studio-select-list > li.is-active {
+  background: var(--studio-accent-soft);
+}
+.studio-select-list > li[aria-selected="true"] {
+  font-weight: 600;
+}
+.studio-row-control > .studio-select {
+  justify-self: end;
+}
+.studio-dialog-docked .studio-row-control > .studio-select {
+  justify-self: stretch;
+  margin-bottom: 8px;
+}
+.studio-dialog-docked .studio-row-control > .studio-select > .studio-select-button {
+  flex: 1 1 auto;
+}
+
+/* "Settings for": All sizes or one kind of size. */
+.studio-sizebar {
+  margin: 0 0 18px;
+}
+.studio-sizebar-label {
+  display: block;
+  margin: 0 0 6px 4px;
+  color: var(--studio-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.studio-sizebar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.studio-size-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 4px 11px;
+  border: 1px solid var(--studio-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--studio-text);
+  font-size: 12.5px;
+}
+.studio-size-button[aria-pressed="true"] {
+  border-color: var(--studio-accent-line, var(--studio-accent));
+  background: var(--studio-accent-soft);
+  font-weight: 600;
+}
+.studio-size-button em {
+  color: var(--studio-accent);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
+}
+.studio-size-own {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--studio-accent);
+}
+.studio-sizebar-note {
+  margin: 8px 4px 0;
+  color: var(--studio-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.studio-sizebar-note b {
+  color: var(--studio-text);
+}
+.studio-own-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--studio-accent-soft);
+  color: var(--studio-accent);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.studio-auto-now {
+  color: var(--studio-muted);
+  font-weight: 400;
+}
+.studio-row-note {
+  margin: 0;
+  padding: 0 16px 10px;
+  color: var(--studio-muted);
+  font-size: 12px;
+}
+.studio-group-body > .studio-row-note {
+  border-top: 0;
+}
+
+/* Show: one card per block. */
+.studio-block-card {
+  padding: 10px 0 4px;
+}
+.studio-block-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 16px;
+}
+.studio-block-card-head > .studio-select {
+  flex: 0 1 auto;
+}
+.studio-block-card-head .studio-select-button {
+  font-weight: 600;
+}
+.studio-block-card-tools {
+  display: inline-flex;
+  margin-left: auto;
+}
+.studio-block-card-tools .studio-icon-button {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+}
+.studio-block-card-tools .studio-icon-button:disabled {
+  opacity: 0.35;
+}
+.studio-block-card-note {
+  margin: 0;
+  padding: 2px 16px 10px;
+  color: var(--studio-muted);
+  font-size: 12px;
+}
+.studio-block-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 8px;
+}
+.studio-chip-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 30px;
+  padding: 2px 3px 2px 11px;
+  border: 1px solid var(--studio-accent-line, var(--studio-line));
+  border-radius: 999px;
+  background: var(--studio-accent-soft);
+  color: var(--studio-text);
+  font-size: 12.5px;
+  touch-action: none;
+  user-select: none;
+}
+.studio-chip-value[tabindex] {
+  cursor: grab;
+}
+.studio-chip-value[data-drag] {
+  position: relative;
+  z-index: 2;
+  cursor: grabbing;
+  box-shadow: 0 6px 18px #0005;
+}
+.studio-chip-value[data-drop] {
+  outline: 2px dashed var(--studio-accent);
+  outline-offset: 2px;
+}
+.studio-chip-value:focus-visible {
+  outline: 2px solid var(--studio-focus, var(--studio-accent));
+  outline-offset: 2px;
+}
+.studio-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--studio-muted);
+}
+.studio-chip-remove:hover {
+  background: var(--studio-line);
+  color: var(--studio-text);
+}
+.studio-chip-add .studio-select-button {
+  min-height: 30px;
+  border-style: dashed;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--studio-accent);
+}
+.studio-block-card > .studio-row {
+  border-top: 0;
+}
+.studio-show-editor .studio-group-body > .studio-block-card + .studio-row,
+.studio-show-editor .studio-group-body > .studio-note + .studio-row {
+  border-top: 1px solid var(--studio-line);
+}
+.studio-show-editor .studio-group-body > .studio-note {
+  margin: 0;
+  padding: 12px 16px;
+}
+.studio-add-block .studio-select-button {
+  color: var(--studio-accent);
+  font-weight: 600;
+}
+/* Each value's name, number style, colour and rules: one line per value. */
+@media (min-width: 640px) {
+  .studio-value-list.studio-value-styles > li {
+    grid-template-columns: minmax(3rem, 1fr) repeat(3, auto);
+  }
+}
+.studio-dialog-docked .studio-value-list.studio-value-styles > li {
+  display: flex;
+}
+/* Tapping a part of the card flashes the setting it opened. */
+@keyframes studio-flash {
+  0%,
+  40% {
+    box-shadow: inset 0 0 0 2px var(--studio-accent);
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}
+.studio-flash {
+  animation: studio-flash 1.4s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-flash {
+    animation: none;
+  }
+}
+/* The docked editor fills the window's height, so its footer stays at the
+   bottom however short the open tab is. */
+.studio-dialog.studio-dialog-docked[open] {
+  display: flex;
+  flex-direction: column;
+}
+.studio-dialog-docked > form {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+.studio-dialog-docked > form > .studio-dialog-body {
+  flex: 1 0 auto;
 }
