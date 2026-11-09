@@ -812,6 +812,14 @@ body {
   color: var(--studio-muted);
   cursor: pointer;
 }
+.studio-stack-footer .studio-playback-status {
+  position: absolute;
+  right: 36px;
+  bottom: 4px;
+  color: var(--studio-muted);
+  font-size: 11px;
+  line-height: 14px;
+}
 .studio-stack-play:hover:not(:disabled),
 .studio-stack-play.studio-playing {
   color: var(--studio-accent);
@@ -3502,7 +3510,9 @@ body {
   flex: 1;
   min-height: calc(40px * var(--s, 1));
 }
-.studio-native-content:has(> .studio-card) {
+/* A card of blocks fits itself, so it never scrolls; a widget's own content
+   (calendar, list, embedded page) keeps its scrolling. */
+.studio-native-content:has(> .studio-card .studio-blocks):not(:has(.studio-card-content)) {
   overflow: clip;
 }
 .studio-chart-grid line {

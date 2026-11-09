@@ -42,7 +42,14 @@ export async function openFiles(page, base) {
 }
 
 export async function fileText(dialog, name) {
-  await dialog.getByRole('combobox', { name: 'Configuration file', exact: true }).selectOption(NATIVE_FILES.find(([file]) => file === name)[1]);
+  // Studio's themed dropdown: open it, then pick the file (an edited file's
+  // option also says "modified").
+  const picker = dialog.getByRole('combobox', { name: 'Configuration file', exact: true });
+  if (!(await picker.textContent()).startsWith(name)) {
+    await picker.click();
+    await dialog.page().getByRole('listbox', { name: 'Configuration file' }).getByRole('option', { name: new RegExp(`^${name.replace(/\./g, '\\.')}`) }).click();
+  }
+  await expect(picker).toContainText(name);
   return dialog.getByRole('textbox', { name, exact: true });
 }
 

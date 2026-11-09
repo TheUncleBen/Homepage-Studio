@@ -60,7 +60,7 @@ test('on a wide screen the widget editor docks beside the board and keeps the de
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
   await page.getByRole('button', { name: 'Edit Greeting 2', exact: true }).click();
   await expect(dialog.getByRole('heading', { name: 'Edit Greeting 2' })).toBeVisible();
-  await dialog.getByRole('button', { name: /^Settings/ }).focus();
+  await dialog.getByRole('tab', { name: 'Data', exact: true }).focus();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Edit Greeting', exact: true }).click();

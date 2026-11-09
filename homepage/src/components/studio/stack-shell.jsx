@@ -193,6 +193,18 @@ export default function StackShell({
             );
           })}
         </span>
+        {/* While playing: why it isn't moving (Waiting while something is in
+            use, Holding after a manual switch), shown beside Play/Pause;
+            plain Playing is for screen readers only. */}
+        {!editing && snapshot.playing && (
+          <span
+            className={`studio-playback-status${
+              snapshot.holding || snapshot.blockedReasons.length ? "" : " studio-sr-only"
+            }`}
+          >
+            {snapshot.holding ? "Holding" : snapshot.blockedReasons.length ? "Waiting" : "Playing"}
+          </span>
+        )}
         {!editing && (
           <button
             type="button"

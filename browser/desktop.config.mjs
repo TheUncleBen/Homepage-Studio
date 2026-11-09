@@ -8,7 +8,7 @@ import base from './playwright.config.mjs';
 // selected; test/cross-engine-selection.test.mjs guards the exact selection.
 export default defineConfig({
   ...base,
-  testMatch: ['native-controls.spec.mjs', 'appearance-import.spec.mjs', 'startup-readiness.spec.mjs', 'native-content-state.spec.mjs', 'stack-picker.spec.mjs', 'dashboards.spec.mjs'],
+  testMatch: ['native-controls.spec.mjs', 'appearance-import.spec.mjs', 'startup-readiness.spec.mjs', 'native-content-state.spec.mjs', 'stack-dots.spec.mjs', 'dashboards.spec.mjs'],
   grep: /@cross-engine\b/,
   outputDir: '.desktop-results',
   projects: [

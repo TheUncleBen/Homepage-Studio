@@ -37,9 +37,9 @@ test('different-size fit preview cancels safely, then add/reorder/unstack preser
   await page.getByRole('checkbox', { name: 'Select Second member', exact: true }).check();
   await page.getByRole('button', { name: 'Stack', exact: true }).click();
   let dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText('These widgets have different sizes. They will all be 5 × 5.');
+  await expect(dialog).toContainText('These widgets have different sizes. They will all be 5 × 4.');
   await expect(dialog.getByRole('spinbutton', { name: 'Width', exact: true })).toHaveValue('5');
-  await expect(dialog.getByRole('spinbutton', { name: 'Height', exact: true })).toHaveValue('5');
+  await expect(dialog.getByRole('spinbutton', { name: 'Height', exact: true })).toHaveValue('4');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(carousel(page)).toHaveCount(0);
   expect((await studioApi(request, '/dashboard/studio/api/board')).board).toEqual(seeded.board);

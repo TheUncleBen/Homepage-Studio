@@ -217,17 +217,17 @@ test.describe('touch on panel bodies', () => {
 test.describe('phone delete', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test('Delete under Management closes the dialog and deletes at once; Undo brings the widget back', async ({ page, request }) => {
+  test('Delete under More actions closes the dialog and deletes at once; Undo brings the widget back', async ({ page, request }) => {
     await seedServicePanels(request, [{ name: 'Delete fixture', rect: { x: 0, y: 0, w: 5, h: 3 } }]);
     await openEditor(page);
     // On a touch screen a widget shows its controls once tapped.
     await servicePanel(page, 'Delete fixture').tap();
     await page.getByRole('button', { name: 'Edit Delete fixture', exact: true }).click();
     const dialog = page.getByRole('dialog');
-    // Delete sits with Duplicate under the folded Management section, and
-    // behaves as the card menu's Delete does (board 23).
-    await dialog.getByRole('button', { name: /^Management/ }).click();
-    await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+    // Delete sits with Duplicate in the ⋯ (More actions) menu beside the tabs,
+    // and behaves as the card menu's Delete does (board 23).
+    await dialog.getByRole('button', { name: 'More actions', exact: true }).click();
+    await page.getByRole('menu', { name: 'Widget actions' }).getByRole('menuitem', { name: 'Delete', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await expect(servicePanel(page, 'Delete fixture')).toHaveCount(0);
     await expect(page.getByText('Delete fixture deleted', { exact: true })).toBeVisible();
@@ -284,9 +284,11 @@ test.describe('selection checkbox target size', () => {
         const bounds = await target.boundingBox();
         expect(bounds.width).toBeGreaterThanOrEqual(minimum);
         expect(bounds.height).toBeGreaterThanOrEqual(minimum);
-        const box = await checkbox.boundingBox();
-        const x = bounds.x + 2;
-        const y = bounds.y + 2;
+        // As for a panel: the invisible input fills the target; the box is drawn.
+        const box = await target.locator('.studio-select-box').boundingBox();
+        const inset = use.hasTouch ? 6 : 2;
+        const x = bounds.x + inset;
+        const y = bounds.y + inset;
         expect(x < box.x || y < box.y).toBe(true);
         if (use.hasTouch) await page.touchscreen.tap(x, y);
         else await page.mouse.click(x, y);
@@ -299,11 +301,10 @@ test.describe('selection checkbox target size', () => {
         await expect(shell).not.toHaveClass(/\bstudio-selected\b/);
         // Selection never rearranged anything: there is nothing to undo.
         await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
-        // The target does not change the stack header's height.
-        const header = shell.locator('.studio-stack-header');
-        const height = (await header.boundingBox()).height;
+        // The target sits over the corner and does not change the stack's size.
+        const height = (await shell.boundingBox()).height;
         await page.addStyleTag({ content: '.studio-select-target { display: none !important; }' });
-        expect((await header.boundingBox()).height).toBe(height);
+        expect((await shell.boundingBox()).height).toBe(height);
       });
     });
   }

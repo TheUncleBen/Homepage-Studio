@@ -26,7 +26,7 @@ async function armWrapCapture(page, firstId) {
   }, firstId);
 }
 
-test('a short header press released outside the stack neither edits nor leaves playback suspended', async ({ page, request }) => {
+test('a short press on the stack released outside it neither edits nor leaves playback suspended', async ({ page, request }) => {
   await seedStack(request);
   await page.goto('/dashboard');
   const stack = carousel(page);
@@ -66,10 +66,10 @@ test('Search freezes the remaining playback interval and resumes without a catch
   expect(await studioApi(request, '/dashboard/studio/api/backups')).toEqual(snapshots);
 });
 
-test('opening Search during a held stack title neither edits nor opens the picker', async ({ page, request }) => {
+test('opening Search during a held stack page dot never starts editing', async ({ page, request }) => {
   await seedStack(request);
   await page.goto('/dashboard');
-  const bounds = await carousel(page).getByRole('button', { name: /^Choose widget in stack:/ }).boundingBox();
+  const bounds = await carousel(page).getByRole('button', { name: /, 1 of \d+$/ }).boundingBox();
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();
   await page.keyboard.press('Control+k');
@@ -79,7 +79,7 @@ test('opening Search during a held stack title neither edits nor opens the picke
   await expect(page.locator('.studio-app')).not.toHaveClass(/studio-edit-mode/);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Done', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('menu', { name: 'Choose widget in this stack' })).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
 });
 
 for (const transition of ['horizontal', 'vertical']) {
