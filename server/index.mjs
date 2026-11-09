@@ -626,6 +626,8 @@ function createDashboardHandlers(options = {}) {
   // The widgets the collector polls: charts, trends and colour rules read
   // the widget's values; status history and response time run its status
   // check too. A widget can have both (blocks, mock-ups v4).
+  // A widget with a point newer than this needs nothing from a save.
+  const FRESH_MS = 2 * (options.collectMs || 60000);
   const historyPanels = state => {
     const card = readLook(state.settingsConfig?.studioTheme?.card);
     const acts = readBehaviour(state.settingsConfig?.studioDefaults);
@@ -643,12 +645,21 @@ function createDashboardHandlers(options = {}) {
     }
     return out;
   };
-  async function collectHistory(dashboard) {
+  // fresh: only widgets with no recent point (newly charted or newly added),
+  // so a save gives them their first numbers at once without polling every
+  // integration on the dashboard again (security review M1, 9d1ff20).
+  async function collectHistory(dashboard, { fresh = false } = {}) {
     if (!(await initialization).ok) return;
     const state = await store.load();
-    const panels = historyPanels(state);
+    const needed = historyPanels(state);
     // History is kept only for widgets that still need it.
-    await history.keepOnly(panels.map(panel => panel.id));
+    await history.keepOnly(needed.map(panel => panel.id));
+    let panels = needed;
+    if (fresh) {
+      const since = Date.now() - FRESH_MS;
+      const recent = await Promise.all(needed.map(async panel => ((await history.lastAt(panel.id)) ?? 0) >= since));
+      panels = needed.filter((_, index) => !recent[index]);
+    }
     if (!panels.length) return;
     const results = await rendererCollect(dashboard, panels.map(({ id, kind, nativeLocator, available, check, values }) => ({ id, kind, nativeLocator, ...(available === false ? { available } : {}), ...(check ? { check } : {}), ...(check && values ? { values: true } : {}) })));
     const at = Date.now();
@@ -1627,9 +1638,14 @@ export function createStudioServer(options = {}) {
         if (!clientErrorAllowed(current.user.id)) return json(res, 429, { error: 'Too many reports.', code: 'RATE_LIMITED' });
         const body = await readBody(req, 16 * 1024);
         const reports = Array.isArray(body?.errors) ? body.errors.slice(0, 10) : [];
+        // A report names a widget only when that widget is on this
+        // dashboard's board; any other id is dropped (security review L1).
+        const onBoard = reports.some(report => typeof report?.panel === 'string')
+          ? new Set(((await forDashboard(route.dashboard).store.loadBoard()).board?.panels || []).map(panel => panel.id))
+          : new Set();
         for (const report of reports) {
           if (!report || typeof report.message !== 'string') continue;
-          observability.log({ source_type: 'browser', source_id: route.dashboard.id, scope: route.dashboard.id, category: 'integration', severity: 4, event_type: 'widget.error', error_class: ERROR_CLASSES.includes(report.errorClass) ? report.errorClass : classifyError({ message: report.message }), panel: typeof report.panel === 'string' ? report.panel.slice(0, 64) : undefined, resource: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined, actor: current.user.username, message: report.message.slice(0, 500), fields: { widget: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined } });
+          observability.log({ source_type: 'browser', source_id: route.dashboard.id, scope: route.dashboard.id, category: 'integration', severity: 4, event_type: 'widget.error', error_class: ERROR_CLASSES.includes(report.errorClass) ? report.errorClass : classifyError({ message: report.message }), panel: typeof report.panel === 'string' && onBoard.has(report.panel) ? report.panel : undefined, resource: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined, actor: current.user.username, message: report.message.slice(0, 500), fields: { widget: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined } });
         }
         return json(res, 202, { accepted: reports.length });
       }
@@ -1683,6 +1699,15 @@ export function createStudioServer(options = {}) {
   // dashboard that fails is skipped until the next run.
   const collectMs = options.collectMs ?? 60000;
   let collecting = false;
+  // One collection per dashboard at a time: a save's quick collection and
+  // the minute round never poll the same integrations at once.
+  const collectingFor = new Set();
+  const collectFor = async (entry, settings) => {
+    if (collectingFor.has(entry.id)) return;
+    collectingFor.add(entry.id);
+    try { await forDashboard(entry).collectHistory(entry, settings); }
+    finally { collectingFor.delete(entry.id); }
+  };
   // A failure is logged once, not every minute, until a run gets through.
   // Before the first setup the dashboards aren't ready; that's expected.
   const reported = new Set();
@@ -1705,7 +1730,7 @@ export function createStudioServer(options = {}) {
           if (observability) await observability.syncCards(entry, []).catch(() => {});
           continue;
         }
-        try { await forDashboard(entry).collectHistory(entry); }
+        try { await collectFor(entry); }
         catch (error) { failed = true; collectFailed(error); }
         if (observability) {
           try { const targets = await forDashboard(entry).statusTargets(entry); if (targets) await observability.syncCards(entry, targets); }
@@ -1733,7 +1758,7 @@ export function createStudioServer(options = {}) {
       try {
         entry = (await prepareRegistry()).dashboards.find(item => item.id === id);
         if (!entry || entry.archived || (!entry.slug && entry.id !== 'default')) return;
-        if (!collecting) await forDashboard(entry).collectHistory(entry);
+        await collectFor(entry, { fresh: true });
       } catch (error) { collectFailed(error); }
       if (!entry || !observability) return;
       try {

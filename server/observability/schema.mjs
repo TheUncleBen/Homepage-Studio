@@ -1,7 +1,7 @@
 // Database layouts. Fresh-deploy rule (owner, 25 Oct 2026): until 1.0.0 a
 // schema change means a new SCHEMA_VERSION and a fresh database, never a
 // migration. A database with another version is set aside, not adopted.
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const MAIN_SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT) WITHOUT ROWID;
@@ -50,5 +50,7 @@ CREATE INDEX IF NOT EXISTS event_source_ts ON event (source_type, ts);
 CREATE INDEX IF NOT EXISTS event_resource_ts ON event (resource, ts);
 CREATE INDEX IF NOT EXISTS event_type_ts ON event (event_type, ts);
 CREATE INDEX IF NOT EXISTS event_fingerprint_ts ON event (fingerprint, ts);
+-- A widget's Logs block asks for its panel's latest lines every minute.
+CREATE INDEX IF NOT EXISTS event_panel_ts ON event (panel, ts);
 CREATE VIRTUAL TABLE IF NOT EXISTS event_fts USING fts5(text, content='', tokenize='unicode61', prefix='2 3');
 `;

@@ -31,6 +31,13 @@ export default function CardLogs({ card }) {
       {events.map((event) => (
         <li key={`${event.id}-${event.ts}`} className="studio-log-line" data-severity={event.severity}>
           <span className="studio-log-level">{LEVEL[event.severity] ?? "INFO"}</span>
+          {/* A report sent by someone's browser says whose, so it can't pass
+              for Studio's own line (security review L1). */}
+          {event.source_type === "browser" && (
+            <span className="studio-log-source" title="Reported by a browser">
+              {event.actor ? `${event.actor}'s browser` : "A browser"}
+            </span>
+          )}
           <span className="studio-log-message">{event.message}</span>
         </li>
       ))}

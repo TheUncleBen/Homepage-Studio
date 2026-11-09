@@ -1,5 +1,6 @@
 import { X509Certificate } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { isIP } from "node:net";
 import tls from "node:tls";
 
 // Which certificate an address sends, for Test connection and Check now when
@@ -83,8 +84,11 @@ export function fetchCertificate(address, { timeoutMs = TIMEOUT_MS, connect = tl
     const timer = setTimeout(() => finish(null), timeoutMs);
     let socket;
     try {
-      socket = connect({ host, port, servername: /^[\d.:]+$/.test(host) ? undefined : host, rejectUnauthorized: false }, () =>
-        finish({ host: url.port ? `${url.hostname}:${url.port}` : url.hostname, info: describeCertificate(socket.getPeerCertificate()) }),
+      socket = connect({ host, port, servername: isIP(host) ? undefined : host, rejectUnauthorized: false }, () =>
+        finish({
+          host: url.port ? `${url.hostname}:${url.port}` : url.hostname,
+          info: describeCertificate(socket.getPeerCertificate()),
+        }),
       );
       socket.on("error", () => finish(null));
     } catch {
@@ -120,7 +124,8 @@ export function trustedNames(bundle = process.env.NODE_EXTRA_CA_CERTS) {
 // Whether the certificate's issuer is one Studio was told to trust: if it is
 // and the check still fails, the chain or the name is the problem, not trust.
 export function issuerSentence(info, names = trustedNames()) {
-  if (!info?.issuer || info.selfSigned) return info?.selfSigned ? "Studio can only trust it if you add this exact certificate." : "";
+  if (!info?.issuer || info.selfSigned)
+    return info?.selfSigned ? "Studio can only trust it if you add this exact certificate." : "";
   return names.includes(info.issuer)
     ? `${info.issuer} is one of your trusted certificates, so the address may not be sending the certificates between them, or the name may not match.`
     : `${info.issuer} isn't one of your trusted certificates.`;

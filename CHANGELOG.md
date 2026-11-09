@@ -49,6 +49,13 @@ in older entries below are history only.
 - `TIMEZONE` in the Portainer deployment files (passed to the container as
   `TZ`). Default retention: logs 30 days, sign-in and audit events 365 days.
 - A swipe on a stack is announced to screen readers only.
+- A save asks only newly charted widgets for their first numbers, instead
+  of polling every integration on the dashboard again; one collection per
+  dashboard runs at a time.
+- In a widget's Logs block, an error reported by someone's browser says
+  whose browser sent it, and a report naming a widget that isn't on the
+  dashboard isn't shown as that widget's line. The log store has a new
+  index for the block's search (a fresh log store on this candidate).
 
 ### Built-in monitoring and logs; a docked widget editor, saved items and filler widgets
 

@@ -3438,6 +3438,14 @@ body {
   .studio-log-level {
   color: var(--studio-status-problem, #e5604f);
 }
+.studio-log-source {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--card-muted-text);
+  font-style: italic;
+}
 .studio-log-message {
   min-width: 0;
   overflow: hidden;

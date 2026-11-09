@@ -61,7 +61,12 @@ export function combinedResult(results) {
     return at === -1 ? ORDER.length : at;
   };
   const worst = [...failures].sort((left, right) => rank(left) - rank(right))[0];
-  if (!worst) return { ok: false, kind: "unknown", message: "The test didn't get the answer this widget expects. Check the address and key." };
+  if (!worst)
+    return {
+      ok: false,
+      kind: "unknown",
+      message: "The test didn't get the answer this widget expects. Check the address and key.",
+    };
   const { ms, ...answer } = worst;
   return answer;
 }
@@ -117,7 +122,10 @@ export async function statusCheck({ check, address, skipCertificateCheck }) {
   if (headers === null) {
     const certificate = certificateClass(data);
     return certificate
-      ? withCertificate({ ok: false, kind: "certificate", message: `Down · ${CERTIFICATE_WORDS[certificate]}` }, url.href)
+      ? withCertificate(
+          { ok: false, kind: "certificate", message: `Down · ${CERTIFICATE_WORDS[certificate]}` },
+          url.href,
+        )
       : { ok: false, kind: "down", message: "Down · no answer" };
   }
   // As the card decides (utils/studio/status-check.js): a sign-in page is up.
@@ -166,12 +174,15 @@ async function handler(req, res) {
     return { ...connectionTestResult({ status: result.status, body: result.body, ms }), ms };
   };
   let timer;
+  // Set once the answer has gone: the remaining reads aren't sent.
+  let answered = false;
   const results = await Promise.race([
     // One after another (a widget that signs in shouldn't sign in six times
     // at once); a widget-wide failure answers for the rest.
     (async () => {
       const out = [];
       for (const endpoint of endpoints.length ? endpoints : [undefined]) {
+        if (answered) break;
         const one = await runOne(endpoint);
         out.push(one);
         if (!one.ok && WIDGET_WIDE.includes(one.kind)) break;
@@ -183,6 +194,7 @@ async function handler(req, res) {
     }),
   ]);
   clearTimeout(timer);
+  answered = true;
   if (!results)
     return res.status(200).json({ ok: false, kind: "unreachable", message: "The address didn't answer in time." });
   return res.status(200).json(await withCertificate(combinedResult(results), widget.url));
@@ -192,7 +204,9 @@ async function handler(req, res) {
 export async function withCertificate(answer, address) {
   if (answer?.kind !== "certificate" || typeof address !== "string") return answer;
   const sent = await fetchCertificate(address).catch(() => null);
-  const sentence = sent ? [certificateSentence(sent.host, sent.info), issuerSentence(sent.info)].filter(Boolean).join(" ") : "";
+  const sentence = sent
+    ? [certificateSentence(sent.host, sent.info), issuerSentence(sent.info)].filter(Boolean).join(" ")
+    : "";
   return sentence ? { ...answer, message: `${answer.message} ${sentence}` } : answer;
 }
 

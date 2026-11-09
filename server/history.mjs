@@ -117,6 +117,11 @@ export function createHistoryStore({ stateDir }) {
       const last = data.fine.at(-1) ?? data.coarse.at(-1) ?? null;
       return { fields: data.fields, points: shown, latest: last ? { at: last[0], values: Object.fromEntries(data.fields.map((field, i) => [field.field, last[i + 1] ?? null])) } : null };
     },
+    // When the widget's newest point was taken, or null with none yet.
+    async lastAt(panelId) {
+      const data = await load(panelId);
+      return (data.fine.at(-1) ?? data.coarse.at(-1))?.[0] ?? null;
+    },
     // Removes the history of widgets that no longer exist on the dashboard.
     async keepOnly(panelIds) {
       const keep = new Set([...panelIds].map(id => path.basename(file(id))));

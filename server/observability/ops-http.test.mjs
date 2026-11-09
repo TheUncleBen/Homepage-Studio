@@ -39,7 +39,7 @@ async function setup(t, options = {}) {
   const upstream = http.createServer((req, res) => {
     upstreamCalls.push({ method: req.method, url: req.url, headers: req.headers });
     if (req.url === '/api/studio/health') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ protocolVersion: NATIVE_PROTOCOL, upstreamCommit: UPSTREAM_COMMIT, buildRevision: 'unreleased' })); }
-    if (req.url === '/api/studio/sources') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ protocolVersion: NATIVE_PROTOCOL, upstreamCommit: UPSTREAM_COMMIT, sources: [], warnings: [] })); }
+    if (req.url === '/api/studio/sources') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ protocolVersion: NATIVE_PROTOCOL, upstreamCommit: UPSTREAM_COMMIT, sources: options.sources ?? [], warnings: [] })); }
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end('<!doctype html><title>native</title>');
   });
@@ -275,6 +275,34 @@ test('widget errors reported by a browser carry their problem class', async t =>
   const search = async q => (await request('/studio/api/ops/logs/search?range=1h&q=' + encodeURIComponent(q), { cookie: admin.cookie })).json.events ?? [];
   assert.ok(await eventually(async () => (await search('class:tls-untrusted type:widget.error')).length === 1), 'the class the browser named');
   assert.equal((await search('class:dns type:widget.error')).length, 1, 'an unknown class falls back to the words');
+});
+
+test('a widget\'s Logs block reads only its dashboard with a logs grant, and a browser report is marked and kept to widgets on the board', async t => {
+  const id = 'discovered-service-0123456789abcdef01234567';
+  const source = { id, kind: 'service', title: 'Svc', group: 'Lab', nativeLocator: { discovered: true, discoveryId: id, serviceId: id, groupPath: ['Lab'], name: 'Svc', origin: 'docker' } };
+  const context = await setup(t, { sources: [source] });
+  const { request, post } = context;
+  const admin = await createAdmin(context);
+  const member = await inviteMember(context, admin.cookie);
+  const viewer = await inviteMember(context, admin.cookie, 'viewer');
+  const registry = await request('/studio/api/dashboards', { cookie: admin.cookie });
+  const lab = (await post('/studio/api/dashboards', { revision: registry.json.revision, action: 'create', name: 'Lab', slug: 'lab' }, { cookie: admin.cookie })).json.dashboard.id;
+  assert.equal((await post('/studio/auth/admin/grants', { dashboardId: 'default', grants: [{ subject: 'user:' + member.invited.id, level: 'view', logs: true }, { subject: 'user:' + viewer.invited.id, level: 'view' }] }, { cookie: admin.cookie })).status, 200);
+  assert.equal((await post('/studio/auth/admin/grants', { dashboardId: lab, grants: [{ subject: 'user:' + member.invited.id, level: 'view' }] }, { cookie: admin.cookie })).status, 200);
+  assert.ok((await request('/studio/api/state', { cookie: admin.cookie })).json.board.panels.some(panel => panel.id === id));
+  // A view-only person's browser reports a widget error, and names a widget
+  // that isn't on this board.
+  const sent = await post('/studio/api/client-errors', { errors: [{ message: 'Svc: did not answer', widget: 'x', panel: id }, { message: 'Session expired: sign in again', widget: 'x', panel: 'p-not-on-board' }] }, { cookie: viewer.cookie });
+  assert.equal(sent.status, 202, sent.text);
+  // Exactly the Logs block's request (card-logs.jsx).
+  const block = (cookie, panel, dashboard = 'default') => request('/studio/api/ops/logs/search?' + new URLSearchParams({ q: `panel:${panel}`, dashboard, range: '24h', limit: '10' }), { cookie });
+  const seen = await eventually(async () => { const found = await block(member.cookie, id); return found.json?.events?.length ? found : null; });
+  assert.ok(seen, 'the widget\'s line reaches its Logs block');
+  assert.deepEqual(seen.json.events.map(event => [event.scope, event.source_type, event.actor, event.message]), [['default', 'browser', 'viewer', 'Svc: did not answer']]);
+  assert.equal((await block(member.cookie, 'p-not-on-board')).json.events.length, 0, 'an id that is not on the board is not a widget\'s line');
+  assert.equal((await block(member.cookie, id, lab)).status, 404, 'no logs grant on Lab');
+  assert.equal((await block(viewer.cookie, id)).status, 403, 'view-only: no logs');
+  assert.equal((await request('/studio/api/access', { cookie: viewer.cookie })).json.operations.logs, false);
 });
 
 test('removing a person takes their name out of the logs and incidents', async t => {
