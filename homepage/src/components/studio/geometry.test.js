@@ -245,8 +245,8 @@ describe("Studio grid geometry", () => {
       expect(pixelRect(resized.rect, 1200).height).toBeGreaterThanOrEqual(84);
     });
     const stacked = stackBoard(value, ["link", "embed"], "stack");
-    expect(unitMinimum(stacked, "stack")).toEqual({ w: 8, h: 11 });
-    expect(stacked.stacks[0].rect.h).toBe(11);
+    expect(unitMinimum(stacked, "stack")).toEqual({ w: 8, h: 10 });
+    expect(stacked.stacks[0].rect.h).toBe(10);
     const projection = projectBoard(
       {
         ...value,

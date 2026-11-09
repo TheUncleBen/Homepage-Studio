@@ -92,9 +92,6 @@ export function useLongPress({ disabled, onLongPress, accepts = () => true }) {
 const INTERACTIVE =
   "a,button,input,textarea,select,iframe,canvas,svg,[contenteditable=true],[role=button],[role=slider],[data-studio-interactive]";
 export function interactiveTarget(target, root) {
-  // The quiet title is an intentional picker trigger and still belongs to the
-  // swipe surface. Its own click gate rejects movement and held pointers.
-  if (target instanceof Element && root?.contains(target) && target.closest("[data-studio-stack-title]")) return false;
   return target instanceof Element && target !== root && Boolean(target.closest(INTERACTIVE));
 }
 
@@ -111,8 +108,6 @@ export function touchesNativeContent(event) {
   const { target, currentTarget: root } = event;
   if (event.pointerType !== "touch" && event.pointerType !== "pen") return interactiveTarget(target, root);
   if (!(target instanceof Element) || target === root) return false;
-  // The stack title keeps its existing swipe and click-gate behavior.
-  if (root?.contains(target) && target.closest("[data-studio-stack-title]")) return false;
   if (target.closest(TOUCH_NATIVE)) return true;
   for (let element = target; element && element !== root; element = element.parentElement) {
     if (scrollsHorizontally(element)) return true;

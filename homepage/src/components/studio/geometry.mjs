@@ -51,7 +51,8 @@ export function unitMinimum(board, id) {
   const minima = panels.map(panelMinimum);
   return {
     w: Math.max(1, ...minima.map((minimum) => minimum.w)),
-    h: Math.max(stack ? 5 : 1, ...minima.map((minimum) => minimum.h + (stack ? 2 : 0))),
+    // A stack has only a thin strip of page dots below its widget (Board 4).
+    h: Math.max(stack ? 4 : 1, ...minima.map((minimum) => minimum.h + (stack ? 1 : 0))),
   };
 }
 

@@ -507,11 +507,9 @@ body {
   box-shadow: none;
 }
 .studio-stacked-panel .studio-panel-slide {
-  padding-top: 59px;
-  padding-bottom: 32px;
+  padding-bottom: 22px;
 }
-.studio-panel-header,
-.studio-stack-header {
+.studio-panel-header {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -696,8 +694,7 @@ body {
 .studio-move-handle:active {
   cursor: grabbing !important;
 }
-.studio-panel-header input[type="checkbox"],
-.studio-stack-header input[type="checkbox"] {
+.studio-panel-header input[type="checkbox"] {
   appearance: auto;
   accent-color: var(--studio-accent);
   width: 16px;
@@ -749,105 +746,6 @@ body {
   border-radius: 23px;
   box-shadow: 0 7px 22px #0002;
 }
-.studio-stack-header {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 59px;
-  pointer-events: auto;
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--studio-line);
-  background: linear-gradient(120deg, var(--studio-raised), var(--studio-raised));
-  border-radius: 23px 23px 0 0;
-}
-.studio-stack-symbol {
-  color: var(--studio-accent);
-}
-.studio-stack-title {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  min-height: 36px;
-  border-radius: 5px;
-  touch-action: pan-y;
-}
-.studio-stack-title:hover:not(:disabled) strong {
-  color: var(--studio-accent);
-}
-.studio-app .studio-stack-title:disabled {
-  cursor: inherit;
-  opacity: 1;
-}
-.studio-stack-title:focus-visible {
-  outline: 2px solid var(--studio-accent);
-  outline-offset: 4px;
-}
-.studio-stack-picker {
-  box-sizing: border-box;
-  position: fixed;
-  z-index: 100;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 7px;
-  border: 1px solid var(--studio-line);
-  border-radius: 14px;
-  background: var(--studio-raised);
-  color: var(--studio-text);
-  box-shadow: 0 14px 42px #0004;
-  font-family: inherit;
-}
-.studio-stack-picker-heading {
-  padding: 4px 9px 7px;
-  margin: 0;
-  color: var(--studio-muted);
-  font-size: 11px;
-}
-.studio-stack-picker button {
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  width: 100%;
-  min-height: 42px;
-  padding: 9px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  font-size: 12px;
-  font-family: inherit;
-  cursor: pointer;
-}
-.studio-stack-picker button span {
-  overflow-wrap: anywhere;
-}
-.studio-stack-picker button small {
-  flex-shrink: 0;
-  color: var(--studio-muted);
-  font-size: 10px;
-}
-.studio-stack-picker button:hover,
-.studio-stack-picker button:focus-visible,
-.studio-stack-picker button[aria-checked="true"] {
-  background: var(--studio-accent-soft);
-  outline-color: var(--studio-accent);
-}
-.studio-stack-picker button:focus-visible {
-  outline: 2px solid var(--studio-focus);
-  outline-offset: 1px;
-}
-.studio-play-button {
-  border-color: var(--studio-accent-line);
-  background: var(--studio-accent-soft);
-  color: var(--studio-accent);
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-}
 .studio-playing {
   color: var(--studio-accent-contrast);
   background: var(--studio-accent-solid);
@@ -855,46 +753,91 @@ body {
 .studio-stack-footer {
   position: absolute;
   inset: auto 0 0;
-  min-height: 30px;
+  height: 22px;
   display: flex;
   justify-content: center;
   align-items: center;
   pointer-events: auto;
   touch-action: pan-y;
-  border-radius: 0 0 23px 23px;
-  background: var(--studio-surface);
 }
 .studio-stack-dots {
   display: flex;
   align-items: center;
-  gap: 5px;
-  max-width: 65%;
+  max-width: calc(100% - 64px);
   overflow: hidden;
-  padding: 4px;
 }
-.studio-stack-dots span {
+/* Each dot is a 20 px target around a 5 px mark. */
+.studio-stack-dots button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 13px;
+  height: 20px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.studio-stack-dots button span {
   display: block;
   width: 5px;
   height: 5px;
-  flex-shrink: 0;
   border-radius: 20px;
   background: var(--studio-accent-line);
   transition:
     width 0.15s,
     background 0.15s;
 }
-.studio-stack-dots .studio-dot-active {
+.studio-stack-dots .studio-dot-active span {
   width: 15px;
   background: var(--studio-accent);
 }
-.studio-playback-status {
+.studio-stack-dots button:focus-visible {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+.studio-stack-play {
   position: absolute;
-  right: 16px;
-  top: 8px;
-  font-size: 8px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  right: 12px;
+  bottom: 2px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--studio-muted);
+  cursor: pointer;
+}
+.studio-stack-play:hover:not(:disabled),
+.studio-stack-play.studio-playing {
+  color: var(--studio-accent);
+}
+.studio-stack-play:focus-visible {
+  outline: 2px solid var(--studio-focus);
+}
+.studio-stack-control {
+  pointer-events: auto;
+}
+/* While editing, a stack's Move and Edit sit where a widget's do. */
+.studio-stack-tools {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+}
+.studio-stack-tools .studio-icon-button {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--studio-text) 12%, var(--studio-surface));
+  color: var(--studio-text);
 }
 .studio-stack-editing {
   outline: 1px solid var(--studio-accent-line);
@@ -1726,11 +1669,6 @@ body {
     min-width: 40px;
     width: 40px;
     height: 40px;
-  }
-  .studio-stack-header .studio-icon-button {
-    min-width: 34px;
-    width: 34px;
-    height: 34px;
   }
   .studio-page-footer {
     flex-direction: column;
@@ -6258,4 +6196,13 @@ svg.studio-chart-gauge {
 }
 .studio-dialog-docked > form > .studio-dialog-body {
   flex: 1 0 auto;
+}
+
+/* A stack's select box and Move and Edit always show while editing (they
+   stand for the stack, not one widget): its widgets make room for them. */
+.studio-edit-mode .studio-stacked-panel .studio-card-identity {
+  padding-left: 30px;
+}
+.studio-edit-mode .studio-stacked-panel .studio-card-tags {
+  visibility: hidden;
 }

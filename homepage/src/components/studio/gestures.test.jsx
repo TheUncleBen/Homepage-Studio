@@ -189,7 +189,6 @@ describe("Stack pointer/trackpad gestures", () => {
         <svg><g><rect class="chart"></rect></g></svg>
         <div class="wide"><span class="wide-child">Wide</span></div>
         <div class="tall"><span class="tall-child">Tall</span></div>
-        <button data-studio-stack-title><strong class="title">Title</strong></button>
       </div>`;
     document.body.append(root);
     const wide = root.querySelector(".wide");
@@ -217,7 +216,7 @@ describe("Stack pointer/trackpad gestures", () => {
         ".wide-child",
       ])
         expect(at(selector), selector).toBe(true);
-      for (const selector of [".text", ".body", ".tall-child", ".title"]) expect(at(selector), selector).toBe(false);
+      for (const selector of [".text", ".body", ".tall-child"]) expect(at(selector), selector).toBe(false);
       // Mouse behavior is unchanged: only the original interactive list applies.
       expect(at(".label", "mouse")).toBe(false);
       expect(at(".wide-child", "mouse")).toBe(false);

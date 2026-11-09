@@ -283,7 +283,7 @@ describe("Native board save and draft safety", () => {
       vi.useRealTimers();
     }
     const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
-    screen.getByRole("button", { name: /^Choose widget in stack:/ }).dispatchEvent(menu);
+    screen.getByRole("button", { name: /^Show .*, 1 of / }).dispatchEvent(menu);
     expect(menu.defaultPrevented, "the browser's own menu stays available").toBe(false);
     expect(screen.queryByRole("button", { name: "Done", exact: true })).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: /^Select/ })).not.toBeInTheDocument();

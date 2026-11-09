@@ -453,7 +453,7 @@ export default function PanelHost({
             className="studio-panel-placeholder studio-panel-refresh"
             style={{
               position: "absolute",
-              inset: stack ? "59px 15px 32px" : "56px 15px 16px",
+              inset: stack ? "16px 15px 26px" : "56px 15px 16px",
               minHeight: 0,
             }}
           >
