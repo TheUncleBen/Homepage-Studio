@@ -560,6 +560,16 @@ body {
 .studio-native-content > div {
   max-width: 100%;
 }
+/* Homepage's own information widgets (Resources, Search, weather…) sit in
+   the middle of their card's height, as Studio's own cards do; auto
+   margins keep an overflowing widget scrollable from its top. */
+.studio-native-content:has(> .widget-container) {
+  display: flex;
+  flex-direction: column;
+}
+.studio-native-content > .widget-container {
+  margin-block: auto;
+}
 /* Touch on a panel body: vertical page and content scrolling stay native,
    while horizontal movement reaches the stack swipe and body hold. Content
    that overflows horizontally keeps native panning (data-studio-scroll-x is
