@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  grownUnits,
   intersects,
   mergePage,
   moveUnit,
@@ -349,5 +350,25 @@ describe("widget minimums", () => {
   it("keeps a larger minimum for widgets that draw their own content", () => {
     expect(panelMinimum({ kind: "serviceWidget", nativeLocator: { type: "calendar" } })).toEqual({ w: 12, h: 9 });
     expect(panelMinimum({ kind: "serviceWidget", nativeLocator: { type: "iframe" } })).toEqual({ w: 8, h: 9 });
+  });
+});
+
+describe("grownUnits (Board 6: grow instead of clipping)", () => {
+  const units = [
+    { id: "a", kind: "panel", rect: { x: 0, y: 0, w: 8, h: 4 } },
+    { id: "b", kind: "panel", rect: { x: 0, y: 4, w: 4, h: 3 } },
+    { id: "c", kind: "panel", rect: { x: 4, y: 4, w: 4, h: 3 } },
+  ];
+  it("leaves the layout alone when nothing needs more room", () => {
+    expect(grownUnits(units, new Map())).toBe(units);
+  });
+  it("makes a widget taller and moves what it would overlap down", () => {
+    const grown = new Map(grownUnits(units, new Map([["a", 7]])).map((unit) => [unit.id, unit.rect]));
+    expect(grown.get("a")).toEqual({ x: 0, y: 0, w: 8, h: 7 });
+    expect(grown.get("b")).toEqual({ x: 0, y: 7, w: 4, h: 3 });
+    expect(grown.get("c")).toEqual({ x: 4, y: 7, w: 4, h: 3 });
+  });
+  it("never makes a widget shorter", () => {
+    expect(grownUnits(units, new Map([["b", 1]])).find((unit) => unit.id === "b").rect.h).toBe(3);
   });
 });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { publishFit } from "./card-look";
-import { fitCard } from "./fit.mjs";
+import { fitCard, layout } from "./fit.mjs";
 import { blocksOf, classOf, lookAt } from "./look.mjs";
 
 const NONE = Object.freeze({});
@@ -25,6 +25,37 @@ function useBox(ref) {
     return () => observer.disconnect();
   }, []);
   return box;
+}
+
+// The height (px, of the widget box) the card needs to show its settings at
+// the usual text size, or 0 when the height it was given is enough. Tries
+// heights on the widget box itself and puts its own height back after.
+const MAX_GROWTH = 4;
+function neededHeight(node, base, look, blocks, counts) {
+  const panel = node.closest(".studio-panel, .studio-card-preview");
+  if (!panel || !blocks.length) return 0;
+  const kept = panel.style.height;
+  const width = node.clientWidth;
+  const extra = panel.offsetHeight - node.clientHeight;
+  const good = (height) => {
+    panel.style.height = `${height}px`;
+    return Boolean(layout(node, look, blocks, counts, width, height - extra));
+  };
+  let need = 0;
+  if (!good(base)) {
+    let low = base;
+    let high = base * MAX_GROWTH;
+    if (good(high)) {
+      for (let i = 0; i < 8 && high - low > 4; i += 1) {
+        const mid = Math.round((low + high) / 2);
+        if (good(mid)) high = mid;
+        else low = mid;
+      }
+      need = high;
+    }
+  }
+  panel.style.height = kept;
+  return need;
 }
 
 // Fits a card's blocks to its size (fit.mjs): the look in force at that size
@@ -60,6 +91,11 @@ export function useBlockFit(card) {
     if (!node || !box.w) return;
     const counts = Object.fromEntries(drawn || []);
     const shown = drawn ? blocks.filter((block) => Object.hasOwn(counts, block.id)) : [];
+    // Where the board lets a card grow (a phone or tablet layout made from
+    // the desktop one, or the live dashboard), it says how tall its settings
+    // need it to be at its laid-out height's width (Board 6): measured at the
+    // height it was given, never at the height it has grown to.
+    const need = card.baseHeight ? neededHeight(node, card.baseHeight, effective, shown, counts) : 0;
     const result = fitCard(node, effective, shown, counts);
     if (result)
       publishFit(card.fitId || card.id, {
@@ -68,8 +104,9 @@ export function useBlockFit(card) {
         box,
         blocks: shown,
         look: effective,
+        need,
       });
-  }, [box, signature, drawn, tick]);
+  }, [box, signature, drawn, tick, card.baseHeight]);
   // New text (a value arriving, a longer number) can need another pick.
   useEffect(() => {
     const node = ref.current;

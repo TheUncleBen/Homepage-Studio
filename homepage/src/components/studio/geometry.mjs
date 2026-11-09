@@ -345,6 +345,24 @@ export function fittedUnits(board) {
   return placed;
 }
 
+// Widgets drawn taller than laid out because their settings need the room
+// (Board 6: a widget grows instead of clipping). rows: rows each unit needs.
+// Anything that would then overlap moves down, in reading order.
+export function grownUnits(units, rows) {
+  if (!rows?.size) return units;
+  const placed = [];
+  for (const unit of [...units].sort(byReadingOrder)) {
+    let rect = { ...unit.rect, h: Math.max(unit.rect.h, rows.get(unit.id) || 0) };
+    let collisions = placed.filter((other) => intersects(rect, other.rect));
+    while (collisions.length) {
+      rect = { ...rect, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
+      collisions = placed.filter((other) => intersects(rect, other.rect));
+    }
+    placed.push({ ...unit, rect });
+  }
+  return placed;
+}
+
 export function generatedUnits(board, columns) {
   if (columns === TABLET_COLUMNS) return tabletLayout(board);
   if (columns === PHONE_COLUMNS) return phoneLayout(board);

@@ -25,6 +25,7 @@ import {
   freePageName,
   gapOf,
   gridColumns,
+  grownUnits,
   MAX_PAGES,
   movePage,
   moveToPage,
@@ -172,6 +173,7 @@ export function PanelLayer({
   toolsShown = null,
   offLayout = null,
   liveDraft = null,
+  baseHeights = null,
 }) {
   const stackByPanel = new Map(board.stacks.flatMap((stack) => stack.panelIds.map((id) => [id, stack])));
   // Keep DOM sibling order independent of geometry. Moving an existing iframe
@@ -198,6 +200,7 @@ export function PanelLayer({
             panel={panel}
             data={data}
             rect={geometry.get(unitId) || { display: "none" }}
+            baseHeight={baseHeights?.get(unitId)}
             stack={stack}
             active={isVisible}
             selected={selection.includes(panel.id)}
@@ -599,9 +602,48 @@ export default function StudioBoard({
   }, []);
   // The live dashboard leaves out widgets not shown on this layout. The
   // editor keeps them, faded, so they can still be found and turned back on.
-  const projection = useMemo(
+  const laidOut = useMemo(
     () => sizeProjection(editing ? board : withoutHiddenOn(board, settings, layoutSize), layoutSize),
     [board, layoutSize, editing, settings],
+  );
+  const gap = gapOf(settings);
+  // A widget grows taller instead of clipping when its settings need more
+  // room (Board 6) on the live dashboard, and while editing a phone or
+  // tablet layout made from the desktop one. Where you arrange sizes
+  // yourself, the resize corner stops at what the settings allow instead.
+  const grows = !editing || (layoutSize !== "desktop" && followsDesktop(wholeBoard, layoutSize));
+  const [needs, setNeeds] = useState(() => new Map());
+  useEffect(() => {
+    const onFit = (event) => {
+      const id = event.detail?.id;
+      const fit = id && !id.startsWith("preview:") ? cardFits.get(id) : null;
+      if (!fit) return;
+      const rows = fit.need ? Math.ceil((fit.need + gap) / (ROW_HEIGHT + gap)) : 0;
+      setNeeds((old) => ((old.get(id) || 0) === rows ? old : new Map(old).set(id, rows)));
+    };
+    window.addEventListener("studio-card-fit", onFit);
+    return () => window.removeEventListener("studio-card-fit", onFit);
+  }, [gap]);
+  const projection = useMemo(() => {
+    if (!grows || !needs.size) return laidOut;
+    const rows = new Map();
+    for (const unit of laidOut.units) {
+      const ids =
+        unit.kind === "stack" ? board.stacks.find((stack) => stack.id === unit.id)?.panelIds || [] : [unit.id];
+      const most = Math.max(0, ...ids.map((id) => needs.get(id) || 0));
+      if (most > unit.rect.h) rows.set(unit.id, most);
+    }
+    if (!rows.size) return laidOut;
+    const units = grownUnits(laidOut.units, rows);
+    return { ...laidOut, units, rows: Math.max(8, ...units.map((unit) => unit.rect.y + unit.rect.h)) };
+  }, [laidOut, grows, needs, board]);
+  // The height each widget was laid out at, which it measures its needs at.
+  const baseHeights = useMemo(
+    () =>
+      grows
+        ? new Map(laidOut.units.map((unit) => [unit.id, pixelRect(unit.rect, width, laidOut.columns, gap).height]))
+        : null,
+    [grows, laidOut, width, gap],
   );
   // While editing: the widgets this layout leaves out (shown faded).
   const offLayout = useMemo(
@@ -615,7 +657,6 @@ export default function StudioBoard({
         : null,
     [board, settings, editing, layoutSize],
   );
-  const gap = gapOf(settings);
   const geometry = useMemo(
     () => new Map(projection.units.map((unit) => [unit.id, pixelRect(unit.rect, width, projection.columns, gap)])),
     [projection, width, gap],
@@ -2554,6 +2595,7 @@ export default function StudioBoard({
           ))}
         </div>
         <PanelLayer
+          baseHeights={baseHeights}
           offLayout={offLayout}
           liveDraft={docked ? liveDraft : null}
           board={board}

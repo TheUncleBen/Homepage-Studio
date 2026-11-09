@@ -7,6 +7,7 @@ import {
   fillColours,
   resolvedBehaviour,
   resolvedLook,
+  useCardFit,
   useCardTheme,
   useLogoColour,
   widgetFields,
@@ -89,9 +90,13 @@ export function CardPreview({ panel, data, override, grid = {}, children, render
   const rect = panel.rect || { w: 6, h: 4 };
   const { width = 1200, gap = GAP, columns = COLUMNS } = grid;
   const column = (width - (columns - 1) * gap) / columns;
+  const base = Math.min(rect.h * ROW_HEIGHT + (rect.h - 1) * gap, 520);
+  // Narrower than on the board (a phone), it grows taller instead of
+  // clipping when its settings need the room, as the board does (Board 6).
+  const need = useCardFit(`preview:${panel.id}`)?.need || 0;
   const size = {
     width: `min(100%, ${Math.round(rect.w * column + (rect.w - 1) * gap)}px)`,
-    height: Math.min(rect.h * ROW_HEIGHT + (rect.h - 1) * gap, 520),
+    height: Math.max(base, need),
   };
   return (
     <section
@@ -104,7 +109,9 @@ export function CardPreview({ panel, data, override, grid = {}, children, render
       <div className="studio-panel-slide">
         {backdrop}
         <div className="studio-native-content" inert>
-          <CardLookContext.Provider value={{ ...card, reportFields: undefined, fitId: `preview:${panel.id}` }}>
+          <CardLookContext.Provider
+            value={{ ...card, reportFields: undefined, fitId: `preview:${panel.id}`, baseHeight: base }}
+          >
             <RenderNative panel={panel} data={data} override={override} />
           </CardLookContext.Provider>
         </div>
@@ -147,14 +154,16 @@ export default function PanelHost({
   // While its editor is docked beside the board: what the editor has typed
   // so far (name, logo, values), drawn on the real card.
   override = null,
+  // Where the board lets it grow: the height it was laid out at (Board 6).
+  baseHeight,
 }) {
   const nativeContent = useRef(null);
   const slide = useRef(null);
-  const { card, attributes, colourStyle, backdrop } = useCardPresentation(
-    panel,
-    data,
-    canEdit ? onEdit : undefined,
-    onFullView,
+  const presentation = useCardPresentation(panel, data, canEdit ? onEdit : undefined, onFullView);
+  const { attributes, colourStyle, backdrop } = presentation;
+  const card = useMemo(
+    () => (baseHeight ? { ...presentation.card, baseHeight } : presentation.card),
+    [presentation.card, baseHeight],
   );
   const previousPresentation = useRef(null);
   const slideAnimation = useRef(null);
