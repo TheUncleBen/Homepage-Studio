@@ -144,12 +144,17 @@ export function SizeBar({ look = {}, scope, onScope, now, onUseAll }) {
 export function chartPool(type, numbers, formats = {}, picked = []) {
   if (type === "chart" || !numbers.some((key) => formats[key])) return numbers;
   if (type === "gauge") return numbers.filter((key) => formats[key] === "percent");
-  let unit = picked.length ? formats[picked[0]] : undefined;
-  if (!unit) {
+  // The unit most of the given numbers share (the first such, on a tie).
+  const common = (keys) => {
     const counts = new Map();
-    for (const key of numbers) counts.set(formats[key], (counts.get(formats[key]) || 0) + 1);
-    unit = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  }
+    for (const key of keys) if (formats[key]) counts.set(formats[key], (counts.get(formats[key]) || 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0] || [undefined, 0];
+  };
+  // The block's own numbers decide, by their largest group; a pie needs at
+  // least two to compare (UI review M1: Memory %, Running, Stopped as a pie
+  // is Running and Stopped, not Memory alone).
+  let [unit, count] = common(picked);
+  if (!unit || (type === "pie" && count < 2)) [unit] = common(numbers);
   return numbers.filter((key) => formats[key] === unit);
 }
 
@@ -364,7 +369,12 @@ function BlockCard({
                 label="Columns"
                 value={value("columns")}
                 onChange={(next) => set("columns", next)}
-                options={options.columns.map((key) => [key, key === "auto" ? autoNow("columns", block) : key])}
+                options={options.columns
+                  // No more columns than values (UI review L4), keeping the one set.
+                  .filter(
+                    (key) => key === "auto" || Number(key) <= Math.max(1, keys.length) || key === value("columns"),
+                  )
+                  .map((key) => [key, key === "auto" ? autoNow("columns", block) : key])}
               />
             </Row>
           )}
@@ -740,13 +750,21 @@ export function LimitNote({ look = {}, inheritedLook = {}, scope = "all", fit, l
     ? "Your blocks can't fit this space even at the smallest text, so Auto arranges them here and nothing is cut off."
     : squeezed
       ? "These settings need more room than this space has, so the text is drawn smaller than your smallest size for now. Nothing is cut off."
-      : `Stopped at ${limited.w} × ${limited.h}, the smallest size for these settings.`;
+      : // In pixels, as the widget is drawn (UI review M4); grid cells only
+        // when the drawn size isn't known.
+        `Stopped at ${
+          fit.box?.w && fit.box?.h
+            ? `${Math.round(fit.box.w)} × ${Math.round(fit.box.h)} px`
+            : `${limited.w} × ${limited.h}`
+        }, the smallest size for these settings.`;
   return (
     <div className="studio-limit-note" role="status">
       <p>
         <StudioIcon name="info" size={14} /> {message}
         {fixes.length > 0 &&
-          ` To go smaller, change a setting${target === "all" ? "" : ` for ${SIZE_NAMES[target]} sizes`}:`}
+          ` ${squeezed ? "To fit it at your text size" : "To go smaller"}, change a setting${
+            target === "all" ? "" : ` for ${SIZE_NAMES[target]} sizes`
+          }:`}
       </p>
       {fixes.length > 0 && (
         <div className="studio-limit-fixes">

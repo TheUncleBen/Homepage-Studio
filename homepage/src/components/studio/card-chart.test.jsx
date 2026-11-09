@@ -185,6 +185,27 @@ describe("values beside a chart", () => {
     expect(container.querySelector(".studio-chart-numbers").textContent).toContain("123");
   });
 
+  it("a pie of picked counts draws them though most collected values are percentages", () => {
+    const proxmox = {
+      fields: [
+        { field: "cpu", label: "CPU", format: "percent" },
+        { field: "memory", label: "Memory", format: "percent" },
+        { field: "disk", label: "Disk", format: "percent" },
+        { field: "running", label: "Running", format: "plain" },
+        { field: "stopped", label: "Stopped", format: "plain" },
+      ],
+      points: [[1000, 30, 71, 40, 42, 3]],
+      latest: { at: 1000, values: { cpu: 30, memory: 71, disk: 40, running: 42, stopped: 3 } },
+    };
+    const { container } = render(
+      <CardChart card={{ show: "pie", chartRange: "24h", history: proxmox, fields: ["running", "stopped"] }} />,
+    );
+    const legend = container.querySelector(".studio-chart-legend").textContent;
+    expect(legend).toContain("Running");
+    expect(legend).toContain("Stopped");
+    expect(container.querySelector(".studio-chart-round")).toBeTruthy();
+  });
+
   it("a line chart draws only the values its block picks", () => {
     const card = {
       show: "line",

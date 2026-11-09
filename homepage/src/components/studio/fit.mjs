@@ -38,9 +38,30 @@ export function fits(card) {
   }
   // A number or a name cut short, a value squeezed to nothing.
   for (const node of card.querySelectorAll(
-    ".studio-card-head, .studio-card-name strong, .studio-value, .studio-value-number, .studio-value-label, .studio-block-legend, .studio-chart-legend li, .studio-chart-legend li > *, .studio-bar-label, .studio-bar-value, .studio-block-caption",
+    ".studio-card-head, .studio-value, .studio-value-number, .studio-value-label, .studio-block-legend, .studio-chart-legend li, .studio-chart-legend li > *, .studio-bar-label, .studio-bar-value, .studio-block-caption",
   ))
     if (node.scrollWidth > node.clientWidth + 1) return false;
+  // The name (and why a card is red) wrap only between words, and only to the
+  // lines they have: a word broken in the middle ("Proxm/ox") or a line cut
+  // off doesn't fit (UI review H2, M5). The header's text stops shrinking at
+  // 0.7 (--sh), so below that smaller text can't help it and a long name
+  // breaks rather than shrinking every value with it.
+  const header = Number.parseFloat(card.style.getPropertyValue("--s")) || 1;
+  if (header > 0.7)
+    for (const node of card.querySelectorAll(".studio-card-name strong, .studio-card-note")) {
+      if (node.scrollHeight > node.clientHeight + 1) return false;
+      const { overflowWrap, wordBreak } = node.style;
+      node.style.overflowWrap = "normal";
+      node.style.wordBreak = "normal";
+      // No pixel of slack here: a word one pixel too wide is broken.
+      const broken = node.scrollWidth > node.clientWidth;
+      node.style.overflowWrap = overflowWrap;
+      node.style.wordBreak = wordBreak;
+      if (broken) return false;
+    }
+  if (header > 0.7)
+    for (const node of card.querySelectorAll(".studio-status-text"))
+      if (node.offsetParent && node.scrollWidth > node.clientWidth + 1) return false;
   // A chart squeezed too small to read, measured against the text: a donut's
   // centre number (16 of its 100 units) as readable as the text around it.
   const scale = Math.min(1, Number.parseFloat(card.style.getPropertyValue("--s")) || 1);
@@ -150,15 +171,6 @@ export function candidates(look, blocks, counts, width, height) {
   return out;
 }
 
-export const isAuto = (look, blocks) =>
-  blocks.some(
-    (block) =>
-      (block.type === "numbers" && ((block.arrange || "auto") === "auto" || (block.columns || "auto") === "auto")) ||
-      (block.type === "pie" && (block.legend || "auto") === "auto"),
-  ) ||
-  (blocks.length > 1 && (look.arrange || "auto") === "auto") ||
-  (look.header !== "hidden" && (look.headerAt || "auto") === "auto");
-
 // Auto in place of every choice that has an Auto, for the last resort.
 export const relaxed = (look, blocks) => ({
   look: { ...look, arrange: "auto", headerAt: "auto" },
@@ -210,10 +222,9 @@ export function layout(card, look, blocks, counts, width, height, floor = floorO
     }
     return lo;
   };
-  if (isAuto(look, blocks) && all.length > 1) {
-    const threshold = Math.max(low, Math.min(1, high));
-    for (const pick of all) if (at(pick, threshold)) return { ...pick, scale: grow(pick, threshold) };
-  }
+  // Every pick is tried and the one with the largest text wins; a pick only
+  // replaces an earlier one (Auto's order for the shape) when its text is
+  // clearly larger, so the space a shape has is used (UI review M3).
   let best = null;
   for (const pick of all) {
     const start = best ? Math.min(high, best.scale + 0.02) : low;

@@ -157,6 +157,12 @@ function scale(series, points) {
       }
     }
   if (!Number.isFinite(min)) return null;
+  // Every number the same (a chart that has just started): a level line
+  // through the middle, not along an edge.
+  if (max === min) {
+    const pad = Math.abs(max) || 1;
+    return { min: min - pad, max: max + pad };
+  }
   if (min > 0 && min / (max || 1) > 0.5) min = Math.max(0, min - (max - min));
   else min = Math.min(0, min);
   if (max === min) max = min + 1;
@@ -290,9 +296,19 @@ function Lines({ series, points, from, to, area, hover, ranges: given, grid }) {
           }
         }
         if (current.length) segments.push(current);
+        // The very first number (a chart that has just started) is drawn as a
+        // level line across the chart, so a line shows at once (UI review H4);
+        // a lone number later on is a short level line.
+        const only = segments.length === 1 && segments[0].length === 1;
         return segments.map((segment, i) => {
-          // A single number is drawn as a short level line, so it shows.
-          const drawn = segment.length === 1 ? [[segment[0][0] - 1.5, segment[0][1]], segment[0]] : segment;
+          const drawn = only
+            ? [
+                [0, segment[0][1]],
+                [W, segment[0][1]],
+              ]
+            : segment.length === 1
+              ? [[segment[0][0] - 1.5, segment[0][1]], segment[0]]
+              : segment;
           const line = drawn.map(([px, py], j) => `${j ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join("");
           return (
             <g key={`${entry.field.field}-${i}`}>
@@ -535,7 +551,9 @@ export function CardChart({ card, onOpen }) {
     const rule = (card.values || []).find((item) => item.field === entry.field.field)?.rules;
     body = <Gauge entry={entry} value={value} text={format(entry.field, value)} level={ruleLevel(rule, value)} />;
   } else if (round) {
-    const unit = partsFormat(history.fields);
+    // The largest group of the block's own values that share a unit (UI
+    // review M1): never the unit most common among everything collected.
+    const unit = partsFormat(series.map((entry) => entry.field));
     const parts = series.filter((entry) => (entry.field.format || "plain") === unit && !isTotal(entry.field));
     const hero = heroSeries(parts, false, true);
     const total = parts.reduce((sum, entry) => {

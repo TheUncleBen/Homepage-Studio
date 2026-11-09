@@ -163,7 +163,7 @@ export function CardBlocks({ card, items = [] }) {
   const logsAllowed = useLogsAllowed();
   // A service card has no values, so only its status, response time and logs
   // blocks draw; logs only for people who can read this dashboard's logs.
-  const blocks = (fit?.blocks || blocksOf(card)).filter(
+  const listed = (fit?.blocks || blocksOf(card)).filter(
     (block) => (items.length || !VALUE_BLOCKS.includes(block.type)) && (block.type !== "logs" || logsAllowed),
   );
   const byKey = new Map(items.map((item) => [item.key, item]));
@@ -177,11 +177,23 @@ export function CardBlocks({ card, items = [] }) {
   const collected = (card.history?.fields || [])
     .map((field) => field.field)
     .filter((key) => !["up", "ms"].includes(key));
-  const fields = blockFields(
-    blocks,
+  const listedFields = blockFields(
+    listed,
     items.map((item) => item.key),
     collected,
   );
+  // A value block left with no values (a one-value widget's default Numbers,
+  // say) is drawn only while editing, where it says what to pick; on the live
+  // dashboard it is left out rather than showing that note to every viewer.
+  // Blocks someone chose (not the default Big number and Numbers).
+  const chosen =
+    Array.isArray(card.look?.blocks) ||
+    Object.values(card.look?.sizes || {}).some((size) => Array.isArray(size?.blocks));
+  const blocks =
+    card.editing && chosen
+      ? listed
+      : listed.filter((block) => !VALUE_BLOCKS.includes(block.type) || listedFields[block.id].length);
+  const fields = listedFields;
   // The card fits the blocks it really drew, with how many values each has.
   const drawn = JSON.stringify(blocks.map((block) => [block.id, fields[block.id].length]));
   const report = fit?.report;

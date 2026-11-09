@@ -110,7 +110,7 @@ export function CardPreview({ panel, data, override, grid = {}, children, render
         {backdrop}
         <div className="studio-native-content" inert>
           <CardLookContext.Provider
-            value={{ ...card, reportFields: undefined, fitId: `preview:${panel.id}`, baseHeight: base }}
+            value={{ ...card, reportFields: undefined, fitId: `preview:${panel.id}`, baseHeight: base, editing: true }}
           >
             <RenderNative panel={panel} data={data} override={override} />
           </CardLookContext.Provider>
@@ -161,9 +161,14 @@ export default function PanelHost({
   const slide = useRef(null);
   const presentation = useCardPresentation(panel, data, canEdit ? onEdit : undefined, onFullView);
   const { attributes, colourStyle, backdrop } = presentation;
+  // While editing, a block with no values says what to pick; on the live
+  // dashboard it is left out.
   const card = useMemo(
-    () => (baseHeight ? { ...presentation.card, baseHeight } : presentation.card),
-    [presentation.card, baseHeight],
+    () =>
+      baseHeight || editing
+        ? { ...presentation.card, ...(baseHeight ? { baseHeight } : {}), ...(editing ? { editing: true } : {}) }
+        : presentation.card,
+    [presentation.card, baseHeight, editing],
   );
   const previousPresentation = useRef(null);
   const slideAnimation = useRef(null);

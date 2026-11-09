@@ -4727,8 +4727,10 @@ svg.studio-chart-gauge {
   opacity: 1;
   pointer-events: auto;
 }
-/* On a chart or status history the note sits in the header row, so it
-   never covers what is drawn. */
+/* On a chart or status history, and in a stack (its page dots sit along the
+   bottom), the note sits in the header row, so it never covers what is
+   drawn. */
+.studio-stack-shell .studio-freshness,
 .studio-panel:has(.studio-chart, .studio-status-history) .studio-freshness {
   top: 8px;
   bottom: auto;
@@ -5720,6 +5722,16 @@ svg.studio-chart-gauge {
     margin-left: calc(50% + (min(480px, 42vw) - 20px) / 2 - 50vw);
   }
 }
+/* Past the board's right edge, as wide as the panel and a margin: the window
+   can scroll the board's last column out from under the panel. */
+.studio-dock-room {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  width: calc(min(480px, 42vw) + 64px);
+  height: 1px;
+  pointer-events: none;
+}
 /* The docked panel is phone-narrow, so its rows are laid out as on a phone:
    the label above, a choice across the full width on one line (B6). */
 .studio-dialog-docked .studio-row-main {
@@ -6311,4 +6323,27 @@ svg.studio-chart-gauge {
   white-space: normal;
   overflow-wrap: anywhere;
   font-size: calc(11.5px * var(--s, 1));
+}
+/* Phone editor: a block card's choices (Largest size S, M, L, XL) keep the
+   card's right padding instead of running to its edge (UI review L3). */
+@media (max-width: 560px) {
+  .studio-block-card .studio-row-control {
+    min-width: 0;
+    padding-right: 14px;
+  }
+  .studio-block-card .studio-row-control > .studio-segmented {
+    max-width: 100%;
+  }
+}
+/* While a widget is being resized its name stays readable: select, move and
+   edit step aside until the corner is let go (UI review M2). */
+.studio-edit-mode.studio-resizing
+  .studio-panel
+  > .studio-panel-slide
+  > :is(.studio-panel-header, .studio-select-corner) {
+  opacity: 0;
+  pointer-events: none;
+}
+.studio-edit-mode.studio-resizing .studio-panel:not(.studio-stacked-panel) .studio-card-identity {
+  padding-left: 0;
 }

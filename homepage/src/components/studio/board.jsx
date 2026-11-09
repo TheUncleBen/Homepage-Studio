@@ -554,9 +554,14 @@ export default function StudioBoard({
   // stays the one chosen before it opened.
   const wideScreen = useWideScreen();
   const docked = Boolean(wideScreen && modal?.type === "content" && modal.panel);
-  // (The panel takes min(480px, 42vw) plus a 20px gap; see studio.css.)
-  const dockWidth = docked && typeof window !== "undefined" ? Math.min(480, window.innerWidth * 0.42) + 20 : 0;
-  const layoutSize = editing && editSize ? editSize : sizeForWidth(width + dockWidth);
+  // The board keeps the width it had before the editor docked (UI review
+  // H1): the widget is edited at its real size and size class, and the page
+  // scrolls sideways under the panel instead of squeezing every card.
+  const [dockedWidth, setDockedWidth] = useState(0);
+  const fullWidth = docked && !(editing && SIZE_WIDTH[editSize]);
+  if (!docked && dockedWidth) setDockedWidth(0);
+  else if (fullWidth && !dockedWidth) setDockedWidth(width);
+  const layoutSize = editing && editSize ? editSize : sizeForWidth(width);
   // The live dashboard lays a size out without the widgets it leaves out
   // (Show on), so a generated tablet or phone layout closes up around them
   // rather than keeping their gap (review M6).
@@ -809,13 +814,22 @@ export default function StudioBoard({
   const editedId = docked ? modal.panel.id : null;
   useEffect(() => {
     if (!editedId) return;
-    // Bring the card being edited into view beside the panel.
-    requestAnimationFrame(() =>
-      document
-        .querySelector(`[data-panel-id="${CSS.escape(editedId)}"]`)
-        ?.scrollIntoView({ block: "nearest", behavior: "auto" }),
-    );
+    // Bring the card being edited into view beside the panel: the panel
+    // covers the window's right side (min(480px, 42vw) and a 20px gap).
+    requestAnimationFrame(() => {
+      const card = document.querySelector(`[data-panel-id="${CSS.escape(editedId)}"]`);
+      if (!card) return;
+      card.scrollIntoView({ block: "nearest", behavior: "auto" });
+      const box = card.getBoundingClientRect();
+      const right = window.innerWidth - (Math.min(480, window.innerWidth * 0.42) + 20);
+      if (box.right > right - 16) window.scrollBy({ left: Math.min(box.left - 24, box.right - right + 24) });
+      else if (box.left < 0) window.scrollBy({ left: box.left - 24 });
+    });
   }, [editedId]);
+  // Back to the start once the editor closes.
+  useEffect(() => {
+    if (!docked && typeof window !== "undefined" && window.scrollX) window.scrollTo({ left: 0, top: window.scrollY });
+  }, [docked]);
   const closeModal = () => {
     if (discardAction) setDiscardAction(null);
     else requestEditorAction(dismissEditor);
@@ -2209,7 +2223,7 @@ export default function StudioBoard({
 
   return (
     <main
-      className={`studio-app${editing ? " studio-edit-mode" : ""}${editing && selection.length ? " studio-has-bulk" : ""}${docked ? " studio-docked-editing" : ""}`}
+      className={`studio-app${editing ? " studio-edit-mode" : ""}${editing && selection.length ? " studio-has-bulk" : ""}${docked ? " studio-docked-editing" : ""}${resizing ? " studio-resizing" : ""}`}
       data-glass={(pageBackground && settings?.studioTheme?.glass) || undefined}
       style={Object.fromEntries(
         Object.entries(statusColours(settings)).map(([key, colour]) => [`--studio-status-${key}`, colour]),
@@ -2372,7 +2386,8 @@ export default function StudioBoard({
           )}
         </div>
       )}
-      {editing && selection.length > 0 && (
+      {/* Hidden while a widget is being resized, so it never sits over it. */}
+      {editing && selection.length > 0 && !resizing && (
         <div className="studio-bulk-bar" role="toolbar" aria-label={`${selection.length} selected`}>
           <span className="studio-bulk-count">{selection.length} selected</span>
           {bulkActions()
@@ -2494,11 +2509,15 @@ export default function StudioBoard({
         onPointerDown={editing ? startMarquee : undefined}
         style={{
           ...(editing && editSize ? { maxWidth: SIZE_WIDTH[editSize], marginInline: "auto" } : {}),
+          ...(fullWidth && dockedWidth ? { width: dockedWidth, maxWidth: "none" } : {}),
           height: board.panels.length ? projection.rows * (ROW_HEIGHT + gap) + 32 : 480,
           "--studio-grid-column": `${(width + gap) / projection.columns}px`,
           "--studio-grid-row": `${ROW_HEIGHT + gap}px`,
         }}
       >
+        {/* Room to scroll the board out from under the docked editor, so
+            every card can be brought beside it (UI review H1). */}
+        {fullWidth && dockedWidth ? <div className="studio-dock-room" aria-hidden="true" /> : null}
         {moving && projection.columns % 2 === 1 && (
           <div className="studio-centre-guide" aria-hidden="true" style={{ left: width / 2 }} />
         )}

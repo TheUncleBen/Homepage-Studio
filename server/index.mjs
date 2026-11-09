@@ -645,6 +645,15 @@ function createDashboardHandlers(options = {}) {
     }
     return out;
   };
+  // Whether a widget already has a recent number for what it needs: its
+  // values (other than up and ms) and, with a status check, up.
+  async function hasRecent(panel, { values = panel.kind === 'serviceWidget' && (!panel.check || panel.values), check = Boolean(panel.check) } = {}) {
+    const newest = await history.newest(panel.id);
+    if (!newest || newest.at < Date.now() - FRESH_MS) return false;
+    if (check && !newest.fields.has('up')) return false;
+    if (values && ![...newest.fields].some(field => field !== 'up' && field !== 'ms')) return false;
+    return true;
+  }
   // fresh: only widgets with no recent point (newly charted or newly added),
   // so a save gives them their first numbers at once without polling every
   // integration on the dashboard again (security review M1, 9d1ff20).
@@ -656,8 +665,7 @@ function createDashboardHandlers(options = {}) {
     await history.keepOnly(needed.map(panel => panel.id));
     let panels = needed;
     if (fresh) {
-      const since = Date.now() - FRESH_MS;
-      const recent = await Promise.all(needed.map(async panel => ((await history.lastAt(panel.id)) ?? 0) >= since));
+      const recent = await Promise.all(needed.map(panel => hasRecent(panel)));
       panels = needed.filter((_, index) => !recent[index]);
     }
     if (!panels.length) return;
@@ -811,6 +819,13 @@ function createDashboardHandlers(options = {}) {
         const { id, kind, nativeLocator, available } = panel;
         const results = await rendererCollect(dashboard, [{ id, kind, nativeLocator, ...(available === false ? { available } : {}) }]);
         const values = Array.isArray(results[panel.id]?.values) ? results[panel.id].values : [];
+        // These numbers start the widget's history when it has none recent,
+        // so a block switched to a chart in the editor draws at once, before
+        // Save (UI review H4). The next round drops it if no block needs it.
+        if (values.length && !(await hasRecent(panel, { values: true, check: false }))) {
+          const state = await store.load();
+          await history.record(panel.id, values, { days: retentionDays(state.settingsConfig) });
+        }
         return json(res, 200, { values: values.filter(value => typeof value?.field === 'string').map(value => ({ field: value.field, format: typeof value.format === 'string' ? value.format : 'plain' })) });
       }
       // Test connection: the widget dialog's draft runs its own first request

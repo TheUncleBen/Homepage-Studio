@@ -49,6 +49,11 @@ describe("chartPool (Rule 1)", () => {
     expect(chartPool("gauge", ["a", "b"], { a: "percent", b: "number" })).toEqual(["a"]);
     expect(chartPool("chart", numbers, formats)).toEqual(numbers);
   });
+  it("keeps the largest group of the block's own numbers, at least two for a pie", () => {
+    const mixed = { mem: "percent", run: "number", stop: "number" };
+    expect(chartPool("pie", ["mem", "run", "stop"], mixed, ["mem", "run", "stop"])).toEqual(["run", "stop"]);
+    expect(chartPool("pie", ["mem", "run", "stop"], mixed, ["mem"])).toEqual(["run", "stop"]);
+  });
   it("offers every number before the formats are known", () => {
     expect(chartPool("pie", numbers, {})).toEqual(numbers);
   });
@@ -181,12 +186,12 @@ describe("remedies and the limit note", () => {
         }}
         inheritedLook={BUILT_IN_LOOK}
         scope="small"
-        fit={{ fits: true, sizeClass: "small" }}
+        fit={{ fits: true, sizeClass: "small", box: { w: 214.4, h: 132 } }}
         limited={{ w: 4, h: 3 }}
         onLook={onLook}
       />,
     );
-    expect(screen.getByRole("status").textContent).toMatch(/Stopped at 4 × 3.*for Small sizes/);
+    expect(screen.getByRole("status").textContent).toMatch(/Stopped at 214 × 132 px.*To go smaller.*for Small sizes/);
     fireEvent.click(screen.getByRole("button", { name: "Hide labels" }));
     const look = onLook.mock.calls[0][0];
     expect(look.sizes.small.blocks.every((block) => block.labels === false)).toBe(true);
@@ -198,6 +203,7 @@ describe("remedies and the limit note", () => {
       <LimitNote look={{}} inheritedLook={BUILT_IN_LOOK} fit={{ fits: true, squeezed: true }} onLook={() => {}} />,
     );
     expect(screen.getByRole("status").textContent).toMatch(/text is drawn smaller/);
+    expect(screen.getByRole("status").textContent).not.toMatch(/To go smaller/);
     rerender(<LimitNote look={{}} inheritedLook={BUILT_IN_LOOK} fit={{ fits: true }} onLook={() => {}} />);
     expect(screen.queryByRole("status")).toBeNull();
   });

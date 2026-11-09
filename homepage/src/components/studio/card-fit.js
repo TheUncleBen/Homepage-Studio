@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { publishFit } from "./card-look";
-import { apply, candidates, ceilingOf, fitCard, floorOf, LAST_RESORT, layout, relaxed, standsUp } from "./fit.mjs";
+import {
+  apply,
+  candidates,
+  ceilingOf,
+  fitCard,
+  fits,
+  floorOf,
+  LAST_RESORT,
+  layout,
+  relaxed,
+  standsUp,
+} from "./fit.mjs";
 import { blocksOf, classOf, lookAt } from "./look.mjs";
 
 const NONE = Object.freeze({});
@@ -114,9 +125,16 @@ export function useBlockFit(card) {
     effective.text,
     effective.textSize,
   ]);
+  // What the last full fit was for, and whether it fitted cleanly.
+  const last = useRef({ key: null, clean: false });
   useIsoLayoutEffect(() => {
     const node = ref.current;
     if (!node || !box.w) return;
+    // A value's text changing (every refresh) refits only when the card no
+    // longer fits as it is; a clean fit is kept, which keeps the live board
+    // light (UI review L5).
+    const key = JSON.stringify([box, signature, drawn, card.baseHeight]);
+    if (key === last.current.key && last.current.clean && fits(node)) return;
     const counts = Object.fromEntries(drawn || []);
     const shown = drawn ? blocks.filter((block) => Object.hasOwn(counts, block.id)) : [];
     // Where the board lets a card grow (a phone or tablet layout made from
@@ -125,6 +143,7 @@ export function useBlockFit(card) {
     // height it was given, never at the height it has grown to.
     const need = card.baseHeight ? neededHeight(node, card.baseHeight, effective, shown, counts) : 0;
     const result = fitCard(node, effective, shown, counts);
+    last.current = { key, clean: Boolean(result?.fits && !result.squeezed && !result.relaxed && !need) };
     if (result)
       publishFit(card.fitId || card.id, {
         ...result,

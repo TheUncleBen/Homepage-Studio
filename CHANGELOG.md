@@ -56,6 +56,20 @@ in older entries below are history only.
   whose browser sent it, and a report naming a widget that isn't on the
   dashboard isn't shown as that widget's line. The log store has a new
   index for the block's search (a fresh log store on this candidate).
+- With the widget editor docked, the board keeps its width and the card
+  being edited scrolls into view beside the panel; the size shown is the
+  real one. While resizing, the selection bar and widget tools step aside.
+- A widget's name and the reason it is red wrap only between words; a
+  widget never shows a word broken in the middle or a line cut off.
+- A block with no values (for example a one-value widget's default
+  Numbers) is left out on the dashboard; while editing it still says what
+  to pick.
+- Charts draw from the first number, before Save, and a pie of picked
+  counts draws them even when the widget's other values are percentages.
+  Changing a block to a pie starts it with the largest group of values in
+  one unit.
+- Auto picks the largest text that fits; the column choices go up to the
+  number of values; the size note gives the size in pixels.
 
 ### Built-in monitoring and logs; a docked widget editor, saved items and filler widgets
 

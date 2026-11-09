@@ -54,24 +54,30 @@ describe("card values", () => {
     expect(container.textContent).not.toMatch(/\+\d/);
   });
 
-  it("shows a value in every block that picks it, and a note in a block with none", () => {
+  const mixed = [
+    { id: "q", type: "quiet", values: ["b", "a"] },
+    { id: "n", type: "numbers", values: ["a"] },
+    { id: "e", type: "big", values: ["gone"] },
+  ];
+  const items = [<Block key="a" field="a" label="A" value="1" />, <Block key="b" field="b" label="B" value="2" />];
+  it("shows a value in every block that picks it, and, while editing, a note in a chosen block with none", () => {
     const { container } = render(
-      <CardValues
-        card={{
-          id: "mixed",
-          blocks: [
-            { id: "q", type: "quiet", values: ["b", "a"] },
-            { id: "n", type: "numbers", values: ["a"] },
-            { id: "e", type: "big", values: ["gone"] },
-          ],
-        }}
-        items={[<Block key="a" field="a" label="A" value="1" />, <Block key="b" field="b" label="B" value="2" />]}
-      />,
+      <CardValues card={{ id: "mixed", editing: true, look: { blocks: mixed }, blocks: mixed }} items={items} />,
     );
     const [quiet, numbers, empty] = container.querySelectorAll(".studio-block");
     expect(quiet.textContent).toBe("B 2A 1");
     expect(numbers.textContent).toBe("A 1");
     expect(empty.textContent).toBe("Pick a value for this Big number");
+  });
+  it("leaves a block with no values out on the live dashboard and in a default look", () => {
+    const live = render(<CardValues card={{ id: "live", look: { blocks: mixed }, blocks: mixed }} items={items} />);
+    expect(live.container.querySelectorAll(".studio-block")).toHaveLength(2);
+    expect(live.container.textContent).not.toMatch(/Pick/);
+    // A one-value widget with the default look shows just its Big number.
+    const one = render(
+      <CardValues card={{ id: "one", editing: true }} items={[<Block key="a" field="a" label="A" value="1" />]} />,
+    );
+    expect([...one.container.querySelectorAll(".studio-block")].map((block) => block.dataset.type)).toEqual(["big"]);
   });
 });
 

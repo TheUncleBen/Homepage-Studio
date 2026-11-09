@@ -54,10 +54,16 @@ test('on a wide screen the widget editor docks beside the board and keeps the de
   await expect(dialog).toHaveClass(/studio-dialog-docked/);
   await expect(page.getByText('Docked fixture', { exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Layout size' }).getByRole('button', { name: 'Desktop', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  // The board beside it stays usable (UI review H1): not modal, no sideways
-  // scroll, another widget's edit switches the panel, Esc closes it.
+  // The board beside it stays usable (UI review H1): not modal, the board
+  // keeps its width and scrolls sideways at most by the panel's room, so the
+  // card being edited sits beside the panel; another widget's edit switches
+  // the panel, Esc closes it.
   expect(await dialog.evaluate(element => element.matches(':modal'))).toBe(false);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  const room = await dialog.evaluate(element => element.getBoundingClientRect().width + 64);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(room + 1);
+  const panelLeft = await dialog.evaluate(element => element.getBoundingClientRect().left);
+  const edited = page.locator('.studio-panel').filter({ hasText: 'Docked fixture' }).first();
+  await expect.poll(async () => (await edited.boundingBox()).x + (await edited.boundingBox()).width).toBeLessThanOrEqual(panelLeft);
   await page.getByRole('button', { name: 'Edit Greeting 2', exact: true }).click();
   await expect(dialog.getByRole('heading', { name: 'Edit Greeting 2' })).toBeVisible();
   await dialog.getByRole('tab', { name: 'Data', exact: true }).focus();
