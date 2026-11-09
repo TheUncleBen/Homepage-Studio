@@ -29,7 +29,7 @@ const CONNECTION_KEYS = ['action', 'id', 'name', 'url', 'key', 'username', 'pass
 import { createPersonalStore } from './personal.mjs';
 import { connectionIdsOf, createLibrary, LibraryError, MAX_SAVED_WIDGETS, publicEntry, SCOPES, SHARED_LIBRARY_FILE } from './library.mjs';
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
-import { LookError, STATUS_SHOW, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
+import { LookError, allBlocks, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
 import { BACKGROUND_CHOICES, BASE_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
@@ -38,6 +38,8 @@ import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendS
 import { atLeast, requiredLevel } from './auth/access.mjs';
 import { createObservability } from './observability/controller.mjs';
 import { ERROR_CLASSES, classifyError } from '../homepage/src/utils/studio/error-classes.mjs';
+// Requests that can add, remove or change a card (and so its card monitor).
+const CARD_CHANGING_PATHS = new Set(['/studio/api/board', '/studio/api/save', '/studio/api/undo', '/studio/api/redo', '/studio/api/service', '/studio/api/info-widget', '/studio/api/service-widget', '/studio/api/bookmark', '/studio/api/settings', '/studio/api/restore', '/studio/api/import', '/studio/api/widgets-delete', '/studio/api/widgets-duplicate', '/studio/api/page-delete', '/studio/api/page-duplicate']);
 
 const base = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const studioVersion = (await readFile(join(base, 'VERSION'), 'utf8')).trim();
@@ -622,34 +624,58 @@ function createDashboardHandlers(options = {}) {
     return value;
   }
   // The widgets the collector polls: charts, trends and colour rules read
-  // the widget's values; status history runs its status check instead.
+  // the widget's values; status history and response time run its status
+  // check too. A widget can have both (blocks, mock-ups v4).
+  // A widget with a point newer than this needs nothing from a save.
+  const FRESH_MS = 2 * (options.collectMs || 60000);
   const historyPanels = state => {
     const card = readLook(state.settingsConfig?.studioTheme?.card);
     const acts = readBehaviour(state.settingsConfig?.studioDefaults);
     const out = [];
     for (const panel of state.board?.panels || []) {
       const look = inheritedLook(card, panel.look);
-      if (look.show === STATUS_SHOW && ['service', 'serviceWidget'].includes(panel.kind)) {
-        const check = inheritedBehaviour(acts, panel.behaviour).status;
-        if (check === 'web' || check === 'ping') out.push({ ...panel, check });
-      } else if (panel.kind === 'serviceWidget' && needsHistory(look)) out.push(panel);
+      if (!['service', 'serviceWidget'].includes(panel.kind) || !needsHistory(look)) continue;
+      const blocks = allBlocks(look);
+      const statusCheck = blocks.some(block => block.type === 'status' || block.type === 'response');
+      const values = panel.kind === 'serviceWidget' && (blocks.some(block => !['status', 'response', 'logs'].includes(block.type) && needsHistory({ blocks: [block] })) || look.values?.some(value => value.rules));
+      const check = statusCheck ? inheritedBehaviour(acts, panel.behaviour).status : null;
+      const checked = check === 'web' || check === 'ping';
+      if (checked) out.push({ ...panel, check, ...(values ? { values: true } : {}) });
+      else if (values) out.push(panel);
     }
     return out;
   };
-  async function collectHistory(dashboard) {
+  // Whether a widget already has a recent number for what it needs: its
+  // values (other than up and ms) and, with a status check, up.
+  async function hasRecent(panel, { values = panel.kind === 'serviceWidget' && (!panel.check || panel.values), check = Boolean(panel.check) } = {}) {
+    const newest = await history.newest(panel.id);
+    if (!newest || newest.at < Date.now() - FRESH_MS) return false;
+    if (check && !newest.fields.has('up')) return false;
+    if (values && ![...newest.fields].some(field => field !== 'up' && field !== 'ms')) return false;
+    return true;
+  }
+  // fresh: only widgets with no recent point (newly charted or newly added),
+  // so a save gives them their first numbers at once without polling every
+  // integration on the dashboard again (security review M1, 9d1ff20).
+  async function collectHistory(dashboard, { fresh = false } = {}) {
     if (!(await initialization).ok) return;
     const state = await store.load();
-    const panels = historyPanels(state);
+    const needed = historyPanels(state);
     // History is kept only for widgets that still need it.
-    await history.keepOnly(panels.map(panel => panel.id));
+    await history.keepOnly(needed.map(panel => panel.id));
+    let panels = needed;
+    if (fresh) {
+      const recent = await Promise.all(needed.map(panel => hasRecent(panel)));
+      panels = needed.filter((_, index) => !recent[index]);
+    }
     if (!panels.length) return;
-    const results = await rendererCollect(dashboard, panels.map(({ id, kind, nativeLocator, available, check }) => ({ id, kind, nativeLocator, ...(available === false ? { available } : {}), ...(check ? { check } : {}) })));
+    const results = await rendererCollect(dashboard, panels.map(({ id, kind, nativeLocator, available, check, values }) => ({ id, kind, nativeLocator, ...(available === false ? { available } : {}), ...(check ? { check } : {}), ...(check && values ? { values: true } : {}) })));
     const at = Date.now();
     // A widget whose numbers can't be fetched is an integration problem for
     // the dashboard's logs (status checks have their own monitors).
     const FAILURES = { timeout: 'took too long to answer', service: 'did not answer as expected', render: 'could not be read' };
     for (const panel of panels) {
-      const failure = !panel.check && FAILURES[results[panel.id]?.error];
+      const failure = (!panel.check || panel.values) && FAILURES[results[panel.id]?.error];
       if (failure) options.onIntegration?.({ source_type: 'integration', source_id: panel.nativeLocator?.type ?? 'widget', scope: dashboard.id, resource: panel.title || panel.nativeLocator?.type || 'Widget', panel: panel.id, category: 'integration', severity: 4, event_type: 'widget.collect-failed', error_class: results[panel.id].error === 'timeout' ? 'timeout' : null, message: `${panel.title || 'A widget'}: its history ${failure}` });
     }
     for (const panel of panels) {
@@ -675,6 +701,10 @@ function createDashboardHandlers(options = {}) {
           (req.method === 'POST' && (path === '/studio/api/board' || (saveChange && Object.hasOwn(saveChange, 'board'))))) {
         await store.refreshDiscovery(String(req.headers.host).toLowerCase(), dashboard);
       }
+      // A saved change can add a card or change its status check: its card
+      // monitor is set up now, not at the next minute's round (owner feedback
+      // on 53ebc3b: a new response time took minutes to show).
+      if (req.method === 'POST' && CARD_CHANGING_PATHS.has(path)) res.on('finish', () => { if (res.statusCode === 200) options.onBoardChanged?.(); });
       if (path === '/studio/api/state' && req.method === 'GET') return json(res, 200, await store.load());
       if (path === '/studio/api/board' && req.method === 'GET') return json(res, 200, await store.loadBoard());
       if (path === '/studio/api/board' && req.method === 'POST') return json(res, 200, await store.saveBoard(await editBody(req)));
@@ -789,6 +819,13 @@ function createDashboardHandlers(options = {}) {
         const { id, kind, nativeLocator, available } = panel;
         const results = await rendererCollect(dashboard, [{ id, kind, nativeLocator, ...(available === false ? { available } : {}) }]);
         const values = Array.isArray(results[panel.id]?.values) ? results[panel.id].values : [];
+        // These numbers start the widget's history when it has none recent,
+        // so a block switched to a chart in the editor draws at once, before
+        // Save (UI review H4). The next round drops it if no block needs it.
+        if (values.length && !(await hasRecent(panel, { values: true, check: false }))) {
+          const state = await store.load();
+          await history.record(panel.id, values, { days: retentionDays(state.settingsConfig) });
+        }
         return json(res, 200, { values: values.filter(value => typeof value?.field === 'string').map(value => ({ field: value.field, format: typeof value.format === 'string' ? value.format : 'plain' })) });
       }
       // Test connection: the widget dialog's draft runs its own first request
@@ -986,10 +1023,13 @@ export function createStudioServer(options = {}) {
   const unpublished = new Map();
   let rendererClosed, applicationClosing = false;
   const closeRenderer = () => (rendererClosed ||= Promise.resolve().then(() => rendererPool.close?.()));
+  // Set below, once card monitoring is ready: syncs one dashboard's card
+  // monitors soon after a change.
+  let cardSyncSoon = () => {};
   function forDashboard(entry) {
     let handler = handlers.get(entry.id);
     if (!handler) {
-      handler = createDashboardHandlers({ ...options, onIntegration: event => observability?.log(event), onSecretsChanged: () => observability?.refreshSecrets(), internalToken, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
+      handler = createDashboardHandlers({ ...options, onIntegration: event => observability?.log(event), onSecretsChanged: () => observability?.refreshSecrets(), onBoardChanged: () => cardSyncSoon(entry.id), internalToken, platform, rendererPool, nativeBodyBudget, privateCookies, configDir: dashboardConfigDir(configRoot, entry.id), stateDir: dashboardStateDir(stateRoot, entry.id) });
       handlers.set(entry.id, handler);
     }
     // Only immutable-id storage is retained. Each request carries its own
@@ -1613,9 +1653,14 @@ export function createStudioServer(options = {}) {
         if (!clientErrorAllowed(current.user.id)) return json(res, 429, { error: 'Too many reports.', code: 'RATE_LIMITED' });
         const body = await readBody(req, 16 * 1024);
         const reports = Array.isArray(body?.errors) ? body.errors.slice(0, 10) : [];
+        // A report names a widget only when that widget is on this
+        // dashboard's board; any other id is dropped (security review L1).
+        const onBoard = reports.some(report => typeof report?.panel === 'string')
+          ? new Set(((await forDashboard(route.dashboard).store.loadBoard()).board?.panels || []).map(panel => panel.id))
+          : new Set();
         for (const report of reports) {
           if (!report || typeof report.message !== 'string') continue;
-          observability.log({ source_type: 'browser', source_id: route.dashboard.id, scope: route.dashboard.id, category: 'integration', severity: 4, event_type: 'widget.error', error_class: ERROR_CLASSES.includes(report.errorClass) ? report.errorClass : classifyError({ message: report.message }), panel: typeof report.panel === 'string' ? report.panel.slice(0, 64) : undefined, resource: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined, actor: current.user.username, message: report.message.slice(0, 500), fields: { widget: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined } });
+          observability.log({ source_type: 'browser', source_id: route.dashboard.id, scope: route.dashboard.id, category: 'integration', severity: 4, event_type: 'widget.error', error_class: ERROR_CLASSES.includes(report.errorClass) ? report.errorClass : classifyError({ message: report.message }), panel: typeof report.panel === 'string' && onBoard.has(report.panel) ? report.panel : undefined, resource: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined, actor: current.user.username, message: report.message.slice(0, 500), fields: { widget: typeof report.widget === 'string' ? report.widget.slice(0, 80) : undefined } });
         }
         return json(res, 202, { accepted: reports.length });
       }
@@ -1669,6 +1714,15 @@ export function createStudioServer(options = {}) {
   // dashboard that fails is skipped until the next run.
   const collectMs = options.collectMs ?? 60000;
   let collecting = false;
+  // One collection per dashboard at a time: a save's quick collection and
+  // the minute round never poll the same integrations at once.
+  const collectingFor = new Set();
+  const collectFor = async (entry, settings) => {
+    if (collectingFor.has(entry.id)) return;
+    collectingFor.add(entry.id);
+    try { await forDashboard(entry).collectHistory(entry, settings); }
+    finally { collectingFor.delete(entry.id); }
+  };
   // A failure is logged once, not every minute, until a run gets through.
   // Before the first setup the dashboards aren't ready; that's expected.
   const reported = new Set();
@@ -1691,7 +1745,7 @@ export function createStudioServer(options = {}) {
           if (observability) await observability.syncCards(entry, []).catch(() => {});
           continue;
         }
-        try { await forDashboard(entry).collectHistory(entry); }
+        try { await collectFor(entry); }
         catch (error) { failed = true; collectFailed(error); }
         if (observability) {
           try { const targets = await forDashboard(entry).statusTargets(entry); if (targets) await observability.syncCards(entry, targets); }
@@ -1703,6 +1757,32 @@ export function createStudioServer(options = {}) {
       if (!failed) reported.clear();
     } catch (error) { collectFailed(error); }
     finally { collecting = false; }
+  };
+  // One dashboard's card monitors, a moment after a change to it (several
+  // quick saves make one sync).
+  const cardSyncTimers = new Map();
+  // A widget newly shown as a chart gets its first numbers now too, not at
+  // the next minute's round (owner feedback on 53ebc3b: "Collecting numbers"
+  // for about two minutes).
+  cardSyncSoon = (id) => {
+    if (applicationClosing) return;
+    clearTimeout(cardSyncTimers.get(id));
+    const timer = setTimeout(async () => {
+      cardSyncTimers.delete(id);
+      let entry;
+      try {
+        entry = (await prepareRegistry()).dashboards.find(item => item.id === id);
+        if (!entry || entry.archived || (!entry.slug && entry.id !== 'default')) return;
+        await collectFor(entry, { fresh: true });
+      } catch (error) { collectFailed(error); }
+      if (!entry || !observability) return;
+      try {
+        const targets = await forDashboard(entry).statusTargets(entry);
+        if (targets) await observability.syncCards(entry, targets);
+      } catch (error) { collectFailed(Object.assign(new Error('status'), { code: 'CARD_MONITORS_' + (error.code || 'FAILED') })); }
+    }, 750);
+    timer.unref?.();
+    cardSyncTimers.set(id, timer);
   };
   const collector = collectMs > 0 ? setInterval(collect, collectMs) : null;
   collector?.unref();

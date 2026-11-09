@@ -67,33 +67,42 @@ export async function checkStatus(service, groupName, check, run = CHECKS) {
 export async function collectPanels(panels, data, load = proxied, run = CHECKS) {
   const results = {};
   for (const panel of panels) {
+    let checked = null;
     if (panel?.check) {
       const resolved = ["service", "serviceWidget"].includes(panel.kind) ? resolveNativePanel(panel, data) : null;
       try {
-        results[panel.id] = resolved
+        checked = resolved
           ? await Promise.race([
               checkStatus(resolved.service, resolved.groupName, panel.check, run),
               timeout(PANEL_TIMEOUT_MS),
             ])
           : { error: "unavailable" };
       } catch {
-        results[panel.id] = { error: "service" };
+        checked = { error: "service" };
       }
-      continue;
+      results[panel.id] = checked;
+      // A widget with status history and charted values (blocks) needs both.
+      if (panel.values !== true || panel.kind !== "serviceWidget") continue;
     }
     const resolved = panel?.kind === "serviceWidget" ? resolveNativePanel(panel, data) : null;
     const loader = resolved && Object.hasOwn(loaders, resolved.widget.type) ? loaders[resolved.widget.type] : null;
-    if (!loader) {
-      results[panel.id] = { error: "unavailable" };
-      continue;
-    }
-    try {
-      const { default: Component } = await loader();
-      const service = { ...resolved.service, widget: resolved.widget };
-      results[panel.id] = await Promise.race([collectWidget(Component, service, load), timeout(PANEL_TIMEOUT_MS)]);
-    } catch {
-      results[panel.id] = { error: "render" };
-    }
+    let own;
+    if (!loader) own = { error: "unavailable" };
+    else
+      try {
+        const { default: Component } = await loader();
+        const service = { ...resolved.service, widget: resolved.widget };
+        own = await Promise.race([collectWidget(Component, service, load), timeout(PANEL_TIMEOUT_MS)]);
+      } catch {
+        own = { error: "render" };
+      }
+    // Both: the status check's fields join the widget's own, and a failure of
+    // either still keeps what the other found.
+    if (checked && Array.isArray(checked.values))
+      own = Array.isArray(own?.values)
+        ? { ...own, values: [...checked.values, ...own.values.filter((value) => !["up", "ms"].includes(value?.field))] }
+        : { ...checked, ...(own?.error ? { error: own.error } : {}) };
+    results[panel.id] = own;
   }
   return results;
 }
@@ -110,7 +119,8 @@ async function handler(req, res) {
         !panel ||
         typeof panel.id !== "string" ||
         typeof panel.nativeLocator !== "object" ||
-        (panel.check !== undefined && !["web", "ping"].includes(panel.check)),
+        (panel.check !== undefined && !["web", "ping"].includes(panel.check)) ||
+        (panel.values !== undefined && (panel.values !== true || panel.check === undefined)),
     )
   )
     return res.status(400).json({ error: "Send the panels to collect." });

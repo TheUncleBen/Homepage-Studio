@@ -3,7 +3,6 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import { useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
 import { createStackPlayback } from "./playback.mjs";
-import StackTitlePicker from "./stack-title-picker";
 
 export default function StackShell({
   stack,
@@ -35,16 +34,10 @@ export default function StackShell({
   );
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [announcement, setAnnouncement] = useState("");
-  const membership = stack.panelIds.join("|");
-  const [pickerMembers, setPickerMembers] = useState(null);
-  const pickerOpen = pickerMembers !== null;
-  // The restriction is reflected in this same render, so ending an edit/save
-  // can never reopen a picker that was open before it began.
-  if (pickerOpen && (editing || busy || overlayOpen || pickerMembers !== membership)) setPickerMembers(null);
   const activePanel = panels.find((panel) => panel.id === snapshot.activeId);
   const gestures = useStackGestures({
     controller,
-    disabled: editing || busy || pickerOpen || overlayOpen,
+    disabled: editing || busy || overlayOpen,
     onDrag: onStackDrag,
     onManual: (next) =>
       setAnnouncement(
@@ -52,11 +45,9 @@ export default function StackShell({
       ),
   });
   const press = useLongPress({
-    disabled: busy || pickerOpen || overlayOpen || !onLongPress,
+    disabled: busy || overlayOpen || !onLongPress,
     onLongPress: (pointer) => onLongPress?.(stack.id, pointer),
-    accepts: (event) =>
-      !event.target.closest("button,input,.studio-select-target") ||
-      Boolean(event.target.closest("[data-studio-stack-title]")),
+    accepts: (event) => !event.target.closest("button,input,.studio-select-target"),
   });
 
   useEffect(() => {
@@ -89,10 +80,6 @@ export default function StackShell({
   useEffect(() => {
     controller.setBlocked("overlay", overlayOpen);
   }, [controller, overlayOpen]);
-  useEffect(() => {
-    controller.setBlocked("picker", pickerOpen && !editing && !busy);
-    return () => controller.setBlocked("picker", false);
-  }, [controller, pickerOpen, editing, busy]);
   useEffect(() => {
     // Respect reduced motion on initial automatic start. Explicit Play remains available.
     if (stack.playback.mode === "automatic" && !reducedMotion) controller.play();
@@ -144,91 +131,92 @@ export default function StackShell({
       }}
       onContextMenu={(event) => {
         press.cancel();
-        if (
-          busy ||
-          !onLongPress ||
-          (event.target.closest("button,input,.studio-select-target") &&
-            !event.target.closest("[data-studio-stack-title]"))
-        )
-          return;
+        if (busy || !onLongPress || event.target.closest("button,input,.studio-select-target")) return;
         event.preventDefault();
         onLongPress?.(stack.id, { clientX: event.clientX, clientY: event.clientY });
       }}
     >
-      <header className="studio-stack-header">
-        {editing && onSelect && (
-          // The same enlarged selection target as a panel header's checkbox.
-          <label className="studio-select-target">
-            <input
-              type="checkbox"
-              aria-label={`Select stack ${activePanel?.title || "Widgets"}`}
-              checked={Boolean(selected)}
-              disabled={busy}
-              onChange={() => onSelect(stack.id)}
-            />
-          </label>
-        )}
-        <span className="studio-stack-symbol">
-          <StudioIcon name="stack" size={16} />
-        </span>
-        <StackTitlePicker
-          stackId={stack.id}
-          panels={stack.panelIds.map((id) => panels.find((panel) => panel.id === id)).filter(Boolean)}
-          activeId={snapshot.activeId}
-          open={pickerOpen}
-          disabled={editing || busy || overlayOpen}
-          onOpen={() => setPickerMembers(membership)}
-          onClose={() => setPickerMembers(null)}
-          onSelect={(id) => {
-            controller.select(id, { manual: true });
-            const next = controller.getSnapshot();
-            setAnnouncement(
-              `${panels.find((panel) => panel.id === id)?.title || "Widget"}, ${next.activeIndex + 1} of ${next.ids.length}`,
-            );
-          }}
-        />
-        {editing ? (
-          <>
-            <button
-              className="studio-icon-button studio-move-handle"
-              disabled={busy}
-              aria-label="Move stack. Arrow keys move; Shift and arrows resize."
-              onPointerDown={(event) => onManipulate(event, stack.id, "move")}
-              onKeyDown={(event) => onUnitKey(event, stack.id)}
-            >
-              <StudioIcon name="grip" />
-            </button>
-            <button
-              className="studio-icon-button"
-              disabled={busy}
-              aria-label="Edit stack"
-              onClick={() => onEdit(stack)}
-            >
-              <StudioIcon name="edit" />
-            </button>
-          </>
-        ) : (
+      {/* Board 4: the stack draws as the widget it is showing, with no bar of
+          its own. While editing, it has the same select, move and edit
+          controls as any widget: Move and Edit where a widget's are, the
+          select box beside the page dots, clear of the widget's name. */}
+      {editing && onSelect && (
+        <label className="studio-select-target studio-select-corner studio-stack-control">
+          <input
+            type="checkbox"
+            className="studio-select-input"
+            aria-label={`Select stack ${activePanel?.title || "Widgets"}`}
+            checked={Boolean(selected)}
+            disabled={busy}
+            onChange={() => onSelect(stack.id)}
+          />
+          <span className="studio-select-box" aria-hidden="true">
+            <StudioIcon name="check" size={13} />
+          </span>
+        </label>
+      )}
+      {editing && (
+        <div className="studio-stack-tools studio-stack-control">
           <button
-            className={`studio-icon-button studio-play-button${snapshot.playing ? " studio-playing" : ""}`}
+            className="studio-icon-button studio-move-handle"
+            disabled={busy}
+            aria-label="Move stack. Arrow keys move; Shift and arrows resize."
+            onPointerDown={(event) => onManipulate(event, stack.id, "move")}
+            onKeyDown={(event) => onUnitKey(event, stack.id)}
+          >
+            <StudioIcon name="grip" />
+          </button>
+          <button className="studio-icon-button" disabled={busy} aria-label="Edit stack" onClick={() => onEdit(stack)}>
+            <StudioIcon name="edit" />
+          </button>
+        </div>
+      )}
+      {/* Page dots to jump to a widget, and Play/Pause, at the bottom edge. */}
+      <footer className="studio-stack-footer">
+        <span className="studio-stack-dots" role="group" aria-label="Widgets in this stack">
+          {snapshot.ids.map((id, index) => {
+            const title = panels.find((panel) => panel.id === id)?.title || "Widget";
+            return (
+              <button
+                key={id}
+                type="button"
+                className={id === snapshot.activeId ? "studio-dot-active" : undefined}
+                aria-label={`Show ${title}, ${index + 1} of ${snapshot.ids.length}`}
+                aria-current={id === snapshot.activeId || undefined}
+                disabled={busy || overlayOpen}
+                onClick={() => {
+                  controller.select(id, { manual: true });
+                  setAnnouncement(`${title}, ${index + 1} of ${snapshot.ids.length}`);
+                }}
+              >
+                <span aria-hidden="true" />
+              </button>
+            );
+          })}
+        </span>
+        {/* While playing: why it isn't moving (Waiting while something is in
+            use, Holding after a manual switch), shown beside Play/Pause;
+            plain Playing is for screen readers only. */}
+        {!editing && snapshot.playing && (
+          <span
+            className={`studio-playback-status${
+              snapshot.holding || snapshot.blockedReasons.length ? "" : " studio-sr-only"
+            }`}
+          >
+            {snapshot.holding ? "Holding" : snapshot.blockedReasons.length ? "Waiting" : "Playing"}
+          </span>
+        )}
+        {!editing && (
+          <button
+            type="button"
+            className={`studio-stack-play${snapshot.playing ? " studio-playing" : ""}`}
             disabled={busy}
             aria-label={snapshot.playing ? "Pause slideshow" : "Play slideshow"}
             title={snapshot.playing ? "Pause slideshow" : "Play slideshow"}
             onClick={() => controller.toggle()}
           >
-            <StudioIcon name={snapshot.playing ? "pause" : "play"} size={16} />
+            <StudioIcon name={snapshot.playing ? "pause" : "play"} size={12} />
           </button>
-        )}
-      </header>
-      <footer className="studio-stack-footer" aria-hidden="true">
-        <span className="studio-stack-dots">
-          {snapshot.ids.map((id) => (
-            <span key={id} className={id === snapshot.activeId ? "studio-dot-active" : ""} />
-          ))}
-        </span>
-        {snapshot.playing && (
-          <span className="studio-playback-status">
-            {snapshot.holding ? "Holding" : snapshot.blockedReasons.length ? "Waiting" : "Playing"}
-          </span>
         )}
       </footer>
       {editing && (
@@ -243,10 +231,10 @@ export default function StackShell({
         </button>
       )}
       <span id={`studio-stack-help-${stack.id}`} className="studio-sr-only">
-        Swipe across the stack header or widget, drag horizontally, use a horizontal trackpad gesture, or focus this
-        stack and press the left and right arrow keys. Manual switching while playing holds this widget for{" "}
+        Swipe across the widget, drag horizontally, use a horizontal trackpad gesture, or focus this stack and press the
+        left and right arrow keys. Manual switching while playing holds this widget for{" "}
         {Math.max(snapshot.intervalMs, snapshot.manualHoldMs) / 1000} seconds. The Play button starts or pauses
-        rotation. Activate the widget title to choose a widget directly.
+        rotation. The page dots choose a widget directly.
       </span>
       <span className="studio-sr-only" aria-live="polite" aria-atomic="true">
         {announcement}

@@ -266,7 +266,7 @@ describe("Newly discovered widgets", () => {
     const note = await screen.findByRole("group", { name: "Newly discovered widgets" });
     expect(within(note).getByText("A new widget was discovered.")).toBeTruthy();
     const select = within(note).getByRole("combobox", { name: "Put it on" });
-    expect(select.value).toBe("home");
+    expect(select.textContent).toBe("Overview");
     fireEvent.click(within(note).getByRole("button", { name: "Put it there" }));
     await waitFor(() => expect(screen.queryByRole("group", { name: "Newly discovered widgets" })).toBeNull());
     await waitFor(() => expect(writes.length).toBeGreaterThan(0));

@@ -160,7 +160,8 @@ test('snapshot download and restore recover exact native source identities, stac
   expect((await studioApi(request, '/dashboard/studio/api/board')).board).toEqual(previous.board);
   await page.goto('/dashboard');
   await expect(page.locator('[data-panel-id]')).toHaveCount(previous.board.panels.length);
-  await expect(page.locator('[aria-roledescription="carousel"]')).toContainText('Greeting');
+  // A stack has no title bar; its name is the widget it shows.
+  await expect(page.locator('[aria-roledescription="carousel"]')).toHaveAttribute('aria-label', /^Greeting/);
   await expect(page.locator('[data-stack-id]:not([aria-hidden="true"])')).toContainText('Second duplicate');
   await page.reload();
   expect((await studioApi(request, '/dashboard/studio/api/board')).board).toEqual(previous.board);

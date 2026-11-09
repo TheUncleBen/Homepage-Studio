@@ -51,7 +51,8 @@ export function unitMinimum(board, id) {
   const minima = panels.map(panelMinimum);
   return {
     w: Math.max(1, ...minima.map((minimum) => minimum.w)),
-    h: Math.max(stack ? 5 : 1, ...minima.map((minimum) => minimum.h + (stack ? 2 : 0))),
+    // A stack has only a thin strip of page dots below its widget (Board 4).
+    h: Math.max(stack ? 4 : 1, ...minima.map((minimum) => minimum.h + (stack ? 1 : 0))),
   };
 }
 
@@ -335,6 +336,24 @@ export function fittedUnits(board) {
   const placed = [];
   for (const unit of unitsForBoard(board).sort(byReadingOrder)) {
     let rect = fitMinimum(clampRect(unit.rect, columns), unitMinimum(board, unit.id), columns);
+    let collisions = placed.filter((other) => intersects(rect, other.rect));
+    while (collisions.length) {
+      rect = { ...rect, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
+      collisions = placed.filter((other) => intersects(rect, other.rect));
+    }
+    placed.push({ ...unit, rect });
+  }
+  return placed;
+}
+
+// Widgets drawn taller than laid out because their settings need the room
+// (Board 6: a widget grows instead of clipping). rows: rows each unit needs.
+// Anything that would then overlap moves down, in reading order.
+export function grownUnits(units, rows) {
+  if (!rows?.size) return units;
+  const placed = [];
+  for (const unit of [...units].sort(byReadingOrder)) {
+    let rect = { ...unit.rect, h: Math.max(unit.rect.h, rows.get(unit.id) || 0) };
     let collisions = placed.filter((other) => intersects(rect, other.rect));
     while (collisions.length) {
       rect = { ...rect, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };

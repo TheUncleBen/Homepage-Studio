@@ -8,7 +8,7 @@ import { PageBackgroundEditor } from "./background-picker";
 import { applyChanges, BulkLookEditor, BulkSizeEditor, DeleteWidgetsConfirm, widgetCount } from "./bulk-bar";
 import CardBackground from "./card-background";
 import { ChartFullView, chartRanges } from "./card-chart";
-import { canRefresh, refreshCards, resolvedBehaviour, resolvedLook, useCardTheme } from "./card-look";
+import { canRefresh, cardFits, refreshCards, resolvedBehaviour, resolvedLook, useCardTheme } from "./card-look";
 import { enableClientErrors } from "./client-errors.mjs";
 import { ConnectionsEditor } from "./connections";
 import ContentEditor, { ContentPicker, duplicateEntry } from "./content-editor";
@@ -25,6 +25,7 @@ import {
   freePageName,
   gapOf,
   gridColumns,
+  grownUnits,
   MAX_PAGES,
   movePage,
   moveToPage,
@@ -57,7 +58,7 @@ import {
   sizeProjection,
   sizeView,
 } from "./layouts.mjs";
-import { CHART_SHOWS, needsHistory, readLook, showsOn, statusColours } from "./look.mjs";
+import { allBlocks, needsHistory, readLook, showsOn, statusColours } from "./look.mjs";
 import Menu from "./menu";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import PageTabs, { DeletePageDialog, MoveHereDialog, PageIconEditor } from "./pages";
@@ -70,6 +71,7 @@ import { SizePreview, SizeStatus, SizeSwitch } from "./size-switch";
 import StackEditor, { PositionEditor } from "./stack-editor";
 import StackShell from "./stack-shell";
 import StudioTopBar, { DASHBOARDS_PAGE } from "./top-bar";
+import { Select } from "./ui";
 import { ImagesEditor } from "./uploaded-images";
 
 const HOME_PAGES = [{ id: "home", name: "Home" }];
@@ -172,6 +174,7 @@ export function PanelLayer({
   toolsShown = null,
   offLayout = null,
   liveDraft = null,
+  baseHeights = null,
 }) {
   const stackByPanel = new Map(board.stacks.flatMap((stack) => stack.panelIds.map((id) => [id, stack])));
   // Keep DOM sibling order independent of geometry. Moving an existing iframe
@@ -198,6 +201,7 @@ export function PanelLayer({
             panel={panel}
             data={data}
             rect={geometry.get(unitId) || { display: "none" }}
+            baseHeight={baseHeights?.get(unitId)}
             stack={stack}
             active={isVisible}
             selected={selection.includes(panel.id)}
@@ -231,14 +235,22 @@ export function PanelLayer({
 }
 
 // A chart widget full size, with its own look (names, colours, format).
-function FullViewHost({ panel, data, settings, onClose }) {
+// The first chart over time a widget shows, at any size, for Open full view.
+function firstChart(look) {
+  const block = allBlocks(look).find((item) => item.type === "chart");
+  return block ? { fields: block.values, show: block.style || "line", range: block.range || "24h" } : null;
+}
+
+// chart: the chart block opened (its values, style and range).
+function FullViewHost({ panel, chart, data, settings, onClose }) {
   const { card } = useCardPresentation(panel, data);
+  const shown = { ...card, fields: chart?.fields, show: chart?.show || "line", chartRange: chart?.range || "24h" };
   return (
     <ChartFullView
       panel={panel}
-      card={card}
+      card={shown}
       title={panel.title || "Chart"}
-      ranges={chartRanges(settings, card.chartRange)}
+      ranges={chartRanges(settings, shown.chartRange)}
       onClose={onClose}
     />
   );
@@ -383,6 +395,9 @@ export default function StudioBoard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
+  // Which widget a stack shows after a swipe: for screen readers only (it
+  // showed on the page as "Name, 1 of 2": owner feedback on 53ebc3b).
+  const [stackAnnouncement, setStackAnnouncement] = useState("");
   const [reloadRequired, setReloadRequired] = useState(false);
   // Editing saves as you go (owner decision, 4 Nov 2026). Undo and Redo step
   // through this editing session on the server, content changes included.
@@ -429,6 +444,9 @@ export default function StudioBoard({
   }, []);
   const sizeSwitchShown = sizeForWidth(screenWidth) === "desktop";
   const [moving, setMoving] = useState(null);
+  // The widget whose corner is being dragged: drawn at the size being asked
+  // for, never grown, so the corner stops where its settings stop fitting.
+  const [resizing, setResizing] = useState(null);
   const [stackTarget, setStackTarget] = useState(null);
   const [stackDrags, setStackDrags] = useState({});
   const canvas = useRef(null);
@@ -536,9 +554,14 @@ export default function StudioBoard({
   // stays the one chosen before it opened.
   const wideScreen = useWideScreen();
   const docked = Boolean(wideScreen && modal?.type === "content" && modal.panel);
-  // (The panel takes min(480px, 42vw) plus a 20px gap; see studio.css.)
-  const dockWidth = docked && typeof window !== "undefined" ? Math.min(480, window.innerWidth * 0.42) + 20 : 0;
-  const layoutSize = editing && editSize ? editSize : sizeForWidth(width + dockWidth);
+  // The board keeps the width it had before the editor docked (UI review
+  // H1): the widget is edited at its real size and size class, and the page
+  // scrolls sideways under the panel instead of squeezing every card.
+  const [dockedWidth, setDockedWidth] = useState(0);
+  const fullWidth = docked && !(editing && SIZE_WIDTH[editSize]);
+  if (!docked && dockedWidth) setDockedWidth(0);
+  else if (fullWidth && !dockedWidth) setDockedWidth(width);
+  const layoutSize = editing && editSize ? editSize : sizeForWidth(width);
   // The live dashboard lays a size out without the widgets it leaves out
   // (Show on), so a generated tablet or phone layout closes up around them
   // rather than keeping their gap (review M6).
@@ -588,9 +611,50 @@ export default function StudioBoard({
   }, []);
   // The live dashboard leaves out widgets not shown on this layout. The
   // editor keeps them, faded, so they can still be found and turned back on.
-  const projection = useMemo(
+  const laidOut = useMemo(
     () => sizeProjection(editing ? board : withoutHiddenOn(board, settings, layoutSize), layoutSize),
     [board, layoutSize, editing, settings],
+  );
+  const gap = gapOf(settings);
+  // A widget is never drawn clipped (Board 6): when its settings need more
+  // room than its size gives (a narrower screen, a phone layout, a size set
+  // before its settings changed), it grows taller and what is below moves
+  // down. Only the widget being resized is drawn at the size asked for, and
+  // its corner stops at the smallest size its settings allow.
+  const [needs, setNeeds] = useState(() => new Map());
+  useEffect(() => {
+    const onFit = (event) => {
+      const id = event.detail?.id;
+      const fit = id && !id.startsWith("preview:") ? cardFits.get(id) : null;
+      if (!fit) return;
+      const rows = fit.need ? Math.ceil((fit.need + gap) / (ROW_HEIGHT + gap)) : 0;
+      setNeeds((old) => ((old.get(id) || 0) === rows ? old : new Map(old).set(id, rows)));
+    };
+    window.addEventListener("studio-card-fit", onFit);
+    return () => window.removeEventListener("studio-card-fit", onFit);
+  }, [gap]);
+  const projection = useMemo(() => {
+    if (!needs.size) return laidOut;
+    const rows = new Map();
+    for (const unit of laidOut.units) {
+      if (unit.id === resizing) continue;
+      const ids =
+        unit.kind === "stack" ? board.stacks.find((stack) => stack.id === unit.id)?.panelIds || [] : [unit.id];
+      const most = Math.max(0, ...ids.map((id) => needs.get(id) || 0));
+      if (most > unit.rect.h) rows.set(unit.id, most);
+    }
+    if (!rows.size) return laidOut;
+    const units = grownUnits(laidOut.units, rows);
+    return { ...laidOut, units, rows: Math.max(8, ...units.map((unit) => unit.rect.y + unit.rect.h)) };
+  }, [laidOut, needs, board, resizing]);
+  const shown = useRef(projection);
+  useLayoutEffect(() => {
+    shown.current = projection;
+  }, [projection]);
+  // The height each widget was laid out at, which it measures its needs at.
+  const baseHeights = useMemo(
+    () => new Map(laidOut.units.map((unit) => [unit.id, pixelRect(unit.rect, width, laidOut.columns, gap).height])),
+    [laidOut, width, gap],
   );
   // While editing: the widgets this layout leaves out (shown faded).
   const offLayout = useMemo(
@@ -604,7 +668,6 @@ export default function StudioBoard({
         : null,
     [board, settings, editing, layoutSize],
   );
-  const gap = gapOf(settings);
   const geometry = useMemo(
     () => new Map(projection.units.map((unit) => [unit.id, pixelRect(unit.rect, width, projection.columns, gap)])),
     [projection, width, gap],
@@ -751,13 +814,22 @@ export default function StudioBoard({
   const editedId = docked ? modal.panel.id : null;
   useEffect(() => {
     if (!editedId) return;
-    // Bring the card being edited into view beside the panel.
-    requestAnimationFrame(() =>
-      document
-        .querySelector(`[data-panel-id="${CSS.escape(editedId)}"]`)
-        ?.scrollIntoView({ block: "nearest", behavior: "auto" }),
-    );
+    // Bring the card being edited into view beside the panel: the panel
+    // covers the window's right side (min(480px, 42vw) and a 20px gap).
+    requestAnimationFrame(() => {
+      const card = document.querySelector(`[data-panel-id="${CSS.escape(editedId)}"]`);
+      if (!card) return;
+      card.scrollIntoView({ block: "nearest", behavior: "auto" });
+      const box = card.getBoundingClientRect();
+      const right = window.innerWidth - (Math.min(480, window.innerWidth * 0.42) + 20);
+      if (box.right > right - 16) window.scrollBy({ left: Math.min(box.left - 24, box.right - right + 24) });
+      else if (box.left < 0) window.scrollBy({ left: box.left - 24 });
+    });
   }, [editedId]);
+  // Back to the start once the editor closes.
+  useEffect(() => {
+    if (!docked && typeof window !== "undefined" && window.scrollX) window.scrollTo({ left: 0, top: window.scrollY });
+  }, [docked]);
   const closeModal = () => {
     if (discardAction) setDiscardAction(null);
     else requestEditorAction(dismissEditor);
@@ -903,7 +975,14 @@ export default function StudioBoard({
     return { state, catalog, backups, platform: appearance?.platform ?? null };
   };
   const openEditor = async (type, detail = {}, reload = false) => {
-    if (saveInFlight.current || (!reload && nativeRefreshLock.current)) return;
+    // A click while a save is still landing (the docked editor shows the
+    // change before it is stored) opens once it has, instead of doing
+    // nothing or being closed by that save (browser suite, 9 Nov 2026).
+    const busy = () =>
+      saveInFlight.current || (!reload && (nativeRefreshLock.current || editorGuardRef.current.pending));
+    for (let waited = 0; waited < 10000 && busy(); waited += 100)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    if (busy()) return;
     // Anything still saving lands first, so the editor starts from it.
     if (savePending() && !(await flushArrangement())) return;
     const token = ++generation.current;
@@ -1100,8 +1179,67 @@ export default function StudioBoard({
     let targetTime = 0;
     let stackReady = false;
     let dwell;
+    // A widget drawn taller than its size (it grew to fit) is resized from
+    // the size it is drawn at.
+    const drawn = shown.current.units.find((item) => item.id === id)?.rect;
+    if (mode === "resize" && drawn && drawn.h > unit.rect.h) {
+      initial = resizeUnit(initial, id, { ...unit.rect, h: drawn.h });
+      unit = unitsForBoard(initial).find((item) => item.id === id);
+    }
     setMoving(id);
+    if (mode === "resize") setResizing(id);
     setSelection([id]);
+    // Mock-ups v4: a widget shrinks down to the smallest size its settings
+    // allow and stops there. Its card says, each time it fits itself, when
+    // its settings no longer fit (fit.mjs); the corner then goes back to the
+    // last size that did, in whichever direction it was made smaller.
+    let lastGood = unit.rect;
+    let limited = false;
+    // Dragged smaller both ways past the limit, it first tries keeping each
+    // way in turn, so the corner slides along the limit instead of sticking.
+    let trials = null;
+    // The card's fit at this size: true (fits), false (does not) or null
+    // (not measured yet: only a fit of the size now on the board counts).
+    const fitAt = (now) => {
+      const fit = cardFits.get(id);
+      if (!now || !fit?.box) return null;
+      const pixels = pixelRect(now, width, initialProjection.columns, gap);
+      if (Math.abs(pixels.width - fit.box.w) > 2 || Math.abs(pixels.height - fit.box.h) > 2) return null;
+      return !(fit.squeezed || fit.relaxed || !fit.fits);
+    };
+    const onFit = (fitEvent) => {
+      if (mode !== "resize" || unit.kind !== "panel" || fitEvent.detail?.id !== id) return;
+      const now = unitsForBoard(latest).find((item) => item.id === id)?.rect;
+      const good = fitAt(now);
+      if (good === null) return;
+      if (good) {
+        lastGood = now;
+        trials = null;
+        return;
+      }
+      if (now.w >= lastGood.w && now.h >= lastGood.h) return;
+      if (!trials)
+        trials = [
+          { w: now.w, h: Math.max(now.h, lastGood.h) },
+          { w: Math.max(now.w, lastGood.w), h: now.h },
+        ].filter((size) => (size.w < lastGood.w || size.h < lastGood.h) && !(size.w === now.w && size.h === now.h));
+      const size = trials.shift() || { w: Math.max(now.w, lastGood.w), h: Math.max(now.h, lastGood.h) };
+      latest = resizeUnit(initial, id, { ...now, ...size });
+      changeBoard(latest, undefined, { record: false });
+      // The widget's settings, when open beside the board, say what would
+      // let it go smaller (show-editor.jsx LimitNote).
+      const stopped = unitsForBoard(latest).find((item) => item.id === id)?.rect;
+      // An open editor for it takes the event (preventDefault) and says so
+      // itself; otherwise a toast does.
+      const told = !window.dispatchEvent(
+        new CustomEvent("studio-card-limit", { cancelable: true, detail: { id, w: stopped?.w, h: stopped?.h } }),
+      );
+      if (!limited && !told) {
+        limited = true;
+        showToast("That's as small as its settings allow. Smaller text or fewer blocks let it go smaller.");
+      }
+    };
+    window.addEventListener("studio-card-fit", onFit);
     const cancelDwell = () => {
       clearTimeout(dwell);
       dwell = null;
@@ -1151,7 +1289,7 @@ export default function StudioBoard({
       const dy = Math.round((moveEvent.clientY - start.y) / (ROW_HEIGHT + gap));
       let rect = clampRect(
         mode === "resize"
-          ? { ...unit.rect, w: unit.rect.w + dx, h: unit.rect.h + dy }
+          ? { ...unit.rect, w: Math.max(1, unit.rect.w + dx), h: Math.max(1, unit.rect.h + dy) }
           : { ...unit.rect, x: unit.rect.x + dx, y: unit.rect.y + dy },
         initialProjection.columns,
       );
@@ -1162,6 +1300,7 @@ export default function StudioBoard({
         if (Math.abs(rect.x - middle) <= 1) rect = { ...rect, x: middle };
       }
       if (!lastCell || lastCell.dx !== dx || lastCell.dy !== dy) {
+        trials = null;
         latest = mode === "move" ? moveUnit(initial, id, rect) : resizeUnit(initial, id, rect);
         lastCell = { dx, dy };
         changeBoard(latest, undefined, { record: false });
@@ -1209,6 +1348,7 @@ export default function StudioBoard({
     const finish = (upEvent, cancel = false) => {
       if (upEvent.pointerId !== undefined && upEvent.pointerId !== start.pointerId) return;
       cancelDwell();
+      window.removeEventListener("studio-card-fit", onFit);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
@@ -1246,10 +1386,24 @@ export default function StudioBoard({
         } else
           changeBoard(stackBoard(pageBoard(initialWhole, initial.pageId), [target.id, id], uuid()), undefined, quiet);
         setSelection([]);
-      } else changeBoard(latest, undefined, quiet);
+      } else {
+        // Let go before the card measured a smaller size (or on one that does
+        // not fit): it keeps the last size known to fit.
+        const now = unitsForBoard(latest).find((item) => item.id === id)?.rect;
+        if (
+          mode === "resize" &&
+          unit.kind === "panel" &&
+          now &&
+          (now.w < lastGood.w || now.h < lastGood.h) &&
+          !fitAt(now)
+        )
+          latest = resizeUnit(initial, id, { ...now, w: Math.max(now.w, lastGood.w), h: Math.max(now.h, lastGood.h) });
+        changeBoard(latest, undefined, quiet);
+      }
       // One drag is one step to undo: it autosaves once, when it ends.
       operation.current = null;
       setMoving(null);
+      setResizing(null);
       setStackTarget(null);
     };
     const onUp = (upEvent) => finish(upEvent);
@@ -1858,12 +2012,12 @@ export default function StudioBoard({
           ),
       },
       "-",
-      CHART_SHOWS.includes(resolvedLook(settings, panel).show) && {
+      firstChart(resolvedLook(settings, panel)) && {
         id: "full-view",
         icon: "expand",
         label: "Open full view",
         shortcut: "Space",
-        onSelect: () => setFullView(panel),
+        onSelect: () => setFullView({ panel, chart: firstChart(resolvedLook(settings, panel)) }),
       },
       canRefresh(panel.id) && {
         id: "refresh",
@@ -1954,8 +2108,8 @@ export default function StudioBoard({
       if (command || event.shiftKey) return;
       if (lower === "e" && (isAdmin || panel.nativeLocator?.discovered)) return run(() => editPanel(panel));
       if (lower === "r" && canRefresh(panel.id)) return run(() => refreshNow([panel.id]));
-      if (event.key === " " && CHART_SHOWS.includes(resolvedLook(settings, panel).show))
-        return run(() => setFullView(panel));
+      if (event.key === " " && firstChart(resolvedLook(settings, panel)))
+        return run(() => setFullView({ panel, chart: firstChart(resolvedLook(settings, panel)) }));
       if ((event.key === "Delete" || event.key === "Backspace") && canChange) return run(() => deletePanel(panel));
     };
     window.addEventListener("keydown", key);
@@ -2076,7 +2230,7 @@ export default function StudioBoard({
 
   return (
     <main
-      className={`studio-app${editing ? " studio-edit-mode" : ""}${editing && selection.length ? " studio-has-bulk" : ""}${docked ? " studio-docked-editing" : ""}`}
+      className={`studio-app${editing ? " studio-edit-mode" : ""}${editing && selection.length ? " studio-has-bulk" : ""}${docked ? " studio-docked-editing" : ""}${resizing ? " studio-resizing" : ""}`}
       data-glass={(pageBackground && settings?.studioTheme?.glass) || undefined}
       style={Object.fromEntries(
         Object.entries(statusColours(settings)).map(([key, colour]) => [`--studio-status-${key}`, colour]),
@@ -2239,7 +2393,8 @@ export default function StudioBoard({
           )}
         </div>
       )}
-      {editing && selection.length > 0 && (
+      {/* Hidden while a widget is being resized, so it never sits over it. */}
+      {editing && selection.length > 0 && !resizing && (
         <div className="studio-bulk-bar" role="toolbar" aria-label={`${selection.length} selected`}>
           <span className="studio-bulk-count">{selection.length} selected</span>
           {bulkActions()
@@ -2279,16 +2434,12 @@ export default function StudioBoard({
           {pages.length > 1 && (
             <label className="studio-discovered-page">
               Put {newDiscovered.length === 1 ? "it" : "them"} on
-              <select
+              <Select
+                label={`Put ${newDiscovered.length === 1 ? "it" : "them"} on`}
                 value={pages.some((page) => page.id === discoveredTarget) ? discoveredTarget : currentPage}
-                onChange={(event) => setDiscoveredTarget(event.target.value)}
-              >
-                {pages.map((page) => (
-                  <option key={page.id} value={page.id}>
-                    {page.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setDiscoveredTarget}
+                options={pages.map((page) => [page.id, page.name])}
+              />
             </label>
           )}
           <button type="button" className="studio-button" disabled={controlsDisabled} onClick={placeNewDiscovered}>
@@ -2322,6 +2473,9 @@ export default function StudioBoard({
             ))}
         </div>
       )}
+      <span className="studio-sr-only" aria-live="polite" aria-atomic="true">
+        {stackAnnouncement}
+      </span>
       <div className="studio-status-message" role="status">
         {notice}
         {(refreshWarning || (envelope && nativeContentStale && !draftSourceChanged)) && (
@@ -2362,11 +2516,15 @@ export default function StudioBoard({
         onPointerDown={editing ? startMarquee : undefined}
         style={{
           ...(editing && editSize ? { maxWidth: SIZE_WIDTH[editSize], marginInline: "auto" } : {}),
+          ...(fullWidth && dockedWidth ? { width: dockedWidth, maxWidth: "none" } : {}),
           height: board.panels.length ? projection.rows * (ROW_HEIGHT + gap) + 32 : 480,
           "--studio-grid-column": `${(width + gap) / projection.columns}px`,
           "--studio-grid-row": `${ROW_HEIGHT + gap}px`,
         }}
       >
+        {/* Room to scroll the board out from under the docked editor, so
+            every card can be brought beside it (UI review H1). */}
+        {fullWidth && dockedWidth ? <div className="studio-dock-room" aria-hidden="true" /> : null}
         {moving && projection.columns % 2 === 1 && (
           <div className="studio-centre-guide" aria-hidden="true" style={{ left: width / 2 }} />
         )}
@@ -2482,6 +2640,7 @@ export default function StudioBoard({
           ))}
         </div>
         <PanelLayer
+          baseHeights={baseHeights}
           offLayout={offLayout}
           liveDraft={docked ? liveDraft : null}
           board={board}
@@ -2499,13 +2658,13 @@ export default function StudioBoard({
           reducedMotion={reducedMotion}
           stackDrags={stackDrags}
           onManualNavigation={(snapshot) =>
-            setNotice(
+            setStackAnnouncement(
               `${boardRef.current.panels.find((panel) => panel.id === snapshot.activeId)?.title || "Widget"}, ${snapshot.activeIndex + 1} of ${snapshot.ids.length}`,
             )
           }
           onStackDrag={onStackDrag}
           onEdit={editPanel}
-          onFullView={editing ? undefined : setFullView}
+          onFullView={editing ? undefined : (panel, chart) => setFullView({ panel, chart })}
           canEdit={(panel) => isAdmin || Boolean(panel.nativeLocator?.discovered)}
           onSelect={select}
           onManipulate={manipulate}
@@ -2565,7 +2724,8 @@ export default function StudioBoard({
       )}
       {fullView && (
         <FullViewHost
-          panel={fullView}
+          panel={fullView.panel}
+          chart={fullView.chart}
           data={renderedNativeData}
           settings={settings}
           onClose={() => setFullView(null)}

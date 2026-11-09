@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 export const FINE_MS = 48 * 3600 * 1000;
+export const KEEP_UNSAVED_MS = 10 * 60 * 1000;
 export const COARSE_STEP_MS = 15 * 60 * 1000;
 export const RETENTION_DAYS = [7, 30, 90];
 export const DEFAULT_RETENTION_DAYS = 30;
@@ -117,12 +118,28 @@ export function createHistoryStore({ stateDir }) {
       const last = data.fine.at(-1) ?? data.coarse.at(-1) ?? null;
       return { fields: data.fields, points: shown, latest: last ? { at: last[0], values: Object.fromEntries(data.fields.map((field, i) => [field.field, last[i + 1] ?? null])) } : null };
     },
+    // The widget's newest point: when, and which fields it has a number
+    // for; null with none yet.
+    async newest(panelId) {
+      const data = await load(panelId);
+      const last = data.fine.at(-1) ?? data.coarse.at(-1);
+      if (!last) return null;
+      return { at: last[0], fields: new Set(data.fields.filter((_, i) => Number.isFinite(last[i + 1])).map(field => field.field)) };
+    },
     // Removes the history of widgets that no longer exist on the dashboard.
     async keepOnly(panelIds) {
       const keep = new Set([...panelIds].map(id => path.basename(file(id))));
       let names = [];
       try { names = await fs.readdir(dir); } catch (error) { if (error.code === 'ENOENT') return; throw error; }
-      for (const name of names) if (name.endsWith('.json') && !keep.has(name)) await fs.rm(path.join(dir, name), { force: true });
+      // A history written in the last ten minutes stays: the editor starts one
+      // for a widget being switched to a chart before it is saved.
+      const recent = Date.now() - KEEP_UNSAVED_MS;
+      for (const name of names) {
+        if (!name.endsWith('.json') || keep.has(name)) continue;
+        const stat = await fs.stat(path.join(dir, name)).catch(() => null);
+        if (stat && stat.mtimeMs > recent) continue;
+        await fs.rm(path.join(dir, name), { force: true });
+      }
       for (const id of [...cache.keys()]) if (!keep.has(path.basename(file(id)))) cache.delete(id);
     },
   };

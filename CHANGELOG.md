@@ -14,6 +14,75 @@ the volumes and follow [docs/DEPLOY.md](docs/DEPLOY.md) from the start. Studio
 carries no conversions for data from earlier candidates, and the upgrade notes
 in older entries below are history only.
 
+### Widgets you shape: blocks, any size, a note when a size can't fit
+
+- **Show tab** ([docs/USING.md](docs/USING.md#how-a-widget-looks)). A widget
+  is built from up to 12 blocks: big number, numbers, quiet numbers, pie,
+  bars, chart over time, gauge, response time, status and (with logs access)
+  logs. Each block has its own values and style, with a live preview.
+  **Settings for** keeps one set for all sizes or a set per size (small,
+  wide, tall, regular, large).
+- **Any shape, never clipped.** A widget shrinks continuously down to the
+  smallest size its settings allow. Text shrinks before anything is cut;
+  where a layout still can't fit (on a phone, for example) the widget grows
+  taller and the widgets below move down. Resizing stops at the last size
+  that fits, and with the widget's settings open a note says why, with
+  one-tap changes (hide labels, allow smaller text, let blocks sit
+  automatically, and others) for the size being set up.
+- **Stacks** have no header bar: the widget fills the stack, with page dots
+  that jump to a widget and a small Play/Pause at the bottom. The stack-title
+  picker is gone; the dots replace it.
+- **Every dropdown** in Studio uses the themed list, with type-ahead.
+- **Tabs in the widget editor**: Data, Show, Look and Behaviour, with
+  Duplicate, Save as a saved widget and Delete under **⋯**.
+
+### Fixes since candidate 53ebc3b
+
+- **Test connection** tries each of the widget's own plain reads in turn, so
+  widgets such as pfSense API v2 and Portainer no longer fail a test while
+  they work.
+- A certificate failure names the certificate the address sent and whether
+  its issuer is trusted. A trusted certificate may end the chain, as in
+  browsers.
+- Status, response time and charts appear within seconds after a change,
+  instead of at the next minute's round.
+- `TIMEZONE` in the Portainer deployment files (passed to the container as
+  `TZ`). Default retention: logs 30 days, sign-in and audit events 365 days.
+- A swipe on a stack is announced to screen readers only.
+- A save asks only newly charted widgets for their first numbers, instead
+  of polling every integration on the dashboard again; one collection per
+  dashboard runs at a time.
+- In a widget's Logs block, an error reported by someone's browser says
+  whose browser sent it, and a report naming a widget that isn't on the
+  dashboard isn't shown as that widget's line. The log store has a new
+  index for the block's search (a fresh log store on this candidate).
+- With the widget editor docked, the board keeps its width and the card
+  being edited scrolls into view beside the panel; the size shown is the
+  real one. While resizing, the selection bar and widget tools step aside.
+- A widget's name and the reason it is red wrap only between words; a
+  widget never shows a word broken in the middle or a line cut off.
+- A new Resources widget starts showing CPU and memory, instead of an
+  empty card; with nothing chosen it says to pick what to show.
+- **Duplicate** keeps every setting of the widget it copies; the copy
+  was saved with only the settings changed in the dialog.
+- **Widgets** pressed while a docked widget's save is still landing opens
+  once it has, instead of doing nothing. Homepage's own information
+  widgets (Resources, Search…) sit in the middle of their card's height.
+- A block with no values (for example a one-value widget's default
+  Numbers) is left out on the dashboard; while editing it still says what
+  to pick.
+- Charts draw from the first number, before Save, and a pie of picked
+  counts draws them even when the widget's other values are percentages.
+  Changing a block to a pie starts it with the largest group of values in
+  one unit.
+- While editing, a widget's select box takes its logo's place and Move and
+  Edit take the response time's, so nothing moves or is cut when they show;
+  a stack's select box sits beside its page dots.
+- A widget whose header shows only its logo keeps the logo however narrow
+  it gets.
+- Auto picks the largest text that fits; the column choices go up to the
+  number of values; the size note gives the size in pixels.
+
 ### Built-in monitoring and logs; a docked widget editor, saved items and filler widgets
 
 - **Monitoring** ([docs/MONITORING.md](docs/MONITORING.md)). Every card with

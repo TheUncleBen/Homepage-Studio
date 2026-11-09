@@ -97,7 +97,8 @@ describe("widget dialog connection", () => {
     const onChange = mount({ type: "x", url: "https://typed.example.org", key: "typed" });
     fireEvent.click(await screen.findByRole("radio", { name: "Saved connection" }));
     expect(screen.queryByLabelText("URL")).toBeNull();
-    fireEvent.change(screen.getByLabelText("Connection"), { target: { value: ID } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Connection" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Router/ }));
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith({
         type: "x",
@@ -114,9 +115,10 @@ describe("widget dialog connection", () => {
   it("copies a personal connection to the dashboard before using it", async () => {
     const calls = stub();
     const onChange = mount({ type: "x", url: connectionPlaceholder(ID, "url") });
-    const select = await screen.findByLabelText("Connection");
-    await waitFor(() => expect(within(select).getByRole("group", { name: "Just me" })).toBeTruthy());
-    fireEvent.change(select, { target: { value: MINE } });
+    const select = await screen.findByRole("combobox", { name: "Connection" });
+    fireEvent.click(select);
+    // A personal connection is marked "Just me" in the list.
+    fireEvent.click(await screen.findByRole("option", { name: /^Media.*Just me/ }));
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith({
         type: "x",

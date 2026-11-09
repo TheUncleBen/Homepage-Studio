@@ -85,7 +85,9 @@ export async function runHttp(config, { timeoutMs, ca, family = 'auto' } = {}) {
   // unless the monitor or the card's service opts out; then a certificate
   // problem is a warning, not down.
   const verify = config.verifyTls !== false;
-  const agentOptions = { rejectUnauthorized: verify, ...(ca ? { ca } : {}) };
+  // allowPartialTrustChain: a trusted intermediate (or an app's own
+  // certificate added as trusted) is enough, as in browsers (owner T43).
+  const agentOptions = { rejectUnauthorized: verify, ...(ca ? { ca, allowPartialTrustChain: true } : {}) };
   const headers = Object.fromEntries((config.headers ?? []).map(header => [header.name, header.value]));
   const accept = config.card ? code => code <= 403 : acceptsStatus(config.accept);
   let url = config.url, method = config.card ? 'HEAD' : config.method ?? 'GET';
@@ -210,7 +212,7 @@ export async function runDns({ name, recordType = 'A', resolver: server, expect 
 export function runTls({ host, port = 443, warnDays = 14 }, { timeoutMs, ca, family = 'auto' } = {}) {
   return new Promise(resolve => {
     const started = now();
-    const socket = tls.connect({ host, port, servername: net.isIP(host) ? undefined : host, rejectUnauthorized: false, family: familyOption(family), timeout: timeoutMs, ...(ca ? { ca } : {}) });
+    const socket = tls.connect({ host, port, servername: net.isIP(host) ? undefined : host, rejectUnauthorized: false, family: familyOption(family), timeout: timeoutMs, ...(ca ? { ca, allowPartialTrustChain: true } : {}) });
     const done = result => { socket.destroy(); resolve(result); };
     const timer = setTimeout(() => done(failure({ code: 'ETIMEDOUT' })), timeoutMs);
     socket.once('secureConnect', () => {

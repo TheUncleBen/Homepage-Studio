@@ -83,7 +83,62 @@ describe("Custom API empty mappings hint", () => {
   });
 });
 
+describe("Adding with starting settings", () => {
+  it("sends a new widget's starting settings, as a duplicate's copied settings, not only what was changed", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ revision: "r2" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const onSaved = vi.fn();
+    const copy = {
+      kind: "informationWidget",
+      type: "greeting",
+      name: "Greeting",
+      defaults: { text: "Hello", text_size: "xl" },
+      fields: [{ key: "text", label: "Text", type: "string" }],
+    };
+    render(
+      <ContentEditor
+        state={{ revision: "r1", services: [], groups: [], bookmarks: [] }}
+        catalog={{ service: [], info: [copy] }}
+        entry={copy}
+        onSaved={onSaved}
+        onCancel={vi.fn()}
+        onReload={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Add/ }));
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const [, init] = fetchMock.mock.calls.find(([, options]) => options?.method === "POST");
+    expect(JSON.parse(init.body)).toMatchObject({
+      action: "add",
+      type: "greeting",
+      config: { text: "Hello", text_size: "xl" },
+    });
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("Content picker names", () => {
+  it("starts a new Resources widget showing CPU and memory, not an empty card", () => {
+    const onChoose = vi.fn();
+    render(
+      <ContentPicker
+        catalog={{ info: [{ type: "resources", name: "Resources", defaults: {} }], service: [] }}
+        state={{ hiddenDiscoveredIds: [] }}
+        onChoose={onChoose}
+        onRestore={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Resources/ }));
+    expect(onChoose.mock.calls[0][0].defaults).toEqual({ cpu: true, memory: true });
+  });
+
   it("tells apart an information and an integration widget that share a name by their subtitle", () => {
     render(
       <ContentPicker
@@ -165,7 +220,7 @@ describe("widget look in the widget dialog", () => {
   it("previews the change and saves a look-only edit as the arrangement", async () => {
     const fetchMock = ok();
     const onSaved = renderBookmark(fetchMock);
-    fireEvent.click(screen.getByRole("button", { name: /^Look/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Look" }));
     fireEvent.click(screen.getByRole("radio", { name: "Line" }));
     // Back to the dashboard's edge: the key is removed, not stored.
     expect(screen.getByTestId("preview")).toHaveTextContent("null");
@@ -200,7 +255,7 @@ describe("widget look in the widget dialog", () => {
     );
     expect(screen.queryByTestId("preview")).toBeNull();
     await vi.waitFor(() => expect(onLiveDraft).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("button", { name: /^Look/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Look" }));
     fireEvent.click(screen.getByRole("radio", { name: "Round" }));
     await vi.waitFor(() =>
       expect(onLiveDraft.mock.lastCall[0].panel.look).toEqual(expect.objectContaining({ corners: "round" })),
@@ -222,7 +277,7 @@ describe("widget look in the widget dialog", () => {
     const fetchMock = ok();
     renderBookmark(fetchMock);
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Docs site" } });
-    fireEvent.click(screen.getByRole("button", { name: /^Look/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Look" }));
     fireEvent.click(screen.getByRole("radio", { name: "Round" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === "POST")).toBe(true));
@@ -241,7 +296,7 @@ describe("widget look in the widget dialog", () => {
     });
     expect(screen.queryByText("Open target")).toBeNull();
     expect(screen.queryByText("More options")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /^Behaviour/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Behaviour" }));
     expect(screen.getByRole("radiogroup", { name: "On click" })).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
@@ -319,28 +374,24 @@ describe("widget dialog sections", () => {
       />,
     );
 
-  it("keeps sections open together until closed, and summarises the closed ones", () => {
+  it("edits an existing item in tabs, keeping every tab's settings while another is open", () => {
     renderBookmark();
-    const details = screen.getByRole("button", { name: /^Details/ });
-    const look = screen.getByRole("button", { name: /^Look/ });
-    const page = screen.getByRole("button", { name: /^Page/ });
-    // An existing item opens with everything closed and summarised.
-    for (const button of [details, look, page]) expect(button).toHaveAttribute("aria-expanded", "false");
-    expect(details).toHaveTextContent("docs.example.com");
-    expect(look).toHaveTextContent("Tint, round");
-    expect(page).toHaveTextContent("Media");
-    fireEvent.click(look);
-    expect(look).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("radiogroup", { name: "Fill" })).toBeInTheDocument();
-    fireEvent.click(page);
-    // Look stays open beside Page (F7: less back and forth).
-    expect(look).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByLabelText("Page")).toHaveValue("media");
-    fireEvent.click(look);
-    expect(look).toHaveAttribute("aria-expanded", "false");
+    const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
+    // A bookmark shows no values, so it has no Show tab.
+    expect(tabs).toEqual(["Data", "Look", "Behaviour"]);
+    expect(screen.getByRole("tab", { name: "Data" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Docs site" } });
+    fireEvent.click(screen.getByRole("tab", { name: "Look" }));
+    expect(screen.getByRole("radiogroup", { name: "Fill" })).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: "Behaviour" }));
+    expect(screen.getByRole("combobox", { name: "Page" })).toHaveTextContent("Media");
     expect(screen.queryByRole("radiogroup", { name: "Fill" })).toBeNull();
-    // Name stays outside the sections, always shown.
-    expect(screen.getByLabelText("Name")).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: "Data" }));
+    // What was typed on another tab is still there.
+    expect(screen.getByLabelText("Name")).toHaveValue("Docs site");
+    // The arrow keys move between tabs.
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Data" }), { key: "ArrowLeft" });
+    expect(screen.getByRole("tab", { name: "Behaviour" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("resizes from the preview's corner, never below the smallest size, and saves it", async () => {
@@ -376,7 +427,7 @@ describe("widget dialog sections", () => {
       />,
     );
     expect(screen.getByText(/Desktop size/)).toHaveTextContent(
-      "6 × 2 Desktop size. Drag the corner to change it. Smallest: 5 × 2.",
+      "6 × 2 Desktop size. Drag the corner to change it; it stops at the smallest size these settings allow.",
     );
     const corner = screen.getByRole("button", { name: /^Resize/ });
     fireEvent.keyDown(corner, { key: "ArrowLeft" });
@@ -395,12 +446,14 @@ describe("widget dialog sections", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps Duplicate and Delete under Management", () => {
+  it("keeps Duplicate and Delete in the More actions menu beside the tabs", () => {
     renderBookmark();
-    expect(screen.queryByRole("button", { name: "Duplicate" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /^Management/ }));
-    expect(screen.getByRole("button", { name: "Duplicate" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Duplicate" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    expect(screen.getByRole("menuitem", { name: "Duplicate" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+    // A bookmark can't be saved as a saved widget.
+    expect(screen.queryByRole("menuitem", { name: "Save as a saved widget" })).toBeNull();
   });
 
   it("a new widget opens on its connection, with the setup guide in its own section", () => {
@@ -495,7 +548,7 @@ describe("a saved look updated from the widget dialog", () => {
         onDuplicate={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /^Look/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Look" }));
     fireEvent.click(screen.getByRole("button", { name: "None picked" }));
     fireEvent.click(screen.getByRole("button", { name: "Manage saved looks" }));
     fireEvent.click(screen.getByRole("button", { name: "Update" }));
@@ -629,8 +682,8 @@ describe("adding a widget", () => {
         />
       </SWRConfig>,
     );
-    fireEvent.click(screen.getByRole("button", { name: /^Management/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Save as a saved widget" }));
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Save as a saved widget" }));
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Clock" } });
     fireEvent.click(screen.getByRole("radio", { name: "Everyone" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

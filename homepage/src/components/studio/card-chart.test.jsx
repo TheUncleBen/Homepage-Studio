@@ -35,12 +35,10 @@ const history = {
 };
 
 describe("charts", () => {
-  it("draws the values the widget shows, in its order, with their own names and colours", () => {
+  it("draws the values its block picks, in that order, with their own names and colours", () => {
     const card = {
-      values: [
-        { field: "blocked", label: "Blocked", colour: "#112233" },
-        { field: "queries", slot: "hidden" },
-      ],
+      fields: ["blocked", "Blocked today"],
+      values: [{ field: "blocked", label: "Blocked", colour: "#112233" }],
     };
     const series = chartSeries(history, card, (label) => label);
     expect(series.map((entry) => [entry.field.field, entry.name])).toEqual([
@@ -66,9 +64,16 @@ describe("charts", () => {
   });
 
   it("reads long enough for a trend and works out the change", () => {
-    expect(historyRange({ show: "line", chartRange: "7d" })).toBe("7d");
-    expect(historyRange({ show: "numbers", layout: "hero", trend: "day" })).toBe("7d");
-    expect(historyRange({ show: "numbers", layout: "hero", trend: "hour" })).toBe("6h");
+    expect(historyRange({ blocks: [{ id: "c", type: "chart", range: "7d" }] })).toBe("7d");
+    expect(historyRange({ blocks: [{ id: "b", type: "big", trend: "day" }] })).toBe("7d");
+    expect(historyRange({ blocks: [{ id: "b", type: "big", trend: "hour" }] })).toBe("6h");
+    // The longest any block needs, at any size.
+    expect(
+      historyRange({
+        blocks: [{ id: "r", type: "response" }],
+        sizes: { large: { blocks: [{ id: "c", type: "chart", range: "30d" }] } },
+      }),
+    ).toBe("30d");
     expect(trendOf(history, "queries", HOUR)).toEqual({ from: 82000, change: 2000 });
     // Nothing near a week ago yet.
     expect(trendOf(history, "queries", 7 * 24 * HOUR)).toBe(null);
@@ -146,9 +151,9 @@ describe("status history", () => {
   it("a gauge shows the chosen value, else the first percentage", () => {
     const series = chartSeries(history, { values: [{ field: "queries" }] }, (label) => label);
     expect(heroSeries(series, true).field.field).toBe("Blocked today");
-    expect(heroSeries(series).field.field).toBe("queries");
-    const chosen = chartSeries(history, { values: [{ field: "blocked", slot: "hero" }] }, (label) => label);
-    expect(heroSeries(chosen, true).field.field).toBe("blocked");
+    expect(heroSeries(series).field.field).toBe("Blocked today");
+    const chosen = chartSeries(history, { fields: ["blocked"] }, (label) => label);
+    expect(heroSeries(chosen, true, true).field.field).toBe("blocked");
   });
 
   it("donut writes its hero's share in the middle, its legend beside it", () => {
@@ -180,18 +185,39 @@ describe("values beside a chart", () => {
     expect(container.querySelector(".studio-chart-numbers").textContent).toContain("123");
   });
 
-  it("a value set to Number is left out of a line chart and shown beside it", () => {
+  it("a pie of picked counts draws them though most collected values are percentages", () => {
+    const proxmox = {
+      fields: [
+        { field: "cpu", label: "CPU", format: "percent" },
+        { field: "memory", label: "Memory", format: "percent" },
+        { field: "disk", label: "Disk", format: "percent" },
+        { field: "running", label: "Running", format: "plain" },
+        { field: "stopped", label: "Stopped", format: "plain" },
+      ],
+      points: [[1000, 30, 71, 40, 42, 3]],
+      latest: { at: 1000, values: { cpu: 30, memory: 71, disk: 40, running: 42, stopped: 3 } },
+    };
+    const { container } = render(
+      <CardChart card={{ show: "pie", chartRange: "24h", history: proxmox, fields: ["running", "stopped"] }} />,
+    );
+    const legend = container.querySelector(".studio-chart-legend").textContent;
+    expect(legend).toContain("Running");
+    expect(legend).toContain("Stopped");
+    expect(container.querySelector(".studio-chart-round")).toBeTruthy();
+  });
+
+  it("a line chart draws only the values its block picks", () => {
     const card = {
       show: "line",
       chartRange: "24h",
       history: portainer,
-      values: [{ field: "portainer.stopped", slot: "number" }],
+      fields: ["portainer.running", "portainer.total"],
     };
     expect(chartSeries(portainer, card, (label) => label).map((entry) => entry.field.field)).toEqual([
       "portainer.running",
       "portainer.total",
     ]);
     const { container } = render(<CardChart card={card} />);
-    expect(container.querySelector(".studio-chart-numbers").textContent).toContain("92");
+    expect(container.querySelector(".studio-chart-legend").textContent).not.toContain("portainer.stopped");
   });
 });

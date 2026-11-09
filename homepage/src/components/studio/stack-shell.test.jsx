@@ -51,7 +51,7 @@ describe("Native board stack controls", () => {
     };
     const { rerender } = render(<StackShell {...props} />);
     fireEvent(
-      screen.getByText("Widget stack"),
+      document.querySelector(".studio-stack-footer"),
       Object.assign(new Event("pointerdown", { bubbles: true }), {
         pointerId: 1,
         button: 0,
@@ -105,7 +105,7 @@ describe("Native board stack controls", () => {
       />,
     );
     fireEvent(
-      screen.getByText("Widget stack"),
+      document.querySelector(".studio-stack-footer"),
       Object.assign(new Event("pointerdown", { bubbles: true }), {
         pointerId: 1,
         button: 0,
@@ -150,7 +150,7 @@ describe("Native board stack controls", () => {
     expect(controller).toBe(original);
     expect(controller.getSnapshot().activeId).toBe("b");
   });
-  it("keeps one Play/Pause control and a quiet title picker while manual keys apply the 30-second hold", async () => {
+  it("keeps one Play/Pause control and page dots while manual keys apply the 30-second hold", async () => {
     let controller;
     render(
       <StackShell
@@ -165,11 +165,10 @@ describe("Native board stack controls", () => {
         }}
       />,
     );
-    expect(screen.getAllByRole("button")).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "Choose widget in stack: Clock" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    // Board 4: page dots and Play/Pause, no header bar or title picker.
+    expect(screen.getAllByRole("button")).toHaveLength(4);
+    expect(screen.queryByText("Widget stack")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show Clock, 1 of 3" })).toHaveAttribute("aria-current", "true");
     expect(screen.queryByRole("button", { name: /previous|next/i })).not.toBeInTheDocument();
     const carousel = screen.getByRole("region", { name: /Clock/ });
     // The label alone carries state; aria-pressed would announce it twice.
@@ -264,7 +263,7 @@ describe("Native board stack controls", () => {
         }}
       />,
     );
-    fireEvent.contextMenu(screen.getByText("Widget stack"));
+    fireEvent.contextMenu(document.querySelector(".studio-stack-footer"));
     expect(hold).toHaveBeenCalledWith("s", expect.objectContaining({ clientX: expect.any(Number) }));
     screen.getByRole("button", { name: "Play slideshow" }).focus();
     expect(controller.getSnapshot().blockedReasons).not.toContain("content-focus");
@@ -293,7 +292,7 @@ describe("Stack selection checkbox", () => {
     const { rerender } = render(<StackShell {...props} />);
     const checkbox = screen.getByRole("checkbox", { name: "Select stack Clock" });
     expect(checkbox.closest("label")).toHaveClass("studio-select-target");
-    expect(checkbox.closest("header")).toHaveClass("studio-stack-header");
+    expect(checkbox.closest("label")).toHaveClass("studio-select-corner");
     expect(checkbox).not.toBeChecked();
     fireEvent.click(checkbox);
     expect(props.onSelect).toHaveBeenCalledExactlyOnceWith("s");
@@ -329,5 +328,27 @@ describe("Stack selection checkbox", () => {
     expect(menu.defaultPrevented).toBe(false);
     expect(props.onLongPress).not.toHaveBeenCalled();
     expect(props.onSelect).not.toHaveBeenCalled();
+  });
+});
+
+describe("Stack page dots", () => {
+  it("jump straight to a widget", () => {
+    let controller;
+    render(
+      <StackShell
+        stack={stack}
+        panels={panels}
+        rect={{}}
+        editing={false}
+        reducedMotion={false}
+        onActive={() => {}}
+        registerController={(_, value) => {
+          controller = value;
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show Calendar, 3 of 3" }));
+    expect(controller.getSnapshot().activeId).toBe("c");
+    expect(screen.getByRole("button", { name: "Show Calendar, 3 of 3" })).toHaveAttribute("aria-current", "true");
   });
 });

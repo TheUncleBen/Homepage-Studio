@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import useSWR from "swr";
 
 import { studioRequest } from "./api.mjs";
-import { Group, Row, Segmented, revealForm } from "./ui";
+import { Group, Row, Segmented, Select, revealForm } from "./ui";
 
 // Saved connections (server/connections.mjs): a service address and its key,
 // typed once, named, and reused on any widget. A widget that uses one holds
@@ -113,33 +113,19 @@ export function ConnectionChooser({ value, keys, saved, onSaved, onChange }) {
           htmlFor={selectId}
           info="The address and key are kept on the server and filled in when the dashboard loads. Change them in dashboard settings under Saved connections; every widget that uses the connection follows."
         >
-          <select
+          <Select
             id={selectId}
+            label="Connection"
+            placeholder="Choose a connection"
             value={id || ""}
             disabled={busy}
-            onChange={(event) => event.target.value && choose(event.target.value)}
-          >
-            {!id && <option value="">Choose a connection</option>}
-            {id && !current && <option value={id}>A connection that no longer exists</option>}
-            {dashboard?.length > 0 && (
-              <optgroup label="This dashboard">
-                {dashboard.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {personal && others.length > 0 && (
-              <optgroup label="Just me">
-                {others.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
+            onChange={(next) => next && choose(next)}
+            options={[
+              ...(id && !current ? [[id, "A connection that no longer exists"]] : []),
+              ...(dashboard || []).map((entry) => [entry.id, entry.name, personal ? "This dashboard" : undefined]),
+              ...(personal ? others.map((entry) => [entry.id, entry.name, "Just me"]) : []),
+            ]}
+          />
         </Row>
       )}
       {saved && current && (

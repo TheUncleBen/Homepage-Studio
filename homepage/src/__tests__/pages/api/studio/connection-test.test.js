@@ -23,7 +23,13 @@ vi.mock("widgets/widgets", () => ({
   },
 }));
 
-import handler, { firstEndpoint, statusCheck, withReferences } from "pages/api/studio/connection-test";
+import handler, {
+  combinedResult,
+  firstEndpoint,
+  statusCheck,
+  testEndpoints,
+  withReferences,
+} from "pages/api/studio/connection-test";
 import { fromController } from "utils/studio/internal";
 
 function createRes() {
@@ -66,6 +72,33 @@ describe("Test connection endpoint", () => {
     expect(serviceProxy).not.toHaveBeenCalled();
   });
 
+  it("tests every plain read the widget can make, not only the first (owner T8/T43, 8 Nov)", () => {
+    expect(testEndpoints({ mappings: { a: { segments: ["x"] }, b: { endpoint: "b" }, c: { params: ["all"] } } })).toEqual([
+      "b",
+      "c",
+    ]);
+    // pfSense API v2 answers on its v2 read; the v1 read's 404 doesn't fail it.
+    expect(
+      combinedResult([
+        { ok: false, kind: "address", message: "x", ms: 3 },
+        { ok: true, kind: "ok", message: "y", ms: 40 },
+      ]),
+    ).toEqual({ ok: true, kind: "ok", message: "Connected in 40 ms." });
+    // A refused key fails the widget even when another read is public.
+    expect(
+      combinedResult([
+        { ok: true, kind: "ok", message: "y", ms: 4 },
+        { ok: false, kind: "key", message: "refused", ms: 5 },
+      ]),
+    ).toEqual({ ok: false, kind: "key", message: "refused" });
+    expect(
+      combinedResult([
+        { ok: false, kind: "service", message: "500", ms: 1 },
+        { ok: false, kind: "address", message: "404", ms: 1 },
+      ]).kind,
+    ).toBe("service");
+  });
+
   it("picks the widget's first plain read", () => {
     expect(firstEndpoint({ mappings: { a: { segments: ["x"] }, b: { endpoint: "b" } } })).toBe("b");
     expect(firstEndpoint({ mappings: { a: { method: "POST" } } })).toBeUndefined();
@@ -74,7 +107,8 @@ describe("Test connection endpoint", () => {
 
   it("runs the dialog's widget through the proxy and answers with a reason only", async () => {
     serviceProxy.mockImplementation(async (req, res) => {
-      expect(req.query).toEqual({ group: TEST_GROUP, service: "Test", index: "-1", endpoint: "status" });
+      expect(["status"]).toContain(req.query.endpoint);
+      expect(req.query).toMatchObject({ group: TEST_GROUP, service: "Test", index: "-1" });
       expect(connectionTest.getStore().widget).toEqual({ type: "sonarr", url: "https://tv.example.org", key: "k" });
       res.status(200).send({ version: "4", secret: "never shown" });
     });

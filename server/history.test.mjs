@@ -38,6 +38,13 @@ test('chart history reads a range, at most about 300 points, with the latest sam
   assert.ok(day.points.length <= 121);
   await assert.rejects(store.read('p', 'forever'), { status: 400 });
   assert.deepEqual((await store.read('missing', '24h')).points, []);
+  // A history written in the last ten minutes stays (the editor starts one
+  // before Save); an older one goes with the chart.
+  await store.keepOnly([]);
+  const [file] = await fs.readdir(path.join(stateDir, 'history'));
+  assert.ok(file, 'a history just written stays');
+  const old = new Date(Date.now() - 11 * 60e3);
+  await fs.utimes(path.join(stateDir, 'history', file), old, old);
   await store.keepOnly([]);
   assert.deepEqual(await fs.readdir(path.join(stateDir, 'history')), [], 'history goes with the chart');
 });

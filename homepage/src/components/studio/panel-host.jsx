@@ -7,6 +7,7 @@ import {
   fillColours,
   resolvedBehaviour,
   resolvedLook,
+  useCardFit,
   useCardTheme,
   useLogoColour,
   widgetFields,
@@ -15,7 +16,7 @@ import Freshness from "./freshness";
 import { COLUMNS, GAP, ROW_HEIGHT } from "./geometry.mjs";
 import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
-import { CHART_SHOWS, REFRESH_MS, ruleLevel } from "./look.mjs";
+import { REFRESH_MS, ruleLevel } from "./look.mjs";
 import { resolveNativePanel } from "./native-adapter.mjs";
 import NativePanel from "./native-panel";
 
@@ -41,8 +42,10 @@ export function useCardPresentation(panel, data, onEdit, onFullView) {
   const card = useMemo(
     () => ({
       id: panel.id,
-      layout: look.layout,
-      columns: look.columns,
+      kind: panel.kind,
+      // The whole look: its blocks and each size's own layout are worked out
+      // at the card's size (card-fit.js).
+      look,
       values: look.values,
       header: look.header,
       description: look.description,
@@ -56,12 +59,10 @@ export function useCardPresentation(panel, data, onEdit, onFullView) {
       onFix: onEdit ? (section) => onEdit(panel, typeof section === "string" ? { section } : undefined) : undefined,
       title: panel.title,
       reportFields: (fields) => widgetFields.set(panel.id, fields),
-      show: look.show,
-      chartRange: look.chartRange,
-      trend: look.layout === "hero" ? look.trend : "off",
       history,
       ruleAlert,
-      onFullView: onFullView && CHART_SHOWS.includes(look.show) ? () => onFullView(panel) : undefined,
+      // A chart block opens full size with its own values and range.
+      onFullView: onFullView ? (chart) => onFullView(panel, chart) : undefined,
     }),
     [panel, look, behaviour, onEdit, onFullView, history, ruleAlert],
   );
@@ -69,13 +70,11 @@ export function useCardPresentation(panel, data, onEdit, onFullView) {
     (look.fill === "picture" || look.fill === "pattern") && Boolean(backgroundSource(look.background, theme));
   const backdrop = pictured ? <CardBackground background={look.background} tokens={theme} /> : null;
   const attributes = {
-    "data-layout": look.layout,
     "data-fill": colours || pictured ? look.fill : "plain",
     "data-edge": look.edge,
     "data-corners": look.corners,
     "data-numbers": look.numbers,
     "data-align": look.align,
-    "data-hero": look.heroSize,
   };
   const colourStyle = colours
     ? { "--card-fill": colours.fill, "--card-ink": colours.ink, "--card-muted": colours.muted }
@@ -91,9 +90,13 @@ export function CardPreview({ panel, data, override, grid = {}, children, render
   const rect = panel.rect || { w: 6, h: 4 };
   const { width = 1200, gap = GAP, columns = COLUMNS } = grid;
   const column = (width - (columns - 1) * gap) / columns;
+  const base = Math.min(rect.h * ROW_HEIGHT + (rect.h - 1) * gap, 520);
+  // Narrower than on the board (a phone), it grows taller instead of
+  // clipping when its settings need the room, as the board does (Board 6).
+  const need = useCardFit(`preview:${panel.id}`)?.need || 0;
   const size = {
     width: `min(100%, ${Math.round(rect.w * column + (rect.w - 1) * gap)}px)`,
-    height: Math.min(rect.h * ROW_HEIGHT + (rect.h - 1) * gap, 520),
+    height: Math.max(base, need),
   };
   return (
     <section
@@ -106,7 +109,9 @@ export function CardPreview({ panel, data, override, grid = {}, children, render
       <div className="studio-panel-slide">
         {backdrop}
         <div className="studio-native-content" inert>
-          <CardLookContext.Provider value={{ ...card, reportFields: undefined }}>
+          <CardLookContext.Provider
+            value={{ ...card, reportFields: undefined, fitId: `preview:${panel.id}`, baseHeight: base, editing: true }}
+          >
             <RenderNative panel={panel} data={data} override={override} />
           </CardLookContext.Provider>
         </div>
@@ -149,14 +154,21 @@ export default function PanelHost({
   // While its editor is docked beside the board: what the editor has typed
   // so far (name, logo, values), drawn on the real card.
   override = null,
+  // Where the board lets it grow: the height it was laid out at (Board 6).
+  baseHeight,
 }) {
   const nativeContent = useRef(null);
   const slide = useRef(null);
-  const { card, attributes, colourStyle, backdrop } = useCardPresentation(
-    panel,
-    data,
-    canEdit ? onEdit : undefined,
-    onFullView,
+  const presentation = useCardPresentation(panel, data, canEdit ? onEdit : undefined, onFullView);
+  const { attributes, colourStyle, backdrop } = presentation;
+  // While editing, a block with no values says what to pick; on the live
+  // dashboard it is left out.
+  const card = useMemo(
+    () =>
+      baseHeight || editing
+        ? { ...presentation.card, ...(baseHeight ? { baseHeight } : {}), ...(editing ? { editing: true } : {}) }
+        : presentation.card,
+    [presentation.card, baseHeight, editing],
   );
   const previousPresentation = useRef(null);
   const slideAnimation = useRef(null);
@@ -446,7 +458,7 @@ export default function PanelHost({
             className="studio-panel-placeholder studio-panel-refresh"
             style={{
               position: "absolute",
-              inset: stack ? "59px 15px 32px" : "56px 15px 16px",
+              inset: stack ? "16px 15px 26px" : "56px 15px 16px",
               minHeight: 0,
             }}
           >

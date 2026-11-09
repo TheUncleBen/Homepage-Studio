@@ -88,7 +88,7 @@ piece can be swapped, and the guide links to the alternatives.
 
 | Guide | For | What's in it |
 | --- | --- | --- |
-| [USING.md](docs/USING.md) | Editors | Adding and arranging panels, touch and keyboard, stacks and slideshows, the title picker, configuration files, snapshots, import/export, multiple dashboards |
+| [USING.md](docs/USING.md) | Editors | Adding and arranging panels, touch and keyboard, stacks and slideshows, widget looks and sizes, configuration files, snapshots, import/export, multiple dashboards |
 | [Widget reference](docs/widgets/README.md) | Editors, operators | Every widget Studio can add: what the service needs, each setting in the widget dialog, Homepage's examples |
 | [APPEARANCE.md](docs/APPEARANCE.md) | Editors | The platform default look, each dashboard's own mode and accent, logos, custom CSS variables, copying a design to another deployment |
 | [DEPLOY.md](docs/DEPLOY.md) | Operators | The main guide, top to bottom: Docker Swarm with Portainer (or `docker stack deploy`), Docker secrets, a reverse proxy, an optional identity provider (Authentik and Nginx Proxy Manager as worked examples), plus every environment variable |
@@ -129,11 +129,11 @@ piece can be swapped, and the guide links to the alternatives.
   Information widgets get readable titles ("Date & Time", "Date & Time 2").
 - **Stacks.** Put panels of the same size on top of each other, or select
   several and choose **Stack** in the selection bar. A stack shows one member at a time with:
-  - one **Play/Pause** button and passive dots (no previous/next buttons);
-  - swipe on the header or the widget body, drag horizontally with a mouse,
-    scroll sideways on a trackpad, or focus it and press Left/Right;
-  - a quiet title picker that opens only on a deliberate tap, click or key
-    press, never from a swipe, drag or long press;
+  - no header bar: a small **Play/Pause** button and page dots sit at the
+    bottom, and each dot jumps to its widget (it is named for screen readers
+    and on hover);
+  - swipe on the widget, drag horizontally with a mouse, scroll sideways on a
+    trackpad, or focus it and press Left/Right;
   - automatic or manual start, seconds per widget (10 by default), a manual
     navigation delay (30 seconds by default), looping, and horizontal,
     vertical, fade or no animation (250 ms by default).
@@ -182,7 +182,7 @@ candidate ([docs/VERSIONS.md](docs/VERSIONS.md)).
 
 | Area | State |
 | --- | --- |
-| Editing, stacks, playback, title picker, configuration, snapshots, import/export, multiple dashboards | Built. Covered by controller and native unit tests and a Chromium browser suite against the real image in CI; eight core scenarios also run in Firefox and WebKit |
+| Editing, stacks, playback, widget looks and sizes, configuration, snapshots, import/export, multiple dashboards | Built. Covered by controller and native unit tests and a Chromium browser suite against the real image in CI; eight core scenarios also run in Firefox and WebKit |
 | Deployment as Compose, one-node Swarm and through Portainer, on amd64 and arm64 | Built. Every candidate is deployed, restarted, replaced and cleaned up in CI on both architectures |
 | Touch feel on real phones and tablets, readability on your own displays | Covered by emulated touch in Chromium only. Needs a person on a real device |
 | Native integrations against real services | Synthetic test services only. The native widget code is Homepage's own; your services, credentials and network are yours to check |

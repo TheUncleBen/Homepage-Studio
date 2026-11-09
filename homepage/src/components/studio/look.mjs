@@ -11,43 +11,123 @@ import { BASES, hexColor } from "./appearance.mjs";
 import { SPACING } from "./geometry.mjs";
 
 export const LOOK_OPTIONS = Object.freeze({
-  layout: ["hero", "quiet"],
   fill: ["plain", "tint", "solid", "picture", "pattern"],
   strength: ["soft", "medium", "strong"],
   edge: ["line", "shadow", "both", "none"],
   corners: ["square", "default", "round"],
   numbers: ["sans", "mono"],
   header: ["logo-name", "logo", "name", "hidden"],
-  heroSize: ["s", "m", "l", "xl"],
-  trend: ["off", "hour", "day", "week"],
+  // Where the header sits: on top, beside the blocks, or Auto (beside only
+  // when the card is much wider than tall). The logo sits left of the name or
+  // centred above it.
+  headerAt: ["auto", "top", "left"],
+  logoPos: ["left", "above"],
   description: ["show", "hide"],
   status: ["dot", "updown", "time"],
   align: ["left", "centre"],
   // Colour fit (board 7): a custom colour is fitted to the theme unless the
   // widget asks for its exact colour; text contrast is still chosen for it.
   colourFit: ["fitted", "exact"],
-  // Show as (boards 6, 10): how the numbers are drawn. Numbers is the layout
-  // above (Hero, with an optional trend, or Quiet); the charts read the
-  // history Studio collects for widgets shown this way (server/history.mjs).
-  show: ["numbers", "line", "area", "bar", "donut", "pie", "gauge", "table", "status"],
-  chartRange: ["1h", "6h", "24h", "7d", "30d"],
-  // Value boxes (U7): Auto balances them (6 values: 3 by 2, not 4 and 2);
-  // a number keeps that many columns while each box still fits.
-  columns: ["auto", "1", "2", "3", "4"],
+  // How the blocks sit (mock-ups v4): side by side, stacked, a grid (three
+  // or more), or Auto, which picks from the card's shape.
+  arrange: ["auto", "row", "col", "grid"],
+  // Text grows and shrinks with the card down to its smallest size, or stays
+  // one size. The smallest size sets how small the card can be made.
+  text: ["scale", "fixed"],
+  textSize: ["small", "medium", "large"],
 });
 
-// Formats drawn from collected history, and the ones that need it at all
-// (a trend or colour rules read the latest collected value too).
-export const CHART_SHOWS = Object.freeze(["line", "area", "bar"]);
-export const COLLECTED_SHOWS = Object.freeze(["line", "area", "bar", "donut", "pie", "gauge"]);
+// Blocks (mock-ups v4, approved 9 Nov 2026): a widget is a stack of blocks the
+// owner composes. Each block has its own look and its own values; the same
+// value can sit in more than one block. Every old "Show as" is a block, so
+// nothing was lost: numbers (hero, grid, list, row, table), charts over time,
+// donut, pie, gauge and status history.
+export const RANGES = ["1h", "6h", "24h", "7d", "30d"];
+export const BLOCK_OPTIONS = Object.freeze({
+  big: { labels: [true, false], size: ["s", "m", "l", "xl"], trend: ["off", "hour", "day", "week"] },
+  numbers: { arrange: ["auto", "grid", "list", "row"], columns: ["auto", "1", "2", "3", "4"], labels: [true, false] },
+  quiet: { labels: [true, false] },
+  pie: { style: ["donut", "pie"], legend: ["auto", "beside", "below", "off"] },
+  bars: { labels: [true, false] },
+  chart: { style: ["line", "area", "bar"], range: RANGES },
+  gauge: {},
+  response: { range: RANGES },
+  status: { range: RANGES },
+  logs: {},
+});
+export const BLOCK_TYPES = Object.freeze(Object.keys(BLOCK_OPTIONS));
+export const BLOCK_DEFAULTS = Object.freeze({
+  big: { labels: true, size: "m", trend: "off" },
+  numbers: { arrange: "auto", columns: "auto", labels: true },
+  quiet: { labels: true },
+  pie: { style: "donut", legend: "auto" },
+  bars: { labels: true },
+  chart: { style: "line", range: "24h" },
+  gauge: {},
+  response: { range: "1h" },
+  status: { range: "24h" },
+  logs: {},
+});
+// Blocks that show values the owner picks, and those that draw them from the
+// numbers Studio collects (server/history.mjs), so only numbers can be picked.
+export const VALUE_BLOCKS = Object.freeze(["big", "numbers", "quiet", "pie", "bars", "chart", "gauge"]);
+export const COLLECTED_BLOCKS = Object.freeze(["pie", "bars", "chart", "gauge"]);
+// Blocks that keep "the values no other block shows" when none are picked, so
+// a widget whose fields vary (an integration update) keeps showing them all.
+export const REST_BLOCKS = Object.freeze(["numbers", "quiet"]);
+export const MAX_BLOCKS = 12;
+// The look a widget has before anyone changes it: its first value large and
+// the rest below, as Homepage Studio always drew it.
+export const DEFAULT_BLOCKS = Object.freeze([
+  { id: "b1", type: "big", first: true },
+  { id: "b2", type: "numbers" },
+]);
+// The kinds of size a card can be (classOf), each of which can have its own
+// layout; anything a size doesn't set comes from All sizes.
+export const SIZE_CLASSES = Object.freeze(["small", "wide", "tall", "regular", "large"]);
+export const SIZE_KEYS = Object.freeze([
+  "blocks",
+  "arrange",
+  "header",
+  "headerAt",
+  "logoPos",
+  "text",
+  "textSize",
+  "align",
+]);
+export function classOf(width, height) {
+  const ratio = width / height;
+  if (ratio >= 2.2) return "wide";
+  if (ratio <= 0.75) return "tall";
+  if (Math.max(width, height) < 260) return "small";
+  if (Math.min(width, height) >= 300) return "large";
+  return "regular";
+}
+// The look in force at one size: the size's own settings win.
+export function lookAt(look, width, height) {
+  const own = look?.sizes?.[classOf(width, height)];
+  return own && Object.keys(own).length ? { ...look, ...own } : look;
+}
+export const blocksOf = (look) => (Array.isArray(look?.blocks) ? look.blocks : DEFAULT_BLOCKS);
+
 // Status history: a bar for each status check, from the widget's own check.
 export const STATUS_SHOW = "status";
+// The history a widget needs collected: charts, a trend, colour rules (which
+// read the latest collected value), response time or status history, at any size.
+export const allBlocks = (look) => [
+  ...blocksOf(look),
+  ...SIZE_CLASSES.flatMap((key) => (Array.isArray(look?.sizes?.[key]?.blocks) ? look.sizes[key].blocks : [])),
+];
 export function needsHistory(look) {
   return (
-    COLLECTED_SHOWS.includes(look.show) ||
-    look.show === STATUS_SHOW ||
-    (look.show === "numbers" && look.layout === "hero" && look.trend !== "off") ||
-    (Array.isArray(look.values) && look.values.some((value) => value.rules))
+    allBlocks(look).some(
+      (block) =>
+        COLLECTED_BLOCKS.includes(block.type) ||
+        block.type === "response" ||
+        block.type === "status" ||
+        (block.type === "big" && block.trend && block.trend !== "off"),
+    ) ||
+    (Array.isArray(look?.values) && look.values.some((value) => value.rules))
   );
 }
 
@@ -90,7 +170,6 @@ export const REFRESH_MS = Object.freeze({ "10s": 10000, "30s": 30000, "1m": 6000
 
 // What a widget gets when neither the dashboard nor the default look says otherwise.
 export const BUILT_IN_LOOK = Object.freeze({
-  layout: "hero",
   fill: "plain",
   colour: "logo",
   strength: "medium",
@@ -98,15 +177,15 @@ export const BUILT_IN_LOOK = Object.freeze({
   corners: "default",
   numbers: "sans",
   header: "logo-name",
-  heroSize: "m",
-  trend: "off",
+  headerAt: "auto",
+  logoPos: "left",
   description: "show",
   status: "dot",
-  align: "left",
+  align: "centre",
   colourFit: "fitted",
-  show: "numbers",
-  chartRange: "24h",
-  columns: "auto",
+  arrange: "auto",
+  text: "scale",
+  textSize: "medium",
 });
 
 export const BUILT_IN_BEHAVIOUR = Object.freeze({
@@ -119,11 +198,10 @@ export const BUILT_IN_BEHAVIOUR = Object.freeze({
 
 export const BACKGROUND_FIT = ["fill", "fit", "tile"];
 export const BACKGROUND_SHADE = ["auto", "light", "medium", "strong"];
-// "number": beside a chart as a number instead of in it (board 27).
-export const VALUE_SLOTS = ["hero", "below", "number", "hidden"];
 export const NUMBER_STYLES = ["full", "short", "compact"];
 export const MAX_VALUES = 24;
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const BLOCK_ID = /^[a-z0-9]{1,16}$/;
 // A value's key: the widget's field name, or its label (customapi labels are
 // the owner's own words, such as "Blocked today"). Kept equal to
 // server/history.mjs so a chart and its arranged values use the same keys.
@@ -219,18 +297,13 @@ export function ruleLevel(rule, value) {
 function values(list) {
   if (!Array.isArray(list) || list.length > MAX_VALUES) fail(`A widget can arrange at most ${MAX_VALUES} values.`);
   const seen = new Set();
-  let heroes = 0;
   return list.map((entry) => {
     if (!plain(entry) || typeof entry.field !== "string" || !FIELD.test(entry.field) || seen.has(entry.field))
       fail("Each arranged value needs a unique field.");
     seen.add(entry.field);
+    for (const key of Object.keys(entry))
+      if (!["field", "label", "format", "colour", "rules"].includes(key)) fail(`Unknown value setting: ${key}.`);
     const out = { field: entry.field };
-    if (own(entry, "slot")) {
-      if (!VALUE_SLOTS.includes(entry.slot))
-        fail("A value can be the hero, below, a number beside a chart, or hidden.");
-      out.slot = entry.slot;
-      if (entry.slot === "hero") heroes += 1;
-    }
     if (own(entry, "label")) out.label = text(entry.label, 40, "A value name");
     if (own(entry, "format")) {
       if (!NUMBER_STYLES.includes(entry.format)) fail("A number style must be full, short or compact.");
@@ -246,9 +319,68 @@ function values(list) {
     // problem the problem colour (and the card turns to its alert state).
     // lower turns them round, for values where less is worse.
     if (own(entry, "rules")) out.rules = rules(entry.rules);
-    if (heroes > 1) fail("Only one value can be the hero.");
     return out;
   });
+}
+
+function block(entry, ids) {
+  if (!plain(entry)) fail("Each block must be an object.");
+  if (typeof entry.id !== "string" || !BLOCK_ID.test(entry.id) || ids.has(entry.id))
+    fail("Each block needs its own id.");
+  ids.add(entry.id);
+  if (!BLOCK_TYPES.includes(entry.type)) fail("A block must be one of the offered kinds.");
+  const out = { id: entry.id, type: entry.type };
+  const options = BLOCK_OPTIONS[entry.type];
+  for (const [key, value] of Object.entries(entry)) {
+    if (key === "id" || key === "type") continue;
+    if (key === "values") {
+      if (!VALUE_BLOCKS.includes(entry.type)) fail("Only blocks of values take values.");
+      if (!Array.isArray(value) || value.length > MAX_VALUES) fail(`A block can show at most ${MAX_VALUES} values.`);
+      const seen = new Set();
+      for (const field of value)
+        if (typeof field !== "string" || !FIELD.test(field) || seen.has(field))
+          fail("A block's values must be different fields.");
+        else seen.add(field);
+      if (entry.type === "gauge" && value.length > 1) fail("A gauge shows one value.");
+      out.values = [...value];
+    } else if (key === "first") {
+      // The default Big number: the widget's first value, whatever it is.
+      if (value !== true || entry.type !== "big") fail("Only a Big number can follow the first value.");
+      out.first = true;
+    } else if (own(options, key)) {
+      if (!options[key].includes(value)) fail(`The block ${key} value is not one of the offered choices.`);
+      if (value !== BLOCK_DEFAULTS[entry.type][key]) out[key] = value;
+    } else fail(`Unknown block setting: ${key}.`);
+  }
+  if (out.first && out.values) fail("A Big number either follows the first value or shows the values picked.");
+  return out;
+}
+
+function blockList(value) {
+  // None is allowed: a service tile can show just its header.
+  if (!Array.isArray(value) || value.length > MAX_BLOCKS) fail(`A widget shows up to ${MAX_BLOCKS} blocks.`);
+  const ids = new Set();
+  return value.map((entry) => block(entry, ids));
+}
+
+function sizeLayouts(value) {
+  if (!plain(value)) fail("Layouts for each size must be an object.");
+  const out = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (!SIZE_CLASSES.includes(key)) fail(`Unknown size: ${key}.`);
+    if (!plain(entry)) fail("A size's layout must be an object.");
+    const one = {};
+    for (const [name, setting] of Object.entries(entry)) {
+      if (!SIZE_KEYS.includes(name)) fail(`A size can't set ${name}.`);
+      if (name === "blocks") one.blocks = blockList(setting);
+      else {
+        if (!LOOK_OPTIONS[name].includes(setting)) fail(`The ${key} size's ${name} is not one of the offered choices.`);
+        one[name] = setting;
+      }
+    }
+    if (Object.keys(one).length) out[key] = one;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 // Strict validation for a stored override object. Unknown keys are refused so
@@ -266,7 +398,11 @@ export function validateLook(value) {
       out.colour = entry === "logo" ? "logo" : hexColor(entry);
     } else if (key === "background") out.background = background(entry);
     else if (key === "values") out.values = values(entry);
-    else fail(`Unknown widget look setting: ${key}.`);
+    else if (key === "blocks") out.blocks = blockList(entry);
+    else if (key === "sizes") {
+      const sizes = sizeLayouts(entry);
+      if (sizes) out.sizes = sizes;
+    } else fail(`Unknown widget look setting: ${key}.`);
   }
   return Object.keys(out).length ? out : undefined;
 }
@@ -296,7 +432,8 @@ export function validateStudioTheme(value) {
       out.spacing = entry;
     } else if (key === "card") {
       const look = validateLook(entry);
-      if (look?.values) fail("The dashboard's card look has no widget values.");
+      if (look?.values || look?.blocks || look?.sizes)
+        fail("The dashboard's card look has no widget values, blocks or size layouts.");
       if (look) out.card = look;
     } else if (key === "pageBackground") out.pageBackground = background(entry);
     else if (key === "glass") {
