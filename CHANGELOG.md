@@ -65,6 +65,9 @@ in older entries below are history only.
   empty card; with nothing chosen it says to pick what to show.
 - **Duplicate** keeps every setting of the widget it copies; the copy
   was saved with only the settings changed in the dialog.
+- **Widgets** pressed while a docked widget's save is still landing opens
+  once it has, instead of doing nothing. Homepage's own information
+  widgets (Resources, Search…) sit in the middle of their card's height.
 - A block with no values (for example a one-value widget's default
   Numbers) is left out on the dashboard; while editing it still says what
   to pick.

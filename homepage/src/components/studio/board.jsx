@@ -975,7 +975,14 @@ export default function StudioBoard({
     return { state, catalog, backups, platform: appearance?.platform ?? null };
   };
   const openEditor = async (type, detail = {}, reload = false) => {
-    if (saveInFlight.current || (!reload && nativeRefreshLock.current)) return;
+    // A click while a save is still landing (the docked editor shows the
+    // change before it is stored) opens once it has, instead of doing
+    // nothing or being closed by that save (browser suite, 9 Nov 2026).
+    const busy = () =>
+      saveInFlight.current || (!reload && (nativeRefreshLock.current || editorGuardRef.current.pending));
+    for (let waited = 0; waited < 10000 && busy(); waited += 100)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    if (busy()) return;
     // Anything still saving lands first, so the editor starts from it.
     if (savePending() && !(await flushArrangement())) return;
     const token = ++generation.current;
