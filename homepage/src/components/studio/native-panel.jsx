@@ -38,6 +38,11 @@ export default memo(function NativePanel({ panel, data, override }) {
         {resolved.kind === "informationWidget" &&
           (isFiller(resolved.widget.type) ? (
             <Filler widget={resolved.widget} />
+          ) : resolved.widget.type === "resources" && !showsResources(resolved.widget.options) ? (
+            <div className="studio-panel-placeholder">
+              <strong>Nothing chosen to show</strong>
+              <p>Edit it to pick CPU, memory, disk or more.</p>
+            </div>
           ) : resolved.widget.type === "datetime" ? (
             <CardDateTime options={withDisplayPreferences(resolved.widget, preferences).options ?? {}} />
           ) : (
@@ -68,6 +73,13 @@ export default memo(function NativePanel({ panel, data, override }) {
     </ErrorBoundary>
   );
 });
+
+// Resources draws nothing unless one of its readings is turned on.
+function showsResources(options = {}) {
+  return ["cpu", "memory", "disk", "network", "cputemp", "uptime"].some((key) =>
+    Array.isArray(options[key]) ? options[key].length > 0 : Boolean(options[key]),
+  );
+}
 
 function withOverride(resolved, override) {
   if (!resolved || !override) return resolved;

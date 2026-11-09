@@ -262,6 +262,11 @@ function widgetService(config = {}) {
 // What "Duplicate" opens: the add editor, filled with this item's saved
 // settings and named "<name> copy". Used by the editor's Duplicate button and
 // the widget menu on the board.
+// What a new information widget shows before anything is chosen, where
+// Homepage's own default is an empty card: Resources starts with CPU and
+// memory, which need no setup (fresh-deploy check on the widget rebuild).
+const STARTERS = { resources: { cpu: true, memory: true } };
+
 export function duplicateEntry(panel, state, catalog) {
   const kind = panel.kind;
   const source = sourceForPanel(panel, state);
@@ -483,6 +488,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, in
     },
     ...(catalog.info || []).map((item) => ({
       ...item,
+      ...(STARTERS[item.type] && !Object.keys(item.defaults || {}).length ? { defaults: STARTERS[item.type] } : {}),
       kind: "informationWidget",
       icon: FILLER_ICONS[item.type] || "clock",
     })),

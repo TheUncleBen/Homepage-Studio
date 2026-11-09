@@ -84,6 +84,20 @@ describe("Custom API empty mappings hint", () => {
 });
 
 describe("Content picker names", () => {
+  it("starts a new Resources widget showing CPU and memory, not an empty card", () => {
+    const onChoose = vi.fn();
+    render(
+      <ContentPicker
+        catalog={{ info: [{ type: "resources", name: "Resources", defaults: {} }], service: [] }}
+        state={{ hiddenDiscoveredIds: [] }}
+        onChoose={onChoose}
+        onRestore={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Resources/ }));
+    expect(onChoose.mock.calls[0][0].defaults).toEqual({ cpu: true, memory: true });
+  });
+
   it("tells apart an information and an integration widget that share a name by their subtitle", () => {
     render(
       <ContentPicker

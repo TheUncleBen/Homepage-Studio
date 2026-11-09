@@ -61,6 +61,8 @@ in older entries below are history only.
   real one. While resizing, the selection bar and widget tools step aside.
 - A widget's name and the reason it is red wrap only between words; a
   widget never shows a word broken in the middle or a line cut off.
+- A new Resources widget starts showing CPU and memory, instead of an
+  empty card; with nothing chosen it says to pick what to show.
 - A block with no values (for example a one-value widget's default
   Numbers) is left out on the dashboard; while editing it still says what
   to pick.
