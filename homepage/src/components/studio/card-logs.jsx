@@ -28,7 +28,7 @@ export default function CardLogs({ card }) {
   const events = Array.isArray(data.events) ? data.events : [];
   if (!events.length) return <p className="studio-chart-note">Nothing logged for this widget in the last 24 hours.</p>;
   // Any line opens Operations' logs for this widget (mock-ups v4, board 8).
-  const href = logsLink({ dashboardId, panelId: card.id, name: card.name, range: "24h" });
+  const href = logsLink({ dashboardId, panelId: card.id, range: "24h" });
   return (
     <ul className="studio-card-logs" aria-label="Recent logs">
       {events.map((event) => (

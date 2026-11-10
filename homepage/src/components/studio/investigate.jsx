@@ -64,7 +64,7 @@ export default function InvestigateSheet({ panel, dashboardId, operations, onClo
   const monitored = Boolean(operations.monitoring && status);
   const showLogs = operations.logs;
   const target =
-    monitored || showLogs ? operationsLink({ dashboardId, panelId: panel.id, monitored, name: panel.name }) : null;
+    monitored || showLogs ? operationsLink({ dashboardId, panelId: panel.id, monitored, name: panel.title }) : null;
   return (
     <StudioDialog title={`${name}: what’s happening`} onClose={onClose}>
       <div className="studio-dialog-body studio-investigate">

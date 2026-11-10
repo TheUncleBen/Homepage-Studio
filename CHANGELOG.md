@@ -14,6 +14,29 @@ the volumes and follow [docs/DEPLOY.md](docs/DEPLOY.md) from the start. Studio
 carries no conversions for data from earlier candidates, and the upgrade notes
 in older entries below are history only.
 
+### Rows that scale, log search as you type, missing intermediates fetched
+
+- **Rows scale with the columns** (mock-ups v4, board 5;
+  [docs/USING.md](docs/USING.md)). A row is 36 px when the board is as wide
+  as on a 1440 px desktop, 820 px tablet or 390 px phone screen, and grows
+  or shrinks with the column width elsewhere (18 to 64 px), so a widget keeps
+  its shape on a wider or narrower screen instead of only getting wider.
+  The editor, the live dashboard and the Dashboards page previews use the
+  same rule. Homepage's own information widgets (Resources, Greeting, …)
+  grow only by what their content needs where they would be cut.
+- **Logs search as you type** ([docs/LOGS.md](docs/LOGS.md#searching)). One
+  box searches as you type; Level, Source, Service and Problem are chips
+  (one choice each, **Any** to clear), and the address keeps the search. A
+  line in a widget's Logs block, or **Show in Logs** in Investigate, opens
+  Operations › Logs showing only that widget, as a chip you can take off.
+- **Missing intermediate certificates are fetched**
+  ([docs/DEPLOY.md](docs/DEPLOY.md#trusted-certificates)). A server that
+  sends only its own certificate now works with only your root authority
+  trusted: Studio fetches the intermediate from the certificate's
+  `http://` CA Issuers address (16 KB, 4 s, no redirects, remembered) and
+  uses it only if it leads to a certificate already trusted. Widgets, Test
+  connection, Check now, status checks and web and certificate monitors.
+
 ### Widgets you shape: blocks, any size, a note when a size can't fit
 
 - **Show tab** ([docs/USING.md](docs/USING.md#how-a-widget-looks)). A widget

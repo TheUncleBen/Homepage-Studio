@@ -346,7 +346,7 @@ describe("Investigate", () => {
     const sheet = await screen.findByRole("dialog", { name: /weather: what’s happening/ });
     expect(within(sheet).queryByText("Status check")).toBeNull();
     expect(within(sheet).getByRole("link", { name: "Show in Logs" }).getAttribute("href")).toBe(
-      `/studio/operations#logs?${new URLSearchParams({ q: "dashboard:default panel:weather" })}`,
+      `/studio/operations#logs?${new URLSearchParams({ panel: "weather", scope: "default", name: "weather" })}`,
     );
   });
 
