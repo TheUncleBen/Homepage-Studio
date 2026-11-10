@@ -1,4 +1,4 @@
-import { DASHBOARDS, expect, expectSaved, mouseDrag, openEditor, openSettings, panelPixels, seedServicePanels, studioApi, test } from '../helpers/dashboard.mjs';
+import { DASHBOARDS, expect, expectSaved, mouseDrag, openEditor, openSettings, panelPixels, rowStep, seedServicePanels, studioApi, test } from '../helpers/dashboard.mjs';
 import { activePanel, carousel, playback } from '../helpers/engineering.mjs';
 
 const serviceSlots = () => ['Alpha', 'Beta', 'Gamma'].map((name, index) => ({ name, rect: { x: index * 6, y: 0, w: 6, h: 3 } }));
@@ -144,7 +144,10 @@ for (const input of ['pointer', 'keyboard']) {
     const handle = page.getByRole('button', { name: 'Move Beta. Use arrow keys; Shift and arrow keys resize.' });
     if (input === 'pointer') await mouseDrag(page, handle, 0, -below);
     // One row per press.
-    else for (let row = 0; row < Math.round(below / 48); row += 1) await handle.press('ArrowUp');
+    else {
+      const step = await rowStep(page);
+      for (let row = 0; row < Math.round(below / step); row += 1) await handle.press('ArrowUp');
+    }
     await expect.poll(async () => (await panelPixels(beta)).top).toBe(0);
     expect(await page.evaluate(() => window.__reviewedHost === document.querySelector('[data-panel-id][aria-label="Beta"]'))).toBe(true);
     await expect.poll(async () => (await studioApi(request, '/dashboard/studio/api/board')).board.layouts?.phone).toBeTruthy();
@@ -162,7 +165,7 @@ for (const input of ['pointer', 'keyboard']) {
     await page.goto('/dashboard');
     await expect(beta).toBeVisible();
     expect((await panelPixels(page.locator('[data-panel-id][aria-label="Alpha"]'))).top).toBe(0);
-    expect((await panelPixels(beta)).top).toBe(144);
+    expect((await panelPixels(beta)).top).toBeCloseTo(3 * (await rowStep(page)), 1);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/dashboard');
     await expect(beta).toBeVisible();
@@ -180,8 +183,9 @@ test('on a tablet a move changes the tablet layout only and survives reload', as
   const before = await panelPixels(panel('Gamma'));
   expect(before.top).toBeGreaterThan((await panelPixels(panel('Alpha'))).top);
   const handle = page.getByRole('button', { name: 'Move Gamma. Use arrow keys; Shift and arrow keys resize.' });
+  const step = await rowStep(page);
   await handle.press('ArrowDown');
-  await expect.poll(async () => (await panelPixels(panel('Gamma'))).top).toBe(before.top + 48);
+  await expect.poll(async () => (await panelPixels(panel('Gamma'))).top).toBeCloseTo(before.top + step, 1);
   await expect.poll(async () => (await studioApi(request, '/dashboard/studio/api/board')).board.layouts?.tablet).toBeTruthy();
   await expectSaved(page);
   const saved = (await studioApi(request, '/dashboard/studio/api/board')).board;
@@ -194,11 +198,11 @@ test('on a tablet a move changes the tablet layout only and survives reload', as
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect.poll(async () => (await panelPixels(panel('Gamma'))).top).toBe(before.top);
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
-  await expect.poll(async () => (await panelPixels(panel('Gamma'))).top).toBe(before.top + 48);
+  await expect.poll(async () => (await panelPixels(panel('Gamma'))).top).toBeCloseTo(before.top + step, 1);
   await expectSaved(page);
   await page.reload();
   await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
-  await expect.poll(async () => (await panelPixels(panel('Gamma'))).top).toBe(before.top + 48);
+  await expect.poll(async () => (await panelPixels(panel('Gamma'))).top).toBeCloseTo(before.top + step, 1);
 });
 
 test.describe('interrupted touch arrangement', () => {

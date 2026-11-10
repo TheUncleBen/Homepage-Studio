@@ -13,7 +13,6 @@ import {
   pageOf,
   PHONE_COLUMNS,
   PHONE_WIDTH,
-  ROW_HEIGHT,
   TABLET_COLUMNS,
   unitsForBoard,
 } from "./geometry.mjs";
@@ -187,7 +186,6 @@ export function centreInRow(view, id) {
 }
 
 // The pixel height of a size's board, for previews.
-export const sizeHeight = (projection, gap) => projection.rows * (ROW_HEIGHT + gap);
 
 const sameRect = (a, b) => a && b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 

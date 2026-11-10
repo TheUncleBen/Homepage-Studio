@@ -79,7 +79,7 @@ the global application unavailable and must fail clearly.
 
 ## Persistent model
 
-Board version 3 has 24 columns of 36 px rows, one to 20 pages, independently identified panels, and one-level stacks. Every panel and stack belongs to one page (`pageId`). Rectangles use integer x/y/w/h coordinates. Each native service, individual service widget, information widget, and bookmark has a stable identity. Stacks refer to panel IDs on their own page and have their own rectangle and playback preferences. Two visible units on the same page may not overlap. Removing a member from a two-member stack collapses the surviving member into an independent panel.
+Board version 3 has 24 columns and rows that scale with the column width (36 px at each layout's reference width, clamped to 18–64 px; `geometry.mjs` `rowHeight`), one to 20 pages, independently identified panels, and one-level stacks. Every panel and stack belongs to one page (`pageId`). Rectangles use integer x/y/w/h coordinates. Each native service, individual service widget, information widget, and bookmark has a stable identity. Stacks refer to panel IDs on their own page and have their own rectangle and playback preferences. Two visible units on the same page may not overlap. Removing a member from a two-member stack collapses the surviving member into an independent panel.
 
 Board version 3 is not read from older state: the server refuses any other
 version (`Unsupported board schema.`). Until version 1.0.0, a deployment that

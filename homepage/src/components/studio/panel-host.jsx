@@ -5,6 +5,7 @@ import { useCardHistory } from "./card-chart";
 import {
   CardLookContext,
   fillColours,
+  publishFit,
   resolvedBehaviour,
   resolvedLook,
   useCardFit,
@@ -13,7 +14,7 @@ import {
   widgetFields,
 } from "./card-look";
 import Freshness from "./freshness";
-import { COLUMNS, GAP, ROW_HEIGHT } from "./geometry.mjs";
+import { COLUMNS, GAP, rowHeight } from "./geometry.mjs";
 import { touchesNativeContent, useLongPress, useStackGestures } from "./gestures";
 import StudioIcon from "./icons";
 import { REFRESH_MS, ruleLevel } from "./look.mjs";
@@ -90,7 +91,7 @@ export function CardPreview({ panel, data, override, grid = {}, children, render
   const rect = panel.rect || { w: 6, h: 4 };
   const { width = 1200, gap = GAP, columns = COLUMNS } = grid;
   const column = (width - (columns - 1) * gap) / columns;
-  const base = Math.min(rect.h * ROW_HEIGHT + (rect.h - 1) * gap, 520);
+  const base = Math.min(rect.h * rowHeight(width, columns, gap) + (rect.h - 1) * gap, 520);
   // Narrower than on the board (a phone), it grows taller instead of
   // clipping when its settings need the room, as the board does (Board 6).
   const need = useCardFit(`preview:${panel.id}`)?.need || 0;
@@ -120,6 +121,9 @@ export function CardPreview({ panel, data, override, grid = {}, children, render
     </section>
   );
 }
+
+// Information widgets that scroll or fill their card on purpose.
+const SCROLLS = new Set(["kubernetes", "longhorn", "picture", "spacer"]);
 
 export default function PanelHost({
   panel,
@@ -231,11 +235,45 @@ export default function PanelHost({
     // otherwise a vertical swipe on the body must scroll the page.
     const element = nativeContent.current;
     if (!element || typeof ResizeObserver === "undefined") return undefined;
+    // Homepage's own information widgets (Resources, Search, Greeting…) draw
+    // without a Studio card, so nothing else says how tall they need to be.
+    // Rows follow the board's width (Board 5), so on a narrower screen their
+    // content can need more rows than they were given: say how much, and the
+    // board grows them instead of cutting them off (Board 6). Widgets meant
+    // to scroll or fill their card are left as they are.
+    const grows = panel.kind === "informationWidget" && !SCROLLS.has(panel.nativeLocator?.type);
+    // How tall the content is on its own: measured with the box collapsed for
+    // one synchronous read (no paint), so a widget that stretches to fill its
+    // box (min-height: 100%) reports what it really needs, never the room it
+    // was given. Growth then follows the content both ways: no ratchet, and a
+    // brief overflow while fonts or data load does not stick.
+    const naturalHeight = () => {
+      const { style } = element;
+      const kept = { height: style.height, minHeight: style.minHeight, flex: style.flex };
+      const { scrollTop } = element;
+      style.height = "0px";
+      style.minHeight = "0px";
+      style.flex = "none";
+      const height = element.scrollHeight;
+      style.height = kept.height;
+      style.minHeight = kept.minHeight;
+      style.flex = kept.flex;
+      element.scrollTop = scrollTop;
+      return height;
+    };
+    let asked = 0;
     const update = () => {
       if (element.scrollWidth > element.clientWidth + 1) element.dataset.studioScrollX = "";
       else delete element.dataset.studioScrollX;
       if (element.scrollHeight > element.clientHeight + 1) element.dataset.studioScrollY = "";
       else delete element.dataset.studioScrollY;
+      if (!grows || element.querySelector(".studio-card")) return;
+      const box = element.closest(".studio-panel");
+      if (!box) return;
+      const need = Math.ceil(box.offsetHeight - element.clientHeight + naturalHeight());
+      if (Math.abs(need - asked) <= 1) return;
+      asked = need;
+      publishFit(panel.id, { need, fits: need <= box.offsetHeight + 1 });
     };
     const observer = new ResizeObserver(update);
     observer.observe(element);
@@ -254,7 +292,8 @@ export default function PanelHost({
       observer.disconnect();
       children?.disconnect();
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read once per widget
+  }, [panel.id]);
   const duration =
     reducedMotion || stack?.playback.transition === "none" ? 0 : (stack?.playback.transitionDurationMs ?? 250);
   const style = {

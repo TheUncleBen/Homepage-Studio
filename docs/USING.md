@@ -115,8 +115,12 @@ A new dashboard is empty. In the editor it shows a short note, *A clean
 slate*, and an **Add your first widget** button. To split a dashboard into
 sections, add pages (below).
 
-The board is a grid of 36 px rows: 24 columns on a desktop, 16 on a tablet
-and 8 on a phone. Each size has its own layout, made from the desktop one:
+The board is a grid of rows and columns: 24 columns on a desktop, 16 on a
+tablet and 8 on a phone. Rows scale with the columns, so a widget keeps its
+shape on a wider or narrower screen instead of only getting wider: a row is
+36 px when the board is as wide as on a 1440 px desktop, 820 px tablet or
+390 px phone screen, and between 18 and 64 px otherwise. Each size has its
+own layout, made from the desktop one:
 
 - Until you move or resize a widget on a tablet or phone, that size follows
   desktop, in desktop's reading order. On a tablet a widget up to half the

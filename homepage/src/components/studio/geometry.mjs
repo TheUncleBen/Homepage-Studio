@@ -10,6 +10,18 @@ export const columnsOfPage = (page) => (page?.grid === "centred" ? CENTRED_COLUM
 export const gridColumns = (board) => board?.gridColumns ?? COLUMNS;
 export const ROW_HEIGHT = 36;
 export const GAP = 12;
+// Rows scale with the columns (Board 5, owner 10 Nov 2026). A column is a
+// share of the board's width; a row is as tall, against its column, as it is
+// at its layout's reference width, where it is ROW_HEIGHT. So a widget keeps
+// its shape on every screen of the same layout, instead of getting wider but
+// not taller as the window widens. The references are the boards of a
+// 1440 px desktop window, an 820 px tablet and a 390 px phone (the board is
+// the window less Studio's side padding: 40, 25 and 18 px).
+export const REFERENCE_WIDTH = Object.freeze({ desktop: 1360, tablet: 770, phone: 354 });
+// Bounds that only matter far from the references: rows never get so short
+// that a handle or a line of text has no room, nor absurdly tall.
+export const ROW_MIN = 18;
+export const ROW_MAX = 64;
 // Dashboard Appearance › Spacing: the space between widgets, in pixels.
 export const SPACING = Object.freeze({ compact: 6, default: GAP, roomy: 20 });
 export const gapOf = (settings) => {
@@ -383,13 +395,35 @@ export function projectBoard(board, width) {
   return projectColumns(board, width < PHONE_WIDTH ? PHONE_COLUMNS : width < 940 ? TABLET_COLUMNS : gridColumns(board));
 }
 
+// The layout a column count belongs to (TABLET_COLUMNS and PHONE_COLUMNS are
+// only ever a tablet's or a phone's).
+const layoutOfColumns = (columns) =>
+  columns === PHONE_COLUMNS ? "phone" : columns === TABLET_COLUMNS ? "tablet" : "desktop";
+
+// A row's height in pixels on a board this wide, with these columns and gap.
+export function rowHeight(width, columns = COLUMNS, gap = GAP) {
+  if (!Number.isFinite(width) || width <= 0) return ROW_HEIGHT;
+  const reference = REFERENCE_WIDTH[layoutOfColumns(columns)];
+  const cell = (width + gap) / columns - gap;
+  const referenceCell = (reference + gap) / columns - gap;
+  // Narrower than the gaps themselves: as short as a row may be.
+  if (!(cell > 0)) return ROW_MIN;
+  // Whole hundredths, so the same width always gives exactly the same rows.
+  const height = Math.round(((ROW_HEIGHT * cell) / referenceCell) * 100) / 100;
+  return Math.min(ROW_MAX, Math.max(ROW_MIN, height));
+}
+// One row plus the gap below it: the vertical grid step.
+export const rowStep = (width, columns = COLUMNS, gap = GAP) =>
+  Math.round((rowHeight(width, columns, gap) + gap) * 100) / 100;
+
 export function pixelRect(rect, width, columns = COLUMNS, gap = GAP) {
   const column = (width + gap) / columns;
+  const row = rowStep(width, columns, gap);
   return {
     left: rect.x * column,
-    top: rect.y * (ROW_HEIGHT + gap),
+    top: rect.y * row,
     width: Math.max(0, rect.w * column - gap),
-    height: rect.h * (ROW_HEIGHT + gap) - gap,
+    height: rect.h * row - gap,
   };
 }
 

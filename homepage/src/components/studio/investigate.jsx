@@ -31,9 +31,18 @@ const SEVERITY = {
 const clock = (ts) =>
   new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
-export function operationsLink({ dashboardId, panelId, monitored }) {
+// Operations' logs filtered to one widget: a chip there names it and can be
+// taken off. The name is only a label; the filter is the dashboard and id.
+export function logsLink({ dashboardId, panelId, name, range }) {
+  const params = { panel: panelId, scope: dashboardId };
+  if (name) params.name = String(name).slice(0, 80);
+  if (range) params.range = range;
+  return `/studio/operations#logs?${new URLSearchParams(params)}`;
+}
+
+export function operationsLink({ dashboardId, panelId, monitored, name }) {
   if (monitored) return `/studio/operations#monitor/${encodeURIComponent(`card:${dashboardId}:${panelId}`)}`;
-  return `/studio/operations#logs?${new URLSearchParams({ q: `dashboard:${dashboardId} panel:${panelId}` })}`;
+  return logsLink({ dashboardId, panelId, name });
 }
 
 export default function InvestigateSheet({ panel, dashboardId, operations, onClose }) {
@@ -54,7 +63,8 @@ export default function InvestigateSheet({ panel, dashboardId, operations, onClo
   }, [operations.logs, panel.id, dashboardId]);
   const monitored = Boolean(operations.monitoring && status);
   const showLogs = operations.logs;
-  const target = monitored || showLogs ? operationsLink({ dashboardId, panelId: panel.id, monitored }) : null;
+  const target =
+    monitored || showLogs ? operationsLink({ dashboardId, panelId: panel.id, monitored, name: panel.name }) : null;
   return (
     <StudioDialog title={`${name}: what’s happening`} onClose={onClose}>
       <div className="studio-dialog-body studio-investigate">

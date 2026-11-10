@@ -2236,7 +2236,15 @@
     // with each tile's icon and name (server/dashboard-preview.mjs). They're
     // drawn at desktop size and scaled down, and fetched as rows come near
     // the screen; the dashboards themselves aren't started.
-    const PREVIEW_WIDTH = 1280, PREVIEW_HEIGHT = 800, PREVIEW_PAD = 32, PREVIEW_BAR = 56, ROW = 72, GAP = 16;
+    const PREVIEW_WIDTH = 1280, PREVIEW_HEIGHT = 800, PREVIEW_PAD = 32, PREVIEW_BAR = 56, GAP = 16;
+    // A row against a column as on the dashboard itself (Board 5; the same
+    // rule as rowHeight in homepage/src/components/studio/geometry.mjs: 36 px
+    // on a 1360 px wide desktop board), so a tile has the shape it has there.
+    const previewRow = columns => {
+      const cell = (PREVIEW_WIDTH - 2 * PREVIEW_PAD + GAP) / columns - GAP;
+      const reference = (1360 + GAP) / columns - GAP;
+      return cell > 0 && reference > 0 ? 36 * cell / reference : 36;
+    };
     const prefersLight = window.matchMedia?.('(prefers-color-scheme: light)');
     async function drawPreview(holder, entry) {
       let model;
@@ -2249,6 +2257,7 @@
       for (const [name, value] of Object.entries(colors)) canvas.style.setProperty('--p-' + name, value);
       canvas.append(h('div', { class: 'preview-bar' }, h('span', { text: entry.name })));
       const column = (PREVIEW_WIDTH - 2 * PREVIEW_PAD + GAP) / model.columns;
+      const ROW = previewRow(model.columns);
       for (const unit of model.units) {
         const top = PREVIEW_BAR + PREVIEW_PAD + unit.y * (ROW + GAP);
         if (top >= PREVIEW_HEIGHT) continue;

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FILES } from "./api.mjs";
 import StudioBoard from "./board";
+import { rowStep } from "./geometry.mjs";
 
 vi.mock("./native-panel", async () => {
   const { resolveNativePanel } = await import("./native-adapter.mjs");
@@ -869,7 +870,9 @@ describe("Native board save and draft safety", () => {
     act(() => publishNative({ configurationRevision: CONFIG_B }));
     fireEvent.click(screen.getByRole("button", { name: "Apply to arrangement" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Native state clock").closest("section")).toHaveStyle({ top: "240px" });
+    expect(screen.getByLabelText("Native state clock").closest("section")).toHaveStyle({
+      top: `${5 * rowStep(1200)}px`,
+    });
     await waitFor(() => expect(writer).toHaveBeenCalledTimes(1));
     expect(writer.mock.calls[0][1].revision).toBe("external-native-change");
   });
