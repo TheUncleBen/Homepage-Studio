@@ -31,7 +31,9 @@ import { connectionIdsOf, createLibrary, LibraryError, MAX_SAVED_WIDGETS, public
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
 import { LookError, allBlocks, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
 import { BACKGROUND_CHOICES, BASE_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
-import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
+import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES, BackupError } from './backups.mjs';
+import { upgradeData, UpgradeError, confirmDataVersion, CONFIRM_AFTER_MS } from './upgrade.mjs';
+import { convertLook } from './migrations/legacy-looks.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
 import { createAuthService } from './auth/service.mjs';
 import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendStudioAsset, sendStudioPage } from './auth/routes.mjs';
@@ -123,8 +125,9 @@ function wantsHtmlPage(req) {
   if (/^\/(?:[^/]+\/)?(?:api|studio\/api)(?:\/|$)/.test(path)) return false;
   return String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html');
 }
-function renderUnavailablePage(status, { title = 'This dashboard isn&#39;t available', text = 'Its address may have changed, or it may have been archived. Choose the dashboard you need on the Dashboards page.' } = {}) {
-  const code = Number(status) === 410 ? 410 : 404;
+const escapeHtml = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+function renderUnavailablePage(status, { title = 'This dashboard isn&#39;t available', text = 'Its address may have changed, or it may have been archived. Choose the dashboard you need on the Dashboards page.', detail, admin = false } = {}) {
+  const code = [410, 503].includes(Number(status)) ? Number(status) : 404;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -140,9 +143,12 @@ main { width: 100%; max-width: 30rem; padding: 28px 24px; background: #1b1a20; b
 .status { margin: 0 0 8px; color: #b4aebc; font-size: 0.875rem; letter-spacing: 0.04em; text-transform: uppercase; }
 h1 { margin: 0 0 12px; font-size: 1.375rem; line-height: 1.3; font-weight: 600; }
 p { margin: 0 0 20px; color: #b4aebc; }
+.detail { padding: 12px 14px; border-radius: 8px; background: #111115; color: #eeecf1; font-size: 0.9375rem; overflow-wrap: anywhere; }
 a { display: inline-block; padding: 10px 16px; border-radius: 8px; background: #685870; color: #ffffff; text-decoration: none; font-weight: 600; }
 a:hover { background: #77697e; }
 a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
+a { margin: 0 8px 8px 0; }
+a + a { background: transparent; border: 1px solid #4a4452; }
 </style>
 </head>
 <body>
@@ -150,8 +156,8 @@ a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
 <p class="status">Error ${code}</p>
 <h1>${title}</h1>
 <p>${text}</p>
-<a href="/studio/dashboards">Open Dashboards</a>
-</main>
+${detail ? `<p class="detail">${escapeHtml(detail)}</p>\n` : ''}<a href="/studio/dashboards">Open Dashboards</a>
+${admin ? '<a href="/studio/admin#backups">Open Backups</a>\n' : ''}</main>
 </body>
 </html>
 `;
@@ -163,6 +169,20 @@ function unavailablePage(req, res, status) {
   const page = renderUnavailablePage(status, operations ? { title: 'Operations needs Studio sign-in', text: 'Monitoring and logs are only available when Studio sign-in is on (see MONITORING.md in the documentation). Cards still show their status.' } : undefined);
   const policy = res.getHeader('content-security-policy');
   res.writeHead(status === 410 ? 410 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(page), 'content-security-policy': [].concat(policy ?? [], UNAVAILABLE_PAGE_POLICY), vary: 'Accept' });
+  res.end(req.method === 'HEAD' ? undefined : page);
+}
+// A dashboard whose configuration doesn't load (UI review M1, 10 Nov 2026):
+// browsers get a page, not the JSON error. People who can arrange it also
+// see why; everyone else, only that it can't load right now.
+function notReadyPage(req, res, reason, admin = false) {
+  if (res.destroyed || res.writableEnded || res.headersSent) return;
+  // Its editor and settings can't open either, so the way out is a backup
+  // (the one saved before an update, if one was) or the log.
+  const page = renderUnavailablePage(503, reason
+    ? { title: 'This dashboard can&#39;t load right now', text: admin ? 'Its stored configuration was refused for this reason. Put back a backup under Administration › Backups (after an update, the one named …-before-upgrade), or see the container log for details.' : 'Its stored configuration was refused for this reason. An administrator can put back a backup under Administration › Backups; the container log has the details.', detail: reason, admin }
+    : { title: 'This dashboard can&#39;t load right now', text: 'Something in its configuration needs fixing. Try again later, or ask the person who runs Studio.' });
+  const policy = res.getHeader('content-security-policy');
+  res.writeHead(503, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'retry-after': '60', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(page), 'content-security-policy': [].concat(policy ?? [], UNAVAILABLE_PAGE_POLICY), vary: 'Accept' });
   res.end(req.method === 'HEAD' ? undefined : page);
 }
 
@@ -369,7 +389,10 @@ function createDashboardHandlers(options = {}) {
   // Keep a failed startup inspectable through liveness and editor diagnostics.
   const initialization = store.initialize().then(
     () => { initialized = true; return { ok: true }; },
-    (error) => ({ ok: false, code: error.code || 'CONFIG_NOT_READY' }),
+    (error) => {
+      console.error(`Dashboard configuration in ${configDir} did not load at start (${error.code || error.name}): ${error.message}`);
+      return { ok: false, code: error.code || 'CONFIG_NOT_READY' };
+    },
   );
 
   // The widgets whose settings use a saved connection, by name.
@@ -387,6 +410,8 @@ function createDashboardHandlers(options = {}) {
     };
   }
 
+  let lastNativeFailure = null;
+  let lastNativeReason = null;
   async function prepareNative() {
     await initialization;
     try {
@@ -394,8 +419,20 @@ function createDashboardHandlers(options = {}) {
       await store.prepareForNative();
     } catch (error) {
       if (error instanceof ConfigError && error.code === 'RECOVERY_REQUIRED') throw error;
+      // The reason goes to the log, once per reason ("not ready" alone can't
+      // be acted on); administrators also see it at /studio/config-ready.
+      const cause = String(error.code || error.name || 'UNKNOWN').slice(0, 64);
+      // Only Studio's own source-free messages; a file-system error would show
+      // container paths, so it gets the generic text.
+      lastNativeReason = [ConfigError, BoardError, LookError, DashboardError].some(type => error instanceof type) ? String(error.message || '').slice(0, 500) : null;
+      if (lastNativeFailure !== cause) {
+        lastNativeFailure = cause;
+        console.error(`Dashboard configuration in ${configDir} is not ready (${cause}): ${error.message}`);
+      }
       throw new ConfigError('Homepage configuration is not ready. Check the editor configuration and storage before loading the dashboard.', 'CONFIG_NOT_READY', 503);
     }
+    lastNativeFailure = null;
+    lastNativeReason = null;
   }
 
   async function checkNativeHttp(host, dashboard) {
@@ -885,6 +922,9 @@ function createDashboardHandlers(options = {}) {
       if (path.startsWith('/studio/')) return json(res, 404, { error: 'This editor endpoint does not exist.' });
       await proxy(req, res, dashboard);
     } catch (error) {
+      if (error instanceof ConfigError && error.code === 'CONFIG_NOT_READY' && wantsHtmlPage(req) && !res.headersSent) {
+        return notReadyPage(req, res, ['arrange', 'admin'].includes(req.studioLevel) ? lastNativeReason : null, req.studioAdmin === true);
+      }
       const status = Number(error.status || error.statusCode) || 500;
       if (error.closeConnection && !res.headersSent) res.setHeader('connection', 'close');
       if (error.retryAfter && !res.headersSent) res.setHeader('retry-after', String(error.retryAfter));
@@ -935,7 +975,9 @@ function createDashboardHandlers(options = {}) {
       catch (error) { if (error instanceof ConnectionError) notes.push(`Connection “${String(entry.name ?? '').slice(0, 60)}” was not added: ${error.message}`); else throw error; }
     }
     for (const entry of savedWidgets ?? []) {
-      try { await library.add({ kind: 'widget', name: entry.name, widget: entry.widget }); }
+      // A saved widget exported before the block widgets keeps its look, converted.
+      const widget = entry.widget && typeof entry.widget === 'object' && !Array.isArray(entry.widget) && entry.widget.look ? { ...entry.widget, look: convertLook(entry.widget.look) } : entry.widget;
+      try { await library.add({ kind: 'widget', name: entry.name, widget }); }
       catch (error) { if (error instanceof LibraryError) notes.push(`Saved widget “${String(entry.name ?? '').slice(0, 60)}” was not added: ${error.message}`); else throw error; }
     }
     return { ...result, ...(needKeys.length ? { connectionsNeedingKeys: needKeys } : {}), ...(notes.length ? { importNotes: notes } : {}) };
@@ -1618,6 +1660,10 @@ export function createStudioServer(options = {}) {
       const level = auth ? current.level(route.dashboard.id) : 'admin';
       // A dashboard you can't open looks exactly like one that doesn't exist.
       if (level === 'none') throw new DashboardError('That dashboard is unavailable. Its address may have changed or it may be archived.', 'DASHBOARD_NOT_FOUND', 404);
+      // Why the dashboard can't load, if it can't: shown to signed-in people
+      // who can arrange it. With sign-in off everyone counts as an
+      // administrator, and the public never sees it (owner rule, 6 Nov 2026).
+      if (auth) { req.studioLevel = level; req.studioAdmin = current.user?.role === 'admin'; }
       if (local === '/studio/api/access' && req.method === 'GET') {
         return json(res, 200, { authEnabled: Boolean(auth), deploymentName: siteName(), level, dashboard: { id: route.dashboard.id, name: route.dashboard.name, logo: await forDashboard(route.dashboard).logo.info() }, user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role } : null,
           // Monitoring and Logs on this dashboard (Investigate in a widget's
@@ -1845,7 +1891,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const port = Number(process.env.PORT || 3000);
   // A restore staged in Administration → Backups (or with server/backups.mjs)
   // is applied before anything reads the volumes.
-  await applyPendingRestore({ ...studioRoots(), buildRevision: process.env.STUDIO_BUILD_REVISION });
+  // Then the data is brought up to this build's version (server/upgrade.mjs):
+  // upgrading is only ever a new image.
+  try {
+    await applyPendingRestore({ ...studioRoots(), buildRevision: process.env.STUDIO_BUILD_REVISION });
+    await upgradeData({ ...studioRoots(), buildRevision: process.env.STUDIO_BUILD_REVISION });
+  } catch (error) {
+    console.error('Studio did not start:', error instanceof UpgradeError || error instanceof BackupError ? error.message : `the data volumes could not be read or written (${error.code || error.message}).`);
+    process.exit(1);
+  }
   let restart = () => {};
   const { server, initialization, shutdown, observability } = createStudioServer({ onRestoreStaged: () => restart() });
   // The controller's own messages go to Operations › Logs as well as stdout.
@@ -1853,6 +1907,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const startup = await initialization;
   if (!startup.ok) console.error('Studio configuration startup requires attention:', startup.code);
   server.listen(port, '0.0.0.0', () => console.log('Homepage Studio listening on port ' + port));
+  // An upgrade is confirmed once this version has stayed up past Swarm's
+  // update monitor (server/upgrade.mjs); before that, a rollback to the
+  // previous image puts the data back by itself.
+  setTimeout(() => {
+    confirmDataVersion(studioRoots().stateRoot).then(done => { if (done) console.log('Studio upgrade: confirmed; this version has kept running.'); }, error => console.error('Studio upgrade: the data version could not be confirmed:', error.code || error.message));
+  }, CONFIRM_AFTER_MS).unref();
   let closing = false;
   const close = () => {
     if (closing) return; closing = true;

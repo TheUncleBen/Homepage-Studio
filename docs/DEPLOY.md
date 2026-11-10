@@ -424,12 +424,21 @@ docker service ps homepage_studio        # wait for Running
 
 ### Updating
 
-Until version 1.0.0, install each new candidate fresh: remove the stack,
-delete both volumes (or empty the host directories), and follow this guide
-again from the start. The network and the secrets you already made can stay. From 1.0.0 on, [UPGRADING.md](UPGRADING.md) has the steps. In short: **Stacks → homepage →
-Editor**, replace the whole text with the new bundle's `portainer-swarm.yml`,
-keep your environment variables, **Update the stack**. Your secrets, network
-and volumes stay as they are.
+Updating is changing the image digest; your data stays. In Portainer:
+**Stacks → homepage → Editor**, change the digest on the `image:` line to the
+new bundle's (`…@sha256:…`), then **Update the stack**. If the new bundle's
+[CHANGELOG](../CHANGELOG.md) section says its template changed, paste its
+`portainer-swarm.yml` over the whole text instead (it carries the new digest)
+and keep your environment variables. `STUDIO_IMAGE` isn't used by the bundle's
+template, so changing it does nothing. Your secrets, network and volumes stay
+as they are.
+
+At its first start the new version brings your data up to date by itself. If
+anything needs converting, it first saves everything as a backup named
+`…-before-upgrade` (Administration → Backups), then converts it; if a step
+fails, it puts the data back and stops, and Swarm rolls back to the previous
+image. Nothing is asked of you. [UPGRADING.md](UPGRADING.md) has the details
+and how to go back to an older version.
 
 ## 8. Reverse proxy
 

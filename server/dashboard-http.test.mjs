@@ -402,6 +402,38 @@ test('browser navigation to an unavailable dashboard gets an accessible page; AP
   assert.equal((await f.request('/house/api/config', { headers: html })).json.id, child.id);
 });
 
+test('a dashboard whose configuration does not load gets a 503 page in a browser, with no reason for anonymous visitors (UI review M1)', async t => {
+  const f = await fixture(t), child = await f.create('family');
+  // Broken while Studio was stopped: the next start can't load it.
+  await fs.writeFile(path.join(dashboardStateDir(f.stateDir, child.id), 'state.json'), '{"version":3,"board":{"panels":"<b>x</b>"}}');
+  const again = createStudioServer({ configDir: f.configDir, stateDir: f.stateDir, rendererDir: f.rendererDir, rendererPool: f.pool, allowedHosts: HOST, buildRevision: BUILD, auth: 'off', archiveSweepMs: 0 });
+  const port = await listen(again.server);
+  // Stopped before the fixture's folders are removed (its own cleanup runs first).
+  try {
+    const request = (target, accept) => new Promise((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port, path: target, agent: false, headers: { host: HOST, accept } }, res => {
+        const chunks = []; res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => { const text = Buffer.concat(chunks).toString('utf8'); let json; try { json = JSON.parse(text); } catch {} resolve({ status: res.statusCode, headers: res.headers, text, json }); });
+      }).on('error', reject);
+    });
+    const page = await request('/family', 'text/html,application/xhtml+xml');
+    assert.equal(page.status, 503, page.text);
+    assert.equal(page.headers['content-type'], 'text/html; charset=utf-8');
+    assert.equal(page.headers['cache-control'], 'no-store');
+    assert.match(page.headers['content-security-policy'], /default-src 'none'/);
+    assert.match(page.text, /<h1>This dashboard can&#39;t load right now<\/h1>/);
+    assert.match(page.text, /Error 503/);
+    // Sign-in is off here: visitors are anonymous, so no reason is shown.
+    assert.doesNotMatch(page.text, /class="detail"/);
+    assert.doesNotMatch(page.text, /<script|<b>/i);
+    for (const [target, accept] of [['/family/api/config', 'text/html'], ['/family', 'application/json']]) {
+      const result = await request(target, accept);
+      assert.equal(result.status, 503, target);
+      assert.equal(result.json?.code, 'CONFIG_NOT_READY', target);
+    }
+  } finally { await again.shutdown({ graceMs: 25 }); }
+});
+
 test('saved widgets: saved from a dashboard, listed without settings, placed on another with their connection', async t => {
   const f = await fixture(t);
   await f.create('family');

@@ -71,7 +71,7 @@ async function setup(t, options = {}) {
     });
   }
   const post = (target, value, { cookie, headers = {} } = {}) => request(target, { method: 'POST', cookie, body: JSON.stringify(value ?? {}), headers: { 'content-type': 'application/json', origin: ORIGIN, 'x-studio-request': '1', ...headers } });
-  return { request, post, stateDir, upstreamCalls, app };
+  return { request, post, configDir, stateDir, upstreamPort, upstreamCalls, app };
 }
 
 const sessionCookie = response => {
@@ -924,4 +924,45 @@ test('deleting an archived dashboard for good and changing how long archives are
     assert.equal(stale.json.code, 'REAUTH_REQUIRED');
   }
   assert.equal((await request('/studio/api/dashboards', { cookie: admin.cookie })).json.revision, revision, 'nothing changed');
+});
+
+test('a dashboard that cannot load shows its reason to administrators and arrangers, never to viewers (UI review M1)', async t => {
+  const context = await setup(t);
+  const { request, post } = context;
+  const admin = await createAdmin(context);
+  const member = await inviteMember(context, admin.cookie);
+  const arranger = await inviteMember(context, admin.cookie, 'arranger');
+  assert.equal((await post('/studio/auth/admin/grants', { dashboardId: 'default', grants: [{ subject: 'user:' + member.invited.id, level: 'view' }, { subject: 'user:' + arranger.invited.id, level: 'arrange' }] }, { cookie: admin.cookie })).status, 200);
+  // Broken while Studio was stopped: a new server starts on the same volumes.
+  await fs.writeFile(path.join(context.stateDir, 'state.json'), '{"version":3,"board":{"panels":"<b>x</b>"}}');
+  const again = createStudioServer({ configDir: context.configDir, stateDir: context.stateDir, upstream: `http://127.0.0.1:${context.upstreamPort}`, allowedHosts: HOST, auth: 'on', publicOrigin: ORIGIN });
+  const port = await listen(again.server);
+  // Stopped before the setup's folders are removed (its own cleanup runs first).
+  try {
+    const open = (cookie, target = '/home') => new Promise((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port, path: target, agent: false, headers: { host: HOST, cookie, ...html } }, res => {
+        const chunks = []; res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => resolve({ status: res.statusCode, text: Buffer.concat(chunks).toString('utf8') }));
+      }).on('error', reject);
+    });
+    const shown = await open(admin.cookie);
+    assert.equal(shown.status, 503, shown.text);
+    assert.match(shown.text, /<p class="detail">[^<]+<\/p>/);
+    assert.doesNotMatch(shown.text, /<b>/);
+    assert.match(shown.text, /<a href="\/studio\/admin#backups">Open Backups<\/a>/);
+    // The editor and settings, where people go to fix it, say why too.
+    for (const target of ['/home/studio/edit', '/home/studio/settings']) {
+      const page = await open(admin.cookie, target);
+      assert.equal(page.status, 503, target);
+      assert.match(page.text, /<p class="detail">/, target);
+    }
+    const viewer = await open(member.cookie);
+    assert.equal(viewer.status, 503, viewer.text);
+    assert.doesNotMatch(viewer.text, /class="detail"/);
+    const arranged = await open(arranger.cookie);
+    assert.match(arranged.text, /<p class="detail">/);
+    assert.doesNotMatch(arranged.text, /Open Backups/, 'Backups are for administrators');
+    assert.match((await open(arranger.cookie, '/home/studio/edit')).text, /<p class="detail">/);
+    void request;
+  } finally { await close(again.server); await again.shutdown({ graceMs: 0 }).catch(() => {}); }
 });

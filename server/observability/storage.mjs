@@ -7,7 +7,7 @@ import { constants } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { openDatabase } from './sqlite.mjs';
-import { MAIN_SCHEMA, SCHEMA_VERSION, SEGMENT_SCHEMA } from './schema.mjs';
+import { MAIN_SCHEMA, SCHEMA_STEPS, SCHEMA_VERSION, SEGMENT_SCHEMA } from './schema.mjs';
 import { searchText } from './model.mjs';
 
 export const STREAMS = { logs: 'logs', audit: 'audit' };
@@ -51,8 +51,15 @@ export function openMain(dir, { journal = 'WAL' } = {}) {
   let db = openDatabase(file, { journal });
   db.exec(MAIN_SCHEMA);
   const version = db.get("SELECT value FROM meta WHERE key = 'schema'")?.value;
-  if (version && Number(version) !== SCHEMA_VERSION) {
-    // Fresh-deploy rule: an older history is set aside, never converted.
+  if (version && Number(version) < SCHEMA_VERSION) {
+    // An older history is brought up to date (schema.mjs), in one transaction.
+    db.exec('BEGIN');
+    try {
+      for (let step = Number(version) + 1; step <= SCHEMA_VERSION; step++) if (SCHEMA_STEPS[step]) db.exec(SCHEMA_STEPS[step]);
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+  } else if (version && Number(version) !== SCHEMA_VERSION) {
+    // From a newer Studio (or unreadable): set aside, never adopted.
     db.close();
     const aside = join(dir, `set-aside-${Date.now()}`);
     fs.mkdirSync(aside, { mode: 0o700 });

@@ -174,15 +174,13 @@ file joins it.
 
 ## Updating
 
-Until version 1.0.0, install each new candidate fresh: run
-`docker compose --project-name homepage --file portainer-compose.yml down --volumes`
-(or empty the host directories) and follow this guide again. The network and
-the secrets folder can stay. From 1.0.0 on:
-
-Replace `portainer-compose.yml` with the new bundle's file, keep your `.env`
-and secrets folder, and run the same `up -d`. The old container stops and the
-new one starts on the same volumes. [UPGRADING.md](UPGRADING.md) has the backup
-and rollback steps.
+Change the digest on the `image:` line of `portainer-compose.yml` to the new
+bundle's (or, when its changelog says the template changed, put the new
+bundle's file in its place), keep your `.env` and secrets folder, and run the
+same `up -d`. The old container stops and the new one starts on the same
+volumes. Your data stays: the new version converts what it needs at its first
+start, after saving a `…-before-upgrade` backup. [UPGRADING.md](UPGRADING.md)
+has the details and how to go back.
 
 ## Moving to Swarm later
 
