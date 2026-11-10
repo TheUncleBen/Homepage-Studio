@@ -402,7 +402,7 @@ test('browser navigation to an unavailable dashboard gets an accessible page; AP
   assert.equal((await f.request('/house/api/config', { headers: html })).json.id, child.id);
 });
 
-test('a dashboard whose configuration does not load gets a 503 page in a browser, with the reason for people who can arrange it (UI review M1)', async t => {
+test('a dashboard whose configuration does not load gets a 503 page in a browser, with no reason for anonymous visitors (UI review M1)', async t => {
   const f = await fixture(t), child = await f.create('family');
   // Broken while Studio was stopped: the next start can't load it.
   await fs.writeFile(path.join(dashboardStateDir(f.stateDir, child.id), 'state.json'), '{"version":3,"board":{"panels":"<b>x</b>"}}');
@@ -422,7 +422,8 @@ test('a dashboard whose configuration does not load gets a 503 page in a browser
   assert.match(page.headers['content-security-policy'], /default-src 'none'/);
   assert.match(page.text, /<h1>This dashboard can&#39;t load right now<\/h1>/);
   assert.match(page.text, /Error 503/);
-  assert.match(page.text, /<p class="detail">[^<]+<\/p>/);
+  // Sign-in is off here: visitors are anonymous, so no reason is shown.
+  assert.doesNotMatch(page.text, /class="detail"/);
   assert.doesNotMatch(page.text, /<script|<b>/i);
   for (const [target, accept] of [['/family/api/config', 'text/html'], ['/family', 'application/json']]) {
     const result = await request(target, accept);

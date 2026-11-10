@@ -418,7 +418,9 @@ function createDashboardHandlers(options = {}) {
       // The reason goes to the log, once per reason ("not ready" alone can't
       // be acted on); administrators also see it at /studio/config-ready.
       const cause = String(error.code || error.name || 'UNKNOWN').slice(0, 64);
-      lastNativeReason = String(error.message || '').slice(0, 500);
+      // Only Studio's own source-free messages; a file-system error would show
+      // container paths, so it gets the generic text.
+      lastNativeReason = [ConfigError, BoardError, LookError, DashboardError].some(type => error instanceof type) ? String(error.message || '').slice(0, 500) : null;
       if (lastNativeFailure !== cause) {
         lastNativeFailure = cause;
         console.error(`Dashboard configuration in ${configDir} is not ready (${cause}): ${error.message}`);
@@ -1712,7 +1714,9 @@ export function createStudioServer(options = {}) {
       }
       // Who saves an uploaded image or a connection (Saved items shows it).
       if (auth && current?.user) req.studioActor = current.user.username;
-      req.studioLevel = level;
+      // With sign-in off everyone counts as an administrator, and the public
+      // never sees why a dashboard can't load (owner rule, 6 Nov 2026).
+      if (auth) req.studioLevel = level;
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
       if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);

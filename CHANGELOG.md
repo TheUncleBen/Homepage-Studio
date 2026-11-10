@@ -27,7 +27,7 @@ build is identified by its source commit and image digest
   dashboard card look.
 - **A dashboard that can't load says why.** Opening it in a browser shows a
   “This dashboard can't load right now” page instead of raw JSON; people who
-  can arrange it also see the reason, which the log records too.
+  can arrange it (with sign-in on) also see the reason, which the log records too.
 - **Chart legends wrap** onto more lines instead of running out of the card,
   so a chart of many values no longer shrinks its Big number to a sliver.
 - **Appearance on a phone:** the Cards › Fill options share the width
