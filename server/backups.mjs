@@ -19,6 +19,7 @@ import { join, resolve, dirname, sep, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import zlib from 'node:zlib';
+import { DATA_VERSION, backupDataVersion } from './upgrade.mjs';
 
 const gzip = promisify(zlib.gzip), gunzip = promisify(zlib.gunzip);
 export const BACKUP_DIR = 'studio-backups';
@@ -27,7 +28,7 @@ export const BACKUP_FORMAT = 'homepage-studio-backup';
 export const MAX_BACKUP_BYTES = 256 * 1024 * 1024;
 const tooLarge = () => new BackupError(`Studio's files are too large for a backup in the app (at most ${MAX_BACKUP_BYTES / (1024 * 1024)} MiB). Back up the volumes instead, as docs/OPERATIONS.md describes.`, 'BACKUP_TOO_LARGE', 413);
 const MAX_BACKUP_FILES = 20000;
-const NAME = /^studio-backup-\d{8}-\d{6}(?:-(?:uploaded|before-restore))?(?:-\d+)?\.json\.gz$/;
+const NAME = /^studio-backup-\d{8}-\d{6}(?:-(?:uploaded|before-restore|before-upgrade))?(?:-\d+)?\.json\.gz$/;
 // Never part of a backup: the backups, a staged restore, sessions and the
 // one-time recovery link (a restore signs everyone out), and temporary files.
 // Monitoring history and logs (server/observability) stay out of backups and
@@ -111,7 +112,7 @@ export function createBackupStore({ configRoot, stateRoot, buildRevision = 'unre
       catch (error) { if (error.code === 'ENOENT') return []; throw error; }
       const items = await Promise.all(names.map(async name => {
         const stat = await fs.stat(join(directory, name));
-        return { name, bytes: stat.size, createdAt: stat.mtime.toISOString(), kind: name.includes('-before-restore') ? 'before-restore' : name.includes('-uploaded') ? 'uploaded' : 'created' };
+        return { name, bytes: stat.size, createdAt: stat.mtime.toISOString(), kind: name.includes('-before-restore') ? 'before-restore' : name.includes('-before-upgrade') ? 'before-upgrade' : name.includes('-uploaded') ? 'uploaded' : 'created' };
       }));
       return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.name.localeCompare(a.name));
     },
@@ -138,7 +139,8 @@ export function createBackupStore({ configRoot, stateRoot, buildRevision = 'unre
     },
     // Checks the backup now and applies it at the next start.
     async stageRestore(name) {
-      await parseBackup(await this.read(name));
+      const backup = await parseBackup(await this.read(name));
+      if (backupDataVersion(backup) > DATA_VERSION) throw new BackupError('This backup was made by a newer version of Studio. Deploy that version, or a later one, to restore it.', 'BACKUP_VERSION');
       const temporary = join(stateRoot, `${RESTORE_MARKER}.${process.pid}.tmp`);
       await fs.writeFile(temporary, JSON.stringify({ name, requestedAt: new Date().toISOString() }), { mode: 0o600 });
       await fs.rename(temporary, join(stateRoot, RESTORE_MARKER));
@@ -185,6 +187,19 @@ async function writeFiles(roots, files) {
   }
 }
 
+// Both volumes become exactly the backup's files (the backups themselves and
+// monitoring history stay).
+async function replaceVolumes({ configRoot, stateRoot }, backup) {
+  await clear(configRoot, SKIPPED_CONFIG); await clear(stateRoot, new Set([BACKUP_DIR, 'observability']));
+  await writeFiles({ config: configRoot, state: stateRoot }, backup.files);
+}
+
+// Puts a kept backup back at once (a failed restore or upgrade).
+export async function restoreBackupFiles({ configRoot, stateRoot, name }) {
+  const store = createBackupStore({ configRoot, stateRoot });
+  await replaceVolumes({ configRoot, stateRoot }, await parseBackup(await store.read(name)));
+}
+
 // Runs before the server reads anything. A staged restore first saves what
 // is there now as a "before restore" backup, then replaces both volumes. If
 // writing fails part-way, that backup is put back.
@@ -201,16 +216,11 @@ export async function applyPendingRestore({ configRoot, stateRoot, buildRevision
   let before;
   try { before = await store.create('before-restore'); }
   catch (error) { log.error(`Studio restore: ${request.name} was not restored: what is there now couldn't be saved first (${error.message})`); return null; }
-  const roots = { config: configRoot, state: stateRoot };
-  const keep = { config: SKIPPED_CONFIG, state: new Set([BACKUP_DIR, 'observability']) };
   try {
-    await clear(configRoot, keep.config); await clear(stateRoot, keep.state);
-    await writeFiles(roots, backup.files);
+    await replaceVolumes({ configRoot, stateRoot }, backup);
   } catch (error) {
     log.error(`Studio restore: ${request.name} could not be written (${error.code || error.message}); putting back ${before.name}.`);
-    const previous = await parseBackup(await store.read(before.name));
-    await clear(configRoot, keep.config); await clear(stateRoot, keep.state);
-    await writeFiles(roots, previous.files);
+    await restoreBackupFiles({ configRoot, stateRoot, name: before.name });
     return { restored: null, before: before.name };
   }
   log.log(`Studio restore: restored ${request.name}. What was there before is kept as ${before.name}.`);

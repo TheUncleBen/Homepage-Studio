@@ -82,3 +82,21 @@ test('the host restarts an engine that exits and replays its definitions', async
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('an older monitoring database is kept and brought up to date; a newer one is set aside', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'schema-'));
+  try {
+    let db = openMain(dir);
+    db.run("INSERT INTO alert_state (rule_id, last_fired) VALUES ('kept', 1)");
+    db.run("UPDATE meta SET value = '1' WHERE key = 'schema'");
+    db.close();
+    db = openMain(dir);
+    assert.equal(db.get("SELECT value FROM meta WHERE key = 'schema'").value, '2');
+    assert.equal(db.get("SELECT last_fired FROM alert_state WHERE rule_id = 'kept'").last_fired, 1);
+    db.run("UPDATE meta SET value = '99' WHERE key = 'schema'");
+    db.close();
+    db = openMain(dir);
+    assert.equal(db.get("SELECT COUNT(*) AS n FROM alert_state").n, 0);
+    db.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

@@ -1,7 +1,12 @@
-// Database layouts. Fresh-deploy rule (owner, 25 Oct 2026): until 1.0.0 a
-// schema change means a new SCHEMA_VERSION and a fresh database, never a
-// migration. A database with another version is set aside, not adopted.
+// Database layouts. Upgrades keep history (owner, 10 Nov 2026): a change
+// raises SCHEMA_VERSION. Tables and indexes added with IF NOT EXISTS need
+// nothing more; any other change adds its SQL to SCHEMA_STEPS under the new
+// version, and an older database is brought up to date step by step when it
+// opens. Only a database from a newer Studio is set aside, never adopted.
 export const SCHEMA_VERSION = 2;
+export const SCHEMA_STEPS = Object.freeze({
+  // 2: the event_panel_ts index, created by SEGMENT_SCHEMA itself.
+});
 
 export const MAIN_SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT) WITHOUT ROWID;

@@ -1337,7 +1337,7 @@
   // Full backups (server/backups.mjs): every dashboard, the dashboard list,
   // the default look and sign-in data, kept in the state volume.
   const fileSize = bytes => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  const BACKUP_KINDS = { 'before-restore': 'Saved before a restore', uploaded: 'Uploaded' };
+  const BACKUP_KINDS = { 'before-restore': 'Saved before a restore', 'before-upgrade': 'Saved before an upgrade', uploaded: 'Uploaded' };
   function backupsPanel() {
     const holder = h('div', { class: 'stack' });
     const message = notice();

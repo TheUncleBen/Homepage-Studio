@@ -196,17 +196,6 @@ export default function AppearanceEditor({ settings, platform, logo, name, onLog
             title="Cards"
             info="Every widget starts with these. A widget that changes one in its own settings keeps its value; setting it back to the same value follows these again."
           >
-            <Row label="Layout">
-              <Segmented
-                label="Card layout"
-                value={cardLook.layout}
-                onChange={(value) => setCard("layout", value)}
-                options={[
-                  ["hero", "Hero"],
-                  ["quiet", "Quiet"],
-                ]}
-              />
-            </Row>
             <Row label="Fill">
               <Segmented
                 label="Card fill"

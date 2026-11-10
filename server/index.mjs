@@ -32,6 +32,7 @@ import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs'
 import { LookError, allBlocks, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
 import { BACKGROUND_CHOICES, BASE_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
 import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
+import { upgradeData, UpgradeError } from './upgrade.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
 import { createAuthService } from './auth/service.mjs';
 import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendStudioAsset, sendStudioPage } from './auth/routes.mjs';
@@ -369,7 +370,10 @@ function createDashboardHandlers(options = {}) {
   // Keep a failed startup inspectable through liveness and editor diagnostics.
   const initialization = store.initialize().then(
     () => { initialized = true; return { ok: true }; },
-    (error) => ({ ok: false, code: error.code || 'CONFIG_NOT_READY' }),
+    (error) => {
+      console.error(`Dashboard configuration in ${configDir} did not load at start (${error.code || error.name}): ${error.message}`);
+      return { ok: false, code: error.code || 'CONFIG_NOT_READY' };
+    },
   );
 
   // The widgets whose settings use a saved connection, by name.
@@ -387,6 +391,7 @@ function createDashboardHandlers(options = {}) {
     };
   }
 
+  let lastNativeFailure = null;
   async function prepareNative() {
     await initialization;
     try {
@@ -394,8 +399,16 @@ function createDashboardHandlers(options = {}) {
       await store.prepareForNative();
     } catch (error) {
       if (error instanceof ConfigError && error.code === 'RECOVERY_REQUIRED') throw error;
-      throw new ConfigError('Homepage configuration is not ready. Check the editor configuration and storage before loading the dashboard.', 'CONFIG_NOT_READY', 503);
+      // The reason goes to the log (once per reason) and, as a code, to the
+      // reply: "not ready" alone can't be acted on.
+      const cause = String(error.code || error.name || 'UNKNOWN').slice(0, 64);
+      if (lastNativeFailure !== cause) {
+        lastNativeFailure = cause;
+        console.error(`Dashboard configuration in ${configDir} is not ready (${cause}): ${error.message}`);
+      }
+      throw new ConfigError('Homepage configuration is not ready. Check the editor configuration and storage before loading the dashboard.', 'CONFIG_NOT_READY', 503, { cause });
     }
+    lastNativeFailure = null;
   }
 
   async function checkNativeHttp(host, dashboard) {
@@ -1846,6 +1859,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   // A restore staged in Administration → Backups (or with server/backups.mjs)
   // is applied before anything reads the volumes.
   await applyPendingRestore({ ...studioRoots(), buildRevision: process.env.STUDIO_BUILD_REVISION });
+  // Then the data is brought up to this build's version (server/upgrade.mjs):
+  // upgrading is only ever a new image.
+  try { await upgradeData({ ...studioRoots(), buildRevision: process.env.STUDIO_BUILD_REVISION }); }
+  catch (error) {
+    console.error('Studio did not start:', error instanceof UpgradeError ? error.message : `the data could not be checked for upgrade (${error.code || error.message}).`);
+    process.exit(1);
+  }
   let restart = () => {};
   const { server, initialization, shutdown, observability } = createStudioServer({ onRestoreStaged: () => restart() });
   // The controller's own messages go to Operations › Logs as well as stdout.

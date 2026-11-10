@@ -9,10 +9,26 @@ build is identified by its source commit and image digest
 
 ## [Unreleased]
 
-Until version 1.0.0 every candidate is installed as a new deployment: delete
-the volumes and follow [docs/DEPLOY.md](docs/DEPLOY.md) from the start. Studio
-carries no conversions for data from earlier candidates, and the upgrade notes
-in older entries below are history only.
+### Upgrades keep your data
+
+- **Updating is changing the image digest** ([docs/UPGRADING.md](docs/UPGRADING.md)).
+  Studio records the version of its stored data and, at the first start of
+  a newer image, saves a `…-before-upgrade` backup and converts what
+  changed, by itself. A failed step puts the data back and stops, so Swarm
+  rolls back; an image older than the data refuses to start instead of
+  misreading it. Monitoring history is kept and updated the same way rather
+  than set aside.
+- **Old widget looks are converted.** Data from candidates up to 53ebc3b
+  could hold widget looks from before the block widgets (Hero/Quiet, Show
+  as, a value's Hero/Hidden/Number). Since 4575c4c a dashboard holding one
+  refused to load (`CONFIG_NOT_READY`, “Unknown widget look setting:
+  layout”). The first data version turns each into the blocks that draw it
+  the same way, in boards, saved looks, saved widgets, snapshots and the
+  dashboard card look.
+- **A dashboard that can't load says why.** The log names the reason, and the
+  reply carries it as `details.cause`, instead of only “not ready”.
+
+The upgrade notes in older entries below are history only.
 
 ### Rows that scale, log search as you type, missing intermediates fetched
 

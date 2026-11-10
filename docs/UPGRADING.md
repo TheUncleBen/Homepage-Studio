@@ -9,9 +9,26 @@ new template.
 your environment values, your Docker secrets and network, your proxy. **What you take new each time:** the
 bundle's `portainer-swarm.yml` or `portainer-compose.yml`, used unchanged.
 
-Until version 1.0.0, each candidate is installed fresh: delete the volumes and
-follow [DEPLOY.md](DEPLOY.md) from the start. From 1.0.0 on, the steps below
-update an existing deployment in place.
+Any candidate or release updates an existing deployment in place, keeping
+all its data; you don't need to reinstall.
+
+## What happens at the first start
+
+Studio records the version of its stored data in the state volume
+(`studio-data.json`). When a new image starts on older data:
+
+1. it saves everything (both volumes, without monitoring history) as a backup
+   named `studio-backup-…-before-upgrade.json.gz`, listed in
+   **Administration → Backups**. The newest three are kept;
+2. it converts what has changed, step by step, and records each step;
+3. then it starts as usual. The log says what was done
+   (`Studio upgrade: data version 0 → 1 …`).
+
+If a step fails, Studio puts the backup back, writes the reason to the log
+and stops; on Swarm the update then rolls back to the previous image, which
+finds its data as it left it. An image older than the data refuses to start
+and says so in the log (see Going back), so an old version never misreads
+newer data. Monitoring history is kept and brought up to date the same way.
 
 ## Before you update
 
@@ -20,9 +37,9 @@ update an existing deployment in place.
    to do.
 2. Note the image digest you're running now (the `image:` line of your current
    stack) and keep your current template. That's what you go back to.
-3. [Back up both volumes](OPERATIONS.md#backing-up-the-volumes). A newer
-   version may change how it stores the layout, and an older version isn't
-   guaranteed to read that. The backup is what makes going back safe.
+3. Optional: Studio makes its own backup before converting anything, but a
+   [backup of the volumes](OPERATIONS.md#backing-up-the-volumes) is still good
+   practice before any change.
 
 ## Update steps
 
@@ -68,23 +85,34 @@ running (*Studio build* and the start of the source commit).
 
 ## Going back
 
-Put back the previous image **and** the backup you took before updating,
-together:
+If the update converted data (the log says `Studio upgrade: data version …`),
+an older image refuses to start on it, so the older image goes back together
+with the backup made at the update:
 
-1. Scale the service to 0 (or stop the Compose service).
-2. [Restore the volumes](OPERATIONS.md#restoring-the-volumes) from the backup
-   taken before the update.
-3. Deploy your previous template (the one with the old digest), as in the
-   update steps.
+1. Stage that backup for the next start, from a shell on the Swarm node (or
+   the Compose host):
 
-Going back to the old image without restoring its data can work, but isn't
-something the project tests; changes you made after updating are lost when you
-restore the backup, so export any dashboard you changed first
-([USING.md](USING.md#snapshots-export-and-import)) and decide whether to
-import it again.
+   ```bash
+   docker exec $(docker ps -q -f name=homepage_studio) node server/backups.mjs list
+   docker exec $(docker ps -q -f name=homepage_studio) node server/backups.mjs restore <the …-before-upgrade name>
+   ```
+
+   (Restoring it in Administration → Backups instead restarts the current
+   image, which simply converts it again.)
+2. Deploy your previous digest, as in the update steps. It puts the backup
+   back before it reads anything, then starts on the data as it was.
+
+Images from before data versioning (candidate 1c3b5bd and earlier) don't
+know these backups; going back to one of them isn't supported.
+
+Changes made after the update are lost with that restore, so export any
+dashboard you changed first ([USING.md](USING.md#snapshots-export-and-import)).
+If the log shows no conversion, the data didn't change and the previous
+digest can simply be deployed again.
 
 Swarm's automatic rollback during an update only switches the image back; it
-doesn't touch the volumes.
+doesn't touch the volumes. It happens only when the new image fails, and a
+failed conversion has already put the data back.
 
 ## Never mix versions
 
