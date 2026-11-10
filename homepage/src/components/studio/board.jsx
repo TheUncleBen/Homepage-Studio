@@ -644,7 +644,10 @@ export default function StudioBoard({
   const projection = useMemo(() => {
     if (!needs.size) return laidOut;
     const step = rowStep(rowWidth, laidOut.columns, gap);
-    const rowsFor = (need) => (need ? Math.ceil((need + gap) / step) : 0);
+    // Grown by exactly what it needs, not to the next whole row, so a need
+    // a few pixels past its height doesn't leave a row of empty card (UI
+    // review R2). Rounded to a hundredth of a row so it settles.
+    const rowsFor = (need) => (need ? Math.ceil(((need + gap) / step) * 100) / 100 : 0);
     const rows = new Map();
     for (const unit of laidOut.units) {
       if (unit.id === resizing) continue;
@@ -1209,7 +1212,7 @@ export default function StudioBoard({
     // the size it is drawn at.
     const drawn = shown.current.units.find((item) => item.id === id)?.rect;
     if (mode === "resize" && drawn && drawn.h > unit.rect.h) {
-      initial = resizeUnit(initial, id, { ...unit.rect, h: drawn.h });
+      initial = resizeUnit(initial, id, { ...unit.rect, h: Math.ceil(drawn.h) });
       unit = unitsForBoard(initial).find((item) => item.id === id);
     }
     setMoving(id);

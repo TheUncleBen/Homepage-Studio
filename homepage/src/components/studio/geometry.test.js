@@ -421,8 +421,22 @@ describe("grownUnits (Board 6: grow instead of clipping)", () => {
     ];
     const grown = new Map(grownUnits(row, new Map([["clock", 3]])).map((unit) => [unit.id, unit.rect]));
     expect(grown.get("clock")).toEqual({ x: 0, y: 0, w: 6, h: 3 });
-    expect(grown.get("tile")).toEqual({ x: 6, y: 0, w: 6, h: 2 });
+    // Its neighbour stretches to the band's new bottom: no hole (UI review R2).
+    expect(grown.get("tile")).toEqual({ x: 6, y: 0, w: 6, h: 3 });
     for (const id of ["under-clock", "under-tile", "far"]) expect(grown.get(id).y, id).toBe(3);
+    for (const id of ["under-clock", "under-tile", "far"]) expect(grown.get(id).h, id).toBe(2);
+  });
+  it("stretches a taller neighbour that spans the grown band, never overlapping", () => {
+    const board = [
+      { id: "tile", kind: "panel", rect: { x: 0, y: 0, w: 6, h: 2 } },
+      { id: "tall", kind: "panel", rect: { x: 6, y: 0, w: 6, h: 4 } },
+      { id: "below", kind: "panel", rect: { x: 0, y: 2, w: 6, h: 2 } },
+      { id: "after", kind: "panel", rect: { x: 0, y: 4, w: 12, h: 2 } },
+    ];
+    const grown = new Map(grownUnits(board, new Map([["tile", 3]])).map((unit) => [unit.id, unit.rect]));
+    expect(grown.get("tall")).toEqual({ x: 6, y: 0, w: 6, h: 5 });
+    expect(grown.get("below")).toEqual({ x: 0, y: 3, w: 6, h: 2 });
+    expect(grown.get("after")).toEqual({ x: 0, y: 5, w: 12, h: 2 });
   });
   it("adds growths band by band", () => {
     const column = [

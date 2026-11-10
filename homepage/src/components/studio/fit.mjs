@@ -53,7 +53,7 @@ export function fits(card) {
   }
   // A number or a name cut short, a value squeezed to nothing.
   for (const node of card.querySelectorAll(
-    ".studio-card-head, .studio-value, .studio-value-number, .studio-value-label, .studio-block-legend, .studio-chart-legend li, .studio-chart-legend li > *, .studio-bar-label, .studio-bar-value, .studio-block-caption",
+    ".studio-card-head, .studio-value, .studio-value-number, .studio-value-label, .studio-block-legend, .studio-chart-legend, .studio-chart-legend li, .studio-chart-legend li > *, .studio-bar-label, .studio-bar-value, .studio-block-caption",
   ))
     if (node.scrollWidth > node.clientWidth + 1) return false;
   // The name (and why a card is red) wrap only between words, and only to the

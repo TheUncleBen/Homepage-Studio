@@ -381,10 +381,15 @@ export function grownUnits(units, rows) {
   if (!growths.length) return units;
   const placed = [];
   for (const unit of [...units].sort(byReadingOrder)) {
+    // Its bottom edge moves with the band below it, so a neighbour of a
+    // grown widget stretches to match instead of leaving a hole under it
+    // (UI review R2).
+    const top = unit.rect.y + shiftAt(unit.rect.y);
+    const bottom = unit.rect.y + unit.rect.h;
     let rect = {
       ...unit.rect,
-      y: unit.rect.y + shiftAt(unit.rect.y),
-      h: Math.max(unit.rect.h, rows.get(unit.id) || 0),
+      y: top,
+      h: Math.max(unit.rect.h, rows.get(unit.id) || 0, bottom + shiftAt(bottom) - top),
     };
     // Safety: a band shift never overlaps, but anything that would is moved
     // below what it meets.

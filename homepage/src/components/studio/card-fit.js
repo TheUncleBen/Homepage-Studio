@@ -84,10 +84,16 @@ function neededHeight(node, base, look, blocks, counts) {
           apply(node, way.blocks, pick, LAST_RESORT);
           return standsUp(node);
         };
-    if (found || test(high)) {
+    // Where the width alone sets the text size (a name or why it is down
+    // wrapping in a narrow card), the given height already shows it at that
+    // size: growing would only leave the card emptier (UI review R2).
+    if (test(base)) need = 0;
+    else if (found || test(high)) {
       let low = base;
       let top = high;
-      for (let i = 0; i < 9 && top - low > 4; i += 1) {
+      // To the pixel, so a need just past a row's height isn't rounded into
+      // a whole row more.
+      for (let i = 0; i < 12 && top - low > 1; i += 1) {
         const mid = Math.round((low + top) / 2);
         if (test(mid)) top = mid;
         else low = mid;

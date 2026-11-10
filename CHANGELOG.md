@@ -22,8 +22,10 @@ in older entries below are history only.
   or shrinks with the column width elsewhere (18 to 45 px), so a widget keeps
   its shape on a wider or narrower screen instead of only getting wider.
   The editor, the live dashboard and the Dashboards page previews use the
-  same rule. Homepage's own information widgets (Resources, Greeting, …)
-  grow only by what their content needs where they would be cut.
+  same rule. Homepage's own information widgets (Resources, Greeting, …),
+  service tiles and bookmarks grow only by what their content needs where
+  they would be cut, to the pixel rather than a whole row; the widgets
+  beside one that grows stretch to match, so no gap opens under them.
 - **Logs search as you type** ([docs/LOGS.md](docs/LOGS.md#searching)). One
   box searches as you type; Level, Source, Service and Problem are chips
   (one choice each, **Any** to clear), and the address keeps the search. A
