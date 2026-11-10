@@ -9,6 +9,7 @@ import {
   panelMinimum,
   pixelRect,
   projectBoard,
+  REFERENCE_WIDTH,
   stackBoard,
   unitMinimum,
   unitsForBoard,
@@ -242,7 +243,9 @@ describe("Studio grid geometry", () => {
         h: 1,
       }).panels.find((item) => item.id === panel.id);
       expect(resized.rect).toMatchObject(panelMinimum(panel));
-      expect(pixelRect(resized.rect, 1200).height).toBeGreaterThanOrEqual(84);
+      // The room is measured at the desktop reference width; narrower, the
+      // card grows taller when its content needs it (Board 6).
+      expect(pixelRect(resized.rect, REFERENCE_WIDTH.desktop).height).toBeGreaterThanOrEqual(84);
     });
     const stacked = stackBoard(value, ["link", "embed"], "stack");
     expect(unitMinimum(stacked, "stack")).toEqual({ w: 8, h: 10 });
@@ -338,7 +341,44 @@ describe("spacing", () => {
     expect(gapOf({})).toBe(12);
     expect(gapOf({ studioTheme: { spacing: "roomy" } })).toBe(20);
     expect(gapOf({ studioTheme: { spacing: "toString" } })).toBe(12);
-    expect(pixelRect({ x: 0, y: 1, w: 2, h: 2 }, 234, 24, 6)).toEqual({ left: 0, top: 42, width: 14, height: 78 });
+    // At the reference width a row is 36 px whatever the spacing.
+    expect(pixelRect({ x: 0, y: 1, w: 2, h: 2 }, 1360, 24, 6)).toMatchObject({ left: 0, top: 42, height: 78 });
+  });
+});
+
+describe("rows follow the columns (Board 5)", () => {
+  it("is 36 px at each layout's reference width, whatever the spacing", async () => {
+    const { rowHeight, REFERENCE_WIDTH, COLUMNS, CENTRED_COLUMNS, TABLET_COLUMNS, PHONE_COLUMNS } =
+      await import("./geometry.mjs");
+    for (const gap of [6, 12, 20]) {
+      expect(rowHeight(REFERENCE_WIDTH.desktop, COLUMNS, gap)).toBe(36);
+      expect(rowHeight(REFERENCE_WIDTH.desktop, CENTRED_COLUMNS, gap)).toBe(36);
+      expect(rowHeight(REFERENCE_WIDTH.tablet, TABLET_COLUMNS, gap)).toBe(36);
+      expect(rowHeight(REFERENCE_WIDTH.phone, PHONE_COLUMNS, gap)).toBe(36);
+    }
+  });
+
+  it("keeps a widget's shape as the board widens or narrows", async () => {
+    const { pixelRect, rowHeight } = await import("./geometry.mjs");
+    const rect = { x: 0, y: 0, w: 6, h: 4 };
+    const shape = (width) => {
+      const box = pixelRect(rect, width, 24, 12);
+      return box.width / box.height;
+    };
+    // The gap stays fixed in pixels, so the shape is kept closely, not exactly.
+    for (const width of [900, 1100, 1600]) expect(Math.abs(shape(width) / shape(1360) - 1)).toBeLessThan(0.06);
+    expect(rowHeight(1600)).toBeGreaterThan(rowHeight(1360));
+    expect(rowHeight(1100)).toBeLessThan(rowHeight(1360));
+  });
+
+  it("stays within its bounds and survives a board not measured yet", async () => {
+    const { rowHeight, ROW_MIN, ROW_MAX, ROW_HEIGHT } = await import("./geometry.mjs");
+    expect(rowHeight(0)).toBe(ROW_HEIGHT);
+    expect(rowHeight(Number.NaN)).toBe(ROW_HEIGHT);
+    expect(rowHeight(100)).toBe(ROW_MIN);
+    expect(rowHeight(20000)).toBe(ROW_MAX);
+    // The same width always gives the same row, to the hundredth.
+    expect(rowHeight(1234.5678)).toBe(Math.round(rowHeight(1234.5678) * 100) / 100);
   });
 });
 
@@ -370,5 +410,50 @@ describe("grownUnits (Board 6: grow instead of clipping)", () => {
   });
   it("never makes a widget shorter", () => {
     expect(grownUnits(units, new Map([["b", 1]])).find((unit) => unit.id === "b").rect.h).toBe(3);
+  });
+  it("moves the whole band below a grown widget, so rows stay aligned (UI review M1)", () => {
+    const row = [
+      { id: "clock", kind: "panel", rect: { x: 0, y: 0, w: 6, h: 2 } },
+      { id: "tile", kind: "panel", rect: { x: 6, y: 0, w: 6, h: 2 } },
+      { id: "under-clock", kind: "panel", rect: { x: 0, y: 2, w: 6, h: 2 } },
+      { id: "under-tile", kind: "panel", rect: { x: 6, y: 2, w: 6, h: 2 } },
+      { id: "far", kind: "panel", rect: { x: 12, y: 2, w: 12, h: 2 } },
+    ];
+    const grown = new Map(grownUnits(row, new Map([["clock", 3]])).map((unit) => [unit.id, unit.rect]));
+    expect(grown.get("clock")).toEqual({ x: 0, y: 0, w: 6, h: 3 });
+    // Its neighbour stretches to the band's new bottom: no hole (UI review R2).
+    expect(grown.get("tile")).toEqual({ x: 6, y: 0, w: 6, h: 3 });
+    for (const id of ["under-clock", "under-tile", "far"]) expect(grown.get(id).y, id).toBe(3);
+    for (const id of ["under-clock", "under-tile", "far"]) expect(grown.get(id).h, id).toBe(2);
+  });
+  it("stretches a taller neighbour that spans the grown band, never overlapping", () => {
+    const board = [
+      { id: "tile", kind: "panel", rect: { x: 0, y: 0, w: 6, h: 2 } },
+      { id: "tall", kind: "panel", rect: { x: 6, y: 0, w: 6, h: 4 } },
+      { id: "below", kind: "panel", rect: { x: 0, y: 2, w: 6, h: 2 } },
+      { id: "after", kind: "panel", rect: { x: 0, y: 4, w: 12, h: 2 } },
+    ];
+    const grown = new Map(grownUnits(board, new Map([["tile", 3]])).map((unit) => [unit.id, unit.rect]));
+    expect(grown.get("tall")).toEqual({ x: 6, y: 0, w: 6, h: 5 });
+    expect(grown.get("below")).toEqual({ x: 0, y: 3, w: 6, h: 2 });
+    expect(grown.get("after")).toEqual({ x: 0, y: 5, w: 12, h: 2 });
+  });
+  it("adds growths band by band", () => {
+    const column = [
+      { id: "a", kind: "panel", rect: { x: 0, y: 0, w: 4, h: 2 } },
+      { id: "b", kind: "panel", rect: { x: 4, y: 2, w: 4, h: 2 } },
+      { id: "c", kind: "panel", rect: { x: 8, y: 4, w: 4, h: 2 } },
+    ];
+    const grown = new Map(
+      grownUnits(
+        column,
+        new Map([
+          ["a", 3],
+          ["b", 4],
+        ]),
+      ).map((unit) => [unit.id, unit.rect]),
+    );
+    expect(grown.get("b")).toEqual({ x: 4, y: 3, w: 4, h: 4 });
+    expect(grown.get("c").y).toBe(7);
   });
 });

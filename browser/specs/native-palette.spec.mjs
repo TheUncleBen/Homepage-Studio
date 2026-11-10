@@ -110,7 +110,8 @@ test('card text stays readable in light, dark and Follow device modes while stat
       expect(sample.foreground[3], `${name} ${sample.selector} opaque text`).toBe(255);
       expect.soft(sample.contrast, `${name} ${sample.selector}: ${JSON.stringify(sample)}`).toBeGreaterThanOrEqual(4.5);
     }
-    expect(await statuses()).toEqual(originalStatuses);
+    // After a reload the dots stay grey until each site check answers.
+    await expect.poll(statuses).toEqual(originalStatuses);
   };
   await inspect('light-normal');
   await page.locator('[aria-label="Up link"] .studio-card-identity').hover();
@@ -147,5 +148,6 @@ test('card text stays readable in light, dark and Follow device modes while stat
   await setMode(page, 'dark');
   await expect(description).toHaveCSS('color', 'rgb(34, 68, 102)');
   await expect(page.locator('[aria-label="Theme reference"] .studio-card-name strong')).toHaveCSS('color', 'rgb(51, 68, 85)');
-  expect(await statuses()).toEqual(originalStatuses);
+  // After a reload the dots stay grey until each site check answers.
+  await expect.poll(statuses).toEqual(originalStatuses);
 });

@@ -178,12 +178,15 @@ export function ServiceCard({ service, groupName, children, connected = false })
   const sized = useMemo(
     () => ({
       ...card,
+      // The name the card shows, for links that label it elsewhere (the
+      // Operations logs chip; UI review M3).
+      shownName: service?.name || "",
       header: effective.header,
       logoPos: effective.logoPos,
       align: effective.align,
       blocks: effective.blocks,
     }),
-    [card, effective],
+    [card, effective, service?.name],
   );
   const body = children ?? <CardBlocks card={sized} />;
   return (
@@ -232,15 +235,20 @@ export function BookmarkCard({ bookmark }) {
       description = "";
     }
   }
+  // Fitted like any card, so on a short row it says what its name and
+  // address need and the board grows it (UI review R1).
+  const { ref, context } = useBlockFit(card);
   return (
-    <div className="studio-card">
-      <CardHead
-        icon={bookmark.icon}
-        name={bookmark.name}
-        description={description}
-        href={bookmark.href}
-        card={{ ...card, header: bookmark.icon ? card.header : card.header === "logo" ? "name" : card.header }}
-      />
-    </div>
+    <CardFitContext.Provider value={context}>
+      <div ref={ref} className="studio-card">
+        <CardHead
+          icon={bookmark.icon}
+          name={bookmark.name}
+          description={description}
+          href={bookmark.href}
+          card={{ ...card, header: bookmark.icon ? card.header : card.header === "logo" ? "name" : card.header }}
+        />
+      </div>
+    </CardFitContext.Provider>
   );
 }

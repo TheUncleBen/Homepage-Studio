@@ -9,6 +9,39 @@ import { Resolver } from 'node:dns/promises';
 import { lookup } from 'node:dns';
 import { spawn } from 'node:child_process';
 import { classifyError, CLASS_SENTENCES } from '../../homepage/src/utils/studio/error-classes.mjs';
+import { forgetIntermediates, learnIntermediates, learnedIntermediates, MISSING_ISSUER } from '../../homepage/src/utils/proxy/aia.mjs';
+
+// The certificates a check trusts: the deployment's (public authorities plus
+// Administration › Trusted certificates) and any intermediate fetched for a
+// server that left it out (aia.mjs: each one proven to chain to those).
+// Intermediates learned against one trusted list are dropped as soon as the
+// list changes (security review M2): removing a root must also stop
+// everything learned through it.
+let learnedAgainst;
+function sameList(ca) {
+  if (ca !== learnedAgainst) {
+    forgetIntermediates();
+    learnedAgainst = ca;
+  }
+}
+function trustList(ca) {
+  sameList(ca);
+  const learned = learnedIntermediates();
+  if (!ca && !learned.length) return null;
+  return [...(ca ?? tls.rootCertificates), ...learned];
+}
+// When a certificate check failed only for a missing intermediate, fetch it
+// (owner decision, 10 Nov 2026). True when there is something new to try.
+// It never runs past the check's own deadline (review L3).
+async function learnFor(url, code, ca, msLeft) {
+  if (!MISSING_ISSUER.has(String(code ?? '')) || !(msLeft > 0)) return false;
+  sameList(ca);
+  let timer;
+  const late = new Promise(resolve => { timer = setTimeout(() => resolve(false), msLeft); timer.unref?.(); });
+  try {
+    return await Promise.race([learnIntermediates(url, [...(ca ?? tls.rootCertificates)]).catch(() => false), late]);
+  } finally { clearTimeout(timer); }
+}
 
 const MAX_BODY = 64 * 1024;
 const now = () => Number(process.hrtime.bigint() / 1000n) / 1000;
@@ -81,13 +114,15 @@ function certExpiry(cert) {
 // off for it (then a warning).
 export async function runHttp(config, { timeoutMs, ca, family = 'auto' } = {}) {
   const deadline = AbortSignal.timeout(timeoutMs);
+  const started = Date.now();
   // Certificates are checked (owner decision D1, 7 Nov 2026), a card's too,
   // unless the monitor or the card's service opts out; then a certificate
   // problem is a warning, not down.
   const verify = config.verifyTls !== false;
   // allowPartialTrustChain: a trusted intermediate (or an app's own
   // certificate added as trusted) is enough, as in browsers (owner T43).
-  const agentOptions = { rejectUnauthorized: verify, ...(ca ? { ca, allowPartialTrustChain: true } : {}) };
+  const agentOptions = () => { const trusted = trustList(ca); return { rejectUnauthorized: verify, ...(trusted ? { ca: trusted, allowPartialTrustChain: true } : {}) }; };
+  let learning = verify;
   const headers = Object.fromEntries((config.headers ?? []).map(header => [header.name, header.value]));
   const accept = config.card ? code => code <= 403 : acceptsStatus(config.accept);
   let url = config.url, method = config.card ? 'HEAD' : config.method ?? 'GET';
@@ -98,7 +133,14 @@ export async function runHttp(config, { timeoutMs, ca, family = 'auto' } = {}) {
   try {
     let answer;
     for (let hop = 0; ; hop++) {
-      answer = await request(url, { method, headers: new URL(url).origin === origin ? headers : {}, body: method === 'POST' ? config.body : undefined, timeoutMs, agentOptions, family, signal: deadline });
+      try {
+        answer = await request(url, { method, headers: new URL(url).origin === origin ? headers : {}, body: method === 'POST' ? config.body : undefined, timeoutMs, agentOptions: agentOptions(), family, signal: deadline });
+      } catch (error) {
+        // The handshake failed, so the request never reached the server:
+        // safe to try once more after fetching a missing intermediate.
+        if (learning && url.startsWith('https:') && !deadline.aborted && await learnFor(url, error.code, ca, started + timeoutMs - Date.now())) { learning = false; hop -= 1; continue; }
+        throw error;
+      }
       if (config.card && method === 'HEAD' && answer.status > 403) { method = 'GET'; continue; }
       const location = answer.headers.location;
       if ((config.followRedirects !== false || config.card) && answer.status >= 300 && answer.status < 400 && location && hop < 5) {
@@ -209,10 +251,19 @@ export async function runDns({ name, recordType = 'A', resolver: server, expect 
 }
 
 // Certificate expiry for any TLS endpoint, and whether its chain is trusted.
-export function runTls({ host, port = 443, warnDays = 14 }, { timeoutMs, ca, family = 'auto' } = {}) {
+export async function runTls(target, options = {}) {
+  const begun = Date.now();
+  const first = await tlsOnce(target, options);
+  const left = () => (options.timeoutMs ?? 10000) - (Date.now() - begun);
+  if (first.authorizationError && await learnFor(`https://${net.isIP(target.host) === 6 ? `[${target.host}]` : target.host}:${target.port ?? 443}/`, first.authorizationError, options.ca, left() - 500)) return strip(await tlsOnce(target, { ...options, timeoutMs: Math.max(500, left()) }));
+  return strip(first);
+}
+const strip = ({ authorizationError, ...result }) => result;
+function tlsOnce({ host, port = 443, warnDays = 14 }, { timeoutMs, ca, family = 'auto' } = {}) {
+  const trusted = trustList(ca);
   return new Promise(resolve => {
     const started = now();
-    const socket = tls.connect({ host, port, servername: net.isIP(host) ? undefined : host, rejectUnauthorized: false, family: familyOption(family), timeout: timeoutMs, ...(ca ? { ca, allowPartialTrustChain: true } : {}) });
+    const socket = tls.connect({ host, port, servername: net.isIP(host) ? undefined : host, rejectUnauthorized: false, family: familyOption(family), timeout: timeoutMs, ...(trusted ? { ca: trusted, allowPartialTrustChain: true } : {}) });
     const done = result => { socket.destroy(); resolve(result); };
     const timer = setTimeout(() => done(failure({ code: 'ETIMEDOUT' })), timeoutMs);
     socket.once('secureConnect', () => {
@@ -225,7 +276,7 @@ export function runTls({ host, port = 443, warnDays = 14 }, { timeoutMs, ca, fam
       if (!socket.authorized) {
         const cls = classifyError({ code: String(socket.authorizationError) }) ?? 'tls-untrusted';
         if (cls === 'tls-expired' || (days !== null && days < 0)) return done({ ...base, ok: false, cls: 'tls-expired', message: 'The certificate has expired' });
-        return done({ ...base, ok: false, cls, message: CLASS_SENTENCES[cls] });
+        return done({ ...base, ok: false, cls, message: CLASS_SENTENCES[cls], authorizationError: String(socket.authorizationError?.code ?? socket.authorizationError) });
       }
       if (days !== null && days < 0) return done({ ...base, ok: false, cls: 'tls-expired', message: 'The certificate has expired' });
       if (days !== null && days <= warnDays) return done({ ...base, ok: true, warning: { cls: 'tls-expired', message: `The certificate expires in ${days} day${days === 1 ? '' : 's'}` } });

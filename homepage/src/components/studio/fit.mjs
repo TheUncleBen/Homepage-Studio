@@ -51,9 +51,19 @@ export function fits(card) {
       if (block.scrollWidth > block.clientWidth + 1) return false;
     } else if (over(block)) return false;
   }
+  // The header's own parts run past it (centred, so above it too, which
+  // no scroll height shows; UI review R3).
+  const head = card.querySelector(".studio-card-head");
+  if (head) {
+    const box = head.getBoundingClientRect();
+    for (const part of head.children) {
+      const r = part.getBoundingClientRect();
+      if (r.height && (r.top < box.top - 1 || r.bottom > box.bottom + 1)) return false;
+    }
+  }
   // A number or a name cut short, a value squeezed to nothing.
   for (const node of card.querySelectorAll(
-    ".studio-card-head, .studio-value, .studio-value-number, .studio-value-label, .studio-block-legend, .studio-chart-legend li, .studio-chart-legend li > *, .studio-bar-label, .studio-bar-value, .studio-block-caption",
+    ".studio-card-head, .studio-value, .studio-value-number, .studio-value-label, .studio-block-legend, .studio-chart-legend, .studio-chart-legend li, .studio-chart-legend li > *, .studio-bar-label, .studio-bar-value, .studio-block-caption",
   ))
     if (node.scrollWidth > node.clientWidth + 1) return false;
   // The name (and why a card is red) wrap only between words, and only to the
@@ -158,8 +168,10 @@ export function candidates(look, blocks, counts, width, height) {
             ? ["row", "col"]
             : ["col", "row"];
   const headerAt = look.headerAt || "auto";
+  // With no blocks there is nothing to sit beside: a header set beside an
+  // empty body stacks its own parts and overflows a short card (UI review R3).
   const inlines =
-    look.header === "hidden"
+    look.header === "hidden" || !blocks.length
       ? [false]
       : headerAt === "left"
         ? [true]

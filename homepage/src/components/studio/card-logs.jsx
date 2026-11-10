@@ -1,6 +1,7 @@
 import useSWR from "swr";
 
 import { deploymentRequest, studioRequest } from "./api.mjs";
+import { logsLink } from "./investigate";
 
 // Recent logs block (mock-ups v4): this widget's latest log lines, for people
 // who can read this dashboard's logs. Everyone else never sees the block
@@ -26,19 +27,31 @@ export default function CardLogs({ card }) {
   if (!data) return <p className="studio-chart-note">Loading logs…</p>;
   const events = Array.isArray(data.events) ? data.events : [];
   if (!events.length) return <p className="studio-chart-note">Nothing logged for this widget in the last 24 hours.</p>;
+  // Any line opens Operations' logs for this widget (mock-ups v4, board 8);
+  // while arranging, a click selects the widget, so lines are plain text
+  // (UI review M4).
+  const Line = card.editing ? "span" : "a";
+  const link = card.editing
+    ? {}
+    : {
+        href: logsLink({ dashboardId, panelId: card.id, name: card.shownName, range: "24h" }),
+        title: "Open these logs in Operations",
+      };
   return (
     <ul className="studio-card-logs" aria-label="Recent logs">
       {events.map((event) => (
-        <li key={`${event.id}-${event.ts}`} className="studio-log-line" data-severity={event.severity}>
-          <span className="studio-log-level">{LEVEL[event.severity] ?? "INFO"}</span>
-          {/* A report sent by someone's browser says whose, so it can't pass
+        <li key={`${event.id}-${event.ts}`}>
+          <Line className="studio-log-line" data-severity={event.severity} {...link}>
+            <span className="studio-log-level">{LEVEL[event.severity] ?? "INFO"}</span>
+            {/* A report sent by someone's browser says whose, so it can't pass
               for Studio's own line (security review L1). */}
-          {event.source_type === "browser" && (
-            <span className="studio-log-source" title="Reported by a browser">
-              {event.actor ? `${event.actor}'s browser` : "A browser"}
-            </span>
-          )}
-          <span className="studio-log-message">{event.message}</span>
+            {event.source_type === "browser" && (
+              <span className="studio-log-source" title="Reported by a browser">
+                {event.actor ? `${event.actor}'s browser` : "A browser"}
+              </span>
+            )}
+            <span className="studio-log-message">{event.message}</span>
+          </Line>
         </li>
       ))}
     </ul>

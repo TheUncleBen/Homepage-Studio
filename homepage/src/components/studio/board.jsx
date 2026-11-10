@@ -37,7 +37,7 @@ import {
   pixelRect,
   removePage,
   resizeUnit,
-  ROW_HEIGHT,
+  rowStep,
   snapGuides,
   stackBoard,
   tidyBoard,
@@ -430,6 +430,12 @@ export default function StudioBoard({
   const [lastMatchedNative, setLastMatchedNative] = useState(null);
   const [active, setActive] = useState({});
   const [width, setWidth] = useState(1200);
+  // The width rows are worked out from (Board 5). It ignores a change that is
+  // only the page's scrollbar coming or going (the window itself the same
+  // width), since taller or shorter rows would bring it back or take it away
+  // again (UI review L1, instead of always keeping room for a scrollbar).
+  const [rowWidth, setRowWidth] = useState(1200);
+  const scrollbarSeen = useRef({ window: 0, bar: 0 });
   // The editor's size switch (board 22): null shows the screen's own size.
   const [editSize, setEditSize] = useState(null);
   // Whether the screen is wide enough to show the switch (a desktop screen).
@@ -627,34 +633,44 @@ export default function StudioBoard({
       const id = event.detail?.id;
       const fit = id && !id.startsWith("preview:") ? cardFits.get(id) : null;
       if (!fit) return;
-      const rows = fit.need ? Math.ceil((fit.need + gap) / (ROW_HEIGHT + gap)) : 0;
-      setNeeds((old) => ((old.get(id) || 0) === rows ? old : new Map(old).set(id, rows)));
+      // Kept in pixels: how many rows that is depends on the row height,
+      // which follows the board's width (Board 5).
+      const need = fit.need || 0;
+      setNeeds((old) => ((old.get(id) || 0) === need ? old : new Map(old).set(id, need)));
     };
     window.addEventListener("studio-card-fit", onFit);
     return () => window.removeEventListener("studio-card-fit", onFit);
-  }, [gap]);
+  }, []);
   const projection = useMemo(() => {
     if (!needs.size) return laidOut;
+    const step = rowStep(rowWidth, laidOut.columns, gap);
+    // Grown by exactly what it needs, not to the next whole row, so a need
+    // a few pixels past its height doesn't leave a row of empty card (UI
+    // review R2). Rounded to a hundredth of a row so it settles.
+    const rowsFor = (need) => (need ? Math.ceil(((need + gap) / step) * 100) / 100 : 0);
     const rows = new Map();
     for (const unit of laidOut.units) {
       if (unit.id === resizing) continue;
       const ids =
         unit.kind === "stack" ? board.stacks.find((stack) => stack.id === unit.id)?.panelIds || [] : [unit.id];
-      const most = Math.max(0, ...ids.map((id) => needs.get(id) || 0));
+      const most = Math.max(0, ...ids.map((id) => rowsFor(needs.get(id) || 0)));
       if (most > unit.rect.h) rows.set(unit.id, most);
     }
     if (!rows.size) return laidOut;
     const units = grownUnits(laidOut.units, rows);
     return { ...laidOut, units, rows: Math.max(8, ...units.map((unit) => unit.rect.y + unit.rect.h)) };
-  }, [laidOut, needs, board, resizing]);
+  }, [laidOut, needs, board, resizing, rowWidth, gap]);
   const shown = useRef(projection);
   useLayoutEffect(() => {
     shown.current = projection;
   }, [projection]);
   // The height each widget was laid out at, which it measures its needs at.
   const baseHeights = useMemo(
-    () => new Map(laidOut.units.map((unit) => [unit.id, pixelRect(unit.rect, width, laidOut.columns, gap).height])),
-    [laidOut, width, gap],
+    () =>
+      new Map(
+        laidOut.units.map((unit) => [unit.id, pixelRect(unit.rect, width, laidOut.columns, gap, rowWidth).height]),
+      ),
+    [laidOut, width, rowWidth, gap],
   );
   // While editing: the widgets this layout leaves out (shown faded).
   const offLayout = useMemo(
@@ -669,8 +685,11 @@ export default function StudioBoard({
     [board, settings, editing, layoutSize],
   );
   const geometry = useMemo(
-    () => new Map(projection.units.map((unit) => [unit.id, pixelRect(unit.rect, width, projection.columns, gap)])),
-    [projection, width, gap],
+    () =>
+      new Map(
+        projection.units.map((unit) => [unit.id, pixelRect(unit.rect, width, projection.columns, gap, rowWidth)]),
+      ),
+    [projection, width, rowWidth, gap],
   );
   // Tab follows the projected layout (row, then column) without reordering
   // native hosts in the DOM.
@@ -692,7 +711,17 @@ export default function StudioBoard({
 
   useEffect(() => {
     const measure = () => {
-      if (canvas.current) setWidth(canvas.current.clientWidth || 1200);
+      if (!canvas.current) return;
+      const next = canvas.current.clientWidth || 1200;
+      setWidth(next);
+      const seen = scrollbarSeen.current;
+      const bar = Math.max(0, window.innerWidth - document.documentElement.clientWidth);
+      if (bar) seen.bar = bar;
+      setRowWidth((old) => {
+        const onlyScrollbar = seen.window === window.innerWidth && seen.bar && Math.abs(next - old) === seen.bar;
+        seen.window = window.innerWidth;
+        return onlyScrollbar ? old : next;
+      });
     };
     measure();
     if (typeof ResizeObserver === "undefined") {
@@ -1183,7 +1212,7 @@ export default function StudioBoard({
     // the size it is drawn at.
     const drawn = shown.current.units.find((item) => item.id === id)?.rect;
     if (mode === "resize" && drawn && drawn.h > unit.rect.h) {
-      initial = resizeUnit(initial, id, { ...unit.rect, h: drawn.h });
+      initial = resizeUnit(initial, id, { ...unit.rect, h: Math.ceil(drawn.h) });
       unit = unitsForBoard(initial).find((item) => item.id === id);
     }
     setMoving(id);
@@ -1203,7 +1232,7 @@ export default function StudioBoard({
     const fitAt = (now) => {
       const fit = cardFits.get(id);
       if (!now || !fit?.box) return null;
-      const pixels = pixelRect(now, width, initialProjection.columns, gap);
+      const pixels = pixelRect(now, width, initialProjection.columns, gap, rowWidth);
       if (Math.abs(pixels.width - fit.box.w) > 2 || Math.abs(pixels.height - fit.box.h) > 2) return null;
       return !(fit.squeezed || fit.relaxed || !fit.fits);
     };
@@ -1259,7 +1288,10 @@ export default function StudioBoard({
         unit = unitsForBoard(initial).find((item) => item.id === id);
         const bounds = canvas.current.getBoundingClientRect();
         const cellX = Math.floor((point.x - bounds.left) / column);
-        const cellY = Math.max(0, Math.floor((point.y - bounds.top) / (ROW_HEIGHT + gap)));
+        const cellY = Math.max(
+          0,
+          Math.floor((point.y - bounds.top) / rowStep(rowWidth, initialProjection.columns, gap)),
+        );
         initial = moveUnit(initial, id, { ...unit.rect, x: Math.max(0, cellX), y: cellY });
         unit = unitsForBoard(initial).find((item) => item.id === id);
         initialProjection = sizeProjection(initial, layoutSize);
@@ -1286,7 +1318,7 @@ export default function StudioBoard({
         if (pageTarget) return;
       }
       const dx = Math.round((moveEvent.clientX - start.x) / column);
-      const dy = Math.round((moveEvent.clientY - start.y) / (ROW_HEIGHT + gap));
+      const dy = Math.round((moveEvent.clientY - start.y) / rowStep(rowWidth, initialProjection.columns, gap));
       let rect = clampRect(
         mode === "resize"
           ? { ...unit.rect, w: Math.max(1, unit.rect.w + dx), h: Math.max(1, unit.rect.h + dy) }
@@ -1324,7 +1356,7 @@ export default function StudioBoard({
         const targetMinimum = unitMinimum(initial, other.id);
         const requiredHeight = Math.max(movingMinimum.h + 1, targetMinimum.h + (other.kind === "stack" ? 0 : 1), 3);
         if (unit.rect.h < requiredHeight || unit.rect.w < Math.max(movingMinimum.w, targetMinimum.w)) return false;
-        const pixels = pixelRect(other.rect, width, initialProjection.columns, gap);
+        const pixels = pixelRect(other.rect, width, initialProjection.columns, gap, rowWidth);
         return (
           point.x > pixels.left + pixels.width * 0.2 &&
           point.x < pixels.left + pixels.width * 0.8 &&
@@ -2517,9 +2549,9 @@ export default function StudioBoard({
         style={{
           ...(editing && editSize ? { maxWidth: SIZE_WIDTH[editSize], marginInline: "auto" } : {}),
           ...(fullWidth && dockedWidth ? { width: dockedWidth, maxWidth: "none" } : {}),
-          height: board.panels.length ? projection.rows * (ROW_HEIGHT + gap) + 32 : 480,
+          height: board.panels.length ? projection.rows * rowStep(rowWidth, projection.columns, gap) + 32 : 480,
           "--studio-grid-column": `${(width + gap) / projection.columns}px`,
-          "--studio-grid-row": `${ROW_HEIGHT + gap}px`,
+          "--studio-grid-row": `${rowStep(rowWidth, projection.columns, gap)}px`,
         }}
       >
         {/* Room to scroll the board out from under the docked editor, so

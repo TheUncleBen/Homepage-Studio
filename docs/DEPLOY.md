@@ -663,6 +663,34 @@ certificate monitors you add in Operations ([MONITORING.md](MONITORING.md)).
 A certificate that doesn't check out stops the request, and the card or test
 says the certificate isn't trusted.
 
+**Servers that leave out an intermediate.** Many authorities sign through an
+intermediate certificate, and a server should send it with its own. When a
+server sends only its own certificate, Studio does what browsers do: it
+fetches the missing intermediate from the address written in the server's
+certificate (its "CA Issuers" address), then checks again. That works with
+only your root authority in the list. The limits:
+
+- only plain `http://` addresses, never this machine or link-local
+  addresses (`127.0.0.0/8`, `169.254.0.0/16`, `::1`, `fe80::/10`), a single
+  GET without redirects, cookies or credentials, at most 16 KB and 4
+  seconds, up to three missing steps;
+- nothing is learned when the root (or a fetched authority above another)
+  carries name constraints, a path length or policy constraints: those
+  chains still need the intermediate added, or sent by the server;
+- the repeat after learning is only for reads (GET, HEAD); a sign-in or
+  other request with a body works from the next request on;
+- a fetched certificate counts only if it is an authority, in date, signed
+  the certificate below it, and itself leads to a certificate already in
+  the public authorities or this list. A server can't use it to make Studio
+  trust anything new;
+- answers are remembered (12 hours when it worked, 10 minutes when it
+  didn't, per address), so a broken service doesn't cause a fetch on every
+  refresh; removing a trusted certificate drops everything learned through
+  it.
+
+If the address can't be reached from the Studio container, add the
+intermediate itself to the list, or have the server send it.
+
 For a service whose self-signed certificate you can't replace or add, turn
 off **Check its certificate** under the widget's **Connection** (under
 **Status** for a plain tile; it writes

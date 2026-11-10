@@ -7,6 +7,7 @@ import { createUnzip, constants as zlibConstants } from "node:zlib";
 import { http, https } from "follow-redirects";
 import cache from "memory-cache";
 
+import { learnIntermediates, learnedGeneration, learnedIntermediates, missingIssuer } from "./aia.mjs";
 import { sanitizeErrorURL, sanitizeLogURL } from "./api-helpers";
 import { checksCertificate } from "./certificate-check.mjs";
 import { addCookieToJar, setCookieHeader } from "./cookie-jar";
@@ -385,27 +386,51 @@ const homepageLookup = homepageDNSLookupFn();
 // browsers: an intermediate authority, or an app's own certificate added as
 // trusted, is enough on its own (owner T43 on 53ebc3b). Read once per worker;
 // workers start again when the list changes.
+// Intermediates fetched for servers that don't send them (aia.mjs) join the
+// list once each is proven to chain to one of these.
 let trustedAuthorities;
+function bundlePem(bundle) {
+  try {
+    const pem = bundle ? readFileSync(bundle, "utf8") : "";
+    return pem.includes("-----BEGIN CERTIFICATE-----") ? pem : "";
+  } catch {
+    return "";
+  }
+}
 export function trustOptions(bundle = process.env.NODE_EXTRA_CA_CERTS) {
-  if (trustedAuthorities === undefined || bundle !== trustedAuthorities.bundle) {
-    let pem = "";
-    try {
-      pem = bundle ? readFileSync(bundle, "utf8") : "";
-    } catch {
-      pem = "";
-    }
-    trustedAuthorities = { bundle, options: pem.includes("-----BEGIN CERTIFICATE-----") ? { ca: [...rootCertificates, pem], allowPartialTrustChain: true } : {} };
+  const generation = learnedGeneration();
+  if (
+    trustedAuthorities === undefined ||
+    bundle !== trustedAuthorities.bundle ||
+    generation !== trustedAuthorities.generation
+  ) {
+    const extra = learnedIntermediates();
+    const pem = bundlePem(bundle);
+    const ca = [...(pem ? [pem] : []), ...extra];
+    trustedAuthorities = {
+      bundle,
+      generation,
+      options: ca.length ? { ca: [...rootCertificates, ...ca], allowPartialTrustChain: true } : {},
+    };
   }
   return trustedAuthorities.options;
 }
 const agentCache = new Map();
 
 function getAgent(protocol, disableIpv6, checkCertificate = true) {
-  const cacheKey = `${protocol}:${disableIpv6 ? "ipv4" : "auto"}:${checkCertificate ? "checked" : "unchecked"}:${process.env.NODE_EXTRA_CA_CERTS ?? ""}`;
+  const generation = learnedGeneration();
+  const cacheKey = `${protocol}:${disableIpv6 ? "ipv4" : "auto"}:${checkCertificate ? "checked" : "unchecked"}:${process.env.NODE_EXTRA_CA_CERTS ?? ""}:${generation}`;
   const cachedAgent = agentCache.get(cacheKey);
   if (cachedAgent) {
     return cachedAgent;
   }
+  // Agents built for an older list of learned intermediates leave the cache;
+  // requests still using one get a minute to finish before its sockets close.
+  for (const [key, old] of agentCache)
+    if (!key.endsWith(`:${generation}`)) {
+      agentCache.delete(key);
+      setTimeout(() => old.destroy?.(), 60000).unref?.();
+    }
 
   const agentOptions = {
     keepAlive: true,
@@ -417,7 +442,11 @@ function getAgent(protocol, disableIpv6, checkCertificate = true) {
     protocol === "https:"
       ? // Studio checks certificates (owner decision D1), except for a service
         // that opts out (utils/proxy/certificate-check.mjs).
-        new https.Agent({ ...agentOptions, ...(checkCertificate ? trustOptions() : {}), rejectUnauthorized: checkCertificate })
+        new https.Agent({
+          ...agentOptions,
+          ...(checkCertificate ? trustOptions() : {}),
+          rejectUnauthorized: checkCertificate,
+        })
       : new http.Agent(agentOptions);
 
   agentCache.set(cacheKey, agent);
@@ -428,7 +457,7 @@ export async function httpProxy(url, allParams = {}) {
   // checkCertificate: false asks for this one request not to check (a
   // status check for a service that opts out); otherwise the service being
   // served decides.
-  const { checkCertificate, ...params } = allParams;
+  const { checkCertificate, intermediatesTried, ...params } = allParams;
   const constructedUrl = new URL(url);
   const disableIpv6 = process.env.HOMEPAGE_PROXY_DISABLE_IPV6 === "true";
   const check = checkCertificate === false ? false : checksCertificate();
@@ -455,6 +484,29 @@ export async function httpProxy(url, allParams = {}) {
     return [status, contentType, data, responseHeaders, params];
   } catch (err) {
     const rawError = Array.isArray(err) ? err[1] : err;
+    // The server left out an intermediate certificate: fetch it as browsers
+    // do (aia.mjs, which checks it chains to a trusted certificate) and try
+    // once more. The handshake failed, so the request never reached it.
+    // Only for GET and HEAD (security review L1): after a redirect the
+    // failure may belong to a later hop, and a repeat must never re-send a
+    // body to the first one.
+    const method = String(params.method ?? "GET").toUpperCase();
+    if (
+      check &&
+      !intermediatesTried &&
+      (method === "GET" || method === "HEAD") &&
+      missingIssuer(rawError) &&
+      constructedUrl.protocol === "https:"
+    ) {
+      const learned = await learnIntermediates(
+        constructedUrl.href,
+        [...rootCertificates, bundlePem(process.env.NODE_EXTRA_CA_CERTS)],
+        {
+          lookup: homepageLookup,
+        },
+      ).catch(() => false);
+      if (learned) return httpProxy(url, { ...allParams, intermediatesTried: true });
+    }
     const safeError = transportError(rawError);
     logger.error(
       "Error calling %s: %s (%s%s)",

@@ -30,11 +30,17 @@ export function createWorkerHost({ entry, name, workerData, extraCaFile = null, 
     worker = new Worker(entry, { workerData, resourceLimits, env, stdout: false, stderr: false });
     const current = worker;
     port = createPort(worker, {});
+    const own = port;
     const startedAt = Date.now();
+    // Uses its own port: a worker that exits during the catch-up (a module
+    // that fails to load, say) must not take the server down with it.
     ready = (async () => {
-      for (const [method, params] of replay.values()) await port.call(method, params, 30000).catch(() => {});
-      while (queued.length) { const [method, params] = queued.shift(); port.cast(method, params); }
-    })();
+      for (const [method, params] of replay.values()) {
+        if (port !== own) return;
+        await own.call(method, params, 30000).catch(() => {});
+      }
+      while (queued.length && port === own) { const [method, params] = queued.shift(); own.cast(method, params); }
+    })().catch(() => {});
     current.on('error', error => onLog({ severity: 3, message: `The ${name} stopped: ${error.message}` }));
     current.on('exit', code => {
       if (worker !== current) return;

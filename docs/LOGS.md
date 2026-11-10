@@ -27,8 +27,18 @@ Monitoring is described in [MONITORING.md](MONITORING.md).
 
 ## Searching
 
-Type words to find events that contain them, or a "quoted phrase". Narrow
-with filters, and put `-` in front of one to leave its matches out:
+The search box searches as you type. Under the bars, chips narrow the
+results one choice at a time: **Level** (any, warnings and errors, or errors),
+**Source**, **Service** and **Problem**, each listing what the current search
+found with how many; click a chip again, or **Any**, to take it off. A line
+in a widget's **Logs** block (or **Show in Logs** from Investigate)
+opens this view showing only that widget, as a **Widget** chip you can take
+off. The address in the browser keeps the search and chips, so it can be
+bookmarked or shared with someone who has the same access.
+
+In the box, type words to find events that contain them, or a "quoted
+phrase". Narrow with filters, and put `-` in front of one to leave its
+matches out:
 
 | Filter | Finds |
 | --- | --- |
@@ -42,9 +52,7 @@ with filters, and put `-` in front of one to leave its matches out:
 | `actor:alice` | What one person did |
 
 The bars above the results show events over time, coloured by the worst in
-each bar; click one to look only at that time. The chips under them count
-the most common severities, sources, resources and problems; click one to add
-it to the search. Open an event to see all its fields, the events around it
+each bar; click one to look only at that time. Open an event to see all its fields, the events around it
 (**Show surrounding**) or others like it (**Find similar**). **Similar
 together** groups events that differ only in numbers, ids and addresses.
 Administrators can save a search; saved searches are shared between

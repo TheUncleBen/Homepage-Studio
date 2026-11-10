@@ -44,7 +44,9 @@ function useBox(ref) {
 const MAX_GROWTH = 6;
 function neededHeight(node, base, look, blocks, counts) {
   const panel = node.closest(".studio-panel, .studio-card-preview");
-  if (!panel || !blocks.length) return 0;
+  // A plain tile (no blocks) counts too: its name, description and why it
+  // is down must show, not be dropped on a short row (UI review H1).
+  if (!panel) return 0;
   const kept = panel.style.height;
   const width = node.clientWidth;
   const extra = panel.offsetHeight - node.clientHeight;
@@ -82,10 +84,16 @@ function neededHeight(node, base, look, blocks, counts) {
           apply(node, way.blocks, pick, LAST_RESORT);
           return standsUp(node);
         };
-    if (found || test(high)) {
+    // Where the width alone sets the text size (a name or why it is down
+    // wrapping in a narrow card), the given height already shows it at that
+    // size: growing would only leave the card emptier (UI review R2).
+    if (test(base)) need = 0;
+    else if (found || test(high)) {
       let low = base;
       let top = high;
-      for (let i = 0; i < 9 && top - low > 4; i += 1) {
+      // To the pixel, so a need just past a row's height isn't rounded into
+      // a whole row more.
+      for (let i = 0; i < 12 && top - low > 1; i += 1) {
         const mid = Math.round((low + top) / 2);
         if (test(mid)) top = mid;
         else low = mid;

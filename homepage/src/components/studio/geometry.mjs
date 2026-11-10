@@ -10,6 +10,21 @@ export const columnsOfPage = (page) => (page?.grid === "centred" ? CENTRED_COLUM
 export const gridColumns = (board) => board?.gridColumns ?? COLUMNS;
 export const ROW_HEIGHT = 36;
 export const GAP = 12;
+// Rows scale with the columns (Board 5, owner 10 Nov 2026). A column is a
+// share of the board's width; a row is as tall, against its column, as it is
+// at its layout's reference width, where it is ROW_HEIGHT. So a widget keeps
+// its shape on every screen of the same layout, instead of getting wider but
+// not taller as the window widens. The references are the boards of a
+// 1440 px desktop window, an 820 px tablet and a 390 px phone (the board is
+// the window less Studio's side padding: 40, 25 and 18 px).
+export const REFERENCE_WIDTH = Object.freeze({ desktop: 1360, tablet: 770, phone: 354 });
+// Bounds: rows never get so short that a handle or a line of text has no
+// room. Wider than the reference they grow by at most a quarter (45 px), so
+// a phone layout on a small tablet or a landscape phone doesn't turn tiles
+// into half-empty boxes and the page into a long scroll (UI review M2);
+// a desktop's widest board (1600 px) stays just under that.
+export const ROW_MIN = 18;
+export const ROW_MAX = 45;
 // Dashboard Appearance › Spacing: the space between widgets, in pixels.
 export const SPACING = Object.freeze({ compact: 6, default: GAP, roomy: 20 });
 export const gapOf = (settings) => {
@@ -351,9 +366,33 @@ export function fittedUnits(board) {
 // Anything that would then overlap moves down, in reading order.
 export function grownUnits(units, rows) {
   if (!rows?.size) return units;
+  // A widget that grows moves the whole band below it down by as much (UI
+  // review M1): everything that starts at or below its bottom edge, in every
+  // column, so rows that line up at the reference width still line up. A
+  // band's shift is the largest of the growths above it, each counted with
+  // the shift of the band it sits in.
+  const growths = [];
+  const shiftAt = (y) =>
+    growths.reduce((most, growth) => (growth.bottom <= y ? Math.max(most, growth.shift) : most), 0);
+  for (const unit of [...units].sort((a, b) => a.rect.y - b.rect.y)) {
+    const extra = Math.max(0, (rows.get(unit.id) || 0) - unit.rect.h);
+    if (extra) growths.push({ bottom: unit.rect.y + unit.rect.h, shift: shiftAt(unit.rect.y) + extra });
+  }
+  if (!growths.length) return units;
   const placed = [];
   for (const unit of [...units].sort(byReadingOrder)) {
-    let rect = { ...unit.rect, h: Math.max(unit.rect.h, rows.get(unit.id) || 0) };
+    // Its bottom edge moves with the band below it, so a neighbour of a
+    // grown widget stretches to match instead of leaving a hole under it
+    // (UI review R2).
+    const top = unit.rect.y + shiftAt(unit.rect.y);
+    const bottom = unit.rect.y + unit.rect.h;
+    let rect = {
+      ...unit.rect,
+      y: top,
+      h: Math.max(unit.rect.h, rows.get(unit.id) || 0, bottom + shiftAt(bottom) - top),
+    };
+    // Safety: a band shift never overlaps, but anything that would is moved
+    // below what it meets.
     let collisions = placed.filter((other) => intersects(rect, other.rect));
     while (collisions.length) {
       rect = { ...rect, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
@@ -383,13 +422,37 @@ export function projectBoard(board, width) {
   return projectColumns(board, width < PHONE_WIDTH ? PHONE_COLUMNS : width < 940 ? TABLET_COLUMNS : gridColumns(board));
 }
 
-export function pixelRect(rect, width, columns = COLUMNS, gap = GAP) {
+// The layout a column count belongs to (TABLET_COLUMNS and PHONE_COLUMNS are
+// only ever a tablet's or a phone's).
+const layoutOfColumns = (columns) =>
+  columns === PHONE_COLUMNS ? "phone" : columns === TABLET_COLUMNS ? "tablet" : "desktop";
+
+// A row's height in pixels on a board this wide, with these columns and gap.
+export function rowHeight(width, columns = COLUMNS, gap = GAP) {
+  if (!Number.isFinite(width) || width <= 0) return ROW_HEIGHT;
+  const reference = REFERENCE_WIDTH[layoutOfColumns(columns)];
+  const cell = (width + gap) / columns - gap;
+  const referenceCell = (reference + gap) / columns - gap;
+  // Narrower than the gaps themselves: as short as a row may be.
+  if (!(cell > 0)) return ROW_MIN;
+  // Whole hundredths, so the same width always gives exactly the same rows.
+  const height = Math.round(((ROW_HEIGHT * cell) / referenceCell) * 100) / 100;
+  return Math.min(ROW_MAX, Math.max(ROW_MIN, height));
+}
+// One row plus the gap below it: the vertical grid step.
+export const rowStep = (width, columns = COLUMNS, gap = GAP) =>
+  Math.round((rowHeight(width, columns, gap) + gap) * 100) / 100;
+
+// rowWidth: the width rows are worked out from, when it differs from the
+// board's (the board ignores a scrollbar coming or going for rows).
+export function pixelRect(rect, width, columns = COLUMNS, gap = GAP, rowWidth = width) {
   const column = (width + gap) / columns;
+  const row = rowStep(rowWidth, columns, gap);
   return {
     left: rect.x * column,
-    top: rect.y * (ROW_HEIGHT + gap),
+    top: rect.y * row,
     width: Math.max(0, rect.w * column - gap),
-    height: rect.h * (ROW_HEIGHT + gap) - gap,
+    height: rect.h * row - gap,
   };
 }
 

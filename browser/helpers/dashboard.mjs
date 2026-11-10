@@ -156,6 +156,13 @@ export async function seedServicePanels(request, items) {
   return studioApi(request, '/dashboard/studio/api/board', { revision: state.revision, board });
 }
 
+// One row of the board as drawn now: rows scale with the columns' width
+// (mock-ups v4, board 5), so a row is 48 px (36 + the 12 px gap) only at the
+// reference width of each layout.
+export async function rowStep(page) {
+  return page.locator('.studio-canvas').evaluate(element => parseFloat(getComputedStyle(element).getPropertyValue('--studio-grid-row')));
+}
+
 export async function panelPixels(panel) {
   return panel.evaluate(element => Object.fromEntries(['left', 'top', 'width', 'height'].map(key => [key, parseFloat(element.style[key])])));
 }

@@ -35,10 +35,10 @@ vi.mock("components/services/widget/block", () => ({
 const { CardBlocks } = await import("./card-values");
 
 const card = { id: "panel-1", blocks: [{ id: "b1", type: "logs" }] };
-const draw = () =>
+const draw = (extra = {}) =>
   render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-      <CardBlocks card={card} />
+      <CardBlocks card={{ ...card, ...extra }} />
     </SWRConfig>,
   );
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
@@ -75,5 +75,27 @@ describe("Logs block gate", () => {
     const lines = container.querySelectorAll(".studio-log-line");
     expect(lines[0].querySelector(".studio-log-source")).toBeNull();
     expect(lines[1].querySelector(".studio-log-source").textContent).toBe("sam's browser");
+    // Each line opens Operations' logs for this widget (mock-ups v4, board 8).
+    for (const line of lines) {
+      expect(line.tagName).toBe("A");
+      const [path, hash] = line.getAttribute("href").split("#");
+      expect(path).toBe("/studio/operations");
+      const params = new URLSearchParams(hash.replace(/^logs\?/, ""));
+      expect(Object.fromEntries(params)).toEqual({ panel: "panel-1", scope: "dash-a", range: "24h" });
+    }
+  });
+  it("names the widget in the link, and is plain text while arranging (UI review M3, M4)", async () => {
+    access = { authEnabled: true, dashboard: { id: "dash-a" }, operations: { logs: true } };
+    const live = draw({ shownName: "DNS filter" });
+    await settle();
+    await settle();
+    const href = live.container.querySelector("a.studio-log-line").getAttribute("href");
+    expect(new URLSearchParams(href.split("#logs?")[1]).get("name")).toBe("DNS filter");
+    live.unmount();
+    const editing = draw({ editing: true });
+    await settle();
+    await settle();
+    expect(editing.container.querySelectorAll(".studio-log-line").length).toBe(2);
+    expect(editing.container.querySelector("a")).toBeNull();
   });
 });

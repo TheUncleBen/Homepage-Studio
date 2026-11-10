@@ -4,6 +4,7 @@ import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import StudioBoard from "./board";
+import { PHONE_COLUMNS, rowStep } from "./geometry.mjs";
 
 vi.mock("./native-panel", () => ({
   default: ({ panel }) => <output data-testid={`native-${panel.id}`}>{panel.title}</output>,
@@ -87,7 +88,8 @@ describe("a layout for each size", () => {
     expect(within(sizes).getByRole("button", { name: "Phone" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText(/Follows desktop until you move or resize a widget here/)).toBeInTheDocument();
     // Small clock and weather pair up; the wide search goes below them.
-    expect(section("search").style.top).toBe("192px");
+    // Four rows down (rows follow the board's width, Board 5).
+    expect(section("search").style.top).toBe(`${4 * rowStep(1200, PHONE_COLUMNS)}px`);
     fireEvent.keyDown(
       screen.getByRole("button", { name: "Move search. Use arrow keys; Shift and arrow keys resize." }),
       {

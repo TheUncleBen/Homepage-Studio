@@ -382,8 +382,16 @@
     function logsTab() {
       const start = pendingLogs; pendingLogs = null;
       const hashQuery = new URLSearchParams(location.hash.split('?')[1] ?? '');
-      const queryInput = h('input', { type: 'search', class: 'ops-query mono', placeholder: 'Search, for example: severity:error source:docker', 'aria-label': 'Search the logs', value: start?.query ?? hashQuery.get('q') ?? '' });
-      let range = '1h';
+      const fromHash = key => (start ? '' : hashQuery.get(key) ?? '');
+      // One box that searches as you type (mock-ups v4, board 8). Level,
+      // source, service and problem are chips beside it, each one choice at a
+      // time; the box keeps the full search language for anything more.
+      const queryInput = h('input', { type: 'search', class: 'ops-query', placeholder: 'Search the logs', 'aria-label': 'Search the logs', autocomplete: 'off', spellcheck: 'false', value: start?.query ?? hashQuery.get('q') ?? '' });
+      const chosen = { severity: fromHash('level'), source: fromHash('source'), resource: fromHash('resource'), class: fromHash('class') };
+      // Opened from a widget's Logs block or Investigate: only that widget's
+      // lines, shown as a chip that can be taken off. The name is only a label.
+      let widget = fromHash('panel') ? { panel: fromHash('panel'), scope: fromHash('scope'), name: fromHash('name').slice(0, 80) } : null;
+      let range = RANGES.some(([option]) => option === fromHash('range')) ? fromHash('range') : '1h';
       let window_ = start ? { from: start.from, to: start.to } : null;
       const rangeControl = segmented({ value: range, label: 'Time range', options: RANGES, onChange: option => { range = option; window_ = null; search(); } });
       const [helpButton, help] = infoToggle('search', [
@@ -398,23 +406,43 @@
       let grouped = false;
       const groupToggle = segmented({ value: 'events', label: 'Show', options: [['events', 'Events'], ['groups', 'Similar together']], onChange: option => { grouped = option === 'groups'; search(); } });
       let next = null, lastParams = null;
-      const searchButton = h('button', { type: 'button', class: 'primary small-button', text: 'Search' });
-      searchButton.addEventListener('click', () => { window_ = null; search(); });
-      queryInput.addEventListener('keydown', event => { if (event.key === 'Enter') { window_ = null; search(); } });
-      const params = () => ({ q: queryInput.value.trim(), ...(window_ ? { from: Math.round(window_.from), to: Math.round(window_.to) } : { range }), dashboard: filter });
+      // Searches as you type, a moment after the last key; Enter searches now.
+      let typing = null;
+      const searchSoon = () => { clearTimeout(typing); typing = setTimeout(() => { window_ = null; search(); }, 350); };
+      queryInput.addEventListener('input', searchSoon);
+      queryInput.addEventListener('keydown', event => { if (event.key === 'Enter') { clearTimeout(typing); window_ = null; search(); } });
+      const quote = text => (/[\s"]/.test(String(text)) ? `"${String(text).replace(/"/g, '')}"` : String(text));
+      // skip: one chip row left out, so that row can list its other choices.
+      const chipTerms = skip => [
+        widget ? `${widget.scope ? `dashboard:${quote(widget.scope)} ` : ''}panel:${quote(widget.panel)}` : '',
+        ...Object.entries(chosen).filter(([field, v]) => v && field !== skip).map(([field, v]) => `${field}:${quote(v)}`),
+      ].filter(Boolean);
+      const fullQuery = skip => [queryInput.value.trim(), ...chipTerms(skip)].filter(Boolean).join(' ');
+      const params = () => ({ q: fullQuery(), ...(window_ ? { from: Math.round(window_.from), to: Math.round(window_.to) } : { range }), dashboard: filter });
+      // Each search gets a number; a slower earlier answer never replaces a
+      // newer one (typing starts many searches).
+      let searchNumber = 0;
       async function search() {
+        clearTimeout(typing);
+        const mine = ++searchNumber;
         lastParams = params();
-        history.replaceState(history.state, '', '#logs' + (lastParams.q ? '?' + qs({ q: lastParams.q }) : ''));
+        const link = qs({ q: queryInput.value.trim(), level: chosen.severity, source: chosen.source, resource: chosen.resource, class: chosen.class, panel: widget?.panel, scope: widget?.scope, name: widget?.name, range: range === '1h' ? '' : range });
+        history.replaceState(history.state, '', '#logs' + (link ? '?' + link : ''));
         status.textContent = 'Searching…';
         put(results, loading());
         const p = qs(lastParams);
         try {
-          const [hist, list, facetData] = await Promise.all([ops('logs/histogram?' + p), grouped ? ops('logs/groups?' + p) : ops('logs/search?' + p + '&limit=100'), ops('logs/facets?' + p)]);
+          // A row with a chip chosen lists what the search finds without that
+          // chip, so another choice is one click away (not Any first).
+          const own = Object.keys(chosen).filter(field => chosen[field] && field !== 'severity');
+          const [hist, list, facetData, ...others] = await Promise.all([ops('logs/histogram?' + p), grouped ? ops('logs/groups?' + p) : ops('logs/search?' + p + '&limit=100'), ops('logs/facets?' + p),
+            ...own.map(field => ops('logs/facets?' + qs({ ...lastParams, q: fullQuery(field) })).catch(() => null))]);
+          if (mine !== searchNumber) return;
           drawHistogram(hist);
-          drawFacets(facetData);
+          drawFacets(facetData, Object.fromEntries(own.map((field, index) => [field, others[index]])));
           if (grouped) { drawGroups(list.groups); status.textContent = `${plural(list.groups.length, 'kind of event', 'kinds of event')}${list.partial ? ' (search stopped early; narrow it to see everything)' : ''}`; }
           else { next = list.next; drawEvents(list.events, false); status.textContent = `${plural(facetData.total, 'event', 'events')}${list.partial || facetData.partial ? ' (search stopped early; narrow it to see everything)' : ''}`; }
-        } catch (error) { status.textContent = ''; put(results, h('div', { class: 'notice error', role: 'alert', text: error.message })); }
+        } catch (error) { if (mine !== searchNumber) return; status.textContent = ''; put(results, h('div', { class: 'notice error', role: 'alert', text: error.message })); }
       }
       function drawHistogram(data) {
         const max = Math.max(1, ...data.bars.map(bar => bar.n));
@@ -430,12 +458,32 @@
         });
         put(histogram, chart, window_ ? h('button', { type: 'button', class: 'link-button small', text: `Showing ${shortTime(window_.from)} to ${time(window_.to)} · show the whole range`, onclick: () => { window_ = null; search(); } }) : null);
       }
-      function addTerm(term) { const now = queryInput.value.trim(); if (!now.split(/\s+/).includes(term)) queryInput.value = (now ? now + ' ' : '') + term; search(); }
-      const quote = text => (/[\s"]/.test(String(text)) ? `"${String(text).replace(/"/g, '')}"` : String(text));
-      function drawFacets(data) {
-        const sets = [['severity', 'Severity', item => SEVERITY[item.value] ?? item.value, item => `severity:${(SEVERITY[item.value] ?? 'info').toLowerCase()}`], ['source_type', 'Source', item => item.value, item => `source:${item.value}`], ['resource', 'Resource', item => item.value, item => `resource:${quote(item.value)}`], ['error_class', 'Problem', item => item.value, item => `class:${item.value}`]];
-        put(facets, sets.filter(([key]) => data.facets?.[key]?.length).map(([key, label, text, term]) => h('div', { class: 'ops-facet' }, h('span', { class: 'ops-facet-label', text: label }),
-          data.facets[key].slice(0, 6).map(item => h('button', { type: 'button', class: 'ops-chip', onclick: () => addTerm(term(item)) }, h('span', { text: text(item) }), h('small', { text: String(item.count) }))))));
+      // Chip rows: Any, then what this search found (with how many), and the
+      // chip in force even when the search no longer finds it, so it can be
+      // taken off. Level is always there: its choices don't depend on data.
+      const LEVELS = [['warning', 'Warnings and errors'], ['error', 'Errors']];
+      function chipRow(label, field, items) {
+        const pick = valueOf => { chosen[field] = chosen[field] === valueOf ? '' : valueOf; window_ = null; search(); };
+        const now = chosen[field];
+        const shown = items.some(item => item.value === now) || !now ? items : [{ value: now, text: now }, ...items];
+        return h('div', { class: 'ops-facet', role: 'group', 'aria-label': label }, h('span', { class: 'ops-facet-label', text: label }),
+          h('button', { type: 'button', class: 'ops-chip', 'aria-pressed': String(!now), text: 'Any', onclick: () => { if (now) pick(now); } }),
+          shown.map(item => h('button', { type: 'button', class: 'ops-chip', 'aria-pressed': String(item.value === now), onclick: () => pick(item.value) }, h('span', { text: item.text }), item.count !== undefined ? h('small', { text: String(item.count) }) : null)));
+      }
+      const FACET_KEY = { source: 'source_type', resource: 'resource', class: 'error_class' };
+      // Plain words for the kinds of source (UI review L4); the search
+      // language keeps the short names (source:ingest).
+      const SOURCE_LABEL = { studio: 'Studio', renderer: 'Dashboards', monitor: 'Monitors', integration: 'Widgets', browser: 'Browsers', config: 'Configuration', audit: 'Admin changes', ingest: 'Sent in', syslog: 'Syslog', docker: 'Docker' };
+      function drawFacets(data, without = {}) {
+        const found = key => ((without[Object.keys(FACET_KEY).find(field => FACET_KEY[field] === key)] ?? data).facets?.[key] ?? []).slice(0, 6);
+        const sets = [['Source', 'source', found('source_type').map(item => ({ value: String(item.value), text: SOURCE_LABEL[item.value] ?? String(item.value), count: item.count }))],
+          ['Service', 'resource', found('resource').map(item => ({ value: String(item.value), text: String(item.value), count: item.count }))],
+          ['Problem', 'class', found('error_class').map(item => ({ value: String(item.value), text: String(item.value), count: item.count }))]];
+        put(facets,
+          widget ? h('div', { class: 'ops-facet', role: 'group', 'aria-label': 'Widget' }, h('span', { class: 'ops-facet-label', text: 'Widget' }),
+            h('button', { type: 'button', class: 'ops-chip', 'aria-pressed': 'true', 'aria-label': `Only ${widget.name || 'this widget'}: show every widget`, onclick: () => { widget = null; window_ = null; search(); } }, h('span', { text: widget.name || 'This widget' }), icon('close', 13))) : null,
+          chipRow('Level', 'severity', LEVELS.map(([v, text]) => ({ value: v, text }))),
+          sets.filter(([, field, items]) => items.length || chosen[field]).map(([label, field, items]) => chipRow(label, field, items)));
       }
       function drawEvents(events, append) {
         const rows = events.map(event => eventRow(event));
@@ -496,7 +544,7 @@
         })) : [emptyRow('No events match.')]));
       }
       // Saved searches, shared between administrators.
-      const views = h('select', { 'aria-label': 'Saved searches', class: 'ops-views', hidden: true, onchange: event => { const view = savedViews.find(item => item.id === event.target.value); if (view) { queryInput.value = view.query; range = view.range in Object.fromEntries(RANGES) ? view.range : '1h'; window_ = null; search(); } event.target.value = ''; } });
+      const views = h('select', { 'aria-label': 'Saved searches', class: 'ops-views', hidden: true, onchange: event => { const view = savedViews.find(item => item.id === event.target.value); if (view) { queryInput.value = view.query; for (const key of Object.keys(chosen)) chosen[key] = ''; widget = null; range = view.range in Object.fromEntries(RANGES) ? view.range : '1h'; window_ = null; search(); } event.target.value = ''; } });
       let savedViews = [];
       if (admin) ops('views').then(data => { savedViews = data.views; put(views, h('option', { value: '', text: savedViews.length ? 'Saved searches' : 'No saved searches' }), savedViews.map(item => h('option', { value: item.id, text: item.name }))); views.hidden = !savedViews.length; }).catch(() => { views.hidden = true; });
       const saveView = admin ? h('button', { type: 'button', class: 'small-button', text: 'Save search', onclick: () => saveViewDialog() }) : null;
@@ -505,7 +553,7 @@
           const box = notice();
           const name = inputRow('Name', { maxlength: 80, 'data-autofocus': true });
           const save = h('button', { type: 'button', class: 'primary', text: 'Save' });
-          save.addEventListener('click', () => busy(save, 'Saving…', async () => { try { const result = await ops('config', { kind: 'view', action: 'save', item: { name: name.input.value, query: queryInput.value.trim(), range } }); savedViews.push(result.item); views.append(h('option', { value: result.item.id, text: result.item.name })); views.hidden = false; close(); } catch (error) { failure(box, error); } }));
+          save.addEventListener('click', () => busy(save, 'Saving…', async () => { try { const result = await ops('config', { kind: 'view', action: 'save', item: { name: name.input.value, query: fullQuery(), range } }); savedViews.push(result.item); views.append(h('option', { value: result.item.id, text: result.item.name })); views.hidden = false; close(); } catch (error) { failure(box, error); } }));
           return [group({}, name.row), box, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save)];
         });
       }
@@ -532,7 +580,7 @@
       }
       search();
       return [filterBar(views, saveView, exportButton),
-        h('div', { class: 'ops-searchbar' }, h('div', { class: 'ops-query-row' }, queryInput, helpButton, searchButton), help, h('div', { class: 'spread' }, rangeControl, groupToggle)),
+        h('div', { class: 'ops-searchbar' }, h('div', { class: 'ops-query-row' }, h('label', { class: 'ops-query-box' }, icon('search', 16), queryInput), helpButton), help, h('div', { class: 'spread' }, rangeControl, groupToggle)),
         histogram, facets, status, results];
     }
 

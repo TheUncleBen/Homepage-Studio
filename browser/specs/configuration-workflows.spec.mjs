@@ -1,4 +1,4 @@
-import { DASHBOARDS, expect, expectSaved, finishArrangement, openEditor, openSettings, saveFiles, seedServicePanels, studioApi, test } from '../helpers/dashboard.mjs';
+import { DASHBOARDS, expect, expectSaved, finishArrangement, openEditor, openSettings, rowStep, saveFiles, seedServicePanels, studioApi, test } from '../helpers/dashboard.mjs';
 import { downloadText, fileText, NATIVE_FILES, openFiles, playback, seedNative } from '../helpers/engineering.mjs';
 
 test('guided settings and nine-file import/export preserve drafts, literal options and one validated transaction', async ({ page, request }) => {
@@ -117,7 +117,8 @@ test('a concurrent file save keeps the local draft until explicit reload, and an
   const externalAgain = await saveFiles(request, { settingsYaml: 'title: A second concurrent change\n' });
   await page.getByRole('button', { name: /^Move Conflict fixture\. Use arrow keys/ }).press('ArrowDown');
   const tile = page.locator('[data-panel-kind="service"][aria-label="Conflict fixture"]');
-  await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBe(48); // One row: 36 px plus the 12 px gap.
+  const step = await rowStep(page);
+  await expect.poll(() => tile.evaluate(element => parseFloat(element.style.top))).toBeCloseTo(step, 1); // One row, with its gap.
   await expect.poll(async () => (await studioApi(request, '/dashboard/studio/api/state')).revision).not.toBe(externalAgain.revision);
   await expectSaved(page);
   const merged = await studioApi(request, '/dashboard/studio/api/state');
