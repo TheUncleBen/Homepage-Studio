@@ -25,8 +25,13 @@ build is identified by its source commit and image digest
   layout”). The first data version turns each into the blocks that draw it
   the same way, in boards, saved looks, saved widgets, snapshots and the
   dashboard card look.
-- **A dashboard that can't load says why** in the log, instead of only “not
-  ready”; administrators also see it at `/studio/config-ready`.
+- **A dashboard that can't load says why.** Opening it in a browser shows a
+  “This dashboard can't load right now” page instead of raw JSON; people who
+  can arrange it also see the reason, which the log records too.
+- **Chart legends wrap** onto more lines instead of running out of the card,
+  so a chart of many values no longer shrinks its Big number to a sliver.
+- **Appearance on a phone:** the Cards › Fill options share the width
+  instead of running past the panel.
 - **A rollback right after an upgrade is automatic.** Until a new version has
   run for four minutes its upgrade is unconfirmed; if Swarm rolls back in
   that time, the previous image puts the before-upgrade backup back itself.

@@ -1,13 +1,16 @@
 # Updating Homepage Studio
 
-An update is the same deployment with a new bundle's template: the image line
-changes to the new digest, your values and volumes stay. Studio never updates
-itself, and since there's no `latest` tag, nothing changes until you deploy a
-new template.
+An update is changing the image digest on your stack's `image:` line to the
+new bundle's, and deploying. Your values and volumes stay. Studio never
+updates itself, and since there's no `latest` tag, nothing changes until you
+deploy a new digest.
 
 **What stays as it is:** both volumes (every dashboard, layout and snapshot),
-your environment values, your Docker secrets and network, your proxy. **What you take new each time:** the
-bundle's `portainer-swarm.yml` or `portainer-compose.yml`, used unchanged.
+your environment values, your Docker secrets and network, your proxy. **What
+changes:** the digest. Only when the new bundle's changelog says its template
+changed do you also take its `portainer-swarm.yml` or `portainer-compose.yml`
+in place of yours. (The bundle's templates don't read `STUDIO_IMAGE`; changing
+it does nothing.)
 
 Any candidate or release updates an existing deployment in place, keeping
 all its data; you don't need to reinstall.
@@ -60,8 +63,10 @@ and start it again; or go back to the previous image.
 ### Portainer (Swarm or standalone)
 
 1. **Stacks → homepage → Editor.**
-2. Replace the whole text with the new bundle's template, unchanged. Leave the
-   environment variables as they are, unless the changelog says to add one.
+2. Change the digest on the `image:` line to the new bundle's. (If the
+   changelog says the template changed, replace the whole text with the new
+   bundle's template instead.) Leave the environment variables as they are,
+   unless the changelog says to add one.
 3. **Update the stack.**
 
 On Swarm the template updates `stop-first`: the old container stops, then the
@@ -72,15 +77,19 @@ image by itself.
 
 ### Swarm without Portainer
 
+Change the digest on the `image:` line of your `portainer-swarm.yml` (or use
+the new bundle's file when its template changed), then:
+
 ```bash
 set -a; . ./homepage.env; set +a                                  # your values (DEPLOY.md, Without Portainer)
-docker stack deploy --compose-file portainer-swarm.yml homepage   # the new bundle's file
+docker stack deploy --compose-file portainer-swarm.yml homepage
 ```
 
 ### Docker Compose
 
-Put the new bundle's `portainer-compose.yml` in place of the old one, next to
-your `.env` (your secrets folder stays), and:
+Change the digest on the `image:` line of `portainer-compose.yml` (or put the
+new bundle's file in its place when its template changed), keep your `.env`
+and secrets folder, and:
 
 ```bash
 docker compose --project-name homepage --file portainer-compose.yml up -d
@@ -103,12 +112,19 @@ If the update converted data (the log says `Studio upgrade: data version …`),
 an older image refuses to start on it, so the older image goes back together
 with the backup made at the update:
 
-1. Stage that backup for the next start, from a shell on the Swarm node (or
-   the Compose host):
+1. Stage that backup for the next start. On Swarm, from a shell on the node
+   that runs Studio:
 
    ```bash
    docker exec $(docker ps -q -f name=homepage_studio) node server/backups.mjs list
    docker exec $(docker ps -q -f name=homepage_studio) node server/backups.mjs restore <the …-before-upgrade name>
+   ```
+
+   With Docker Compose, from the folder with `portainer-compose.yml`:
+
+   ```bash
+   docker compose --project-name homepage --file portainer-compose.yml exec studio node server/backups.mjs list
+   docker compose --project-name homepage --file portainer-compose.yml exec studio node server/backups.mjs restore <the …-before-upgrade name>
    ```
 
    (Restoring it in Administration → Backups instead restarts the current
@@ -117,7 +133,9 @@ with the backup made at the update:
    back before it reads anything, then starts on the data as it was.
 
 Images from before data versioning (candidate 1c3b5bd and earlier) don't
-know these backups; going back to one of them isn't supported.
+know these backups. To go back to one of them, put back a copy of the volumes
+taken before the update ([OPERATIONS.md](OPERATIONS.md#restoring-the-volumes))
+with that image.
 
 Changes made after the update are lost with that restore, so export any
 dashboard you changed first ([USING.md](USING.md#snapshots-export-and-import)).

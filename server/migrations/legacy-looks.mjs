@@ -42,20 +42,25 @@ export function blocksFor(look, inherited = {}) {
   const hero = slot('hero')[0];
   const hidden = new Set(slot('hidden'));
   const numbers = slot('number');
-  // The rest: every value no other block shows, unless some were hidden,
-  // then the arranged ones that weren't.
-  const rest = hidden.size ? values.filter((value) => !hidden.has(value.field) && !['hero', 'number'].includes(value.slot)).map((value) => value.field) : null;
-  const restValues = rest ? { values: rest } : {};
-  const big = { type: 'big', ...(hero ? { values: [hero] } : { first: true }), size: old.heroSize };
+  const visible = values.filter((value) => !hidden.has(value.field)).map((value) => value.field);
+  // The value the Big number (or gauge) leads with: the Hero one, else the
+  // first value that wasn't hidden (left alone, the block would pick the
+  // first value, hidden or not).
+  const lead = hero ?? (hidden.size ? visible[0] : undefined);
+  const only = (list) => (hidden.size ? { values: list } : {});
+  const big = { type: 'big', ...(lead ? { values: [lead] } : { first: true }), size: old.heroSize };
   const blocks = [];
-  if (old.show === 'numbers' && old.layout === 'quiet') blocks.push({ type: 'quiet', ...restValues });
-  else if (old.show === 'numbers') blocks.push({ ...big, trend: old.trend }, { type: 'numbers', columns: old.columns, ...restValues });
-  else if (old.show === 'table') blocks.push({ type: 'numbers', arrange: 'list', ...restValues });
+  // Quiet and table listed every value that wasn't hidden, whatever its slot.
+  if (old.show === 'numbers' && old.layout === 'quiet') blocks.push({ type: 'quiet', ...only(visible) });
+  else if (old.show === 'numbers') blocks.push({ ...big, trend: old.trend }, { type: 'numbers', columns: old.columns, ...only(visible.filter((field) => field !== lead)) });
+  else if (old.show === 'table') blocks.push({ type: 'numbers', arrange: 'list', ...only(visible) });
   else if (['line', 'area', 'bar'].includes(old.show)) {
-    const charted = values.filter((value) => !['hidden', 'number'].includes(value.slot)).map((value) => value.field);
+    const charted = visible.filter((field) => !numbers.includes(field));
     blocks.push(big, { type: 'chart', style: old.show, range: old.chartRange, ...(charted.length ? { values: charted } : {}) });
-  } else if (['donut', 'pie'].includes(old.show)) blocks.push({ type: 'pie', style: old.show });
-  else if (old.show === 'gauge') blocks.push({ type: 'gauge', ...(hero ? { values: [hero] } : {}) });
+  } else if (['donut', 'pie'].includes(old.show)) {
+    const sliced = visible.filter((field) => !numbers.includes(field));
+    blocks.push({ type: 'pie', style: old.show, ...((hidden.size || numbers.length) && sliced.length ? { values: sliced } : {}) });
+  } else if (old.show === 'gauge') blocks.push({ type: 'gauge', ...(lead ? { values: [lead] } : {}) });
   else if (old.show === 'status') blocks.push({ type: 'status', range: old.chartRange });
   if (numbers.length && ['line', 'area', 'bar', 'donut', 'pie'].includes(old.show)) blocks.push({ type: 'numbers', values: numbers });
   return blocks.map((block, index) => ({ id: `b${index + 1}`, ...block }));
@@ -136,6 +141,7 @@ export function convertSettingsText(text) {
   if (!Object.keys(inherited).length) return { text, inherited };
   for (const key of Object.keys(inherited)) doc.deleteIn(['studioTheme', 'card', key]);
   if (!doc.getIn(['studioTheme', 'card']).items.length) doc.deleteIn(['studioTheme', 'card']);
+  if (isMap(doc.get('studioTheme')) && !doc.get('studioTheme').items.length) doc.delete('studioTheme');
   return { text: doc.toString(), inherited };
 }
 

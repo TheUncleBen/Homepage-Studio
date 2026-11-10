@@ -125,8 +125,9 @@ function wantsHtmlPage(req) {
   if (/^\/(?:[^/]+\/)?(?:api|studio\/api)(?:\/|$)/.test(path)) return false;
   return String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html');
 }
-function renderUnavailablePage(status, { title = 'This dashboard isn&#39;t available', text = 'Its address may have changed, or it may have been archived. Choose the dashboard you need on the Dashboards page.' } = {}) {
-  const code = Number(status) === 410 ? 410 : 404;
+const escapeHtml = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+function renderUnavailablePage(status, { title = 'This dashboard isn&#39;t available', text = 'Its address may have changed, or it may have been archived. Choose the dashboard you need on the Dashboards page.', detail } = {}) {
+  const code = [410, 503].includes(Number(status)) ? Number(status) : 404;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -142,6 +143,7 @@ main { width: 100%; max-width: 30rem; padding: 28px 24px; background: #1b1a20; b
 .status { margin: 0 0 8px; color: #b4aebc; font-size: 0.875rem; letter-spacing: 0.04em; text-transform: uppercase; }
 h1 { margin: 0 0 12px; font-size: 1.375rem; line-height: 1.3; font-weight: 600; }
 p { margin: 0 0 20px; color: #b4aebc; }
+.detail { padding: 12px 14px; border-radius: 8px; background: #111115; color: #eeecf1; font-size: 0.9375rem; overflow-wrap: anywhere; }
 a { display: inline-block; padding: 10px 16px; border-radius: 8px; background: #685870; color: #ffffff; text-decoration: none; font-weight: 600; }
 a:hover { background: #77697e; }
 a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
@@ -152,7 +154,7 @@ a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
 <p class="status">Error ${code}</p>
 <h1>${title}</h1>
 <p>${text}</p>
-<a href="/studio/dashboards">Open Dashboards</a>
+${detail ? `<p class="detail">${escapeHtml(detail)}</p>\n` : ''}<a href="/studio/dashboards">Open Dashboards</a>
 </main>
 </body>
 </html>
@@ -165,6 +167,18 @@ function unavailablePage(req, res, status) {
   const page = renderUnavailablePage(status, operations ? { title: 'Operations needs Studio sign-in', text: 'Monitoring and logs are only available when Studio sign-in is on (see MONITORING.md in the documentation). Cards still show their status.' } : undefined);
   const policy = res.getHeader('content-security-policy');
   res.writeHead(status === 410 ? 410 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(page), 'content-security-policy': [].concat(policy ?? [], UNAVAILABLE_PAGE_POLICY), vary: 'Accept' });
+  res.end(req.method === 'HEAD' ? undefined : page);
+}
+// A dashboard whose configuration doesn't load (UI review M1, 10 Nov 2026):
+// browsers get a page, not the JSON error. People who can arrange it also
+// see why; everyone else, only that it can't load right now.
+function notReadyPage(req, res, reason) {
+  if (res.destroyed || res.writableEnded || res.headersSent) return;
+  const page = renderUnavailablePage(503, reason
+    ? { title: 'This dashboard can&#39;t load right now', text: 'Its configuration was refused for this reason. An administrator can fix it in the dashboard&#39;s settings, or put back a backup under Administration › Backups.', detail: reason }
+    : { title: 'This dashboard can&#39;t load right now', text: 'Something in its configuration needs fixing. Try again later, or ask the person who runs Studio.' });
+  const policy = res.getHeader('content-security-policy');
+  res.writeHead(503, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'retry-after': '60', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(page), 'content-security-policy': [].concat(policy ?? [], UNAVAILABLE_PAGE_POLICY), vary: 'Accept' });
   res.end(req.method === 'HEAD' ? undefined : page);
 }
 
@@ -393,6 +407,7 @@ function createDashboardHandlers(options = {}) {
   }
 
   let lastNativeFailure = null;
+  let lastNativeReason = null;
   async function prepareNative() {
     await initialization;
     try {
@@ -403,6 +418,7 @@ function createDashboardHandlers(options = {}) {
       // The reason goes to the log, once per reason ("not ready" alone can't
       // be acted on); administrators also see it at /studio/config-ready.
       const cause = String(error.code || error.name || 'UNKNOWN').slice(0, 64);
+      lastNativeReason = String(error.message || '').slice(0, 500);
       if (lastNativeFailure !== cause) {
         lastNativeFailure = cause;
         console.error(`Dashboard configuration in ${configDir} is not ready (${cause}): ${error.message}`);
@@ -410,6 +426,7 @@ function createDashboardHandlers(options = {}) {
       throw new ConfigError('Homepage configuration is not ready. Check the editor configuration and storage before loading the dashboard.', 'CONFIG_NOT_READY', 503);
     }
     lastNativeFailure = null;
+    lastNativeReason = null;
   }
 
   async function checkNativeHttp(host, dashboard) {
@@ -899,6 +916,9 @@ function createDashboardHandlers(options = {}) {
       if (path.startsWith('/studio/')) return json(res, 404, { error: 'This editor endpoint does not exist.' });
       await proxy(req, res, dashboard);
     } catch (error) {
+      if (error instanceof ConfigError && error.code === 'CONFIG_NOT_READY' && wantsHtmlPage(req) && !res.headersSent) {
+        return notReadyPage(req, res, ['arrange', 'admin'].includes(req.studioLevel) ? lastNativeReason : null);
+      }
       const status = Number(error.status || error.statusCode) || 500;
       if (error.closeConnection && !res.headersSent) res.setHeader('connection', 'close');
       if (error.retryAfter && !res.headersSent) res.setHeader('retry-after', String(error.retryAfter));
@@ -1692,6 +1712,7 @@ export function createStudioServer(options = {}) {
       }
       // Who saves an uploaded image or a connection (Saved items shows it).
       if (auth && current?.user) req.studioActor = current.user.username;
+      req.studioLevel = level;
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
       if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);

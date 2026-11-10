@@ -32,11 +32,31 @@ test('each old look becomes the blocks that drew it', () => {
   for (const look of [{ layout: 'quiet', columns: '3' }, { show: 'donut', heroSize: 'xl' }]) assert.ok(validateLook(convertLook(look)) !== null);
 });
 
+test('hidden values stay hidden and every shown value stays shown (UI review H1, H2)', () => {
+  const blocks = (look) => convertLook(look).blocks;
+  // No Hero: the Big number leads with the first value that wasn't hidden;
+  // values set to Number still show below it.
+  assert.deepEqual(blocks({ values: [{ field: 'a', slot: 'hidden' }, { field: 'b' }, { field: 'c', slot: 'number' }] }),
+    [{ id: 'b1', type: 'big', values: ['b'] }, { id: 'b2', type: 'numbers', values: ['c'] }]);
+  // Quiet and table list every value that wasn't hidden, whatever its slot.
+  assert.deepEqual(blocks({ layout: 'quiet', values: [{ field: 'a', slot: 'hidden' }, { field: 'b', slot: 'hero' }, { field: 'c', slot: 'number' }] }),
+    [{ id: 'b1', type: 'quiet', values: ['b', 'c'] }]);
+  assert.deepEqual(blocks({ show: 'table', values: [{ field: 'a', slot: 'hidden' }, { field: 'b', slot: 'number' }] }),
+    [{ id: 'b1', type: 'numbers', arrange: 'list', values: ['b'] }]);
+  assert.deepEqual(blocks({ show: 'bar', values: [{ field: 'a', slot: 'hidden' }, { field: 'b' }, { field: 'c', slot: 'number' }] }),
+    [{ id: 'b1', type: 'big', values: ['b'] }, { id: 'b2', type: 'chart', style: 'bar', values: ['b'] }, { id: 'b3', type: 'numbers', values: ['c'] }]);
+  assert.deepEqual(blocks({ show: 'pie', values: [{ field: 'a', slot: 'hidden' }, { field: 'b' }, { field: 'c' }] }),
+    [{ id: 'b1', type: 'pie', style: 'pie', values: ['b', 'c'] }]);
+  assert.deepEqual(blocks({ show: 'gauge', values: [{ field: 'a', slot: 'hidden' }, { field: 'b' }] }),
+    [{ id: 'b1', type: 'gauge', values: ['b'] }]);
+});
+
 test('settings.yaml loses only the old card settings, keeping comments', () => {
   const { text, inherited } = convertSettingsText('# mine\ntitle: T\nstudioTheme:\n  card:\n    layout: quiet\n    fill: tint\n');
   assert.deepEqual(inherited, { layout: 'quiet' });
   assert.equal(text, '# mine\ntitle: T\nstudioTheme:\n  card:\n    fill: tint\n');
-  assert.equal(convertSettingsText('studioTheme:\n  card:\n    show: line\n').text, 'studioTheme: {}\n');
+  assert.equal(convertSettingsText('studioTheme:\n  card:\n    show: line\n').text, '{}\n');
+  assert.equal(convertSettingsText('title: T\nstudioTheme:\n  card:\n    show: line\n').text, 'title: T\n');
 });
 
 test('saved widgets and looks are converted', () => {

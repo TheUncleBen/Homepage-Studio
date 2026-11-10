@@ -424,13 +424,14 @@ docker service ps homepage_studio        # wait for Running
 
 ### Updating
 
-Updating is deploying the new bundle's image; your data stays. In Portainer:
-**Stacks → homepage → Editor**, replace the whole text with the new bundle's
-`portainer-swarm.yml` (it carries the new image digest), keep your
-environment variables, then **Update the stack**. (When the new bundle's
-changelog says the template is unchanged, changing only the digest on the
-`image:` line does the same.) Your secrets, network and volumes stay as they
-are.
+Updating is changing the image digest; your data stays. In Portainer:
+**Stacks → homepage → Editor**, change the digest on the `image:` line to the
+new bundle's (`…@sha256:…`), then **Update the stack**. If the new bundle's
+[CHANGELOG](../CHANGELOG.md) section says its template changed, paste its
+`portainer-swarm.yml` over the whole text instead (it carries the new digest)
+and keep your environment variables. `STUDIO_IMAGE` isn't used by the bundle's
+template, so changing it does nothing. Your secrets, network and volumes stay
+as they are.
 
 At its first start the new version brings your data up to date by itself. If
 anything needs converting, it first saves everything as a backup named

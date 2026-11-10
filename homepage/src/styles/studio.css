@@ -3637,13 +3637,13 @@ svg.studio-chart-gauge {
   gap: 12px;
   min-width: 0;
 }
+/* The legend wraps onto more lines rather than running out of the card: a
+   one-line legend cut short can never fit, so a chart of many values fell
+   to the smallest text (UI review H3, 10 Nov 2026). */
 .studio-chart-foot .studio-chart-legend {
   flex: 1 1 auto;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  mask-image: linear-gradient(to left, transparent, #000 16px);
 }
 .studio-chart-foot .studio-chart-range {
   flex: none;
@@ -5501,15 +5501,17 @@ svg.studio-chart-gauge {
   background: transparent;
   box-shadow: none;
 }
-/* Phone: a widget-dialog choice keeps its options on one line, sharing the
-   width; a long option wraps inside its own button rather than pushing the
-   last one to a line of its own. */
+/* Phone: a widget-dialog or Appearance choice keeps its options on one line,
+   sharing the width; a long option wraps inside its own button rather than
+   pushing the last one to a line of its own (or, in Appearance, past the
+   panel: UI review M5, 10 Nov 2026). */
 @media (max-width: 560px) {
-  .studio-look-editor .studio-row-control > .studio-segmented {
+  :is(.studio-look-editor, .studio-appearance) .studio-row-control > .studio-segmented {
     flex-wrap: nowrap;
     justify-self: stretch;
   }
-  .studio-look-editor .studio-segmented > button {
+  .studio-look-editor .studio-segmented > button,
+  .studio-appearance .studio-row-control > .studio-segmented > button {
     flex: 1 1 auto;
     min-width: 0;
     padding: 4px 6px;
