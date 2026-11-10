@@ -411,4 +411,35 @@ describe("grownUnits (Board 6: grow instead of clipping)", () => {
   it("never makes a widget shorter", () => {
     expect(grownUnits(units, new Map([["b", 1]])).find((unit) => unit.id === "b").rect.h).toBe(3);
   });
+  it("moves the whole band below a grown widget, so rows stay aligned (UI review M1)", () => {
+    const row = [
+      { id: "clock", kind: "panel", rect: { x: 0, y: 0, w: 6, h: 2 } },
+      { id: "tile", kind: "panel", rect: { x: 6, y: 0, w: 6, h: 2 } },
+      { id: "under-clock", kind: "panel", rect: { x: 0, y: 2, w: 6, h: 2 } },
+      { id: "under-tile", kind: "panel", rect: { x: 6, y: 2, w: 6, h: 2 } },
+      { id: "far", kind: "panel", rect: { x: 12, y: 2, w: 12, h: 2 } },
+    ];
+    const grown = new Map(grownUnits(row, new Map([["clock", 3]])).map((unit) => [unit.id, unit.rect]));
+    expect(grown.get("clock")).toEqual({ x: 0, y: 0, w: 6, h: 3 });
+    expect(grown.get("tile")).toEqual({ x: 6, y: 0, w: 6, h: 2 });
+    for (const id of ["under-clock", "under-tile", "far"]) expect(grown.get(id).y, id).toBe(3);
+  });
+  it("adds growths band by band", () => {
+    const column = [
+      { id: "a", kind: "panel", rect: { x: 0, y: 0, w: 4, h: 2 } },
+      { id: "b", kind: "panel", rect: { x: 4, y: 2, w: 4, h: 2 } },
+      { id: "c", kind: "panel", rect: { x: 8, y: 4, w: 4, h: 2 } },
+    ];
+    const grown = new Map(
+      grownUnits(
+        column,
+        new Map([
+          ["a", 3],
+          ["b", 4],
+        ]),
+      ).map((unit) => [unit.id, unit.rect]),
+    );
+    expect(grown.get("b")).toEqual({ x: 4, y: 3, w: 4, h: 4 });
+    expect(grown.get("c").y).toBe(7);
+  });
 });

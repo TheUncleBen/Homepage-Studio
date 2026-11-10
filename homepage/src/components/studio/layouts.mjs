@@ -29,8 +29,11 @@ import {
 export const SIZES = Object.freeze(["desktop", "tablet", "phone"]);
 export const SIZE_LABEL = Object.freeze({ desktop: "Desktop", tablet: "Tablet", phone: "Phone" });
 export const SIZE_COLUMNS = Object.freeze({ tablet: TABLET_COLUMNS, phone: PHONE_COLUMNS });
-// The width each size is shown at in the editor's size switch.
-export const SIZE_WIDTH = Object.freeze({ tablet: 820, phone: 390 });
+// The board width each size is shown at in the editor's size switch: the
+// board of an 820 px tablet and a 390 px phone (geometry.mjs
+// REFERENCE_WIDTH), so the preview's rows and room match the device's
+// (UI review L2).
+export const SIZE_WIDTH = Object.freeze({ tablet: 770, phone: 354 });
 export const TABLET_WIDTH = 940;
 
 export const sizeForWidth = (width) => (width < PHONE_WIDTH ? "phone" : width < TABLET_WIDTH ? "tablet" : "desktop");

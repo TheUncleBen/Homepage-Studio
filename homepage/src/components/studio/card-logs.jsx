@@ -27,18 +27,21 @@ export default function CardLogs({ card }) {
   if (!data) return <p className="studio-chart-note">Loading logs…</p>;
   const events = Array.isArray(data.events) ? data.events : [];
   if (!events.length) return <p className="studio-chart-note">Nothing logged for this widget in the last 24 hours.</p>;
-  // Any line opens Operations' logs for this widget (mock-ups v4, board 8).
-  const href = logsLink({ dashboardId, panelId: card.id, range: "24h" });
+  // Any line opens Operations' logs for this widget (mock-ups v4, board 8);
+  // while arranging, a click selects the widget, so lines are plain text
+  // (UI review M4).
+  const Line = card.editing ? "span" : "a";
+  const link = card.editing
+    ? {}
+    : {
+        href: logsLink({ dashboardId, panelId: card.id, name: card.shownName, range: "24h" }),
+        title: "Open these logs in Operations",
+      };
   return (
     <ul className="studio-card-logs" aria-label="Recent logs">
       {events.map((event) => (
         <li key={`${event.id}-${event.ts}`}>
-          <a
-            className="studio-log-line"
-            data-severity={event.severity}
-            href={href}
-            title="Open these logs in Operations"
-          >
+          <Line className="studio-log-line" data-severity={event.severity} {...link}>
             <span className="studio-log-level">{LEVEL[event.severity] ?? "INFO"}</span>
             {/* A report sent by someone's browser says whose, so it can't pass
               for Studio's own line (security review L1). */}
@@ -48,7 +51,7 @@ export default function CardLogs({ card }) {
               </span>
             )}
             <span className="studio-log-message">{event.message}</span>
-          </a>
+          </Line>
         </li>
       ))}
     </ul>

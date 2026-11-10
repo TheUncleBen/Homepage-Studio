@@ -6,12 +6,6 @@ body,
   min-height: 100%;
   background: var(--studio-bg);
 }
-/* Rows follow the board's width (Board 5), so a scrollbar appearing must not
-   change that width, or the board could grow, gain a scrollbar, narrow, and
-   shrink again. */
-html {
-  scrollbar-gutter: stable;
-}
 body {
   margin: 0;
   color: var(--studio-text);
@@ -3450,6 +3444,16 @@ body {
 /* Each line opens Operations' logs for this widget. */
 .studio-log-line:hover .studio-log-message {
   text-decoration: underline;
+}
+/* No hover on touch: a quiet chevron says a line opens (UI review L3). */
+@media (hover: none) {
+  a.studio-log-line::after {
+    content: "›";
+    flex: none;
+    margin-inline-start: auto;
+    padding-inline-start: 4px;
+    color: var(--card-muted-text);
+  }
 }
 .studio-log-line:focus-visible {
   outline: 2px solid var(--studio-accent-line, currentColor);

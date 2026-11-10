@@ -178,12 +178,15 @@ export function ServiceCard({ service, groupName, children, connected = false })
   const sized = useMemo(
     () => ({
       ...card,
+      // The name the card shows, for links that label it elsewhere (the
+      // Operations logs chip; UI review M3).
+      shownName: service?.name || "",
       header: effective.header,
       logoPos: effective.logoPos,
       align: effective.align,
       blocks: effective.blocks,
     }),
-    [card, effective],
+    [card, effective, service?.name],
   );
   const body = children ?? <CardBlocks card={sized} />;
   return (

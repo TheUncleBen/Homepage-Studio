@@ -119,7 +119,7 @@ The board is a grid of rows and columns: 24 columns on a desktop, 16 on a
 tablet and 8 on a phone. Rows scale with the columns, so a widget keeps its
 shape on a wider or narrower screen instead of only getting wider: a row is
 36 px when the board is as wide as on a 1440 px desktop, 820 px tablet or
-390 px phone screen, and between 18 and 64 px otherwise. Each size has its
+390 px phone screen, and between 18 and 45 px otherwise. Each size has its
 own layout, made from the desktop one:
 
 - Until you move or resize a widget on a tablet or phone, that size follows

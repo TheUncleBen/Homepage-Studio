@@ -471,9 +471,12 @@
           shown.map(item => h('button', { type: 'button', class: 'ops-chip', 'aria-pressed': String(item.value === now), onclick: () => pick(item.value) }, h('span', { text: item.text }), item.count !== undefined ? h('small', { text: String(item.count) }) : null)));
       }
       const FACET_KEY = { source: 'source_type', resource: 'resource', class: 'error_class' };
+      // Plain words for the kinds of source (UI review L4); the search
+      // language keeps the short names (source:ingest).
+      const SOURCE_LABEL = { studio: 'Studio', renderer: 'Dashboards', monitor: 'Monitors', integration: 'Widgets', browser: 'Browsers', config: 'Configuration', audit: 'Admin changes', ingest: 'Sent in', syslog: 'Syslog', docker: 'Docker' };
       function drawFacets(data, without = {}) {
         const found = key => ((without[Object.keys(FACET_KEY).find(field => FACET_KEY[field] === key)] ?? data).facets?.[key] ?? []).slice(0, 6);
-        const sets = [['Source', 'source', found('source_type').map(item => ({ value: String(item.value), text: String(item.value), count: item.count }))],
+        const sets = [['Source', 'source', found('source_type').map(item => ({ value: String(item.value), text: SOURCE_LABEL[item.value] ?? String(item.value), count: item.count }))],
           ['Service', 'resource', found('resource').map(item => ({ value: String(item.value), text: String(item.value), count: item.count }))],
           ['Problem', 'class', found('error_class').map(item => ({ value: String(item.value), text: String(item.value), count: item.count }))]];
         put(facets,

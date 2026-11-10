@@ -18,10 +18,13 @@ export const GAP = 12;
 // 1440 px desktop window, an 820 px tablet and a 390 px phone (the board is
 // the window less Studio's side padding: 40, 25 and 18 px).
 export const REFERENCE_WIDTH = Object.freeze({ desktop: 1360, tablet: 770, phone: 354 });
-// Bounds that only matter far from the references: rows never get so short
-// that a handle or a line of text has no room, nor absurdly tall.
+// Bounds: rows never get so short that a handle or a line of text has no
+// room. Wider than the reference they grow by at most a quarter (45 px), so
+// a phone layout on a small tablet or a landscape phone doesn't turn tiles
+// into half-empty boxes and the page into a long scroll (UI review M2);
+// a desktop's widest board (1600 px) stays just under that.
 export const ROW_MIN = 18;
-export const ROW_MAX = 64;
+export const ROW_MAX = 45;
 // Dashboard Appearance › Spacing: the space between widgets, in pixels.
 export const SPACING = Object.freeze({ compact: 6, default: GAP, roomy: 20 });
 export const gapOf = (settings) => {
@@ -363,9 +366,28 @@ export function fittedUnits(board) {
 // Anything that would then overlap moves down, in reading order.
 export function grownUnits(units, rows) {
   if (!rows?.size) return units;
+  // A widget that grows moves the whole band below it down by as much (UI
+  // review M1): everything that starts at or below its bottom edge, in every
+  // column, so rows that line up at the reference width still line up. A
+  // band's shift is the largest of the growths above it, each counted with
+  // the shift of the band it sits in.
+  const growths = [];
+  const shiftAt = (y) =>
+    growths.reduce((most, growth) => (growth.bottom <= y ? Math.max(most, growth.shift) : most), 0);
+  for (const unit of [...units].sort((a, b) => a.rect.y - b.rect.y)) {
+    const extra = Math.max(0, (rows.get(unit.id) || 0) - unit.rect.h);
+    if (extra) growths.push({ bottom: unit.rect.y + unit.rect.h, shift: shiftAt(unit.rect.y) + extra });
+  }
+  if (!growths.length) return units;
   const placed = [];
   for (const unit of [...units].sort(byReadingOrder)) {
-    let rect = { ...unit.rect, h: Math.max(unit.rect.h, rows.get(unit.id) || 0) };
+    let rect = {
+      ...unit.rect,
+      y: unit.rect.y + shiftAt(unit.rect.y),
+      h: Math.max(unit.rect.h, rows.get(unit.id) || 0),
+    };
+    // Safety: a band shift never overlaps, but anything that would is moved
+    // below what it meets.
     let collisions = placed.filter((other) => intersects(rect, other.rect));
     while (collisions.length) {
       rect = { ...rect, y: Math.max(...collisions.map((other) => other.rect.y + other.rect.h)) };
@@ -416,9 +438,11 @@ export function rowHeight(width, columns = COLUMNS, gap = GAP) {
 export const rowStep = (width, columns = COLUMNS, gap = GAP) =>
   Math.round((rowHeight(width, columns, gap) + gap) * 100) / 100;
 
-export function pixelRect(rect, width, columns = COLUMNS, gap = GAP) {
+// rowWidth: the width rows are worked out from, when it differs from the
+// board's (the board ignores a scrollbar coming or going for rows).
+export function pixelRect(rect, width, columns = COLUMNS, gap = GAP, rowWidth = width) {
   const column = (width + gap) / columns;
-  const row = rowStep(width, columns, gap);
+  const row = rowStep(rowWidth, columns, gap);
   return {
     left: rect.x * column,
     top: rect.y * row,

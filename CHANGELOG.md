@@ -19,7 +19,7 @@ in older entries below are history only.
 - **Rows scale with the columns** (mock-ups v4, board 5;
   [docs/USING.md](docs/USING.md)). A row is 36 px when the board is as wide
   as on a 1440 px desktop, 820 px tablet or 390 px phone screen, and grows
-  or shrinks with the column width elsewhere (18 to 64 px), so a widget keeps
+  or shrinks with the column width elsewhere (18 to 45 px), so a widget keeps
   its shape on a wider or narrower screen instead of only getting wider.
   The editor, the live dashboard and the Dashboards page previews use the
   same rule. Homepage's own information widgets (Resources, Greeting, …)
