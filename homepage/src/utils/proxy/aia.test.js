@@ -10,12 +10,17 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 import {
   AIA_LIMITS,
+  allowLocalIssuersForTests,
   completeChain,
   fetchIssuer,
   forgetIntermediates,
+  hasConstraints,
   issuerUrls,
+  learnIntermediates,
+  learnedGeneration,
   learnedIntermediates,
   readCertificate,
+  refusedAddress,
   signedBy,
 } from "./aia.mjs";
 import { httpProxy } from "./http";
@@ -32,8 +37,12 @@ const der = (name) => {
 };
 const CA_EXT = "basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n";
 
-function authority(name, cn, signer) {
+function authority(name, cn, signer, rootExtra = []) {
   if (!signer) {
+    const basic = rootExtra.includes("pathlen")
+      ? "basicConstraints=critical,CA:TRUE,pathlen:0"
+      : "basicConstraints=critical,CA:TRUE";
+    const more = rootExtra.includes("names") ? ["-addext", "nameConstraints=critical,permitted;DNS:.home.lan"] : [];
     ssl(
       "req",
       "-x509",
@@ -49,9 +58,10 @@ function authority(name, cn, signer) {
       "-subj",
       `/CN=${cn}`,
       "-addext",
-      "basicConstraints=critical,CA:TRUE",
+      basic,
       "-addext",
       "keyUsage=critical,keyCertSign,cRLSign",
+      ...more,
     );
     return;
   }
@@ -122,6 +132,7 @@ const servers = [];
 const ports = {};
 
 beforeAll(async () => {
+  allowLocalIssuersForTests(true);
   issuers = http.createServer((req, res) => {
     hits.set(req.url, (hits.get(req.url) ?? 0) + 1);
     const body = served.get(req.url);
@@ -163,7 +174,20 @@ beforeAll(async () => {
   leaf("huge", "int", `${base}/huge.der`);
   served.set("/huge.der", Buffer.alloc(AIA_LIMITS.bytes + 10, 1));
 
+  // Security review M1: roots whose constraints a learned anchor would skip.
+  for (const [root, extra] of [
+    ["ncroot", ["names"]],
+    ["plroot", ["pathlen"]],
+  ]) {
+    authority(root, `${root} Root`, null, extra);
+    authority(`${root}int`, `${root} Intermediate`, { name: root });
+    leaf(`${root}srv`, `${root}int`, `${base}/${root}int.der`);
+    served.set(`/${root}int.der`, der(`${root}int.pem`));
+  }
+
   for (const [name, key] of [
+    ["ncrootsrv", "ncrootsrv"],
+    ["plrootsrv", "plrootsrv"],
     ["srv", "srv"],
     ["deep", "deep"],
     ["roguesrv", "roguesrv"],
@@ -182,6 +206,7 @@ beforeAll(async () => {
   writeFileSync(join(dir, "trusted.pem"), read("root.pem"));
 });
 afterAll(() => {
+  allowLocalIssuersForTests(false);
   servers.forEach((server) => server.close());
   issuers.close();
 });
@@ -293,5 +318,62 @@ describe("requests through Studio", () => {
     const [status] = await httpProxy(`https://127.0.0.1:${ports.roguesrv}/`, { checkCertificate: false });
     expect(status).toBe(200);
     expect(hits.size).toBe(0);
+  });
+});
+
+describe("security review fixes", () => {
+  it("learns nothing under a root with name constraints or a path length (M1)", async () => {
+    expect(hasConstraints(new X509Certificate(read("ncroot.pem")))).toBe(true);
+    expect(hasConstraints(new X509Certificate(read("plroot.pem")))).toBe(true);
+    expect(hasConstraints(new X509Certificate(read("root.pem")))).toBe(false);
+    for (const root of ["ncroot", "plroot"]) {
+      const anchors = [new X509Certificate(read(`${root}.pem`))];
+      expect(await completeChain(new X509Certificate(read(`${root}srv.pem`)), anchors), root).toEqual([]);
+      vi.stubEnv("NODE_EXTRA_CA_CERTS", join(dir, `${root}.pem`));
+      const [status] = await httpProxy(`https://127.0.0.1:${ports[`${root}srv`]}/`);
+      expect(status, root).toBe(500);
+      expect(learnedIntermediates()).toEqual([]);
+    }
+  });
+
+  it("never fetches from this machine or link-local addresses (L2)", async () => {
+    allowLocalIssuersForTests(false);
+    try {
+      for (const address of ["127.0.0.1", "169.254.169.254", "::1", "fe80::1", "::ffff:127.0.0.1", "0.0.0.0"])
+        expect(refusedAddress(address), address).toBe(true);
+      for (const address of ["10.0.0.5", "192.168.1.2", "93.184.216.34"])
+        expect(refusedAddress(address), address).toBe(false);
+      expect(await fetchIssuer("http://169.254.169.254/latest/meta-data/x.der")).toBeNull();
+      expect(await fetchIssuer(`${base}/int.der`)).toBeNull();
+      expect(await fetchIssuer("http://localhost:1/int.der")).toBeNull();
+      expect(hits.size).toBe(0);
+    } finally {
+      allowLocalIssuersForTests(true);
+    }
+  });
+
+  it("does not repeat a request with a body (L1)", async () => {
+    vi.stubEnv("NODE_EXTRA_CA_CERTS", join(dir, "trusted.pem"));
+    const [status] = await httpProxy(`https://127.0.0.1:${ports.srv}/`, { method: "POST", body: "{}" });
+    expect(status).toBe(500);
+    expect(hits.size).toBe(0);
+  });
+
+  it("remembers a host whose chain can't be completed, and shares one attempt (L3)", async () => {
+    const address = `https://127.0.0.1:${ports.roguesrv}/`;
+    const pems = [read("root.pem")];
+    const [a, b] = await Promise.all([learnIntermediates(address, pems), learnIntermediates(address, pems)]);
+    expect([a, b]).toEqual([false, false]);
+    expect(hits.get("/rogueint.der")).toBe(1);
+    expect(await learnIntermediates(address, pems)).toBe(false);
+    expect(hits.get("/rogueint.der")).toBe(1);
+  });
+
+  it("changes generation whenever the learned list changes (L4)", async () => {
+    const before = learnedGeneration();
+    expect(await learnIntermediates(`https://127.0.0.1:${ports.srv}/`, [read("root.pem")])).toBe(true);
+    expect(learnedGeneration()).toBe(before + 1);
+    forgetIntermediates();
+    expect(learnedGeneration()).toBe(before + 2);
   });
 });

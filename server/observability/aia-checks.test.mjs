@@ -11,7 +11,7 @@ import { rootCertificates } from 'node:tls';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runHttp, runTls } from './checks.mjs';
-import { forgetIntermediates } from '../../homepage/src/utils/proxy/aia.mjs';
+import { allowLocalIssuersForTests, forgetIntermediates } from '../../homepage/src/utils/proxy/aia.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'studio-aia-checks-'));
 const ssl = (...args) => execFileSync('openssl', args, { cwd: dir, stdio: 'ignore' });
@@ -23,6 +23,7 @@ const servers = [];
 const ports = {};
 
 test.before(async () => {
+  allowLocalIssuersForTests(true);
   issuers = http.createServer((req, res) => {
     const file = { '/int.der': 'int.der', '/rogueint.der': 'rogueint.der' }[req.url];
     if (!file) { res.statusCode = 404; res.end(); return; }
@@ -45,7 +46,8 @@ test.before(async () => {
     servers.push(server);
   }
 });
-test.after(() => { servers.forEach(server => server.close()); issuers.close(); });
+test.after(() => {
+  allowLocalIssuersForTests(false); servers.forEach(server => server.close()); issuers.close(); });
 test.beforeEach(() => forgetIntermediates());
 
 const trusted = () => [...rootCertificates, read('root.pem')];
@@ -68,4 +70,16 @@ test('a certificate check completes the chain the same way, and refuses the rogu
   const bad = await runTls({ host: '127.0.0.1', port: ports.roguesrv }, { timeoutMs: 5000, ca: trusted() });
   assert.equal(bad.ok, false);
   assert.equal('authorizationError' in bad, false);
+});
+
+test('removing the root also stops what was learned through it (security review M2)', async () => {
+  const withRoot = trusted();
+  assert.equal((await runTls({ host: '127.0.0.1', port: ports.srv }, { timeoutMs: 5000, ca: withRoot })).ok, true);
+  // Same list again: what was learned is still used.
+  assert.equal((await runTls({ host: '127.0.0.1', port: ports.srv }, { timeoutMs: 5000, ca: withRoot })).ok, true);
+  // The administrator removes the root: a new list without it.
+  const without = [...rootCertificates];
+  const after = await runTls({ host: '127.0.0.1', port: ports.srv }, { timeoutMs: 5000, ca: without });
+  assert.equal(after.ok, false);
+  assert.equal(after.cls, 'tls-untrusted');
 });

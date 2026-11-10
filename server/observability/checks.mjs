@@ -9,21 +9,38 @@ import { Resolver } from 'node:dns/promises';
 import { lookup } from 'node:dns';
 import { spawn } from 'node:child_process';
 import { classifyError, CLASS_SENTENCES } from '../../homepage/src/utils/studio/error-classes.mjs';
-import { learnIntermediates, learnedIntermediates, MISSING_ISSUER } from '../../homepage/src/utils/proxy/aia.mjs';
+import { forgetIntermediates, learnIntermediates, learnedIntermediates, MISSING_ISSUER } from '../../homepage/src/utils/proxy/aia.mjs';
 
 // The certificates a check trusts: the deployment's (public authorities plus
 // Administration › Trusted certificates) and any intermediate fetched for a
 // server that left it out (aia.mjs: each one proven to chain to those).
+// Intermediates learned against one trusted list are dropped as soon as the
+// list changes (security review M2): removing a root must also stop
+// everything learned through it.
+let learnedAgainst;
+function sameList(ca) {
+  if (ca !== learnedAgainst) {
+    forgetIntermediates();
+    learnedAgainst = ca;
+  }
+}
 function trustList(ca) {
+  sameList(ca);
   const learned = learnedIntermediates();
   if (!ca && !learned.length) return null;
   return [...(ca ?? tls.rootCertificates), ...learned];
 }
 // When a certificate check failed only for a missing intermediate, fetch it
 // (owner decision, 10 Nov 2026). True when there is something new to try.
-async function learnFor(url, code, ca) {
-  if (!MISSING_ISSUER.has(String(code ?? ''))) return false;
-  return learnIntermediates(url, [...(ca ?? tls.rootCertificates)]).catch(() => false);
+// It never runs past the check's own deadline (review L3).
+async function learnFor(url, code, ca, msLeft) {
+  if (!MISSING_ISSUER.has(String(code ?? '')) || !(msLeft > 0)) return false;
+  sameList(ca);
+  let timer;
+  const late = new Promise(resolve => { timer = setTimeout(() => resolve(false), msLeft); timer.unref?.(); });
+  try {
+    return await Promise.race([learnIntermediates(url, [...(ca ?? tls.rootCertificates)]).catch(() => false), late]);
+  } finally { clearTimeout(timer); }
 }
 
 const MAX_BODY = 64 * 1024;
@@ -97,6 +114,7 @@ function certExpiry(cert) {
 // off for it (then a warning).
 export async function runHttp(config, { timeoutMs, ca, family = 'auto' } = {}) {
   const deadline = AbortSignal.timeout(timeoutMs);
+  const started = Date.now();
   // Certificates are checked (owner decision D1, 7 Nov 2026), a card's too,
   // unless the monitor or the card's service opts out; then a certificate
   // problem is a warning, not down.
@@ -120,7 +138,7 @@ export async function runHttp(config, { timeoutMs, ca, family = 'auto' } = {}) {
       } catch (error) {
         // The handshake failed, so the request never reached the server:
         // safe to try once more after fetching a missing intermediate.
-        if (learning && url.startsWith('https:') && await learnFor(url, error.code, ca)) { learning = false; hop -= 1; continue; }
+        if (learning && url.startsWith('https:') && !deadline.aborted && await learnFor(url, error.code, ca, started + timeoutMs - Date.now())) { learning = false; hop -= 1; continue; }
         throw error;
       }
       if (config.card && method === 'HEAD' && answer.status > 403) { method = 'GET'; continue; }
@@ -234,8 +252,10 @@ export async function runDns({ name, recordType = 'A', resolver: server, expect 
 
 // Certificate expiry for any TLS endpoint, and whether its chain is trusted.
 export async function runTls(target, options = {}) {
+  const begun = Date.now();
   const first = await tlsOnce(target, options);
-  if (first.authorizationError && await learnFor(`https://${net.isIP(target.host) === 6 ? `[${target.host}]` : target.host}:${target.port ?? 443}/`, first.authorizationError, options.ca)) return strip(await tlsOnce(target, options));
+  const left = () => (options.timeoutMs ?? 10000) - (Date.now() - begun);
+  if (first.authorizationError && await learnFor(`https://${net.isIP(target.host) === 6 ? `[${target.host}]` : target.host}:${target.port ?? 443}/`, first.authorizationError, options.ca, left() - 500)) return strip(await tlsOnce(target, { ...options, timeoutMs: Math.max(500, left()) }));
   return strip(first);
 }
 const strip = ({ authorizationError, ...result }) => result;

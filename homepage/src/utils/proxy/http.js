@@ -7,7 +7,7 @@ import { createUnzip, constants as zlibConstants } from "node:zlib";
 import { http, https } from "follow-redirects";
 import cache from "memory-cache";
 
-import { learnIntermediates, learnedIntermediates, missingIssuer } from "./aia.mjs";
+import { learnIntermediates, learnedGeneration, learnedIntermediates, missingIssuer } from "./aia.mjs";
 import { sanitizeErrorURL, sanitizeLogURL } from "./api-helpers";
 import { checksCertificate } from "./certificate-check.mjs";
 import { addCookieToJar, setCookieHeader } from "./cookie-jar";
@@ -398,17 +398,18 @@ function bundlePem(bundle) {
   }
 }
 export function trustOptions(bundle = process.env.NODE_EXTRA_CA_CERTS) {
-  const extra = learnedIntermediates();
+  const generation = learnedGeneration();
   if (
     trustedAuthorities === undefined ||
     bundle !== trustedAuthorities.bundle ||
-    extra.length !== trustedAuthorities.extra
+    generation !== trustedAuthorities.generation
   ) {
+    const extra = learnedIntermediates();
     const pem = bundlePem(bundle);
     const ca = [...(pem ? [pem] : []), ...extra];
     trustedAuthorities = {
       bundle,
-      extra: extra.length,
+      generation,
       options: ca.length ? { ca: [...rootCertificates, ...ca], allowPartialTrustChain: true } : {},
     };
   }
@@ -417,11 +418,19 @@ export function trustOptions(bundle = process.env.NODE_EXTRA_CA_CERTS) {
 const agentCache = new Map();
 
 function getAgent(protocol, disableIpv6, checkCertificate = true) {
-  const cacheKey = `${protocol}:${disableIpv6 ? "ipv4" : "auto"}:${checkCertificate ? "checked" : "unchecked"}:${process.env.NODE_EXTRA_CA_CERTS ?? ""}:${learnedIntermediates().length}`;
+  const generation = learnedGeneration();
+  const cacheKey = `${protocol}:${disableIpv6 ? "ipv4" : "auto"}:${checkCertificate ? "checked" : "unchecked"}:${process.env.NODE_EXTRA_CA_CERTS ?? ""}:${generation}`;
   const cachedAgent = agentCache.get(cacheKey);
   if (cachedAgent) {
     return cachedAgent;
   }
+  // Agents built for an older list of learned intermediates leave the cache;
+  // requests still using one get a minute to finish before its sockets close.
+  for (const [key, old] of agentCache)
+    if (!key.endsWith(`:${generation}`)) {
+      agentCache.delete(key);
+      setTimeout(() => old.destroy?.(), 60000).unref?.();
+    }
 
   const agentOptions = {
     keepAlive: true,
@@ -478,7 +487,17 @@ export async function httpProxy(url, allParams = {}) {
     // The server left out an intermediate certificate: fetch it as browsers
     // do (aia.mjs, which checks it chains to a trusted certificate) and try
     // once more. The handshake failed, so the request never reached it.
-    if (check && !intermediatesTried && missingIssuer(rawError) && constructedUrl.protocol === "https:") {
+    // Only for GET and HEAD (security review L1): after a redirect the
+    // failure may belong to a later hop, and a repeat must never re-send a
+    // body to the first one.
+    const method = String(params.method ?? "GET").toUpperCase();
+    if (
+      check &&
+      !intermediatesTried &&
+      (method === "GET" || method === "HEAD") &&
+      missingIssuer(rawError) &&
+      constructedUrl.protocol === "https:"
+    ) {
       const learned = await learnIntermediates(
         constructedUrl.href,
         [...rootCertificates, bundlePem(process.env.NODE_EXTRA_CA_CERTS)],

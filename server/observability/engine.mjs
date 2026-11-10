@@ -378,7 +378,9 @@ const handlers = {
     return { ok: true };
   },
   secrets({ list }) { redactor.setSecrets(new Map(list)); return { count: redactor.secretCount }; },
-  ca({ pem }) { ca = Array.isArray(pem) && pem.length ? pem : undefined; return { ok: true }; },
+  // A new trusted list replaces the array, which also drops intermediates
+  // learned through the old one (checks.mjs, security review M2).
+  ca({ pem }) { ca = Array.isArray(pem) && pem.length ? [...pem] : undefined; return { ok: true }; },
   log(events) { for (const event of Array.isArray(events) ? events : [events]) log(event); },
   mainMetrics(values) { mainMetrics = values ?? {}; },
   bound({ dashboardId, monitors }) { boundRaw.set(dashboardId, monitors); monitoring.setBound(dashboardId, monitors.map(effective)); return { count: monitors.length }; },
