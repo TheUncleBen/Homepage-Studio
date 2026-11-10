@@ -147,7 +147,8 @@ p { margin: 0 0 20px; color: #b4aebc; }
 a { display: inline-block; padding: 10px 16px; border-radius: 8px; background: #685870; color: #ffffff; text-decoration: none; font-weight: 600; }
 a:hover { background: #77697e; }
 a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
-a + a { margin-left: 8px; background: transparent; border: 1px solid #4a4452; }
+a { margin: 0 8px 8px 0; }
+a + a { background: transparent; border: 1px solid #4a4452; }
 </style>
 </head>
 <body>
