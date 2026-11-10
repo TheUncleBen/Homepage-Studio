@@ -93,10 +93,13 @@ export function convertBoard(board, inherited) {
   if (!plain(board)) return board;
   let changed = false;
   const panels = Array.isArray(board.panels) ? board.panels.map((panel) => {
-    if (!plain(panel) || (!panel.look && !Object.keys(inherited).length)) return panel;
-    // Old card-look settings reach only widgets that draw values.
-    if (!panel.look && !['serviceWidget', 'informationWidget'].includes(panel.kind)) return panel;
-    const look = convertLook(panel.look ?? {}, { inherited });
+    if (!plain(panel)) return panel;
+    // Old card-look settings reach only widgets that draw values: not tiles,
+    // bookmarks or headings, whatever look of their own they have.
+    const drawsValues = ['serviceWidget', 'informationWidget'].includes(panel.kind) && panel.nativeLocator?.type !== 'heading';
+    const own = drawsValues ? inherited : {};
+    if (!panel.look && !Object.keys(own).length) return panel;
+    const look = convertLook(panel.look ?? {}, { inherited: own });
     if (same(look, panel.look ?? {})) return panel;
     changed = true;
     const next = { ...panel, look: tidy(look) };
@@ -202,11 +205,14 @@ async function settleInterrupted(configDir, stateDir) {
   await fs.rm(join(stateDir, 'transaction.json'), { force: true });
 }
 
+// Every dashboard with a folder in either volume.
 async function dashboardDirs(configRoot, stateRoot) {
   const out = [{ configDir: configRoot, stateDir: stateRoot }];
-  let ids = [];
-  try { ids = await fs.readdir(join(stateRoot, 'dashboards')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  for (const id of ids) out.push({ configDir: join(configRoot, 'dashboards', id), stateDir: join(stateRoot, 'dashboards', id) });
+  const ids = new Set();
+  for (const root of [configRoot, stateRoot]) {
+    try { for (const id of await fs.readdir(join(root, 'dashboards'))) ids.add(id); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+  for (const id of [...ids].sort()) out.push({ configDir: join(configRoot, 'dashboards', id), stateDir: join(stateRoot, 'dashboards', id) });
   return out;
 }
 

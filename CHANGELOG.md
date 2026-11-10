@@ -25,8 +25,14 @@ build is identified by its source commit and image digest
   layout”). The first data version turns each into the blocks that draw it
   the same way, in boards, saved looks, saved widgets, snapshots and the
   dashboard card look.
-- **A dashboard that can't load says why.** The log names the reason, and the
-  reply carries it as `details.cause`, instead of only “not ready”.
+- **A dashboard that can't load says why** in the log, instead of only “not
+  ready”; administrators also see it at `/studio/config-ready`.
+- **A rollback right after an upgrade is automatic.** Until a new version has
+  run for four minutes its upgrade is unconfirmed; if Swarm rolls back in
+  that time, the previous image puts the before-upgrade backup back itself.
+  A restore cut off half-way is finished at the next start.
+- **Older exports import.** A dashboard export, snapshot or saved widget
+  from before the block widgets has its looks converted on import.
 
 The upgrade notes in older entries below are history only.
 

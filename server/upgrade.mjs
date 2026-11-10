@@ -19,7 +19,7 @@
 // the network or the native renderer.
 import fs from 'node:fs/promises';
 import { join } from 'node:path';
-import { createBackupStore, restoreBackupFiles } from './backups.mjs';
+import { createBackupStore, parseBackup, restoreBackupFiles } from './backups.mjs';
 import { migrateLegacyLooks } from './migrations/legacy-looks.mjs';
 
 export const DATA_VERSION = 1;
@@ -52,27 +52,55 @@ export async function readDataVersion(stateRoot) {
   return value;
 }
 
-async function writeDataVersion(stateRoot, version, buildRevision) {
+async function writeDataVersion(stateRoot, version, buildRevision, extra = {}) {
   const file = join(stateRoot, DATA_MARKER);
   const temporary = `${file}.${process.pid}.tmp`;
   const handle = await fs.open(temporary, 'w', 0o600);
   try {
-    await handle.writeFile(JSON.stringify({ version, build: buildRevision ?? 'unreleased', updatedAt: new Date().toISOString() }) + '\n');
+    await handle.writeFile(JSON.stringify({ version, build: buildRevision ?? 'unreleased', updatedAt: new Date().toISOString(), ...extra }) + '\n');
     await handle.sync();
   } finally { await handle.close(); }
   await fs.rename(temporary, file);
 }
 
-// The data version a backup was made at (0 when it predates the record).
+// The data version a backup was made at (0 when it predates the record),
+// or NaN when its record is unreadable.
 export function backupDataVersion(backup) {
   const entry = backup.files.find(file => file.volume === 'state' && file.path === DATA_MARKER);
   if (!entry) return 0;
-  try { return JSON.parse(Buffer.from(entry.data, 'base64').toString('utf8')).version; } catch { return Infinity; }
+  let version;
+  try { version = JSON.parse(Buffer.from(entry.data, 'base64').toString('utf8'))?.version; } catch { return NaN; }
+  return Number.isSafeInteger(version) && version >= 0 ? version : NaN;
+}
+
+// An upgrade stays "unconfirmed" until the new version has run this long,
+// past Swarm's 180-second update monitor. Until then, an older image that
+// starts on the data (an automatic rollback) puts back the before-upgrade
+// backup by itself instead of refusing to start.
+export const CONFIRM_AFTER_MS = 240 * 1000;
+export async function confirmDataVersion(stateRoot) {
+  const recorded = await readDataVersion(stateRoot);
+  if (recorded?.confirmed !== false) return false;
+  await writeDataVersion(stateRoot, recorded.version, recorded.build);
+  return true;
 }
 
 export async function upgradeData({ configRoot, stateRoot, buildRevision, log = console, migrations = MIGRATIONS, target = DATA_VERSION }) {
   await fs.mkdir(stateRoot, { recursive: true, mode: 0o700 });
-  const recorded = await readDataVersion(stateRoot);
+  let recorded = await readDataVersion(stateRoot);
+  if (recorded && recorded.version > target && recorded.confirmed === false && typeof recorded.backup === 'string') {
+    // A newer image upgraded the data and didn't stay up (Swarm rolled back
+    // to this image): put its before-upgrade backup back, if this image can
+    // read it.
+    const store = createBackupStore({ configRoot, stateRoot, buildRevision });
+    let version = NaN;
+    try { version = backupDataVersion(await parseBackup(await store.read(recorded.backup))); } catch { /* Refused below. */ }
+    if (version <= target) {
+      await restoreBackupFiles({ configRoot, stateRoot, name: recorded.backup });
+      log.log(`Studio upgrade: a newer version's upgrade was rolled back; put back ${recorded.backup}.`);
+      recorded = await readDataVersion(stateRoot);
+    }
+  }
   if (!recorded) {
     // Nothing yet in either volume: a new deployment, already current.
     const used = await exists(join(configRoot, 'studio-dashboards.json')) || await exists(join(configRoot, 'services.yaml')) || await exists(join(stateRoot, 'state.json'));
@@ -83,25 +111,34 @@ export async function upgradeData({ configRoot, stateRoot, buildRevision, log = 
     throw new UpgradeError(`The data was written by a newer Studio (data version ${from}; this image understands up to ${target}). Deploy the newer image again; to go back to this one, stage the "before upgrade" backup first (docs/UPGRADING.md, Going back).`, 'DATA_TOO_NEW');
   }
   if (from === target) {
-    if (recorded.build !== (buildRevision ?? 'unreleased')) await writeDataVersion(stateRoot, target, buildRevision);
+    if (recorded.build !== (buildRevision ?? 'unreleased')) {
+      const { version, build, updatedAt, ...kept } = recorded;
+      await writeDataVersion(stateRoot, target, buildRevision, kept);
+    }
     return { from, to: target };
   }
   const steps = migrations.filter(step => step.to > from && step.to <= target).sort((a, b) => a.to - b.to);
   const store = createBackupStore({ configRoot, stateRoot, buildRevision });
   let backup;
   try { backup = await store.create('before-upgrade'); }
-  catch (error) { throw new UpgradeError(`The data couldn't be saved before upgrading, so nothing was changed (${error.message}).`, 'UPGRADE_BACKUP_FAILED'); }
+  catch (error) { throw new UpgradeError(`The data couldn't be saved before upgrading, so nothing was changed (${error.message}). Free space in the state volume; if Studio's files are over the backup limit, see docs/UPGRADING.md.`, 'UPGRADE_BACKUP_FAILED'); }
   log.log(`Studio upgrade: data version ${from} → ${target}. What was there before is kept as ${backup.name}.`);
   let step;
   try {
     for (step of steps) {
       await step.run({ configRoot, stateRoot, log });
-      await writeDataVersion(stateRoot, step.to, buildRevision);
+      await writeDataVersion(stateRoot, step.to, buildRevision, { confirmed: false, backup: backup.name });
       log.log(`Studio upgrade: ${step.to}. ${step.name}: done.`);
     }
   } catch (error) {
     log.error(`Studio upgrade: step ${step.to} (${step.name}) failed: ${error.message}. Putting back ${backup.name}.`);
-    await restoreBackupFiles({ configRoot, stateRoot, name: backup.name });
+    try { await restoreBackupFiles({ configRoot, stateRoot, name: backup.name }); }
+    catch (restoreError) {
+      throw new UpgradeError(`The upgrade to data version ${step.to} failed, and putting back ${backup.name} failed too (${restoreError.code || restoreError.message}). The next start tries again to put it back.`, 'UPGRADE_ROLLBACK_FAILED');
+    } finally {
+      // Every failed start makes a backup; only the newest few are kept.
+      await pruneUpgradeBackups(store).catch(() => {});
+    }
     throw new UpgradeError(`The upgrade to data version ${step.to} failed and the data was put back as it was. Deploy the previous image, and report this log.`, 'UPGRADE_FAILED');
   }
   await pruneUpgradeBackups(store).catch(() => {});

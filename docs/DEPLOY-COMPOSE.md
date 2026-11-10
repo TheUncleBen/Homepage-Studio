@@ -174,15 +174,13 @@ file joins it.
 
 ## Updating
 
-Change the image digest in `.env` (or replace `portainer-compose.yml` with
-the new bundle's file when its changelog entry says the template changed),
-keep your secrets folder, and run the same `up -d`. Your data stays: the new
+Replace `portainer-compose.yml` with the new bundle's file (it carries the
+new image digest), keep your `.env` and secrets folder, and run the same
+`up -d`. Your data stays: the new
 version converts what it needs at its first start, after saving a
 `…-before-upgrade` backup.
 
-In short: replace `portainer-compose.yml` with the new bundle's file, keep your `.env`
-and secrets folder, and run the same `up -d`. The old container stops and the
-new one starts on the same volumes. [UPGRADING.md](UPGRADING.md) has the backup
+The old container stops and the new one starts on the same volumes. [UPGRADING.md](UPGRADING.md) has the backup
 and rollback steps.
 
 ## Moving to Swarm later

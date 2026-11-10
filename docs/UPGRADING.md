@@ -26,9 +26,23 @@ Studio records the version of its stored data in the state volume
 
 If a step fails, Studio puts the backup back, writes the reason to the log
 and stops; on Swarm the update then rolls back to the previous image, which
-finds its data as it left it. An image older than the data refuses to start
-and says so in the log (see Going back), so an old version never misreads
-newer data. Monitoring history is kept and brought up to date the same way.
+finds its data as it left it. Monitoring history is kept and brought up to
+date the same way.
+
+The new version counts as settled once it has kept running for four minutes
+(past Swarm's 180-second update monitor). If it converts the data and then
+fails its health checks before that, Swarm rolls back to the previous image,
+and that image puts the `…-before-upgrade` backup back by itself and starts.
+Changes made in those few minutes are lost with it. (This needs the previous
+image to have this upgrade support: candidates after 1c3b5bd.) Once settled,
+an image older than the data refuses to start and says so in the log (see
+Going back), so an old version never misreads newer data.
+
+The backup before an upgrade has the same limit as any backup made in the app
+(256 MiB of files, monitoring history not counted). If the volumes are larger,
+or the state volume is full, the new version doesn't start and the log says
+so; nothing is changed. Free space, or remove large images you no longer use,
+and start it again; or go back to the previous image.
 
 ## Before you update
 
@@ -110,9 +124,10 @@ dashboard you changed first ([USING.md](USING.md#snapshots-export-and-import)).
 If the log shows no conversion, the data didn't change and the previous
 digest can simply be deployed again.
 
-Swarm's automatic rollback during an update only switches the image back; it
-doesn't touch the volumes. It happens only when the new image fails, and a
-failed conversion has already put the data back.
+Swarm's automatic rollback during an update only switches the image back.
+After a failed conversion the data has already been put back; after a
+conversion followed by failed health checks the previous image puts the
+backup back itself (What happens at the first start, above).
 
 ## Never mix versions
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import { join } from 'node:path';
-import { convertLook, convertSettingsText, convertLibraryText, migrateLegacyLooks } from './migrations/legacy-looks.mjs';
+import { convertBoard, convertLook, convertSettingsText, convertLibraryText, migrateLegacyLooks } from './migrations/legacy-looks.mjs';
 import { validateLook } from '../homepage/src/components/studio/look.mjs';
 import { createConfigStore } from './config.mjs';
 
@@ -68,4 +68,40 @@ test('a dashboard holding an old look loads after the migration (owner report, 1
   const before = await fs.readFile(join(stateRoot, 'state.json'), 'utf8');
   await migrateLegacyLooks({ configRoot, stateRoot, log: quiet });
   assert.equal(await fs.readFile(join(stateRoot, 'state.json'), 'utf8'), before);
+});
+
+test('old card settings reach only widgets that draw values', () => {
+  const board = { panels: [
+    { id: 't', kind: 'service', look: { fill: 'tint' } },
+    { id: 'h', kind: 'informationWidget', nativeLocator: { type: 'heading' }, look: { fill: 'plain' } },
+    { id: 'w', kind: 'serviceWidget', look: { fill: 'tint' } },
+  ] };
+  const out = convertBoard(board, { layout: 'quiet' });
+  assert.deepEqual(out.panels[0].look, { fill: 'tint' });
+  assert.deepEqual(out.panels[1].look, { fill: 'plain' });
+  assert.deepEqual(out.panels[2].look, { fill: 'tint', blocks: [{ id: 'b1', type: 'quiet' }] });
+});
+
+test('a dashboard with only a config folder is converted too', async () => {
+  const base = await fs.mkdtemp(join(os.tmpdir(), 'legacy-dirs-'));
+  const configRoot = join(base, 'config'), stateRoot = join(base, 'state');
+  await fs.mkdir(join(configRoot, 'dashboards', 'abc'), { recursive: true }); await fs.mkdir(stateRoot);
+  await fs.writeFile(join(configRoot, 'dashboards', 'abc', 'settings.yaml'), 'studioTheme:\n  card:\n    show: line\n    fill: tint\n');
+  await migrateLegacyLooks({ configRoot, stateRoot, log: quiet });
+  assert.equal(await fs.readFile(join(configRoot, 'dashboards', 'abc', 'settings.yaml'), 'utf8'), 'studioTheme:\n  card:\n    fill: tint\n');
+});
+
+test('an export from before the block widgets imports with its looks converted', async () => {
+  const base = await fs.mkdtemp(join(os.tmpdir(), 'legacy-import-'));
+  const store = createConfigStore({ configDir: join(base, 'config'), stateDir: join(base, 'state') });
+  const first = await store.initialize();
+  await store.save({ revision: first.revision, widgetsYaml: '- resources:\n    cpu: true\n' });
+  const exported = await store.exportCurrent();
+  const state = JSON.parse(exported.files['state.json']);
+  state.board.panels[0].look = { show: 'gauge' };
+  exported.files['state.json'] = JSON.stringify(state);
+  exported.files['settings.yaml'] = 'studioTheme:\n  card:\n    layout: quiet\n';
+  const current = await store.load();
+  const result = await store.importArchive({ revision: current.revision, archive: exported });
+  assert.deepEqual(result.board.panels[0].look, { blocks: [{ id: 'b1', type: 'gauge' }] });
 });

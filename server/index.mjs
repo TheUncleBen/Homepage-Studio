@@ -31,8 +31,9 @@ import { connectionIdsOf, createLibrary, LibraryError, MAX_SAVED_WIDGETS, public
 import { viewerLanguage } from '../homepage/src/components/studio/languages.mjs';
 import { LookError, allBlocks, inheritedBehaviour, inheritedLook, needsHistory, readBehaviour, readLook, validateStudioTheme } from '../homepage/src/components/studio/look.mjs';
 import { BACKGROUND_CHOICES, BASE_CHOICES, createPlatformStore, PlatformError, studioThemeCss } from './platform.mjs';
-import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES } from './backups.mjs';
-import { upgradeData, UpgradeError } from './upgrade.mjs';
+import { createBackupStore, applyPendingRestore, studioRoots, MAX_BACKUP_BYTES, BackupError } from './backups.mjs';
+import { upgradeData, UpgradeError, confirmDataVersion, CONFIRM_AFTER_MS } from './upgrade.mjs';
+import { convertLook } from './migrations/legacy-looks.mjs';
 import { dashboardPreview } from './dashboard-preview.mjs';
 import { createAuthService } from './auth/service.mjs';
 import { createAuthRoutes, isAuthPath, isPublicAuthPath, isAuthNavigation, sendStudioAsset, sendStudioPage } from './auth/routes.mjs';
@@ -399,14 +400,14 @@ function createDashboardHandlers(options = {}) {
       await store.prepareForNative();
     } catch (error) {
       if (error instanceof ConfigError && error.code === 'RECOVERY_REQUIRED') throw error;
-      // The reason goes to the log (once per reason) and, as a code, to the
-      // reply: "not ready" alone can't be acted on.
+      // The reason goes to the log, once per reason ("not ready" alone can't
+      // be acted on); administrators also see it at /studio/config-ready.
       const cause = String(error.code || error.name || 'UNKNOWN').slice(0, 64);
       if (lastNativeFailure !== cause) {
         lastNativeFailure = cause;
         console.error(`Dashboard configuration in ${configDir} is not ready (${cause}): ${error.message}`);
       }
-      throw new ConfigError('Homepage configuration is not ready. Check the editor configuration and storage before loading the dashboard.', 'CONFIG_NOT_READY', 503, { cause });
+      throw new ConfigError('Homepage configuration is not ready. Check the editor configuration and storage before loading the dashboard.', 'CONFIG_NOT_READY', 503);
     }
     lastNativeFailure = null;
   }
@@ -948,7 +949,9 @@ function createDashboardHandlers(options = {}) {
       catch (error) { if (error instanceof ConnectionError) notes.push(`Connection “${String(entry.name ?? '').slice(0, 60)}” was not added: ${error.message}`); else throw error; }
     }
     for (const entry of savedWidgets ?? []) {
-      try { await library.add({ kind: 'widget', name: entry.name, widget: entry.widget }); }
+      // A saved widget exported before the block widgets keeps its look, converted.
+      const widget = entry.widget && typeof entry.widget === 'object' && !Array.isArray(entry.widget) && entry.widget.look ? { ...entry.widget, look: convertLook(entry.widget.look) } : entry.widget;
+      try { await library.add({ kind: 'widget', name: entry.name, widget }); }
       catch (error) { if (error instanceof LibraryError) notes.push(`Saved widget “${String(entry.name ?? '').slice(0, 60)}” was not added: ${error.message}`); else throw error; }
     }
     return { ...result, ...(needKeys.length ? { connectionsNeedingKeys: needKeys } : {}), ...(notes.length ? { importNotes: notes } : {}) };
@@ -1858,12 +1861,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const port = Number(process.env.PORT || 3000);
   // A restore staged in Administration → Backups (or with server/backups.mjs)
   // is applied before anything reads the volumes.
-  await applyPendingRestore({ ...studioRoots(), buildRevision: process.env.STUDIO_BUILD_REVISION });
   // Then the data is brought up to this build's version (server/upgrade.mjs):
   // upgrading is only ever a new image.
-  try { await upgradeData({ ...studioRoots(), buildRevision: process.env.STUDIO_BUILD_REVISION }); }
-  catch (error) {
-    console.error('Studio did not start:', error instanceof UpgradeError ? error.message : `the data could not be checked for upgrade (${error.code || error.message}).`);
+  try {
+    await applyPendingRestore({ ...studioRoots(), buildRevision: process.env.STUDIO_BUILD_REVISION });
+    await upgradeData({ ...studioRoots(), buildRevision: process.env.STUDIO_BUILD_REVISION });
+  } catch (error) {
+    console.error('Studio did not start:', error instanceof UpgradeError || error instanceof BackupError ? error.message : `the data volumes could not be read or written (${error.code || error.message}).`);
     process.exit(1);
   }
   let restart = () => {};
@@ -1873,6 +1877,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const startup = await initialization;
   if (!startup.ok) console.error('Studio configuration startup requires attention:', startup.code);
   server.listen(port, '0.0.0.0', () => console.log('Homepage Studio listening on port ' + port));
+  // An upgrade is confirmed once this version has stayed up past Swarm's
+  // update monitor (server/upgrade.mjs); before that, a rollback to the
+  // previous image puts the data back by itself.
+  setTimeout(() => {
+    confirmDataVersion(studioRoots().stateRoot).then(done => { if (done) console.log('Studio upgrade: confirmed; this version has kept running.'); }, error => console.error('Studio upgrade: the data version could not be confirmed:', error.code || error.message));
+  }, CONFIRM_AFTER_MS).unref();
   let closing = false;
   const close = () => {
     if (closing) return; closing = true;

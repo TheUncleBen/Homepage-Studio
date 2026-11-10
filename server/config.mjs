@@ -7,6 +7,7 @@ import { MAX_PANELS, stableValue, reconcileIdentities, identityRecords, validate
 import { columnsOfPage } from '../homepage/src/components/studio/geometry.mjs';
 import { validateDiscoveryManifest, validateStoredDiscoveredSources, validateHiddenDiscoveredIds, mergeDiscoveredSources } from './discovery.mjs';
 import { readNativeIndexingPolicy } from './indexing-policy.mjs';
+import { convertSettingsText, convertStateText } from './migrations/legacy-looks.mjs';
 
 const FILES = {
   servicesYaml: 'services.yaml',
@@ -392,6 +393,11 @@ function importFiles(archive) {
     if (typeof value !== 'string' && !(snapshot && value === null)) fail('Imported configuration files must be text.', 'INVALID_IMPORT');
     raw[name] = value === null && name !== 'state.json' ? DEFAULTS[name] : value;
   }
+  // An export or snapshot from before the block widgets: its old widget looks
+  // are converted the way an upgrade converts them (data version 1).
+  const settings = convertSettingsText(raw['settings.yaml']);
+  if (typeof raw['state.json'] === 'string') raw['state.json'] = convertStateText(raw['state.json'], settings.inherited);
+  raw['settings.yaml'] = settings.text;
   validateSnapshotBytes(raw);
   return raw;
 }
