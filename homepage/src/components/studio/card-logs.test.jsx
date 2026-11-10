@@ -75,5 +75,13 @@ describe("Logs block gate", () => {
     const lines = container.querySelectorAll(".studio-log-line");
     expect(lines[0].querySelector(".studio-log-source")).toBeNull();
     expect(lines[1].querySelector(".studio-log-source").textContent).toBe("sam's browser");
+    // Each line opens Operations' logs for this widget (mock-ups v4, board 8).
+    for (const line of lines) {
+      expect(line.tagName).toBe("A");
+      const [path, hash] = line.getAttribute("href").split("#");
+      expect(path).toBe("/studio/operations");
+      const params = new URLSearchParams(hash.replace(/^logs\?/, ""));
+      expect(Object.fromEntries(params)).toEqual({ panel: "panel-1", scope: "dash-a", range: "24h" });
+    }
   });
 });

@@ -412,11 +412,12 @@
       queryInput.addEventListener('input', searchSoon);
       queryInput.addEventListener('keydown', event => { if (event.key === 'Enter') { clearTimeout(typing); window_ = null; search(); } });
       const quote = text => (/[\s"]/.test(String(text)) ? `"${String(text).replace(/"/g, '')}"` : String(text));
-      const chipTerms = () => [
+      // skip: one chip row left out, so that row can list its other choices.
+      const chipTerms = skip => [
         widget ? `${widget.scope ? `dashboard:${quote(widget.scope)} ` : ''}panel:${quote(widget.panel)}` : '',
-        ...Object.entries(chosen).filter(([, v]) => v).map(([field, v]) => `${field}:${quote(v)}`),
+        ...Object.entries(chosen).filter(([field, v]) => v && field !== skip).map(([field, v]) => `${field}:${quote(v)}`),
       ].filter(Boolean);
-      const fullQuery = () => [queryInput.value.trim(), ...chipTerms()].filter(Boolean).join(' ');
+      const fullQuery = skip => [queryInput.value.trim(), ...chipTerms(skip)].filter(Boolean).join(' ');
       const params = () => ({ q: fullQuery(), ...(window_ ? { from: Math.round(window_.from), to: Math.round(window_.to) } : { range }), dashboard: filter });
       // Each search gets a number; a slower earlier answer never replaces a
       // newer one (typing starts many searches).
@@ -431,10 +432,14 @@
         put(results, loading());
         const p = qs(lastParams);
         try {
-          const [hist, list, facetData] = await Promise.all([ops('logs/histogram?' + p), grouped ? ops('logs/groups?' + p) : ops('logs/search?' + p + '&limit=100'), ops('logs/facets?' + p)]);
+          // A row with a chip chosen lists what the search finds without that
+          // chip, so another choice is one click away (not Any first).
+          const own = Object.keys(chosen).filter(field => chosen[field] && field !== 'severity');
+          const [hist, list, facetData, ...others] = await Promise.all([ops('logs/histogram?' + p), grouped ? ops('logs/groups?' + p) : ops('logs/search?' + p + '&limit=100'), ops('logs/facets?' + p),
+            ...own.map(field => ops('logs/facets?' + qs({ ...lastParams, q: fullQuery(field) })).catch(() => null))]);
           if (mine !== searchNumber) return;
           drawHistogram(hist);
-          drawFacets(facetData);
+          drawFacets(facetData, Object.fromEntries(own.map((field, index) => [field, others[index]])));
           if (grouped) { drawGroups(list.groups); status.textContent = `${plural(list.groups.length, 'kind of event', 'kinds of event')}${list.partial ? ' (search stopped early; narrow it to see everything)' : ''}`; }
           else { next = list.next; drawEvents(list.events, false); status.textContent = `${plural(facetData.total, 'event', 'events')}${list.partial || facetData.partial ? ' (search stopped early; narrow it to see everything)' : ''}`; }
         } catch (error) { if (mine !== searchNumber) return; status.textContent = ''; put(results, h('div', { class: 'notice error', role: 'alert', text: error.message })); }
@@ -465,8 +470,9 @@
           h('button', { type: 'button', class: 'ops-chip', 'aria-pressed': String(!now), text: 'Any', onclick: () => { if (now) pick(now); } }),
           shown.map(item => h('button', { type: 'button', class: 'ops-chip', 'aria-pressed': String(item.value === now), onclick: () => pick(item.value) }, h('span', { text: item.text }), item.count !== undefined ? h('small', { text: String(item.count) }) : null)));
       }
-      function drawFacets(data) {
-        const found = key => (data.facets?.[key] ?? []).slice(0, 6);
+      const FACET_KEY = { source: 'source_type', resource: 'resource', class: 'error_class' };
+      function drawFacets(data, without = {}) {
+        const found = key => ((without[Object.keys(FACET_KEY).find(field => FACET_KEY[field] === key)] ?? data).facets?.[key] ?? []).slice(0, 6);
         const sets = [['Source', 'source', found('source_type').map(item => ({ value: String(item.value), text: String(item.value), count: item.count }))],
           ['Service', 'resource', found('resource').map(item => ({ value: String(item.value), text: String(item.value), count: item.count }))],
           ['Problem', 'class', found('error_class').map(item => ({ value: String(item.value), text: String(item.value), count: item.count }))]];

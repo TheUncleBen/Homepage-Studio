@@ -644,6 +644,7 @@ dialog { overflow-y: auto; }
 .ops-chip small { color: var(--muted); font-variant-numeric: tabular-nums; }
 .ops-chip:hover { border: 0; background: var(--accent-soft); }
 .ops-chip[aria-pressed="true"] { background: var(--accent-solid); color: var(--accent-contrast); }
+.ops-chip[aria-pressed="true"] small { color: inherit; opacity: 0.85; }
 .ops-days { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 6px; }
 .ops-event + .ops-event { border-top: 1px solid var(--line); }
 .ops-event-row { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 44px; padding: 10px 16px; border: 0; border-radius: 0; background: transparent; color: var(--text); font-weight: 400; text-align: left; justify-content: flex-start; }
