@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { relaxed, shapeOrder, standsUp } from "./fit.mjs";
+import { candidates, relaxed, shapeOrder, standsUp } from "./fit.mjs";
 
 // jsdom has no layout: give each element the sizes a browser would measure.
 const sized = (node, { sw = 100, cw = 100, sh = 100, ch = 100 } = {}) => {
@@ -47,5 +47,17 @@ describe("shapeOrder", () => {
   it("prefers a row on a short card and a list on a tall one", () => {
     expect(shapeOrder(400, 90)[0]).toBe("row");
     expect(shapeOrder(100, 300)[0]).toBe("list");
+  });
+});
+
+describe("candidates", () => {
+  it("never puts the header beside an empty body (UI review R3)", () => {
+    const picks = candidates({ headerAt: "left" }, [], {}, 300, 40);
+    expect(picks.length).toBeGreaterThan(0);
+    expect(picks.every((pick) => !pick.inline)).toBe(true);
+  });
+  it("still offers the header beside blocks on a wide card", () => {
+    const picks = candidates({}, [{ id: "a", type: "status" }], { a: 1 }, 600, 60);
+    expect(picks.some((pick) => pick.inline)).toBe(true);
   });
 });
