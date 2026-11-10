@@ -126,7 +126,7 @@ function wantsHtmlPage(req) {
   return String(req.headers.accept || '').split(',').some(entry => entry.trim().toLowerCase().split(';')[0] === 'text/html');
 }
 const escapeHtml = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-function renderUnavailablePage(status, { title = 'This dashboard isn&#39;t available', text = 'Its address may have changed, or it may have been archived. Choose the dashboard you need on the Dashboards page.', detail } = {}) {
+function renderUnavailablePage(status, { title = 'This dashboard isn&#39;t available', text = 'Its address may have changed, or it may have been archived. Choose the dashboard you need on the Dashboards page.', detail, admin = false } = {}) {
   const code = [410, 503].includes(Number(status)) ? Number(status) : 404;
   return `<!doctype html>
 <html lang="en">
@@ -147,6 +147,7 @@ p { margin: 0 0 20px; color: #b4aebc; }
 a { display: inline-block; padding: 10px 16px; border-radius: 8px; background: #685870; color: #ffffff; text-decoration: none; font-weight: 600; }
 a:hover { background: #77697e; }
 a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
+a + a { margin-left: 8px; background: transparent; border: 1px solid #4a4452; }
 </style>
 </head>
 <body>
@@ -155,7 +156,7 @@ a:focus-visible { outline: 3px solid #b299be; outline-offset: 3px; }
 <h1>${title}</h1>
 <p>${text}</p>
 ${detail ? `<p class="detail">${escapeHtml(detail)}</p>\n` : ''}<a href="/studio/dashboards">Open Dashboards</a>
-</main>
+${admin ? '<a href="/studio/admin#backups">Open Backups</a>\n' : ''}</main>
 </body>
 </html>
 `;
@@ -172,10 +173,12 @@ function unavailablePage(req, res, status) {
 // A dashboard whose configuration doesn't load (UI review M1, 10 Nov 2026):
 // browsers get a page, not the JSON error. People who can arrange it also
 // see why; everyone else, only that it can't load right now.
-function notReadyPage(req, res, reason) {
+function notReadyPage(req, res, reason, admin = false) {
   if (res.destroyed || res.writableEnded || res.headersSent) return;
+  // Its editor and settings can't open either, so the way out is a backup
+  // (the one saved before an update, if one was) or the log.
   const page = renderUnavailablePage(503, reason
-    ? { title: 'This dashboard can&#39;t load right now', text: 'Its configuration was refused for this reason. An administrator can fix it in the dashboard&#39;s settings, or put back a backup under Administration › Backups.', detail: reason }
+    ? { title: 'This dashboard can&#39;t load right now', text: admin ? 'Its stored configuration was refused for this reason. Put back a backup under Administration › Backups (after an update, the one named …-before-upgrade), or see the container log for details.' : 'Its stored configuration was refused for this reason. An administrator can put back a backup under Administration › Backups; the container log has the details.', detail: reason, admin }
     : { title: 'This dashboard can&#39;t load right now', text: 'Something in its configuration needs fixing. Try again later, or ask the person who runs Studio.' });
   const policy = res.getHeader('content-security-policy');
   res.writeHead(503, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'retry-after': '60', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(page), 'content-security-policy': [].concat(policy ?? [], UNAVAILABLE_PAGE_POLICY), vary: 'Accept' });
@@ -919,7 +922,7 @@ function createDashboardHandlers(options = {}) {
       await proxy(req, res, dashboard);
     } catch (error) {
       if (error instanceof ConfigError && error.code === 'CONFIG_NOT_READY' && wantsHtmlPage(req) && !res.headersSent) {
-        return notReadyPage(req, res, ['arrange', 'admin'].includes(req.studioLevel) ? lastNativeReason : null);
+        return notReadyPage(req, res, ['arrange', 'admin'].includes(req.studioLevel) ? lastNativeReason : null, req.studioAdmin === true);
       }
       const status = Number(error.status || error.statusCode) || 500;
       if (error.closeConnection && !res.headersSent) res.setHeader('connection', 'close');
@@ -1656,6 +1659,10 @@ export function createStudioServer(options = {}) {
       const level = auth ? current.level(route.dashboard.id) : 'admin';
       // A dashboard you can't open looks exactly like one that doesn't exist.
       if (level === 'none') throw new DashboardError('That dashboard is unavailable. Its address may have changed or it may be archived.', 'DASHBOARD_NOT_FOUND', 404);
+      // Why the dashboard can't load, if it can't: shown to signed-in people
+      // who can arrange it. With sign-in off everyone counts as an
+      // administrator, and the public never sees it (owner rule, 6 Nov 2026).
+      if (auth) { req.studioLevel = level; req.studioAdmin = current.user?.role === 'admin'; }
       if (local === '/studio/api/access' && req.method === 'GET') {
         return json(res, 200, { authEnabled: Boolean(auth), deploymentName: siteName(), level, dashboard: { id: route.dashboard.id, name: route.dashboard.name, logo: await forDashboard(route.dashboard).logo.info() }, user: auth ? { displayName: current.user.displayName, username: current.user.username, role: current.user.role } : null,
           // Monitoring and Logs on this dashboard (Investigate in a widget's
@@ -1714,9 +1721,6 @@ export function createStudioServer(options = {}) {
       }
       // Who saves an uploaded image or a connection (Saved items shows it).
       if (auth && current?.user) req.studioActor = current.user.username;
-      // With sign-in off everyone counts as an administrator, and the public
-      // never sees why a dashboard can't load (owner rule, 6 Nov 2026).
-      if (auth) req.studioLevel = level;
       return await forDashboard(route.dashboard).handle(req, res, route.dashboard);
     } catch (error) {
       if (error instanceof DashboardError && error.code === 'DASHBOARD_NOT_FOUND' && wantsHtmlPage(req)) return unavailablePage(req, res, Number(error.status) || 404);
