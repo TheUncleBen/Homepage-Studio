@@ -43,6 +43,11 @@ build is identified by its source commit and image digest
 - Selected text uses the dashboard's accent colour.
 - **Administration:** Trusted certificates and Backups put their add
   buttons above the list, where People has Invite a person.
+- **Administration:** a long username no longer widens a person's dialog
+  past a phone screen. Session policy errors use the dialog's own names and
+  units ("Idle sign-out must be 5 minutes to 90 days…"), a duration such as
+  1.5 hours is accepted, and "Confirm it's you after" has a label for
+  screen readers.
 
 ### Upgrades keep your data
 

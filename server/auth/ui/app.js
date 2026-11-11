@@ -1933,7 +1933,7 @@
       const units = [['1', 'minutes'], ['60', 'hours'], ['1440', 'days']];
       const pickUnit = amount => amount === null || amount === undefined ? '1440' : amount % 1440 === 0 ? '1440' : amount % 60 === 0 ? '60' : '1';
       const unit = h('select', { 'aria-label': label + ' unit' }, units.map(([option, text]) => h('option', { value: option, text, selected: option === pickUnit(minutes) })));
-      const amount = h('input', { type: 'number', min: '1', step: '1', 'aria-label': label, value: minutes === null || minutes === undefined ? '' : String(minutes / Number(pickUnit(minutes))), placeholder: allowNever ? 'Never' : '' });
+      const amount = h('input', { type: 'number', min: '0', step: 'any', 'aria-label': label, value: minutes === null || minutes === undefined ? '' : String(minutes / Number(pickUnit(minutes))), placeholder: allowNever ? 'Never' : '' });
       return { node: h('div', { class: 'duration' }, amount, unit), value: () => amount.value === '' ? null : Math.round(Number(amount.value) * Number(unit.value)) };
     }
     function policyDialog(policy) {
@@ -1944,7 +1944,7 @@
         const idle = durationInput('Idle sign-out', base.idleMinutes, { allowNever: true });
         const absolute = durationInput('Maximum session', base.absoluteMinutes, { allowNever: true });
         const persistent = toggle({ checked: base.persistent, label: 'Stay signed in after closing the browser' });
-        const stepUp = h('input', { type: 'number', min: '5', max: '60', step: '1', value: String(base.stepUpMinutes), required: true });
+        const stepUp = h('input', { type: 'number', min: '5', max: '60', step: '1', value: String(base.stepUpMinutes), required: true, 'aria-label': 'Confirm it’s you after, in minutes' });
         const maxSessions = h('input', { type: 'number', min: '1', max: '50', step: '1', value: base.maxSessions ? String(base.maxSessions) : '', placeholder: 'No limit' });
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save policy' });
         const remove = policy && policy.id !== 'default' ? actionRow('Delete policy', { danger: true, iconName: 'trash', onClick: () => { close(); confirmDialog(`Delete ${policy.name}?`, 'People and groups using it fall back to their other policies or the default.', 'Delete', () => act(() => api('admin/policy', { action: 'delete', id: policy.id }), null, 'Policy deleted.')); } }) : null;
