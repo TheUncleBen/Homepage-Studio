@@ -5,8 +5,8 @@
 import { join } from 'node:path';
 import { openDatabase } from './sqlite.mjs';
 
-const SEVERITY_WORDS = { critical: 2, crit: 2, error: 3, err: 3, errors: 3, warning: 4, warn: 4, warnings: 4, notice: 5, info: 6, debug: 7 };
-const FIELD_ALIASES = { sev: 'severity', severity: 'severity', level: 'severity', source: 'source', src: 'source', resource: 'resource', res: 'resource', type: 'type', event: 'type', class: 'class', error: 'class', dashboard: 'dashboard', scope: 'dashboard', category: 'category', cat: 'category', group: 'group', panel: 'panel', id: 'id', actor: 'actor' };
+const SEVERITY_WORDS = { __proto__: null, critical: 2, crit: 2, error: 3, err: 3, errors: 3, warning: 4, warn: 4, warnings: 4, notice: 5, info: 6, debug: 7 };
+const FIELD_ALIASES = { __proto__: null, sev: 'severity', severity: 'severity', level: 'severity', source: 'source', src: 'source', resource: 'resource', res: 'resource', type: 'type', event: 'type', class: 'class', error: 'class', dashboard: 'dashboard', scope: 'dashboard', category: 'category', cat: 'category', group: 'group', panel: 'panel', id: 'id', actor: 'actor' };
 export const MAX_QUERY = 1000;
 
 // Splits a typed search into terms. Every chip in the UI has this same text
