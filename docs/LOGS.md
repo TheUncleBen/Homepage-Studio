@@ -121,7 +121,9 @@ Syslog is plain text on the network; keep it on a network you trust.
 Administration › Monitoring and logs › **Log alerts** sends a notification
 when a search finds at least so many events within so many minutes, then
 stays quiet for a while. Alerts use the same notification channels as
-monitors.
+monitors. A search that could never find anything (a filter or level Studio
+doesn't know, or a quote left open) is refused when you save, with the
+reason.
 
 ## Export
 
