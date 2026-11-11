@@ -18,3 +18,5 @@ overrides:
   # GHSA-xjj6-f33q-929c, GHSA-4qv8-2p9j-2685, GHSA-f72v-6w45-q472: reached
   # through @kubernetes/client-node > undici (and jsdom in tests).
   undici: ^8.12.2
+  # GHSA-474x-hrwr-fgx4: reached through gamedig.
+  fast-xml-parser: ^5.12.0

@@ -78,6 +78,8 @@ build is identified by its source commit and image digest
   longer scrolls sideways, choices in Studio's own dialogs (Maintenance ›
   When) fit their row, and Dashboard settings › Tab icon keeps Choose in
   view.
+- fast-xml-parser (reached through gamedig, for game server widgets) is
+  updated to 5.12.0 for GHSA-474x-hrwr-fgx4.
 
 ### Upgrades keep your data
 
