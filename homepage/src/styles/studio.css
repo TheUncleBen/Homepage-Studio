@@ -3932,6 +3932,43 @@ svg.studio-chart-gauge {
   height: 30px;
   margin: 0;
 }
+/* With no logo in the top-left corner, the box would cover the name's first
+   letters (or whatever the card draws there), so it joins Move and Edit at
+   the top right instead: 10px edge, 30px buttons, 4px gaps. */
+.studio-edit-mode
+  .studio-panel:not(.studio-stacked-panel):not(:has(.studio-card-head:not([data-logo="above"]) .studio-card-logo))
+  > .studio-panel-slide
+  > .studio-select-corner {
+  top: 10px;
+  left: auto;
+  right: 78px;
+}
+.studio-edit-mode
+  .studio-panel:not(.studio-stacked-panel):not(:has(.studio-card-head:not([data-logo="above"]) .studio-card-logo)):not(
+    :has(.studio-panel-header > button + button)
+  )
+  > .studio-panel-slide
+  > .studio-select-corner {
+  right: 44px;
+}
+@media (pointer: coarse) {
+  /* Touch: 4px edge, 44px buttons. */
+  .studio-edit-mode
+    .studio-panel:not(.studio-stacked-panel):not(:has(.studio-card-head:not([data-logo="above"]) .studio-card-logo))
+    > .studio-panel-slide
+    > .studio-select-corner {
+    top: 4px;
+    right: 100px;
+  }
+  .studio-edit-mode
+    .studio-panel:not(.studio-stacked-panel):not(
+      :has(.studio-card-head:not([data-logo="above"]) .studio-card-logo)
+    ):not(:has(.studio-panel-header > button + button))
+    > .studio-panel-slide
+    > .studio-select-corner {
+    right: 52px;
+  }
+}
 .studio-select-input {
   position: absolute;
   inset: 0;
@@ -4766,10 +4803,11 @@ svg.studio-chart-gauge {
   opacity: 1;
   pointer-events: auto;
 }
-/* On a chart or status history, and in a stack (its page dots sit along the
-   bottom), the note sits in the header row, so it never covers what is
-   drawn. */
-.studio-stack-shell .studio-freshness,
+/* On a chart or status history, and in a stack (its page dots and play
+   button sit along the bottom), the note sits in the header row, so it never
+   covers what is drawn. Stacked cards are the shell's siblings, not its
+   children. */
+.studio-stacked-panel .studio-freshness,
 .studio-panel:has(.studio-chart, .studio-status-history) .studio-freshness {
   top: 8px;
   bottom: auto;
