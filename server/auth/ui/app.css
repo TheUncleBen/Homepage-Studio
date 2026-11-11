@@ -374,7 +374,7 @@ input[type="color"] { width: 44px; min-height: 40px; padding: 2px; border-radius
    a rounded group of rows divided by hairlines. Help sits behind an info
    button. Keep the two in step. */
 .group { display: grid; min-width: 0; }
-.group-head { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 4px 6px 16px; }
+.group-head { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 28px; padding: 0 4px 6px 16px; }
 .group-head h2 { margin: 0; overflow: hidden; color: var(--muted); font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
 .group-aside { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--muted); font-size: 0.8125rem; white-space: nowrap; }
 .group-aside .pill { min-height: 28px; padding: 0 12px; font-size: 0.8125rem; }
@@ -521,7 +521,10 @@ dialog .notice { scroll-margin-bottom: 150px; }
   .row-main { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 8px 0; }
   .row-main:has(> .row-control > :is(.switch, .pill, .row-value)) { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
   .row-control :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), select) { min-height: 36px; }
-  .row-control > .segmented { justify-self: stretch; }
+  .row-control > .segmented { justify-self: stretch; flex-wrap: nowrap; }
+  /* Options share the width; a long one wraps inside its button, as in the
+     dashboard's dialogs (audit, 11 Nov 2026: Maintenance › When at 320 px). */
+  .row-control > .segmented > button { min-width: 0; padding: 4px 6px; white-space: normal; line-height: 1.15; }
   .grant-row { flex-wrap: wrap; }
   .grant-row .grant-name { flex: 1 1 calc(100% - 100px); }
   .grant-row .segmented { margin-left: 46px; }
@@ -697,3 +700,6 @@ input.ops-search { width: auto; flex: 1 1 12rem; min-height: 34px; padding-block
 }
 /* On touch screens a dialog takes focus itself (no keyboard popping up). */
 dialog[tabindex="-1"]:focus { outline: none; }
+@media (max-width: 380px) {
+  .row-control > .segmented > button { padding-inline: 2px; }
+}

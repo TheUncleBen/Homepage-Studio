@@ -74,6 +74,10 @@ build is identified by its source commit and image digest
   settings › Refresh no longer runs past its panel.
 - The stack dialog's **Add an existing widget**, snapshot names and a few
   messages say "widget" like the rest of the editor, not "panel".
+- On the narrowest phones (320 px), Administration › Monitoring and logs no
+  longer scrolls sideways, choices in Studio's own dialogs (Maintenance ›
+  When) fit their row, and Dashboard settings › Tab icon keeps Choose in
+  view.
 
 ### Upgrades keep your data
 
