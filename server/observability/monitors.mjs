@@ -281,7 +281,12 @@ export function createMonitoring({ db, definitions, runCheck, onEvent = () => {}
       // checked now, so its dot doesn't show the old answer for a cycle.
       for (const monitor of monitors) if (before.has(monitor.id) && before.get(monitor.id) !== JSON.stringify(monitor)) due.set(monitor.id, now());
     },
-    dropDashboard(dashboardId) { for (const monitor of bound.get(dashboardId) ?? []) forget(monitor.id); bound.delete(dashboardId); },
+    // Also its cards' rows kept from before a restart (not bound yet).
+    dropDashboard(dashboardId) {
+      for (const monitor of bound.get(dashboardId) ?? []) forget(monitor.id);
+      for (const row of db.all("SELECT monitor_id FROM monitor_state WHERE scope = ? AND monitor_id LIKE 'card:%'", dashboardId)) forget(row.monitor_id);
+      bound.delete(dashboardId);
+    },
     monitors: all,
     byId,
     bound: dashboardId => bound.get(dashboardId) ?? [],

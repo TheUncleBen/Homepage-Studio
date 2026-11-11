@@ -58,6 +58,9 @@ build is identified by its source commit and image digest
 - On phones, dialogs in Administration and My account no longer pop up the
   keyboard as they open. Replacing an authenticator app sends a "replaced"
   email, and session policy messages clear as soon as you edit a field.
+- In long dialogs on phones (New monitor), an error shows in view above the
+  buttons instead of below them, and a third button (Save after Cancel and
+  Test now) takes the full row.
 
 ### Upgrades keep your data
 

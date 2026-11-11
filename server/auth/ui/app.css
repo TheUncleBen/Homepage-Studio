@@ -514,6 +514,8 @@ dialog .group-body .pill { background: var(--surface); }
 .code-row textarea { display: block; min-height: 12rem; padding: 14px 16px; border: 0; border-radius: 0; background: transparent; font-size: 0.8125rem; }
 .code-row textarea:focus-visible { outline: none; box-shadow: inset 3px 0 0 var(--accent); }
 /* Dialogs end with their buttons in view. */
+/* A message scrolled into view stops above the sticky buttons. */
+dialog .notice { scroll-margin-bottom: 150px; }
 .dialog-actions { position: sticky; bottom: -22px; z-index: 1; margin: 0 -20px -22px; padding: 12px 20px 22px; width: auto; max-width: none; background: var(--surface); border-top: 1px solid var(--line); }
 @media (max-width: 560px) {
   .row-main { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 8px 0; }
@@ -527,6 +529,10 @@ dialog .group-body .pill { background: var(--surface); }
   /* A two-word action (Create dashboard) keeps to one line; the text gets
      a little smaller rather than wrapping. */
   .dialog-actions > button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-inline: 10px; font-size: 0.9375rem; }
+  /* With three buttons (Cancel, Test now, Save) the last one, the main
+     action, takes the full second row instead of half of it. */
+  .dialog-actions:has(> :not([hidden]) ~ :not([hidden]) ~ :not([hidden])) { display: flex; flex-wrap: wrap; }
+  .dialog-actions:has(> :not([hidden]) ~ :not([hidden]) ~ :not([hidden])) > * { flex: 1 1 calc(50% - 5px); }
   .group-aside .mono { display: none; }
 }
 dialog { overflow-y: auto; }

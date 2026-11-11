@@ -33,7 +33,12 @@
   const put = (element, ...nodes) => element.replaceChildren(...nodes.flat(Infinity).filter(node => node !== null && node !== undefined && node !== false));
   const render = (...nodes) => { put(app, ...nodes); const focus = app.querySelector('[data-autofocus]'); if (focus) focus.focus(); };
   const notice = (kind = '') => h('div', { class: 'notice ' + kind, role: kind === 'error' ? 'alert' : 'status' });
-  function say(box, message, kind = 'error') { box.className = 'notice ' + kind; box.setAttribute('role', kind === 'error' ? 'alert' : 'status'); box.textContent = message ?? ''; }
+  // A message below the fold (a long dialog on a phone) is brought into view,
+  // so Save never seems to do nothing.
+  function say(box, message, kind = 'error') {
+    box.className = 'notice ' + kind; box.setAttribute('role', kind === 'error' ? 'alert' : 'status'); box.textContent = message ?? '';
+    if (message && box.isConnected) box.scrollIntoView?.({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
   // The deployment's name (STUDIO_DEPLOYMENT_NAME), shown with the Studio logo.
   let deploymentName = document.body.dataset.deploymentName || 'Homepage Studio';
   const STUDIO_LOGO = '/studio/brand/logo.svg';

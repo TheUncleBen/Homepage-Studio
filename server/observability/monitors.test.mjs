@@ -218,6 +218,11 @@ test('a restart keeps card monitors\' history until their dashboard is read agai
   engine.tick();
   assert.equal(engine.state(id)?.since, since, 'still down since the first failure');
   assert.equal(db.get('SELECT COUNT(*) AS n FROM check_result WHERE monitor_id = ?', id).n, 1);
+  // A dashboard deleted before its cards are bound again takes their rows.
+  engine.dropDashboard(DASH);
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM check_result WHERE monitor_id = ?', id).n, 0);
+  engine.setBound(DASH, [card]);
+  engine.apply(card, { ok: false, cls: 'dns' });
   // Bound again and then dropped from its dashboard: forgotten as before.
   engine.setBound(DASH, [card]);
   engine.setBound(DASH, []);
