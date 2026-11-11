@@ -5550,6 +5550,14 @@ svg.studio-chart-gauge {
     line-height: 1.15;
   }
 }
+/* The narrowest phones (320 px): one-word options can't wrap, so the
+   buttons give up side padding instead (UI review, 11 Nov 2026). */
+@media (max-width: 380px) {
+  .studio-look-editor .studio-segmented > button,
+  :is(.studio-appearance, .studio-dialog) .studio-row-control > .studio-segmented > button {
+    padding-inline: 2px;
+  }
+}
 /* Full view: the time ranges share the dialog's width, so all five fit a
    phone. */
 .studio-full-view > .studio-segmented {

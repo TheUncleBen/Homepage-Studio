@@ -491,10 +491,11 @@
       const FILTERS = ['sev', 'severity', 'level', 'source', 'src', 'resource', 'res', 'type', 'event', 'class', 'error', 'dashboard', 'scope', 'category', 'cat', 'group', 'panel', 'id', 'actor'];
       const LEVEL_WORDS = ['critical', 'crit', 'error', 'err', 'errors', 'warning', 'warn', 'warnings', 'notice', 'info', 'debug'];
       function queryHint(text) {
-        if ((text.match(/"/g) ?? []).length % 2) return 'A quote is left open: close it with another ".';
-        for (const [, name, value] of text.matchAll(/(?:^|\s)-?([a-z]+):("[^"]*"|\S*)/gi)) {
+        if ((text.replace(/\\./g, '').match(/"/g) ?? []).length % 2) return 'A quote is left open: close it with another ".';
+        for (const [, name, raw] of text.matchAll(/(?:^|\s)-?([a-z]+):("[^"]*"|\S+)/gi)) {
           const field = name.toLowerCase();
-          if (!FILTERS.includes(field) && !value.startsWith('//')) return `“${name}:” isn’t a filter. Try severity:, source:, resource:, type:, class:, dashboard:, panel: or actor:.`;
+          const value = raw.replace(/^"|"$/g, '');
+          if (!FILTERS.includes(field) && !raw.startsWith('//')) return `“${name}:” isn’t a filter. Try severity:, source:, resource:, type:, class:, dashboard:, panel: or actor:.`;
           if (['sev', 'severity', 'level'].includes(field) && !LEVEL_WORDS.includes(value.toLowerCase()) && !/^[0-7]$/.test(value)) return 'Levels are critical, error, warning, notice, info or debug (or 0 to 7).';
         }
         return '';

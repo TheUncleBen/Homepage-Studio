@@ -2636,7 +2636,7 @@ export default function StudioBoard({
                 <p>
                   Add a service, a clock, a bookmark, or a native integration.
                   <br />
-                  Arrange each panel freely. Stack the ones that belong together.
+                  Arrange each widget freely. Stack the ones that belong together.
                 </p>
                 <button
                   className="studio-button studio-primary"

@@ -178,6 +178,10 @@ test('a log alert whose search can never match is refused with the reason (audit
   assert.match(queryProblem('constructor:x'), /isn’t a filter/);
   assert.match(queryProblem('level:constructor'), /^Levels are/);
   assert.equal(parseQuery('constructor:x')[0].kind, 'text');
+  // Searches that work are not refused (UI review, 11 Nov 2026).
+  assert.equal(queryProblem('sshd: Failed password'), '');
+  assert.equal(queryProblem('severity:"error"'), '');
+  assert.equal(queryProblem('"say \\"hi\\" now"'), '');
   const channels = [{ id: 'c1' }];
   assert.throws(() => cleanAlert({ name: 'Errors', query: 'severity:eror', channels: ['c1'] }, { channels }), /Levels are/);
   assert.equal(cleanAlert({ name: 'Errors', query: 'severity:error', channels: ['c1'] }, { channels }).query, 'severity:error');

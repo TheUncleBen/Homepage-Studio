@@ -570,7 +570,7 @@ export function ContentPicker({ catalog, state, onChoose, onRestore, onPlace, in
           </nav>
           {!savedOnly && Boolean(state?.hiddenDiscoveredIds?.length) && (
             <details className="studio-hidden-discovered">
-              <summary>Hidden discovered panels ({state.hiddenDiscoveredIds.length})</summary>
+              <summary>Hidden discovered widgets ({state.hiddenDiscoveredIds.length})</summary>
               <div className="studio-stack-candidates">
                 {(state.discoveredSources || [])
                   .filter((source) => state.hiddenDiscoveredIds.includes(source.id))
@@ -1214,7 +1214,7 @@ export default function ContentEditor({
       {(kind === "serviceWidget" || kind === "informationWidget") &&
         customApiMappingsMissing(source?.type || entry?.type, draft) && (
           <p className="studio-callout studio-callout-warn" role="status">
-            This Custom API widget has no <code>mappings</code> yet, so its panel will be empty. Add at least one under
+            This Custom API widget has no <code>mappings</code> yet, so it will show nothing. Add at least one under
             Value mappings, or in YAML. You can still save it now.
           </p>
         )}

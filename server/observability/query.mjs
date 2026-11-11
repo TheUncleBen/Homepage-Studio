@@ -33,10 +33,13 @@ export function parseQuery(text) {
 // view shows the same reasons (server/auth/ui/ops.js queryHint).
 export function queryProblem(text) {
   const input = String(text ?? '');
-  if ((input.match(/"/g) ?? []).length % 2) return 'A quote is left open: close it with another ".';
-  for (const [, name, value] of input.matchAll(/(?:^|\s)-?([a-z]+):("[^"]*"|\S*)/gi)) {
+  // An escaped \" is part of the words, not a quote. A name: with nothing
+  // straight after it (syslog's "sshd: Failed …") is just a word.
+  if ((input.replace(/\\./g, '').match(/"/g) ?? []).length % 2) return 'A quote is left open: close it with another ".';
+  for (const [, name, raw] of input.matchAll(/(?:^|\s)-?([a-z]+):("[^"]*"|\S+)/gi)) {
     const field = FIELD_ALIASES[name.toLowerCase()];
-    if (!field && !value.startsWith('//')) return `“${name}:” isn’t a filter. Try severity:, source:, resource:, type:, class:, dashboard:, panel: or actor:.`;
+    const value = raw.replace(/^"|"$/g, '');
+    if (!field && !raw.startsWith('//')) return `“${name}:” isn’t a filter. Try severity:, source:, resource:, type:, class:, dashboard:, panel: or actor:.`;
     if (field === 'severity' && !(value.toLowerCase() in SEVERITY_WORDS) && !/^[0-7]$/.test(value)) return 'Levels are critical, error, warning, notice, info or debug (or 0 to 7).';
   }
   return '';
