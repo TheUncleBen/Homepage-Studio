@@ -1214,8 +1214,8 @@ export default function ContentEditor({
       {(kind === "serviceWidget" || kind === "informationWidget") &&
         customApiMappingsMissing(source?.type || entry?.type, draft) && (
           <p className="studio-callout studio-callout-warn" role="status">
-            This Custom API widget has no <code>mappings</code> yet, so its panel will be empty. Add at least one in
-            YAML. You can still save it now.
+            This Custom API widget has no <code>mappings</code> yet, so its panel will be empty. Add at least one under
+            Value mappings, or in YAML. You can still save it now.
           </p>
         )}
     </>

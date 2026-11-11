@@ -211,6 +211,27 @@ describe("Coherent native option drafts", () => {
     expect(screen.getByRole("group", { name: "Shows" })).toBeInTheDocument();
   });
 
+  it("offers an empty list of settings, such as Custom API's mappings, as JSON with an example, not as text", () => {
+    const fields = [
+      {
+        key: "mappings",
+        label: "Value mappings",
+        type: "array",
+        valueTypes: ["array", "object"],
+        exampleValue: [{ field: "key", label: "Field 1", format: "text" }, { field: "other" }],
+      },
+      { key: "tags", label: "Tags", type: "array", valueTypes: ["array"], exampleValue: ["a", "b"] },
+    ];
+    const onChange = vi.fn();
+    render(<Fixture fields={fields} initial={{}} onChange={onChange} />);
+    const json = screen.getByRole("textbox", { name: "Value mappings" });
+    expect(json).toHaveAttribute("placeholder", '[{"field":"key","label":"Field 1","format":"text"}]');
+    fireEvent.change(json, { target: { value: '[{"field":"cpu","label":"CPU"}]' } });
+    expect(screen.getByTestId("config-value")).toHaveTextContent('{"mappings":[{"field":"cpu","label":"CPU"}]}');
+    // A list of plain values keeps the simple list editor.
+    expect(screen.getByRole("group", { name: "Tags" })).toBeInTheDocument();
+  });
+
   it("does not replace a valid draft with invalid advanced YAML", () => {
     render(<Fixture initial={{ keep: true }} fields={[]} />);
     fireEvent.click(screen.getByRole("radio", { name: "YAML" }));

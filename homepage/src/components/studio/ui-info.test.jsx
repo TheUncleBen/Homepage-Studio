@@ -8,7 +8,6 @@ describe("info notes", () => {
   it("Esc closes an open note and goes no further", () => {
     const outer = vi.fn();
     render(
-      // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div onKeyDown={outer}>
         <Group title="Status" info="What status means." />
       </div>,

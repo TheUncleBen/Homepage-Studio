@@ -2299,6 +2299,7 @@ body {
   grid-template-columns: minmax(0, 1fr) 32px;
 }
 .studio-pair input,
+.studio-row-stacked .studio-row-control .studio-input-line input,
 .studio-json-input,
 .studio-textarea-input {
   width: 100%;

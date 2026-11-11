@@ -971,6 +971,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       const renaming = username !== current.user.username;
       if (changing || renaming) requireFresh(current);
       const before = current.user.username;
+      // Saving the profile as it is changes nothing and leaves no audit event.
+      if (!changing && !renaming && displayName === current.user.displayName) return accountView(current);
       await store.mutate(data => {
         if (renaming && data.users.some(item => item.username === username && item.id !== current.user.id)) fail('That username is taken.', 'USERNAME_TAKEN', 409);
         const user = findUser(data, current.user.id);
@@ -1351,6 +1353,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     },
     async settings(current, body) {
       requireAdmin(current);
+      let changed = [];
       await store.mutate(data => {
         const next = structuredClone(data.settings);
         if (body?.emailCode !== undefined) next.emailCode = body.emailCode === true;
@@ -1381,9 +1384,11 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
             fail(`Before turning off local sign-in, sign in through ${oidc?.name ?? 'single sign-on'} as an administrator whose provider group is listed under administrator groups.`, 'LOCAL_SIGN_IN_REQUIRED', 409);
           }
         }
+        // The audit names only the settings that really changed.
+        changed = Object.keys(next).filter(key => JSON.stringify(next[key] ?? null) !== JSON.stringify(data.settings[key] ?? null));
         data.settings = next;
       });
-      await audit('settings-changed', { by: current.user.id, fields: Object.keys(body ?? {}) }, current);
+      if (changed.length) await audit('settings-changed', { by: current.user.id, fields: changed }, current);
       return admin.overview(current);
     },
     async grants(current, body) {

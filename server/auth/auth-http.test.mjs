@@ -524,6 +524,16 @@ test('the deployment name comes from the environment, an administrator can chang
   // An empty name goes back to the deployment's.
   await post('/studio/auth/admin/settings', { deploymentName: '' }, { cookie: admin.cookie });
   assert.equal((await request('/studio/api/overview', { cookie: admin.cookie })).json.deploymentName, 'Family Hub');
+  // Saving without a change, or with keys that aren't settings, adds no audit event;
+  // a real change names only what changed.
+  const changes = async () => (await request('/studio/auth/admin/audit', { cookie: admin.cookie })).json.events.filter(event => event.type === 'settings-changed');
+  const before = (await changes()).length;
+  for (const body of [{}, { deploymentName: '' }, { action: 'x', __proto__: null, emailCode: false }]) assert.equal((await post('/studio/auth/admin/settings', body, { cookie: admin.cookie })).status, 200);
+  assert.equal((await changes()).length, before);
+  await post('/studio/auth/admin/settings', { deploymentName: 'Hub', emailCode: false }, { cookie: admin.cookie });
+  const [latest] = await changes();
+  assert.equal((await changes()).length, before + 1);
+  assert.deepEqual(latest.fields ?? latest.details?.fields, ['deploymentName']);
 });
 
 test('until the main dashboard has an address, administrators are sent to choose it and members never see it', async t => {

@@ -1,6 +1,6 @@
 # BookOrbit
 
-Books, Authors, Series, Storage, Reading, Finished.
+Book library. Books, Authors, Series, Storage, Reading, Finished.
 
 Integration · type `bookorbit` · [Homepage documentation](https://gethomepage.dev/widgets/services/bookorbit/)
 

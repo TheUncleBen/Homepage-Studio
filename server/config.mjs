@@ -185,7 +185,16 @@ function yamlDocument(source, filename) {
     if (error instanceof ConfigError) throw error;
     fail(`${filename} contains unsupported or excessive YAML aliases.`, 'INVALID_YAML');
   }
-  return { doc, data, restore: masked.restore, text: () => masked.restoreText(doc.toString({ lineWidth: 0 })) };
+  // A new deployment's files start as `{}` or `[]`. Writing into that empty
+  // flow collection would keep everything on one line, which nobody can read
+  // or edit by hand, so an empty root becomes block style. A root someone
+  // wrote in flow style with content keeps its style.
+  const emptyFlowRoot = (isMap(doc.contents) || isSeq(doc.contents)) && doc.contents.flow && !doc.contents.items.length;
+  const text = () => {
+    if (emptyFlowRoot && doc.contents?.items?.length) doc.contents.flow = false;
+    return masked.restoreText(doc.toString({ lineWidth: 0 }));
+  };
+  return { doc, data, restore: masked.restore, text };
 }
 
 function validateServiceConfig(config, label) {

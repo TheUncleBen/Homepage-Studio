@@ -613,3 +613,20 @@ test('several widgets are duplicated or deleted together in one save', async (t)
   await assert.rejects(store.duplicatePanels({ revision: result.revision, ids: [] }), /Choose the widgets/);
   await assert.rejects(store.deletePanels({ revision: 'stale', ids: [clock.id] }), /changed|revision|reload/i);
 });
+
+test('a new deployment writes readable block YAML into its empty files, and a flow file someone wrote keeps its style', async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'homepage-studio-store-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const configDir = path.join(directory, 'config');
+  const store = createConfigStore({ configDir, stateDir: path.join(directory, 'state') });
+  await store.initialize();
+  let current = await store.load();
+  current = await store.mutateSettings({ revision: current.revision, config: { title: 'Home', theme: 'dark' } });
+  current = await store.mutateService({ revision: current.revision, action: 'add', group: ['Services'], name: 'App', config: { href: 'http://app.example.test' } });
+  assert.equal(await fs.readFile(path.join(configDir, 'settings.yaml'), 'utf8'), 'title: Home\ntheme: dark\n');
+  const services = await fs.readFile(path.join(configDir, 'services.yaml'), 'utf8');
+  assert.match(services, /^- Services:\n {4}- App:\n {8}href: http:\/\/app\.example\.test\n/);
+  current = await store.save({ revision: current.revision, settingsYaml: '{ title: Mine }\n' });
+  await store.mutateSettings({ revision: current.revision, config: { theme: 'light' } });
+  assert.equal(await fs.readFile(path.join(configDir, 'settings.yaml'), 'utf8'), '{ title: Mine, theme: light }\n');
+});

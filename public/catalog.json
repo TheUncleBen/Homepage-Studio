@@ -1427,7 +1427,7 @@
           "text": "Default fields: `[\"books\", \"authors\", \"reading\", \"finished\"]`."
         }
       ],
-      "description": "Books, Authors, Series, Storage, Reading, Finished.",
+      "description": "Book library. Books, Authors, Series, Storage, Reading, Finished.",
       "secrets": [
         {
           "key": "password",
