@@ -235,3 +235,16 @@ test('a restart keeps card monitors\' history until their dashboard is read agai
   later.tick();
   assert.equal(later.state(id), null);
 });
+
+test('a maintenance window can cover a card\'s monitor on its own dashboard (audit, 11 Nov 2026)', async () => {
+  const { cleanMaintenance } = await import('./definitions.mjs');
+  const OTHER = '22222222-2222-4222-8222-222222222222';
+  const card = { id: `card:${DASH}:p1`, scope: DASH };
+  const window = cleanMaintenance({ name: 'Router', scope: DASH, kind: 'now', minutes: 30, monitors: [card.id] }, { monitors: [], cards: [card] });
+  assert.deepEqual(window.monitors, [card.id]);
+  assert.throws(() => cleanMaintenance({ name: 'Router', scope: OTHER, kind: 'now', monitors: [card.id] }, { monitors: [], cards: [card] }), /same dashboard/);
+  assert.throws(() => cleanMaintenance({ name: 'Router', scope: DASH, kind: 'now', monitors: [`card:${DASH}:made-up`] }, { monitors: [], cards: [card] }), /same dashboard/);
+  // A card deleted since stays in the window it was already in.
+  const kept = cleanMaintenance({ name: 'Router', kind: 'now', monitors: [card.id] }, { existing: window, monitors: [], cards: [] });
+  assert.deepEqual(kept.monitors, [card.id]);
+});

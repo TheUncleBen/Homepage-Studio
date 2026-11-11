@@ -155,13 +155,16 @@ export function cleanMonitor(input, { existing, channels, monitors }) {
 }
 
 const time = value => { if (typeof value !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) fail('Times look like 02:30.'); return value; };
-export function cleanMaintenance(input, { existing, monitors }) {
+export function cleanMaintenance(input, { existing, monitors, cards = [] }) {
   if (!input || typeof input !== 'object') fail('Send a maintenance window.');
   const kind = ['now', 'once', 'daily', 'weekly'].includes(input.kind) ? input.kind : fail('Choose when the maintenance happens.');
   const ids = Array.isArray(input.monitors) ? input.monitors : [];
   if (!ids.length && !(input.tags ?? []).length) fail('Choose the monitors or tags it covers.');
   const scope = scopeOf(input.scope ?? existing?.scope);
-  for (const id of ids) if (!monitors.some(monitor => monitor.id === id && monitor.scope === scope)) fail('Choose monitors on the same dashboard.');
+  // A card's monitor may be named too; one whose card has since gone stays
+  // in the window harmlessly, so an edit keeps it.
+  const known = id => [...monitors, ...cards].some(monitor => monitor.id === id && monitor.scope === scope) || (existing?.scope === scope && existing.monitors.includes(id));
+  for (const id of ids) if (typeof id !== 'string' || !known(id)) fail('Choose monitors on the same dashboard.');
   const window = { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80, { empty: 'Give the maintenance window a name.' }), scope, kind, monitors: [...new Set(ids)], tags: tags(input.tags) };
   if (kind === 'now') { window.start = Date.now(); window.end = window.start + integer(input.minutes, 'Minutes', 5, 7 * 1440, 60) * 60e3; }
   if (kind === 'once') {

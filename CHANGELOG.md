@@ -63,6 +63,9 @@ build is identified by its source commit and image digest
   Test now) takes the full row.
 - **Logs:** a search that finds nothing because of a typo (`sourc:`, an
   unknown level, an open quote) says what to fix.
+- **Maintenance windows can cover cards.** A window (say, a router update)
+  can include the monitors that come from your cards, not only ones added
+  under New monitor.
 
 ### Upgrades keep your data
 

@@ -775,8 +775,11 @@
         drawWhen();
         const covered = new Set(existing?.monitors ?? []);
         const monitorsHolder = h('div', {});
+        // Cards' monitors too (they come from the dashboards, not the config).
+        let cards = [];
+        ops('monitors').then(answer => { cards = (answer.monitors ?? []).filter(item => item.card); drawMonitors(); }).catch(() => {});
         function drawMonitors() {
-          const candidates = cfg.monitors.filter(item => item.scope === scope.select.value);
+          const candidates = [...cfg.monitors, ...cards].filter(item => item.scope === scope.select.value);
           put(monitorsHolder, candidates.length ? candidates.map(item => row(item.name, toggle({ checked: covered.has(item.id), label: item.name, onChange: on => { if (on) covered.add(item.id); else covered.delete(item.id); } }))) : emptyRow('No monitors on this dashboard to cover.'));
         }
         scope.select.addEventListener('change', () => { covered.clear(); drawMonitors(); });
