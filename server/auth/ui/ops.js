@@ -495,7 +495,7 @@
         for (const [, name, value] of text.matchAll(/(?:^|\s)-?([a-z]+):("[^"]*"|\S*)/gi)) {
           const field = name.toLowerCase();
           if (!FILTERS.includes(field) && !value.startsWith('//')) return `“${name}:” isn’t a filter. Try severity:, source:, resource:, type:, class:, dashboard:, panel: or actor:.`;
-          if (['sev', 'severity', 'level'].includes(field) && !LEVEL_WORDS.includes(value.toLowerCase()) && !/^[0-7]$/.test(value)) return 'Levels are error, warning, notice, info or debug (or 0 to 7).';
+          if (['sev', 'severity', 'level'].includes(field) && !LEVEL_WORDS.includes(value.toLowerCase()) && !/^[0-7]$/.test(value)) return 'Levels are critical, error, warning, notice, info or debug (or 0 to 7).';
         }
         return '';
       }
@@ -780,7 +780,7 @@
         ops('monitors').then(answer => { cards = (answer.monitors ?? []).filter(item => item.card); drawMonitors(); }).catch(() => {});
         function drawMonitors() {
           const candidates = [...cfg.monitors, ...cards].filter(item => item.scope === scope.select.value);
-          put(monitorsHolder, candidates.length ? candidates.map(item => row(item.name, toggle({ checked: covered.has(item.id), label: item.name, onChange: on => { if (on) covered.add(item.id); else covered.delete(item.id); } }))) : emptyRow('No monitors on this dashboard to cover.'));
+          put(monitorsHolder, candidates.length ? candidates.map(item => row(item.name, toggle({ checked: covered.has(item.id), label: item.card ? `${item.name} (card)` : item.name, onChange: on => { if (on) covered.add(item.id); else covered.delete(item.id); } }), { detail: item.card ? 'Card' : undefined })) : emptyRow('No monitors on this dashboard to cover.'));
         }
         scope.select.addEventListener('change', () => { covered.clear(); drawMonitors(); });
         drawMonitors();
