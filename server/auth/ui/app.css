@@ -603,8 +603,9 @@ dialog { overflow-y: auto; }
 .ops-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; font-size: 1.0625rem; }
 .ops-back { display: inline-flex; align-items: center; gap: 2px; justify-self: start; min-height: 32px; margin: -6px 0 -10px -6px; padding: 4px 8px 4px 2px; border: 0; border-radius: 8px; background: transparent; color: var(--accent); font: inherit; font-size: 0.9375rem; font-weight: 550; }
 .ops-back:hover { border: 0; background: var(--raised); }
-.ops-filter, .ops-views { min-height: 34px; width: auto; max-width: 14rem; padding-block: 4px; font-size: 0.875rem; }
-.ops-search { width: auto; flex: 1 1 12rem; min-height: 34px; }
+.ops-filter, .ops-views { min-height: 34px; width: auto; max-width: 14rem; padding-block: 4px; padding-right: 28px; font-size: 0.875rem; appearance: none; background: var(--input) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 9 5-5 5 5M7 15l5 5 5-5'/%3E%3C/svg%3E") right 10px center / 12px no-repeat; cursor: pointer; }
+.ops-filter option, .ops-views option { background: var(--surface); color: var(--text); }
+input.ops-search { width: auto; flex: 1 1 12rem; min-height: 34px; padding-block: 4px; font-size: 0.875rem; }
 .ops-wrap, .nav-text > small.ops-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .ops-long .row-main, .ops-long .row-main:has(> .row-control > .row-value) { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 10px 0; }
 .ops-long .row-control > .row-value { justify-self: start; text-align: left; }
@@ -678,3 +679,9 @@ dialog { overflow-y: auto; }
 .ops-name { flex-basis: 100%; font-size: 1.25rem; }
 /* On a phone the section title already names the monitor or incident. */
 @media (max-width: 760px) { .ops-name { display: none; } }
+
+/* iOS zooms into a focused field whose text is under 16px and stays zoomed:
+   on touch screens no field's text is smaller than that. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], .code-input), select, textarea { font-size: max(16px, 1em) !important; }
+}

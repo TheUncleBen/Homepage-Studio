@@ -6414,3 +6414,14 @@ svg.studio-chart-gauge {
 .studio-edit-mode.studio-resizing .studio-panel .studio-card-logo {
   opacity: 1;
 }
+
+/* iOS zooms the page into any field whose text is smaller than 16px when it
+   gets focus, and doesn't zoom back. On touch screens every field's text is
+   at least 16px; the compact sizes above stay for mouse and keyboard. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
