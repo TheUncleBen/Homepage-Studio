@@ -51,6 +51,13 @@ build is identified by its source commit and image digest
 - **My account:** when the authenticator app is your only second step, it
   offers Replace (for a new phone) instead of a Remove that Studio then
   refused; your last passkey says it stays until another way is added.
+- **Monitoring history survives restarts and updates.** Every start cleared
+  each card's status history, response times and down-since time, because
+  old monitors were tidied away before the dashboards' cards were read
+  again. Card history is now kept until its dashboard has been read.
+- On phones, dialogs in Administration and My account no longer pop up the
+  keyboard as they open. Replacing an authenticator app sends a "replaced"
+  email, and session policy messages clear as soon as you edit a field.
 
 ### Upgrades keep your data
 

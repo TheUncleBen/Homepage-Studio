@@ -196,3 +196,37 @@ test('a card whose check changed is checked again at once (audit, 7 Nov 2026)', 
   await settle();
   assert.equal(checked.length, 2, 'a changed check runs now');
 });
+
+test('a restart keeps card monitors\' history until their dashboard is read again (audit, 11 Nov 2026)', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-mon-'));
+  t.after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  let clock = Date.parse('2026-11-02T10:00:00');
+  const id = `card:${DASH}:p1`;
+  const card = { ...monitor({ id, card: true, panel: 'p1', failures: 1 }), http: { url: 'https://a.example.org/', card: true } };
+  const open = () => createMonitoring({ db, definitions: () => ({ monitors: [], maintenance: [] }), runCheck: async () => ({ ok: false, cls: 'dns' }), now: () => clock });
+  let db = openMain(dir);
+  let engine = open();
+  engine.setBound(DASH, [card]);
+  engine.apply(card, { ok: false, cls: 'dns', message: 'Name not found' });
+  const since = engine.state(id).since;
+  db.close();
+  // Studio starts again: the first tick prunes before the cards are bound.
+  clock += 60e3;
+  db = openMain(dir);
+  t.after(() => db.close());
+  engine = open();
+  engine.tick();
+  assert.equal(engine.state(id)?.since, since, 'still down since the first failure');
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM check_result WHERE monitor_id = ?', id).n, 1);
+  // Bound again and then dropped from its dashboard: forgotten as before.
+  engine.setBound(DASH, [card]);
+  engine.setBound(DASH, []);
+  assert.equal(engine.state(id), null);
+  // A card monitor whose dashboard never comes back goes after RESULT_DAYS.
+  engine.setBound(DASH, [card]);
+  engine.apply(card, { ok: false, cls: 'dns' });
+  const later = open();
+  clock += 8 * 86400e3 + 2 * 3600e3;
+  later.tick();
+  assert.equal(later.state(id), null);
+});
