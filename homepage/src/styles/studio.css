@@ -4498,6 +4498,9 @@ svg.studio-chart-gauge {
   display: flex;
   align-items: center;
   gap: 10px;
+  /* Lets a long name shorten on a narrow phone instead of pushing Choose
+     past the panel (UI review, 11 Nov 2026). */
+  min-width: 0;
 }
 .studio-icon-preview {
   display: grid;
@@ -4513,9 +4516,13 @@ svg.studio-chart-gauge {
 .studio-icon-value {
   flex: 1;
   min-width: 0;
+  /* Up to two lines, so "Same as the logo" stays readable on a phone. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 /* Uploaded logos sit whole on the tile; backgrounds fill it. */
 .studio-uploaded-logo {
