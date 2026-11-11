@@ -2396,7 +2396,19 @@
           ],
           "exampleValue": "dynamic-list",
           "sensitive": false,
-          "source": "https://gethomepage.dev/widgets/services/customapi/"
+          "source": "https://gethomepage.dev/widgets/services/customapi/",
+          "choices": [
+            "block",
+            "list",
+            "dynamic-list"
+          ],
+          "defaultChoice": "block",
+          "choiceLabels": {
+            "block": "Block",
+            "list": "List",
+            "dynamic-list": "Dynamic list"
+          },
+          "description": "Dynamic list shows one row per item of an array in the answer; its mappings are then an object (items, name, label), not a list."
         },
         {
           "key": "headers",

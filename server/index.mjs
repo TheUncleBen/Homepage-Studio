@@ -1791,12 +1791,15 @@ export function createStudioServer(options = {}) {
           if (observability) await observability.syncCards(entry, []).catch(() => {});
           continue;
         }
-        try { await collectFor(entry); }
-        catch (error) { failed = true; collectFailed(error); }
+        // Card monitors first: they don't need the chart numbers, and after a
+        // restart a slow integration would otherwise keep them out of
+        // Operations until every widget was polled.
         if (observability) {
           try { const targets = await forDashboard(entry).statusTargets(entry); if (targets) await observability.syncCards(entry, targets); }
           catch (error) { collectFailed(Object.assign(new Error('status'), { code: 'CARD_MONITORS_' + (error.code || 'FAILED') })); }
         }
+        try { await collectFor(entry); }
+        catch (error) { failed = true; collectFailed(error); }
       }
       // Keys typed into widget settings since the last round are masked too.
       if (observability) await observability.refreshSecrets();
@@ -1819,13 +1822,15 @@ export function createStudioServer(options = {}) {
       try {
         entry = (await prepareRegistry()).dashboards.find(item => item.id === id);
         if (!entry || entry.archived || (!entry.slug && entry.id !== 'default')) return;
-        await collectFor(entry, { fresh: true });
-      } catch (error) { collectFailed(error); }
-      if (!entry || !observability) return;
-      try {
-        const targets = await forDashboard(entry).statusTargets(entry);
-        if (targets) await observability.syncCards(entry, targets);
-      } catch (error) { collectFailed(Object.assign(new Error('status'), { code: 'CARD_MONITORS_' + (error.code || 'FAILED') })); }
+      } catch (error) { collectFailed(error); return; }
+      if (observability) {
+        try {
+          const targets = await forDashboard(entry).statusTargets(entry);
+          if (targets) await observability.syncCards(entry, targets);
+        } catch (error) { collectFailed(Object.assign(new Error('status'), { code: 'CARD_MONITORS_' + (error.code || 'FAILED') })); }
+      }
+      try { await collectFor(entry, { fresh: true }); }
+      catch (error) { collectFailed(error); }
     }, 750);
     timer.unref?.();
     cardSyncTimers.set(id, timer);

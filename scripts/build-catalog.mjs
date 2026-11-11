@@ -221,6 +221,14 @@ function applyReviewedCorrections(byType) {
     set(kind, 'customapi', 'headers', ['object']);
     set(kind, 'customapi', 'requestBody', ['string', 'object']);
   }
+  // The service widget's code knows these three; block is its default. The
+  // information widget has no display setting.
+  set('service', 'customapi', 'display', ['string'], {
+    choices: ['block', 'list', 'dynamic-list'],
+    defaultChoice: 'block',
+    choiceLabels: { block: 'Block', list: 'List', 'dynamic-list': 'Dynamic list' },
+    description: 'Dynamic list shows one row per item of an array in the answer; its mappings are then an object (items, name, label), not a list.',
+  });
   set('service', 'calendar', 'integrations', ['array'], { description: 'A list of Calendar integrations. Omit this property or use an empty list when none are configured.' });
   note('service', 'homeassistant', 'Defining fields disables custom states/templates. Omit fields to use custom; at most four custom entries are supported.');
   note('info', 'longhorn', 'Connection URL and optional username/password belong in settings.yaml under providers.longhorn, not in this widget.');

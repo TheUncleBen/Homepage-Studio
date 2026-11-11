@@ -225,7 +225,10 @@ describe("Coherent native option drafts", () => {
     const onChange = vi.fn();
     render(<Fixture fields={fields} initial={{}} onChange={onChange} />);
     const json = screen.getByRole("textbox", { name: "Value mappings" });
-    expect(json).toHaveAttribute("placeholder", '[{"field":"key","label":"Field 1","format":"text"}]');
+    // Laid out as a filled box shows it, and the empty box fits all of it.
+    const example = JSON.stringify([{ field: "key", label: "Field 1", format: "text" }], null, 2);
+    expect(json).toHaveAttribute("placeholder", example);
+    expect(json).toHaveAttribute("rows", String(example.split("\n").length));
     fireEvent.change(json, { target: { value: '[{"field":"cpu","label":"CPU"}]' } });
     expect(screen.getByTestId("config-value")).toHaveTextContent('{"mappings":[{"field":"cpu","label":"CPU"}]}');
     // A list of plain values keeps the simple list editor.

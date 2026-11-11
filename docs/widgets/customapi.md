@@ -107,7 +107,7 @@ What the widget dialog shows. Anything else the widget accepts goes in the dialo
 | Password | `password` | Text | Secret: hidden while you type. Prefer a `{{HOMEPAGE_VAR_…}}` or `{{HOMEPAGE_FILE_…}}` reference. |
 | Method | `method` | Text | Example: `GET`. |
 | Value mappings | `mappings` | List or Settings (name: value) |  |
-| Display | `display` | Text | Example: `dynamic-list`. |
+| Display | `display` | Text | A choice in the dialog: Block (`block`, the default when left out), List (`list`), Dynamic list (`dynamic-list`). Dynamic list shows one row per item of an array in the answer; its mappings are then an object (items, name, label), not a list. |
 | Request headers | `headers` | Settings (name: value) |  |
 | Request Body | `requestBody` | Text or Settings (name: value) |  |
 

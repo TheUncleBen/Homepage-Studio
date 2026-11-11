@@ -28,7 +28,19 @@ build is identified by its source commit and image digest
   controls.
 - **Audit log:** saving sign-in settings or a profile without a change no
   longer records an event, and a change names only what changed.
-- **Add a widget:** BookOrbit says what kind of app it is.
+- **Add a widget:** BookOrbit says what kind of app it is. Custom API's
+  Display is a choice of Block (the default), List and Dynamic list.
+- **Copy link to page** gives the page's address on the dashboard, not on
+  the editor (which opened a missing page).
+- **Stacks:** the "Updated … ago" note sits at the top, clear of the page
+  dots and play button.
+- **Editing:** on a card with no logo, the select box sits beside Move and
+  Edit instead of over the first letters of the name.
+- **A down card** keeps its reason and its time apart ("Name not found ·
+  check the address · since 12:48").
+- **Operations:** after a restart, card monitors show before every widget's
+  numbers are collected.
+- Selected text uses the dashboard's accent colour.
 
 ### Upgrades keep your data
 

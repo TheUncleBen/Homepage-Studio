@@ -53,6 +53,9 @@ test('information and service Custom API preserve different native shapes', () =
   assert.deepEqual(field('customapi','mappings').valueTypes,['array','object']);
   assert.deepEqual(field('customapi','mappings','info').valueTypes,['array']);
   assert.equal(field('customapi','display','info'),undefined);
+  // Display is a choice of the three the widget knows, block by default.
+  assert.deepEqual(field('customapi','display').choices,['block','list','dynamic-list']);
+  assert.equal(field('customapi','display').defaultChoice,'block');
 });
 
 test('prose field choices are an ordered optional list and never become defaults', () => {

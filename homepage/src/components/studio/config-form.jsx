@@ -167,7 +167,7 @@ function Field({ field, value, onChange, onError }) {
   const example = Array.isArray(field.exampleValue) ? field.exampleValue.slice(0, 1) : field.exampleValue;
   const jsonExample =
     structured && example != null && !field.sensitive && Array.isArray(example) === (kind === "array")
-      ? JSON.stringify(example)
+      ? JSON.stringify(example, null, 2)
       : undefined;
   const placeholder =
     kind === "string" && typeof field.exampleValue === "string" && !field.sensitive ? field.exampleValue : "";
@@ -270,7 +270,8 @@ function Field({ field, value, onChange, onError }) {
         className="studio-json-input"
         value={text}
         onChange={(event) => update(event.target.value)}
-        rows={4}
+        // Tall enough for the whole example, before and while typing.
+        rows={Math.max(4, jsonExample?.split("\n").length ?? 0)}
         placeholder={jsonExample}
         spellCheck={false}
         aria-invalid={Boolean(error)}
