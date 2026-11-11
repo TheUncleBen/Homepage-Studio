@@ -1417,11 +1417,10 @@
       });
     });
     function draw() {
-      // The list first, under its heading; its actions right below it.
-      put(holder, message,
+      // Add actions above the list, as on People (owner choice, 11 Nov 2026).
+      put(holder, message, toolbar(upload, create, input),
         group({ title: 'Backups', aside: items.length ? String(items.length) : null, info: 'A backup holds every dashboard, the dashboard list, the default look, people and sign-in settings. Backups are kept in the state volume, so the command line can restore one if these pages can’t be reached (docs/OPERATIONS.md). Store a downloaded backup like a password: it includes any API key written into a dashboard’s files.' },
-          items.length ? items.map(item => navRow({ leading: icon('archive', 18), title: when(Date.parse(item.createdAt)), detail: [fileSize(item.bytes), BACKUP_KINDS[item.kind]].filter(Boolean).join(' · '), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'No backups yet.' })),
-        toolbar(upload, create, input));
+          items.length ? items.map(item => navRow({ leading: icon('archive', 18), title: when(Date.parse(item.createdAt)), detail: [fileSize(item.bytes), BACKUP_KINDS[item.kind]].filter(Boolean).join(' · '), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'No backups yet.' })));
     }
     put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
     load();
@@ -1490,9 +1489,10 @@
       const items = view?.certificates ?? [];
       put(holder, message,
         view?.deploymentError ? h('p', { class: 'notice warn', role: 'alert', text: view.deploymentError }) : null,
+        // Add above the list, as on People (owner choice, 11 Nov 2026).
+        toolbar(pill('Add certificate', { primary: true, iconName: 'plus', onclick: addDialog })),
         group({ title: 'Trusted certificates', aside: items.length ? String(items.length) : null, info: 'Studio trusts the usual public certificate authorities. Add your own here when your services use certificates from it, for example behind a local reverse proxy. Studio never trusts a certificate just because a service presents it.' },
-          items.length ? items.map(item => navRow({ leading: icon('lock', 18), title: item.name, badges: [item.source === 'deployment' ? badge('Deployment', 'accent') : null, expired(item) ? badge('Expired', 'danger') : null], detail: detailOf(item), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'Only the usual public authorities.' })),
-        toolbar(pill('Add certificate', { primary: true, iconName: 'plus', onclick: addDialog })));
+          items.length ? items.map(item => navRow({ leading: icon('lock', 18), title: item.name, badges: [item.source === 'deployment' ? badge('Deployment', 'accent') : null, expired(item) ? badge('Expired', 'danger') : null], detail: detailOf(item), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'Only the usual public authorities.' })));
     }
     put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
     load();

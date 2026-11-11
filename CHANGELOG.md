@@ -41,6 +41,8 @@ build is identified by its source commit and image digest
 - **Operations:** after a restart, card monitors show before every widget's
   numbers are collected.
 - Selected text uses the dashboard's accent colour.
+- **Administration:** Trusted certificates and Backups put their add
+  buttons above the list, where People has Invite a person.
 
 ### Upgrades keep your data
 
