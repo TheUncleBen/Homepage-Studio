@@ -51,6 +51,10 @@ matches out:
 | `panel:<id>` | One widget |
 | `actor:alice` | What one person did |
 
+When a search finds nothing because of the search itself (a filter name
+Studio doesn't know, a level that isn't one, or a quote left open), the
+empty result says so.
+
 The bars above the results show events over time, coloured by the worst in
 each bar; click one to look only at that time. Open an event to see all its fields, the events around it
 (**Show surrounding**) or others like it (**Find similar**). **Similar

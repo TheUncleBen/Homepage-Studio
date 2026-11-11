@@ -485,9 +485,24 @@
           chipRow('Level', 'severity', LEVELS.map(([v, text]) => ({ value: v, text }))),
           sets.filter(([, field, items]) => items.length || chosen[field]).map(([label, field, items]) => chipRow(label, field, items)));
       }
+      // Why a search found nothing, when it's the search itself: a filter
+      // name or level Studio doesn't know (server/observability/query.mjs),
+      // or a quote left open.
+      const FILTERS = ['sev', 'severity', 'level', 'source', 'src', 'resource', 'res', 'type', 'event', 'class', 'error', 'dashboard', 'scope', 'category', 'cat', 'group', 'panel', 'id', 'actor'];
+      const LEVEL_WORDS = ['critical', 'crit', 'error', 'err', 'errors', 'warning', 'warn', 'warnings', 'notice', 'info', 'debug'];
+      function queryHint(text) {
+        if ((text.match(/"/g) ?? []).length % 2) return 'A quote is left open: close it with another ".';
+        for (const [, name, value] of text.matchAll(/(?:^|\s)-?([a-z]+):("[^"]*"|\S*)/gi)) {
+          const field = name.toLowerCase();
+          if (!FILTERS.includes(field) && !value.startsWith('//')) return `“${name}:” isn’t a filter. Try severity:, source:, resource:, type:, class:, dashboard:, panel: or actor:.`;
+          if (['sev', 'severity', 'level'].includes(field) && !LEVEL_WORDS.includes(value.toLowerCase()) && !/^[0-7]$/.test(value)) return 'Levels are error, warning, notice, info or debug (or 0 to 7).';
+        }
+        return '';
+      }
       function drawEvents(events, append) {
         const rows = events.map(event => eventRow(event));
-        if (!append) put(results, group({}, rows.length ? rows : [emptyRow('No events match.')]));
+        const hint = rows.length ? '' : queryHint(queryInput.value);
+        if (!append) put(results, group({}, rows.length ? rows : [emptyRow(hint ? `No events match. ${hint}` : 'No events match.')]));
         else results.querySelector('.group-body')?.append(...rows);
         results.querySelector('.ops-more')?.remove();
         if (next) {

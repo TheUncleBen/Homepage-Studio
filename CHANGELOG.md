@@ -61,6 +61,8 @@ build is identified by its source commit and image digest
 - In long dialogs on phones (New monitor), an error shows in view above the
   buttons instead of below them, and a third button (Save after Cancel and
   Test now) takes the full row.
+- **Logs:** a search that finds nothing because of a typo (`sourc:`, an
+  unknown level, an open quote) says what to fix.
 
 ### Upgrades keep your data
 
