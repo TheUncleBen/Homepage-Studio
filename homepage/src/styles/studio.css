@@ -6425,3 +6425,8 @@ svg.studio-chart-gauge {
     font-size: max(16px, 1em) !important;
   }
 }
+
+/* Selected text uses the dashboard's accent, not the browser's bright blue. */
+::selection {
+  background: color-mix(in srgb, var(--studio-accent, #7e6b8f) 38%, transparent);
+}
