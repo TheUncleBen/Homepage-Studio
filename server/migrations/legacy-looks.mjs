@@ -175,7 +175,7 @@ async function write(file, text) {
   try { await handle.writeFile(text); await handle.sync(); } finally { await handle.close(); }
   await fs.rename(temporary, file);
 }
-async function update(file, convert) {
+export async function update(file, convert) {
   const text = await read(file);
   if (text === null) return false;
   const next = convert(text);
@@ -188,7 +188,7 @@ const location = (configDir, stateDir, name) => join(name === 'state.json' ? sta
 
 // A save interrupted by a crash is finished the way config.mjs would (its
 // snapshot put back), so converted files aren't later replaced by old ones.
-async function settleInterrupted(configDir, stateDir) {
+export async function settleInterrupted(configDir, stateDir) {
   const journal = await read(join(stateDir, 'transaction.json'));
   if (journal === null) return;
   let backup;
@@ -212,7 +212,7 @@ async function settleInterrupted(configDir, stateDir) {
 }
 
 // Every dashboard with a folder in either volume.
-async function dashboardDirs(configRoot, stateRoot) {
+export async function dashboardDirs(configRoot, stateRoot) {
   const out = [{ configDir: configRoot, stateDir: stateRoot }];
   const ids = new Set();
   for (const root of [configRoot, stateRoot]) {

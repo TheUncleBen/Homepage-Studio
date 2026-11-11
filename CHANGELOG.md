@@ -9,6 +9,27 @@ build is identified by its source commit and image digest
 
 ## [Unreleased]
 
+### Audit fixes (continuous audit of cf02529)
+
+- **Readable configuration files.** Earlier candidates wrote every change to
+  a new deployment's `services.yaml`, `settings.yaml` and the other YAML
+  files as one ever-growing line. New deployments now get ordinary YAML, and
+  data version 2 rewrites existing one-line files the same way at the first
+  start (after the before-upgrade backup), keeping values, comments and
+  `{{HOMEPAGE_VAR_…}}` references.
+- **Lists of settings in the widget editor** (Custom API's Value mappings,
+  Calendar integrations, Home Assistant's custom values, Prometheus metrics)
+  are edited as JSON with the documented example, instead of a list of text
+  the widget couldn't read. Fields with a Text/Settings switch, such as
+  Request Body, show their input box.
+- **No zoom on iPhone.** On touch screens no field's text is under 16px, so
+  iOS no longer zooms into the page when a field is tapped.
+- **Operations:** the Show menu and the monitor search match Studio's other
+  controls.
+- **Audit log:** saving sign-in settings or a profile without a change no
+  longer records an event, and a change names only what changed.
+- **Add a widget:** BookOrbit says what kind of app it is.
+
 ### Upgrades keep your data
 
 - **Updating is changing the image digest** ([docs/UPGRADING.md](docs/UPGRADING.md)).

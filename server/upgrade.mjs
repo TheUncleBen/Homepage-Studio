@@ -21,8 +21,9 @@ import fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { createBackupStore, parseBackup, restoreBackupFiles } from './backups.mjs';
 import { migrateLegacyLooks } from './migrations/legacy-looks.mjs';
+import { migrateReadableYaml } from './migrations/readable-yaml.mjs';
 
-export const DATA_VERSION = 1;
+export const DATA_VERSION = 2;
 export const DATA_MARKER = 'studio-data.json';
 const KEEP_UPGRADE_BACKUPS = 3;
 
@@ -34,6 +35,8 @@ export const MIGRATIONS = Object.freeze([
   // Version 1 starts the record. Data from before it (candidates up to
   // 1c3b5bd) may still hold widget looks from before the block widgets.
   { to: 1, name: 'Convert widget looks from before the block widgets', run: migrateLegacyLooks },
+  // Candidates up to cf02529 wrote new deployments' YAML files on one line.
+  { to: 2, name: 'Rewrite one-line YAML files as readable YAML', run: migrateReadableYaml },
 ]);
 
 async function exists(path) {
