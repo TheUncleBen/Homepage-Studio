@@ -48,6 +48,9 @@ build is identified by its source commit and image digest
   units ("Idle sign-out must be 5 minutes to 90 days…"), a duration such as
   1.5 hours is accepted, and "Confirm it's you after" has a label for
   screen readers.
+- **My account:** when the authenticator app is your only second step, it
+  offers Replace (for a new phone) instead of a Remove that Studio then
+  refused; your last passkey says it stays until another way is added.
 
 ### Upgrades keep your data
 

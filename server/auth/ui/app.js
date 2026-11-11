@@ -1054,13 +1054,16 @@
           });
         } }, h('input', { type: 'text', autocomplete: 'username', value: user.username, hidden: true, readonly: true, tabindex: '-1', 'aria-hidden': 'true' }), ...passwords.nodes, local, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), submit));
       });
-      const totpButton = factors.totp
-        ? pill('Remove', { onclick: () => confirmDialog('Remove authenticator app?', 'Codes from the app will stop working. You need a passkey to keep signing in.', 'Remove', async () => { view = await api('account/totp/remove', {}); draw(); say(message, 'Authenticator app removed.', 'ok'); }) })
-        : pill('Set up', { primary: true });
-      if (!factors.totp) totpButton.addEventListener('click', () => busy(totpButton, 'Preparing…', async () => {
+      // With no passkey the app is how you sign in, so it can be replaced (a
+      // new phone) but not removed: Studio keeps a complete second step.
+      const onlyStep = factors.totp && !factors.passkeys.length;
+      const totpButton = factors.totp && !onlyStep
+        ? pill('Remove', { onclick: () => confirmDialog('Remove authenticator app?', 'Codes from the app will stop working. You sign in with a passkey instead.', 'Remove', async () => { view = await api('account/totp/remove', {}); draw(); say(message, 'Authenticator app removed.', 'ok'); }) })
+        : pill(onlyStep ? 'Replace' : 'Set up', { primary: !factors.totp });
+      if (!factors.totp || onlyStep) totpButton.addEventListener('click', () => busy(totpButton, 'Preparing…', async () => {
         try {
           const setup = await api('account/totp/start', {});
-          openDialog('Set up an authenticator app', close => totpConfirm(setup, async code => { view = await api('account/totp/confirm', { token: setup.token, code }); close(); draw(); say(message, 'Authenticator app set up.', 'ok'); }));
+          openDialog(onlyStep ? 'Replace your authenticator app' : 'Set up an authenticator app', close => totpConfirm(setup, async code => { view = await api('account/totp/confirm', { token: setup.token, code }); close(); draw(); say(message, onlyStep ? 'Authenticator app replaced. Codes from the old one no longer work.' : 'Authenticator app set up.', 'ok'); }));
         } catch (error) { failure(box, error); }
       }));
       const regenerate = pill('New codes', { onclick: () => confirmDialog('Create new backup codes?', 'Your current backup codes will stop working.', 'Create new codes', async () => {
@@ -1078,10 +1081,15 @@
         const name = h('input', { type: 'text', maxlength: 60, value: passkey.name, required: true });
         const local = notice();
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
-        const remove = actionRow('Remove passkey', { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog(`Remove “${passkey.name}”?`, 'This passkey will no longer sign you in. Remove it from the device or password manager as well.', 'Remove', async () => { view = await api('account/passkey/remove', { id: passkey.id }); draw(); say(message, 'Passkey removed.', 'ok'); }); } });
+        // The last passkey of an account without a password and app is how
+        // it signs in, so it stays until another way is added.
+        const last = factors.passkeys.length === 1 && !(factors.password && factors.totp);
+        const remove = last
+          ? h('p', { class: 'small muted', text: 'This passkey is how you sign in. Add another passkey, or a password with an authenticator app, before removing it.' })
+          : group({}, actionRow('Remove passkey', { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog(`Remove “${passkey.name}”?`, 'This passkey will no longer sign you in. Remove it from the device or password manager as well.', 'Remove', async () => { view = await api('account/passkey/remove', { id: passkey.id }); draw(); say(message, 'Passkey removed.', 'ok'); }); } }));
         return h('form', { class: 'stack', onsubmit: async event => { event.preventDefault(); await busy(save, 'Saving…', async () => { try { view = await api('account/passkey/rename', { id: passkey.id, name: name.value }); close(); draw(); } catch (error) { failure(local, error); } }); } },
           group({}, row('Name', name), row('Added', value(when(passkey.createdAt))), row('Last used', value(passkey.lastUsedAt ? ago(passkey.lastUsedAt) : 'Not yet'))),
-          group({}, remove), local, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
+          remove, local, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
       });
       const add = actionRow('Add a passkey', { iconName: 'plus', disabled: !passkeysSupported() });
       add.addEventListener('click', () => busy(add, 'Waiting for passkey…', async () => {
