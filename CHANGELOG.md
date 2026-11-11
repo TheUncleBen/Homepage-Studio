@@ -66,6 +66,12 @@ build is identified by its source commit and image digest
 - **Maintenance windows can cover cards.** A window (say, a router update)
   can include the monitors that come from your cards, not only ones added
   under New monitor.
+- **Log alerts** refuse a search that could never match (an unknown filter
+  or level, or an open quote) and say what to fix, instead of saving an
+  alert that never fires. An email channel says when Studio's email
+  settings aren't set, so nothing would be sent.
+- On phones, choices in every Studio dialog share the width, so Dashboard
+  settings › Refresh no longer runs past its panel.
 
 ### Upgrades keep your data
 

@@ -887,7 +887,10 @@
             const rows = [];
             const take = (label, key, attrs) => { const r = secret(label, key, attrs); rows.push(r.row); return r.input; };
             const plain = (label, key, attrs = {}) => { const r = inputRow(label, { value: existing?.[key] ?? '', ...attrs }); rows.push(r.row); return r.input; };
-            if (type === 'email') { const to = plain('Send to', 'to', { placeholder: 'you@example.com, team@example.com' }); read = () => ({ to: to.value }); }
+            if (type === 'email') {
+              const to = plain('Send to', 'to', { placeholder: 'you@example.com, team@example.com' }); read = () => ({ to: to.value });
+              if (!cfg.storage?.emailReady) rows.push(h('p', { class: 'empty-row', text: 'Email needs Studio’s email settings (STUDIO_SMTP_HOST). Until they’re set, nothing is sent.' }));
+            }
             else if (type === 'telegram') { const token = take('Bot token', 'token'); const chat = plain('Chat id', 'chat'); read = () => ({ token: token.value, chat: chat.value }); }
             else if (type === 'pushover') { const token = take('App token', 'token'); const user = plain('User key', 'user'); read = () => ({ token: token.value, user: user.value }); }
             else {

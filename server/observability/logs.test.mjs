@@ -165,3 +165,16 @@ test('the Logs page knows the same filter names and levels as the search (audit,
   assert.deepEqual(list('FILTERS').sort(), keys('FIELD_ALIASES'));
   assert.deepEqual(list('LEVEL_WORDS').sort(), keys('SEVERITY_WORDS'));
 });
+
+test('a log alert whose search can never match is refused with the reason (audit, 11 Nov 2026)', async () => {
+  const { queryProblem } = await import('./query.mjs');
+  const { cleanAlert } = await import('./definitions.mjs');
+  assert.equal(queryProblem('severity:error resource:plex "backup failed"'), '');
+  assert.equal(queryProblem('level:3 -type:monitor.* http://nas:5000'), '');
+  assert.match(queryProblem('severity:eror'), /^Levels are/);
+  assert.match(queryProblem('sevrity:error'), /isn’t a filter/);
+  assert.match(queryProblem('"backup failed'), /quote is left open/);
+  const channels = [{ id: 'c1' }];
+  assert.throws(() => cleanAlert({ name: 'Errors', query: 'severity:eror', channels: ['c1'] }, { channels }), /Levels are/);
+  assert.equal(cleanAlert({ name: 'Errors', query: 'severity:error', channels: ['c1'] }, { channels }).query, 'severity:error');
+});

@@ -5533,14 +5533,16 @@ svg.studio-chart-gauge {
 /* Phone: a widget-dialog or Appearance choice keeps its options on one line,
    sharing the width; a long option wraps inside its own button rather than
    pushing the last one to a line of its own (or, in Appearance, past the
-   panel: UI review M5, 10 Nov 2026). */
+   panel: UI review M5, 10 Nov 2026). Every Studio dialog does the same, so
+   Dashboard settings › Refresh no longer runs past its panel (audit, 11 Nov
+   2026). */
 @media (max-width: 560px) {
-  :is(.studio-look-editor, .studio-appearance) .studio-row-control > .studio-segmented {
+  :is(.studio-look-editor, .studio-appearance, .studio-dialog) .studio-row-control > .studio-segmented {
     flex-wrap: nowrap;
     justify-self: stretch;
   }
   .studio-look-editor .studio-segmented > button,
-  .studio-appearance .studio-row-control > .studio-segmented > button {
+  :is(.studio-appearance, .studio-dialog) .studio-row-control > .studio-segmented > button {
     flex: 1 1 auto;
     min-width: 0;
     padding: 4px 6px;

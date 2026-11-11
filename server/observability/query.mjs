@@ -28,6 +28,20 @@ export function parseQuery(text) {
   return terms;
 }
 
+// Why a typed search can't find anything because of the search itself: a
+// filter name or level Studio doesn't know, or a quote left open. The log
+// view shows the same reasons (server/auth/ui/ops.js queryHint).
+export function queryProblem(text) {
+  const input = String(text ?? '');
+  if ((input.match(/"/g) ?? []).length % 2) return 'A quote is left open: close it with another ".';
+  for (const [, name, value] of input.matchAll(/(?:^|\s)-?([a-z]+):("[^"]*"|\S*)/gi)) {
+    const field = FIELD_ALIASES[name.toLowerCase()];
+    if (!field && !value.startsWith('//')) return `“${name}:” isn’t a filter. Try severity:, source:, resource:, type:, class:, dashboard:, panel: or actor:.`;
+    if (field === 'severity' && !(value.toLowerCase() in SEVERITY_WORDS) && !/^[0-7]$/.test(value)) return 'Levels are critical, error, warning, notice, info or debug (or 0 to 7).';
+  }
+  return '';
+}
+
 const ftsString = value => `"${value.replace(/"/g, '""')}"`;
 // Words become prefix searches; a quoted phrase is matched as typed.
 function ftsTerm(term) {
