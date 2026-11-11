@@ -273,6 +273,7 @@ function Field({ field, value, onChange, onError }) {
         // Tall enough for the whole example, before and while typing.
         rows={Math.max(4, jsonExample?.split("\n").length ?? 0)}
         placeholder={jsonExample}
+        wrap="off"
         spellCheck={false}
         aria-invalid={Boolean(error)}
         aria-describedby={describedBy}

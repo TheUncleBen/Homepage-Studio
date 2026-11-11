@@ -3905,15 +3905,23 @@ svg.studio-chart-gauge {
    focus or selection, so a resting card looks exactly like the live one. */
 .studio-edit-mode .studio-panel:not(.studio-stacked-panel) > .studio-panel-slide > .studio-panel-header {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: var(--studio-card-tool-edge);
+  right: var(--studio-card-tool-edge);
   z-index: 3;
   min-height: 0;
   padding: 0;
   gap: 4px;
 }
+/* One size for a card's Move and Edit, which the select box beside them
+   (below) is placed from. 36px wide, as .studio-icon-button's min-width
+   makes them; 44px square on touch. */
+.studio-edit-mode {
+  --studio-card-tool: 36px;
+  --studio-card-tool-edge: 10px;
+}
 .studio-edit-mode .studio-panel-header .studio-icon-button {
-  width: 30px;
+  width: var(--studio-card-tool);
+  min-width: var(--studio-card-tool);
   height: 30px;
   border-radius: 8px;
   /* Solid, as on a stack: what they sit over never shows through. */
@@ -3934,14 +3942,15 @@ svg.studio-chart-gauge {
 }
 /* With no logo in the top-left corner, the box would cover the name's first
    letters (or whatever the card draws there), so it joins Move and Edit at
-   the top right instead: 10px edge, 30px buttons, 4px gaps. */
+   the top right instead, one gap to the left of them. */
 .studio-edit-mode
   .studio-panel:not(.studio-stacked-panel):not(:has(.studio-card-head:not([data-logo="above"]) .studio-card-logo))
   > .studio-panel-slide
   > .studio-select-corner {
-  top: 10px;
+  --studio-card-tools: 2;
+  top: var(--studio-card-tool-edge);
   left: auto;
-  right: 78px;
+  right: calc(var(--studio-card-tool-edge) + var(--studio-card-tools) * (var(--studio-card-tool) + 4px));
 }
 .studio-edit-mode
   .studio-panel:not(.studio-stacked-panel):not(:has(.studio-card-head:not([data-logo="above"]) .studio-card-logo)):not(
@@ -3949,25 +3958,7 @@ svg.studio-chart-gauge {
   )
   > .studio-panel-slide
   > .studio-select-corner {
-  right: 44px;
-}
-@media (pointer: coarse) {
-  /* Touch: 4px edge, 44px buttons. */
-  .studio-edit-mode
-    .studio-panel:not(.studio-stacked-panel):not(:has(.studio-card-head:not([data-logo="above"]) .studio-card-logo))
-    > .studio-panel-slide
-    > .studio-select-corner {
-    top: 4px;
-    right: 100px;
-  }
-  .studio-edit-mode
-    .studio-panel:not(.studio-stacked-panel):not(
-      :has(.studio-card-head:not([data-logo="above"]) .studio-card-logo)
-    ):not(:has(.studio-panel-header > button + button))
-    > .studio-panel-slide
-    > .studio-select-corner {
-    right: 52px;
-  }
+  --studio-card-tools: 1;
 }
 .studio-select-input {
   position: absolute;
@@ -5320,9 +5311,9 @@ svg.studio-chart-gauge {
 /* Touch: edit controls are large targets (44 px; the resize corner 44 by
    36 so it never meets the controls above it on a two-row tile). */
 @media (pointer: coarse) {
-  .studio-edit-mode .studio-panel:not(.studio-stacked-panel) > .studio-panel-slide > .studio-panel-header {
-    top: 4px;
-    right: 4px;
+  .studio-edit-mode {
+    --studio-card-tool: 44px;
+    --studio-card-tool-edge: 4px;
   }
   .studio-select-target.studio-select-corner {
     top: 0;
@@ -5332,7 +5323,6 @@ svg.studio-chart-gauge {
     margin: 0;
   }
   .studio-edit-mode .studio-panel-header .studio-icon-button {
-    width: 44px;
     height: 44px;
   }
   .studio-edit-mode .studio-resize-handle {
