@@ -1007,8 +1007,9 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       const step = verifyTotp(entry.secret, String(body?.code ?? ''), { now: now() });
       if (step === null) fail("That code didn't match. Check the time on your phone and try the newest code.", 'TOTP_INVALID');
       pending.delete(tokenHash(body.token));
-      await changeUser(current, user => { user.totp = { secret: sealSecret(entry.secret, config.key), lastStep: step, createdAt: now() }; }, 'totp-added');
-      await notify(current.user, 'Authenticator app added', 'An authenticator app was set up for your account.');
+      const replaced = Boolean(findUser(store.read(), current.user.id)?.totp);
+      await changeUser(current, user => { user.totp = { secret: sealSecret(entry.secret, config.key), lastStep: step, createdAt: now() }; }, replaced ? 'totp-replaced' : 'totp-added');
+      await notify(current.user, replaced ? 'Authenticator app replaced' : 'Authenticator app added', replaced ? 'The authenticator app on your account was replaced. Codes from the old one no longer work.' : 'An authenticator app was set up for your account.');
       return accountView(await refreshed(current));
     },
     async totpRemove(current) {

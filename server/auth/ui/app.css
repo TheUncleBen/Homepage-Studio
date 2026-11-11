@@ -689,3 +689,5 @@ input.ops-search { width: auto; flex: 1 1 12rem; min-height: 34px; padding-block
 @media (hover: none) and (pointer: coarse) {
   input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], .code-input), select, textarea { font-size: max(16px, 1em) !important; }
 }
+/* On touch screens a dialog takes focus itself (no keyboard popping up). */
+dialog[tabindex="-1"]:focus { outline: none; }

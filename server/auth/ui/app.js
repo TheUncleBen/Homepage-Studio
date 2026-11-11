@@ -884,8 +884,13 @@
     dialog.append(h('div', { class: 'dialog-body' }, h('h2', { text: title }), build(close)));
     dialog.addEventListener('close', () => dialog.remove());
     document.body.append(dialog);
+    // On touch screens focusing a field opens the keyboard over the dialog,
+    // so the dialog itself takes focus there (UI review, 11 Nov 2026).
+    const touch = matchMedia('(pointer: coarse)').matches;
+    if (touch) dialog.tabIndex = -1;
     dialog.showModal();
-    dialog.querySelector('input:not([type=hidden]):not([hidden]), select, textarea, button.primary')?.focus();
+    if (touch) dialog.focus({ preventScroll: true });
+    else dialog.querySelector('input:not([type=hidden]):not([hidden]), select, textarea, button.primary')?.focus();
     return dialog;
   }
   function confirmDialog(title, text, actionLabel, action, { danger = true, cancelLabel = 'Cancel', onCancel } = {}) {
@@ -1085,7 +1090,7 @@
         // it signs in, so it stays until another way is added.
         const last = factors.passkeys.length === 1 && !(factors.password && factors.totp);
         const remove = last
-          ? h('p', { class: 'small muted', text: 'This passkey is how you sign in. Add another passkey, or a password with an authenticator app, before removing it.' })
+          ? h('p', { class: 'small muted', text: `This passkey is how you sign in. Add another passkey or ${factors.password ? 'set up an authenticator app' : 'a password with an authenticator app'} before removing it.` })
           : group({}, actionRow('Remove passkey', { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog(`Remove “${passkey.name}”?`, 'This passkey will no longer sign you in. Remove it from the device or password manager as well.', 'Remove', async () => { view = await api('account/passkey/remove', { id: passkey.id }); draw(); say(message, 'Passkey removed.', 'ok'); }); } }));
         return h('form', { class: 'stack', onsubmit: async event => { event.preventDefault(); await busy(save, 'Saving…', async () => { try { view = await api('account/passkey/rename', { id: passkey.id, name: name.value }); close(); draw(); } catch (error) { failure(local, error); } }); } },
           group({}, row('Name', name), row('Added', value(when(passkey.createdAt))), row('Last used', value(passkey.lastUsedAt ? ago(passkey.lastUsedAt) : 'Not yet'))),
@@ -1952,11 +1957,13 @@
         const idle = durationInput('Idle sign-out', base.idleMinutes, { allowNever: true });
         const absolute = durationInput('Maximum session', base.absoluteMinutes, { allowNever: true });
         const persistent = toggle({ checked: base.persistent, label: 'Stay signed in after closing the browser' });
-        const stepUp = h('input', { type: 'number', min: '5', max: '60', step: '1', value: String(base.stepUpMinutes), required: true, 'aria-label': 'Confirm it’s you after, in minutes' });
+        const stepUp = h('input', { type: 'number', step: '1', value: String(base.stepUpMinutes), 'aria-label': 'Confirm it’s you after, in minutes' });
         const maxSessions = h('input', { type: 'number', min: '1', max: '50', step: '1', value: base.maxSessions ? String(base.maxSessions) : '', placeholder: 'No limit' });
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save policy' });
         const remove = policy && policy.id !== 'default' ? actionRow('Delete policy', { danger: true, iconName: 'trash', onClick: () => { close(); confirmDialog(`Delete ${policy.name}?`, 'People and groups using it fall back to their other policies or the default.', 'Delete', () => act(() => api('admin/policy', { action: 'delete', id: policy.id }), null, 'Policy deleted.')); } }) : null;
-        return h('form', { class: 'stack', onsubmit: async event => {
+        // Every limit is checked by Studio and shown in one place; a message
+        // goes as soon as a field changes.
+        return h('form', { class: 'stack', novalidate: true, oninput: () => say(box, ''), onchange: () => say(box, ''), onsubmit: async event => {
           event.preventDefault(); say(box, '');
           const body = { action: policy ? 'update' : 'create', id: policy?.id, name: name.value, idleMinutes: idle.value(), absoluteMinutes: absolute.value(), persistent: persistent.checked, stepUpMinutes: Number(stepUp.value), maxSessions: maxSessions.value === '' ? null : Number(maxSessions.value) };
           await busy(save, 'Saving…', async () => { if (await act(() => api('admin/policy', body), box, 'Policy saved.')) close(); });
