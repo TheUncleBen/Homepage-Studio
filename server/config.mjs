@@ -1488,7 +1488,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     mutateDiscoveryVisibility: (change) => editing(change, async () => {
       const current = await readCurrent();
       checkRevision(change.revision, current);
-      if (typeof change.hidden !== 'boolean') fail('Discovered panel visibility must be a boolean.', 'INVALID_ACTION', 400);
+      if (typeof change.hidden !== 'boolean') fail('Discovered widget visibility must be a boolean.', 'INVALID_ACTION', 400);
       if (!current.discoveredSources.some((source) => source.id === change.id)) fail('That discovered panel no longer exists.', 'TILE_NOT_FOUND', 404);
       const hidden = new Set(current.hiddenDiscoveredIds);
       if (change.hidden) hidden.add(change.id); else hidden.delete(change.id);

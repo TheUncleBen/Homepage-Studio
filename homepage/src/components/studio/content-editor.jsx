@@ -883,7 +883,7 @@ export default function ContentEditor({
   if (panel && !source)
     return (
       <div className="studio-dialog-body">
-        <p>This panel’s source changed. Reload before editing it.</p>
+        <p>This widget’s source changed. Reload before editing it.</p>
         <button className="studio-button" onClick={onReload}>
           Reload configuration
         </button>

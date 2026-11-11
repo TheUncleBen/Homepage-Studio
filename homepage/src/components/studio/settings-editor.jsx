@@ -26,8 +26,8 @@ export const SNAPSHOT_ACTION_LABELS = {
   "files-saved": "Configuration files saved",
   "snapshot-restored": "Snapshot restored",
   "dashboard-imported": "Dashboard imported",
-  "discovered-panel-hidden": "Discovered panel hidden",
-  "discovered-panel-shown": "Discovered panel shown",
+  "discovered-panel-hidden": "Discovered widget hidden",
+  "discovered-panel-shown": "Discovered widget shown",
   "page-deleted": "Page deleted with its widgets",
   "page-duplicated": "Page duplicated with copies of its widgets",
   "widgets-deleted": "Several widgets deleted",
@@ -306,7 +306,7 @@ export default function SettingsEditor({
             name="Homepage settings"
             grouped={false}
             title="Homepage settings"
-            info="Homepage's own settings for this dashboard. Studio places and sizes the panels, so Homepage's layout options (tabs, columns, equal heights) are kept but don't change this board."
+            info="Homepage's own settings for this dashboard. Studio places and sizes the widgets, so Homepage's layout options (tabs, columns, equal heights) are kept but don't change this board."
           />
           {(onOpenConnections || onOpenImages) && (
             <Group>

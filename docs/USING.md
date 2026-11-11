@@ -345,9 +345,9 @@ widget, for the dots.
 
 In the editor, the stack's edit button opens **Edit widget stack**. Under
 **Widgets** you move members earlier or later (the arrows), configure one (the
-pencil), take one out (**×**) or **Add existing panel**. **Size and position**
+pencil), take one out (**×**) or **Add an existing widget**. **Size and position**
 sets the stack's place on the 24-column layout, and **Unstack all** at the
-bottom turns every member back into an ordinary panel. **Slideshow** has the
+bottom turns every member back into an ordinary widget. **Slideshow** has the
 timing for that stack:
 
 | Setting | Default | Range |
@@ -613,7 +613,7 @@ Playing slideshows, opening dialogs and exporting never make snapshots.
 | Appearance and settings saved | saved **Dashboard settings** |
 | Configuration files saved | saved **Configuration files** |
 | Service tile / Integration widget / Information widget / Bookmark added, edited or deleted | added, edited or deleted that item |
-| Discovered panel hidden / shown | hid or brought back a discovered panel |
+| Discovered widget hidden / shown | hid or brought back a discovered widget |
 | Snapshot restored | restored a snapshot |
 | Dashboard imported | imported a dashboard backup (or created a dashboard as a copy) |
 

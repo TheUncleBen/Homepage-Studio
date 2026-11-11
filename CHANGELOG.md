@@ -72,6 +72,8 @@ build is identified by its source commit and image digest
   settings aren't set, so nothing would be sent.
 - On phones, choices in every Studio dialog share the width, so Dashboard
   settings › Refresh no longer runs past its panel.
+- The stack dialog's **Add an existing widget**, snapshot names and a few
+  messages say "widget" like the rest of the editor, not "panel".
 
 ### Upgrades keep your data
 

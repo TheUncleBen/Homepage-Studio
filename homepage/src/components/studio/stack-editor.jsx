@@ -374,7 +374,7 @@ export default function StackEditor({ stack, board, onApply, onClose, onPanelEdi
             );
           })}
           <ActionRow icon="plus" aria-expanded={adding} onClick={() => setAdding(!adding)}>
-            Add existing panel
+            Add an existing widget
           </ActionRow>
           {adding &&
             candidates.map((panel) => (
