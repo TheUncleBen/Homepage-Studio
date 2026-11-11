@@ -51,7 +51,7 @@ describe("Custom API empty mappings hint", () => {
     // A new widget with an address also offers Test connection, whose result is a status too.
     expect(screen.getByRole("button", { name: "Test connection" })).toBeInTheDocument();
     expect(screen.getByText(/has no/)).toHaveTextContent(
-      "This Custom API widget has no mappings yet, so its panel will be empty.",
+      "This Custom API widget has no mappings yet, so it will show nothing.",
     );
     fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "Status API" },
@@ -73,7 +73,7 @@ describe("Custom API empty mappings hint", () => {
     const info = { ...customApi, kind: "informationWidget" };
     renderEditor(info, { service: [], info: [info] });
     expect(screen.getByRole("status")).toHaveTextContent(
-      "This Custom API widget has no mappings yet, so its panel will be empty.",
+      "This Custom API widget has no mappings yet, so it will show nothing.",
     );
   });
 

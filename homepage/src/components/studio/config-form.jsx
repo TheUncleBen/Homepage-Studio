@@ -110,15 +110,18 @@ function Field({ field, value, onChange, onError }) {
   const [reveal, setReveal] = useState(false);
   // Simple lists and name/value settings get their own editors; anything
   // nested stays a JSON value. The editor is chosen when a value arrives,
-  // never while someone types into it.
-  const shapeOf = (type, entry) =>
-    type === "object" && (entry === undefined || (isObject(entry) && Object.values(entry).every(scalar)))
-      ? "pairs"
-      : type === "array" && (entry === undefined || (Array.isArray(entry) && entry.every(scalar)))
-        ? "list"
-        : type === "object" || type === "array"
-          ? "json"
-          : "plain";
+  // never while someone types into it. An empty field follows its documented
+  // example, so a list of settings (Custom API's mappings) isn't offered as
+  // a list of text that the widget can't read.
+  const flat = (entry) =>
+    Array.isArray(entry) ? entry.every(scalar) : isObject(entry) ? Object.values(entry).every(scalar) : true;
+  const shapeOf = (type, entry) => {
+    const sample =
+      entry === undefined && Array.isArray(field.exampleValue) === (type === "array") ? field.exampleValue : entry;
+    if (type === "object" && (sample == null || (isObject(sample) && flat(sample)))) return "pairs";
+    if (type === "array" && (sample == null || (Array.isArray(sample) && flat(sample)))) return "list";
+    return type === "object" || type === "array" ? "json" : "plain";
+  };
   const [shape, setShape] = useState(() => shapeOf(actualType === "null" ? field.type : actualType, value));
   const [previousValue, setPreviousValue] = useState(value);
   if (!Object.is(previousValue, value)) {
@@ -160,6 +163,12 @@ function Field({ field, value, onChange, onError }) {
   const flatObject = shape === "pairs";
   const flatList = shape === "list";
   const structured = shape === "json";
+  // An empty JSON value shows the documented example's first entry.
+  const example = Array.isArray(field.exampleValue) ? field.exampleValue.slice(0, 1) : field.exampleValue;
+  const jsonExample =
+    structured && example != null && !field.sensitive && Array.isArray(example) === (kind === "array")
+      ? JSON.stringify(example, null, 2)
+      : undefined;
   const placeholder =
     kind === "string" && typeof field.exampleValue === "string" && !field.sensitive ? field.exampleValue : "";
   // A field with documented choices, such as which release of the app a
@@ -261,7 +270,10 @@ function Field({ field, value, onChange, onError }) {
         className="studio-json-input"
         value={text}
         onChange={(event) => update(event.target.value)}
-        rows={4}
+        // Tall enough for the whole example, before and while typing.
+        rows={Math.max(4, jsonExample?.split("\n").length ?? 0)}
+        placeholder={jsonExample}
+        wrap="off"
         spellCheck={false}
         aria-invalid={Boolean(error)}
         aria-describedby={describedBy}

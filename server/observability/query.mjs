@@ -5,8 +5,8 @@
 import { join } from 'node:path';
 import { openDatabase } from './sqlite.mjs';
 
-const SEVERITY_WORDS = { critical: 2, crit: 2, error: 3, err: 3, errors: 3, warning: 4, warn: 4, warnings: 4, notice: 5, info: 6, debug: 7 };
-const FIELD_ALIASES = { sev: 'severity', severity: 'severity', level: 'severity', source: 'source', src: 'source', resource: 'resource', res: 'resource', type: 'type', event: 'type', class: 'class', error: 'class', dashboard: 'dashboard', scope: 'dashboard', category: 'category', cat: 'category', group: 'group', panel: 'panel', id: 'id', actor: 'actor' };
+const SEVERITY_WORDS = { __proto__: null, critical: 2, crit: 2, error: 3, err: 3, errors: 3, warning: 4, warn: 4, warnings: 4, notice: 5, info: 6, debug: 7 };
+const FIELD_ALIASES = { __proto__: null, sev: 'severity', severity: 'severity', level: 'severity', source: 'source', src: 'source', resource: 'resource', res: 'resource', type: 'type', event: 'type', class: 'class', error: 'class', dashboard: 'dashboard', scope: 'dashboard', category: 'category', cat: 'category', group: 'group', panel: 'panel', id: 'id', actor: 'actor' };
 export const MAX_QUERY = 1000;
 
 // Splits a typed search into terms. Every chip in the UI has this same text
@@ -26,6 +26,23 @@ export function parseQuery(text) {
     else terms.push({ kind: 'text', negate: Boolean(negate), value, phrase: quoted !== undefined });
   }
   return terms;
+}
+
+// Why a typed search can't find anything because of the search itself: a
+// filter name or level Studio doesn't know, or a quote left open. The log
+// view shows the same reasons (server/auth/ui/ops.js queryHint).
+export function queryProblem(text) {
+  const input = String(text ?? '');
+  // An escaped \" is part of the words, not a quote. A name: with nothing
+  // straight after it (syslog's "sshd: Failed …") is just a word.
+  if ((input.replace(/\\./g, '').match(/"/g) ?? []).length % 2) return 'A quote is left open: close it with another ".';
+  for (const [, name, raw] of input.matchAll(/(?:^|\s)-?([a-z]+):("[^"]*"|\S+)/gi)) {
+    const field = FIELD_ALIASES[name.toLowerCase()];
+    const value = raw.replace(/^"|"$/g, '');
+    if (!field && !raw.startsWith('//')) return `“${name}:” isn’t a filter. Try severity:, source:, resource:, type:, class:, dashboard:, panel: or actor:.`;
+    if (field === 'severity' && !(value.toLowerCase() in SEVERITY_WORDS) && !/^[0-7]$/.test(value)) return 'Levels are critical, error, warning, notice, info or debug (or 0 to 7).';
+  }
+  return '';
 }
 
 const ftsString = value => `"${value.replace(/"/g, '""')}"`;

@@ -971,6 +971,8 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       const renaming = username !== current.user.username;
       if (changing || renaming) requireFresh(current);
       const before = current.user.username;
+      // Saving the profile as it is changes nothing and leaves no audit event.
+      if (!changing && !renaming && displayName === current.user.displayName) return accountView(current);
       await store.mutate(data => {
         if (renaming && data.users.some(item => item.username === username && item.id !== current.user.id)) fail('That username is taken.', 'USERNAME_TAKEN', 409);
         const user = findUser(data, current.user.id);
@@ -1005,8 +1007,9 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
       const step = verifyTotp(entry.secret, String(body?.code ?? ''), { now: now() });
       if (step === null) fail("That code didn't match. Check the time on your phone and try the newest code.", 'TOTP_INVALID');
       pending.delete(tokenHash(body.token));
-      await changeUser(current, user => { user.totp = { secret: sealSecret(entry.secret, config.key), lastStep: step, createdAt: now() }; }, 'totp-added');
-      await notify(current.user, 'Authenticator app added', 'An authenticator app was set up for your account.');
+      const replaced = Boolean(findUser(store.read(), current.user.id)?.totp);
+      await changeUser(current, user => { user.totp = { secret: sealSecret(entry.secret, config.key), lastStep: step, createdAt: now() }; }, replaced ? 'totp-replaced' : 'totp-added');
+      await notify(current.user, replaced ? 'Authenticator app replaced' : 'Authenticator app added', replaced ? 'The authenticator app on your account was replaced. Codes from the old one no longer work.' : 'An authenticator app was set up for your account.');
       return accountView(await refreshed(current));
     },
     async totpRemove(current) {
@@ -1110,19 +1113,20 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     return sendMail('Invitation', user, user.email, mailMessages(siteName()).invite({ name: user.displayName || user.username, link, hours: INVITE_HOURS }));
   }
   function policyFields(body) {
-    const minutes = (value, label, min, max) => {
+    // Messages use the dialog's names and units (Idle sign-out, 90 days).
+    const minutes = (value, label, min, max, range, empty) => {
       if (value === null) return null;
-      if (!Number.isInteger(value) || value < min || value > max) fail(`${label} must be a whole number of minutes from ${min} to ${max}, or never.`, 'INVALID_POLICY');
+      if (!Number.isInteger(value) || value < min || value > max) fail(`${label} must be ${range}, or left empty for ${empty}.`, 'INVALID_POLICY');
       return value;
     };
     const stepUp = body?.stepUpMinutes;
-    if (!Number.isInteger(stepUp) || stepUp < 5 || stepUp > 60) fail('The confirmation window must be 5 to 60 minutes.', 'INVALID_POLICY');
+    if (!Number.isInteger(stepUp) || stepUp < 5 || stepUp > 60) fail('Confirm it’s you after must be 5 to 60 minutes.', 'INVALID_POLICY');
     const max = body?.maxSessions;
-    if (max !== null && (!Number.isInteger(max) || max < 1 || max > 50)) fail('Concurrent sessions must be 1 to 50, or unlimited.', 'INVALID_POLICY');
+    if (max !== null && (!Number.isInteger(max) || max < 1 || max > 50)) fail('Devices at once must be 1 to 50, or left empty for no limit.', 'INVALID_POLICY');
     return {
       name: cleanText(body?.name, 60, 'a policy name'),
-      idleMinutes: minutes(body?.idleMinutes ?? null, 'Idle timeout', 5, 90 * 24 * 60),
-      absoluteMinutes: minutes(body?.absoluteMinutes ?? null, 'Maximum session length', 60, 365 * 24 * 60),
+      idleMinutes: minutes(body?.idleMinutes ?? null, 'Idle sign-out', 5, 90 * 24 * 60, '5 minutes to 90 days', 'never'),
+      absoluteMinutes: minutes(body?.absoluteMinutes ?? null, 'Maximum session', 60, 365 * 24 * 60, '1 hour to 365 days', 'no limit'),
       persistent: body?.persistent === true,
       stepUpMinutes: stepUp,
       maxSessions: max,
@@ -1351,6 +1355,7 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
     },
     async settings(current, body) {
       requireAdmin(current);
+      let changed = [];
       await store.mutate(data => {
         const next = structuredClone(data.settings);
         if (body?.emailCode !== undefined) next.emailCode = body.emailCode === true;
@@ -1381,9 +1386,11 @@ export function createAuthService({ config, stateRoot, now = () => Date.now(), l
             fail(`Before turning off local sign-in, sign in through ${oidc?.name ?? 'single sign-on'} as an administrator whose provider group is listed under administrator groups.`, 'LOCAL_SIGN_IN_REQUIRED', 409);
           }
         }
+        // The audit names only the settings that really changed.
+        changed = Object.keys(next).filter(key => JSON.stringify(next[key] ?? null) !== JSON.stringify(data.settings[key] ?? null));
         data.settings = next;
       });
-      await audit('settings-changed', { by: current.user.id, fields: Object.keys(body ?? {}) }, current);
+      if (changed.length) await audit('settings-changed', { by: current.user.id, fields: changed }, current);
       return admin.overview(current);
     },
     async grants(current, body) {

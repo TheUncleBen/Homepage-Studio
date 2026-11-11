@@ -48,7 +48,7 @@ test('different-size fit preview cancels safely, then add/reorder/unstack preser
   await dialog.getByRole('button', { name: 'Apply to arrangement', exact: true }).click();
   await page.getByRole('button', { name: 'Edit stack', exact: true }).click();
   dialog = page.getByRole('dialog');
-  await dialog.getByRole('button', { name: 'Add existing panel', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Add an existing widget', exact: true }).click();
   await dialog.locator('.studio-action-row').filter({ hasText: 'Third member' }).click();
   await dialog.getByRole('button', { name: 'Move Third member earlier in stack', exact: true }).click();
   await dialog.getByRole('button', { name: 'Move Third member earlier in stack', exact: true }).click();

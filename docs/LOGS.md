@@ -51,6 +51,10 @@ matches out:
 | `panel:<id>` | One widget |
 | `actor:alice` | What one person did |
 
+When a search finds nothing because of the search itself (a filter name
+Studio doesn't know, a level that isn't one, or a quote left open), the
+empty result says so.
+
 The bars above the results show events over time, coloured by the worst in
 each bar; click one to look only at that time. Open an event to see all its fields, the events around it
 (**Show surrounding**) or others like it (**Find similar**). **Similar
@@ -117,7 +121,9 @@ Syslog is plain text on the network; keep it on a network you trust.
 Administration › Monitoring and logs › **Log alerts** sends a notification
 when a search finds at least so many events within so many minutes, then
 stays quiet for a while. Alerts use the same notification channels as
-monitors.
+monitors. A search that could never find anything (a filter or level Studio
+doesn't know, or a quote left open) is refused when you save, with the
+reason.
 
 ## Export
 

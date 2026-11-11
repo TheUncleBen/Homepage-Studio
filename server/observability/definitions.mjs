@@ -9,6 +9,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 import { SCOPE } from './model.mjs';
+import { queryProblem } from './query.mjs';
 
 export const DEFINITIONS_FILE = 'observability.json';
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -155,13 +156,16 @@ export function cleanMonitor(input, { existing, channels, monitors }) {
 }
 
 const time = value => { if (typeof value !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) fail('Times look like 02:30.'); return value; };
-export function cleanMaintenance(input, { existing, monitors }) {
+export function cleanMaintenance(input, { existing, monitors, cards = [] }) {
   if (!input || typeof input !== 'object') fail('Send a maintenance window.');
   const kind = ['now', 'once', 'daily', 'weekly'].includes(input.kind) ? input.kind : fail('Choose when the maintenance happens.');
   const ids = Array.isArray(input.monitors) ? input.monitors : [];
   if (!ids.length && !(input.tags ?? []).length) fail('Choose the monitors or tags it covers.');
   const scope = scopeOf(input.scope ?? existing?.scope);
-  for (const id of ids) if (!monitors.some(monitor => monitor.id === id && monitor.scope === scope)) fail('Choose monitors on the same dashboard.');
+  // A card's monitor may be named too; one whose card has since gone stays
+  // in the window harmlessly, so an edit keeps it.
+  const known = id => [...monitors, ...cards].some(monitor => monitor.id === id && monitor.scope === scope) || (existing?.scope === scope && existing.monitors.includes(id));
+  for (const id of ids) if (typeof id !== 'string' || !known(id)) fail('Choose monitors on the same dashboard.');
   const window = { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80, { empty: 'Give the maintenance window a name.' }), scope, kind, monitors: [...new Set(ids)], tags: tags(input.tags) };
   if (kind === 'now') { window.start = Date.now(); window.end = window.start + integer(input.minutes, 'Minutes', 5, 7 * 1440, 60) * 60e3; }
   if (kind === 'once') {
@@ -241,8 +245,12 @@ export function cleanSource(input, { existing }) {
 export function cleanAlert(input, { existing, channels }) {
   if (!input || typeof input !== 'object') fail('Send a log alert.');
   const ids = Array.isArray(input.channels) ? input.channels : [];
+  const name = text(input.name, 'Name', 80, { empty: 'Give the alert a name.' });
+  const query = text(input.query, 'Search', 1000);
+  const problem = queryProblem(query);
+  if (problem) fail(problem);
   if (!ids.length || ids.some(id => !channels.some(channel => channel.id === id))) fail('Choose at least one notification channel.');
-  return { id: existing?.id ?? newId(), name: text(input.name, 'Name', 80, { empty: 'Give the alert a name.' }), query: text(input.query, 'Search', 1000), threshold: integer(input.threshold, 'At least', 1, 100000, 1), minutes: integer(input.minutes, 'Within', 1, 1440, 5), channels: [...new Set(ids)], quietMinutes: integer(input.quietMinutes, 'Then wait', 1, 1440, 30) };
+  return { id: existing?.id ?? newId(), name, query, threshold: integer(input.threshold, 'At least', 1, 100000, 1), minutes: integer(input.minutes, 'Within', 1, 1440, 5), channels: [...new Set(ids)], quietMinutes: integer(input.quietMinutes, 'Then stay quiet for', 1, 1440, 30) };
 }
 
 export function cleanSettings(input, current) {

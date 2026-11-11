@@ -36,6 +36,15 @@ function cardMonitorStatus(panel) {
   if (panel.state === "maintenance" || panel.state === "paused") return { state: panel.state };
   return { state: "pending" };
 }
+// What a down card says in place of its description: "No answer since
+// 12:48", "Answered 502 since 12:48", or a reason that is a sentence of its
+// own ("Name not found · check the address") with the time as its own part.
+export function downNote(status, time) {
+  const reason = !status.code && status.text && status.text !== "Error" ? status.text : null;
+  const what = status.code ? `Answered ${status.code}` : (reason ?? "No answer");
+  if (!time) return what;
+  return `${what}${reason ? " · since" : " since"} ${time}`;
+}
 function useStatus(service, groupName, check, connected = false, panelId = null) {
   const kind = statusKind(check);
   // An integration widget's Connection address is used when nothing else is
@@ -169,7 +178,14 @@ export function ServiceCard({ service, groupName, children, connected = false })
   // A down service says so in place of its description, so even a compact
   // card shows why it is red.
   const note = down
-    ? `${status.code ? `Answered ${status.code}` : status.text && status.text !== "Error" ? status.text : "No answer"}${since ? ` since ${since.toLocaleTimeString(i18n.language || [], { hour: "2-digit", minute: "2-digit", ...(clock !== "dashboard" ? { hour12: clock === "12" } : {}) })}` : ""}`
+    ? downNote(
+        status,
+        since?.toLocaleTimeString(i18n.language || [], {
+          hour: "2-digit",
+          minute: "2-digit",
+          ...(clock !== "dashboard" ? { hour12: clock === "12" } : {}),
+        }),
+      )
     : null;
   // The card's blocks at its size (mock-ups v4). An integration widget draws
   // them with its values; a service card has only status, response time and

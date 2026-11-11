@@ -12,7 +12,7 @@ export const CATEGORIES = {
   adguard: 'DNS ad blocker', apcups: 'UPS monitoring', arcane: 'Docker management', argocd: 'GitOps deployments',
   atsumeru: 'Manga and comics server', audiobookshelf: 'Audiobook and podcast server', authentik: 'Identity provider',
   autobrr: 'Release automation', azuredevops: 'Pipelines and pull requests', backrest: 'Restic backups', bazarr: 'Subtitle manager',
-  beszel: 'Server monitoring', booklore: 'Book library', caddy: 'Web server and reverse proxy', calendar: 'Calendar',
+  beszel: 'Server monitoring', booklore: 'Book library', bookorbit: 'Book library', caddy: 'Web server and reverse proxy', calendar: 'Calendar',
   calibreweb: 'E-book library', changedetectionio: 'Website change monitoring', channelsdvrserver: 'TV DVR',
   checkmk: 'Infrastructure monitoring', cloudflared: 'Cloudflare tunnels', coinmarketcap: 'Cryptocurrency prices',
   crowdsec: 'Security engine', customapi: 'Any JSON API', deluge: 'Torrent client', develancacheui: 'Game download cache',

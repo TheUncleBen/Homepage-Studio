@@ -461,7 +461,10 @@ export function createObservability({ stateRoot, configRoot, signIn, authConfig 
         return { item: spec.publish(existing) };
       }
       if (action !== 'save') throw new OpsError('Choose save, delete, pause, resume or token.');
-      const item = spec.clean(body.item, { existing, channels: draft.channels, monitors: draft.monitors });
+      // Cards' monitors as last sent to the engine: a maintenance window can
+      // cover them (owner choice pending, 11 Nov 2026).
+      const cards = [...cardTargets.values()].flatMap(key => JSON.parse(key).map(({ id, scope }) => ({ id, scope })));
+      const item = spec.clean(body.item, { existing, channels: draft.channels, monitors: draft.monitors, cards });
       if (item.scope && !known.has(item.scope)) throw new OpsError('Choose a dashboard that exists, or Studio only.', 'INVALID_SCOPE');
       // A new push monitor or intake source gets its token now.
       if (!existing && ((kind === 'monitor' && item.type === 'push') || (kind === 'source' && item.kind === 'https'))) {

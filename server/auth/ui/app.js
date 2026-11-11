@@ -33,7 +33,12 @@
   const put = (element, ...nodes) => element.replaceChildren(...nodes.flat(Infinity).filter(node => node !== null && node !== undefined && node !== false));
   const render = (...nodes) => { put(app, ...nodes); const focus = app.querySelector('[data-autofocus]'); if (focus) focus.focus(); };
   const notice = (kind = '') => h('div', { class: 'notice ' + kind, role: kind === 'error' ? 'alert' : 'status' });
-  function say(box, message, kind = 'error') { box.className = 'notice ' + kind; box.setAttribute('role', kind === 'error' ? 'alert' : 'status'); box.textContent = message ?? ''; }
+  // A message below the fold (a long dialog on a phone) is brought into view,
+  // so Save never seems to do nothing.
+  function say(box, message, kind = 'error') {
+    box.className = 'notice ' + kind; box.setAttribute('role', kind === 'error' ? 'alert' : 'status'); box.textContent = message ?? '';
+    if (message && box.isConnected) box.scrollIntoView?.({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
   // The deployment's name (STUDIO_DEPLOYMENT_NAME), shown with the Studio logo.
   let deploymentName = document.body.dataset.deploymentName || 'Homepage Studio';
   const STUDIO_LOGO = '/studio/brand/logo.svg';
@@ -884,8 +889,13 @@
     dialog.append(h('div', { class: 'dialog-body' }, h('h2', { text: title }), build(close)));
     dialog.addEventListener('close', () => dialog.remove());
     document.body.append(dialog);
+    // On touch screens focusing a field opens the keyboard over the dialog,
+    // so the dialog itself takes focus there (UI review, 11 Nov 2026).
+    const touch = matchMedia('(pointer: coarse)').matches;
+    if (touch) dialog.tabIndex = -1;
     dialog.showModal();
-    dialog.querySelector('input:not([type=hidden]):not([hidden]), select, textarea, button.primary')?.focus();
+    if (touch) dialog.focus({ preventScroll: true });
+    else dialog.querySelector('input:not([type=hidden]):not([hidden]), select, textarea, button.primary')?.focus();
     return dialog;
   }
   function confirmDialog(title, text, actionLabel, action, { danger = true, cancelLabel = 'Cancel', onCancel } = {}) {
@@ -1054,13 +1064,16 @@
           });
         } }, h('input', { type: 'text', autocomplete: 'username', value: user.username, hidden: true, readonly: true, tabindex: '-1', 'aria-hidden': 'true' }), ...passwords.nodes, local, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), submit));
       });
-      const totpButton = factors.totp
-        ? pill('Remove', { onclick: () => confirmDialog('Remove authenticator app?', 'Codes from the app will stop working. You need a passkey to keep signing in.', 'Remove', async () => { view = await api('account/totp/remove', {}); draw(); say(message, 'Authenticator app removed.', 'ok'); }) })
-        : pill('Set up', { primary: true });
-      if (!factors.totp) totpButton.addEventListener('click', () => busy(totpButton, 'Preparing…', async () => {
+      // With no passkey the app is how you sign in, so it can be replaced (a
+      // new phone) but not removed: Studio keeps a complete second step.
+      const onlyStep = factors.totp && !factors.passkeys.length;
+      const totpButton = factors.totp && !onlyStep
+        ? pill('Remove', { onclick: () => confirmDialog('Remove authenticator app?', 'Codes from the app will stop working. You sign in with a passkey instead.', 'Remove', async () => { view = await api('account/totp/remove', {}); draw(); say(message, 'Authenticator app removed.', 'ok'); }) })
+        : pill(onlyStep ? 'Replace' : 'Set up', { primary: !factors.totp });
+      if (!factors.totp || onlyStep) totpButton.addEventListener('click', () => busy(totpButton, 'Preparing…', async () => {
         try {
           const setup = await api('account/totp/start', {});
-          openDialog('Set up an authenticator app', close => totpConfirm(setup, async code => { view = await api('account/totp/confirm', { token: setup.token, code }); close(); draw(); say(message, 'Authenticator app set up.', 'ok'); }));
+          openDialog(onlyStep ? 'Replace your authenticator app' : 'Set up an authenticator app', close => totpConfirm(setup, async code => { view = await api('account/totp/confirm', { token: setup.token, code }); close(); draw(); say(message, onlyStep ? 'Authenticator app replaced. Codes from the old one no longer work.' : 'Authenticator app set up.', 'ok'); }));
         } catch (error) { failure(box, error); }
       }));
       const regenerate = pill('New codes', { onclick: () => confirmDialog('Create new backup codes?', 'Your current backup codes will stop working.', 'Create new codes', async () => {
@@ -1078,10 +1091,15 @@
         const name = h('input', { type: 'text', maxlength: 60, value: passkey.name, required: true });
         const local = notice();
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save' });
-        const remove = actionRow('Remove passkey', { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog(`Remove “${passkey.name}”?`, 'This passkey will no longer sign you in. Remove it from the device or password manager as well.', 'Remove', async () => { view = await api('account/passkey/remove', { id: passkey.id }); draw(); say(message, 'Passkey removed.', 'ok'); }); } });
+        // The last passkey of an account without a password and app is how
+        // it signs in, so it stays until another way is added.
+        const last = factors.passkeys.length === 1 && !(factors.password && factors.totp);
+        const remove = last
+          ? h('p', { class: 'small muted', text: `This passkey is how you sign in. Add another passkey or ${factors.password ? 'set up an authenticator app' : 'a password with an authenticator app'} before removing it.` })
+          : group({}, actionRow('Remove passkey', { iconName: 'trash', danger: true, onClick: () => { close(); confirmDialog(`Remove “${passkey.name}”?`, 'This passkey will no longer sign you in. Remove it from the device or password manager as well.', 'Remove', async () => { view = await api('account/passkey/remove', { id: passkey.id }); draw(); say(message, 'Passkey removed.', 'ok'); }); } }));
         return h('form', { class: 'stack', onsubmit: async event => { event.preventDefault(); await busy(save, 'Saving…', async () => { try { view = await api('account/passkey/rename', { id: passkey.id, name: name.value }); close(); draw(); } catch (error) { failure(local, error); } }); } },
           group({}, row('Name', name), row('Added', value(when(passkey.createdAt))), row('Last used', value(passkey.lastUsedAt ? ago(passkey.lastUsedAt) : 'Not yet'))),
-          group({}, remove), local, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
+          remove, local, dialogActions(h('button', { type: 'button', onclick: close, text: 'Cancel' }), save));
       });
       const add = actionRow('Add a passkey', { iconName: 'plus', disabled: !passkeysSupported() });
       add.addEventListener('click', () => busy(add, 'Waiting for passkey…', async () => {
@@ -1417,11 +1435,10 @@
       });
     });
     function draw() {
-      // The list first, under its heading; its actions right below it.
-      put(holder, message,
+      // Add actions above the list, as on People (owner choice, 11 Nov 2026).
+      put(holder, message, toolbar(upload, create, input),
         group({ title: 'Backups', aside: items.length ? String(items.length) : null, info: 'A backup holds every dashboard, the dashboard list, the default look, people and sign-in settings. Backups are kept in the state volume, so the command line can restore one if these pages can’t be reached (docs/OPERATIONS.md). Store a downloaded backup like a password: it includes any API key written into a dashboard’s files.' },
-          items.length ? items.map(item => navRow({ leading: icon('archive', 18), title: when(Date.parse(item.createdAt)), detail: [fileSize(item.bytes), BACKUP_KINDS[item.kind]].filter(Boolean).join(' · '), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'No backups yet.' })),
-        toolbar(upload, create, input));
+          items.length ? items.map(item => navRow({ leading: icon('archive', 18), title: when(Date.parse(item.createdAt)), detail: [fileSize(item.bytes), BACKUP_KINDS[item.kind]].filter(Boolean).join(' · '), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'No backups yet.' })));
     }
     put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
     load();
@@ -1490,9 +1507,10 @@
       const items = view?.certificates ?? [];
       put(holder, message,
         view?.deploymentError ? h('p', { class: 'notice warn', role: 'alert', text: view.deploymentError }) : null,
+        // Add above the list, as on People (owner choice, 11 Nov 2026).
+        toolbar(pill('Add certificate', { primary: true, iconName: 'plus', onclick: addDialog })),
         group({ title: 'Trusted certificates', aside: items.length ? String(items.length) : null, info: 'Studio trusts the usual public certificate authorities. Add your own here when your services use certificates from it, for example behind a local reverse proxy. Studio never trusts a certificate just because a service presents it.' },
-          items.length ? items.map(item => navRow({ leading: icon('lock', 18), title: item.name, badges: [item.source === 'deployment' ? badge('Deployment', 'accent') : null, expired(item) ? badge('Expired', 'danger') : null], detail: detailOf(item), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'Only the usual public authorities.' })),
-        toolbar(pill('Add certificate', { primary: true, iconName: 'plus', onclick: addDialog })));
+          items.length ? items.map(item => navRow({ leading: icon('lock', 18), title: item.name, badges: [item.source === 'deployment' ? badge('Deployment', 'accent') : null, expired(item) ? badge('Expired', 'danger') : null], detail: detailOf(item), onClick: () => manage(item) })) : h('p', { class: 'empty-row', text: 'Only the usual public authorities.' })));
     }
     put(holder, h('p', { class: 'empty-row', text: 'Loading…' }));
     load();
@@ -1933,7 +1951,7 @@
       const units = [['1', 'minutes'], ['60', 'hours'], ['1440', 'days']];
       const pickUnit = amount => amount === null || amount === undefined ? '1440' : amount % 1440 === 0 ? '1440' : amount % 60 === 0 ? '60' : '1';
       const unit = h('select', { 'aria-label': label + ' unit' }, units.map(([option, text]) => h('option', { value: option, text, selected: option === pickUnit(minutes) })));
-      const amount = h('input', { type: 'number', min: '1', step: '1', 'aria-label': label, value: minutes === null || minutes === undefined ? '' : String(minutes / Number(pickUnit(minutes))), placeholder: allowNever ? 'Never' : '' });
+      const amount = h('input', { type: 'number', min: '0', step: 'any', 'aria-label': label, value: minutes === null || minutes === undefined ? '' : String(minutes / Number(pickUnit(minutes))), placeholder: allowNever ? 'Never' : '' });
       return { node: h('div', { class: 'duration' }, amount, unit), value: () => amount.value === '' ? null : Math.round(Number(amount.value) * Number(unit.value)) };
     }
     function policyDialog(policy) {
@@ -1944,11 +1962,13 @@
         const idle = durationInput('Idle sign-out', base.idleMinutes, { allowNever: true });
         const absolute = durationInput('Maximum session', base.absoluteMinutes, { allowNever: true });
         const persistent = toggle({ checked: base.persistent, label: 'Stay signed in after closing the browser' });
-        const stepUp = h('input', { type: 'number', min: '5', max: '60', step: '1', value: String(base.stepUpMinutes), required: true });
+        const stepUp = h('input', { type: 'number', step: '1', value: String(base.stepUpMinutes), 'aria-label': 'Confirm it’s you after, in minutes' });
         const maxSessions = h('input', { type: 'number', min: '1', max: '50', step: '1', value: base.maxSessions ? String(base.maxSessions) : '', placeholder: 'No limit' });
         const save = h('button', { type: 'submit', class: 'primary', text: 'Save policy' });
         const remove = policy && policy.id !== 'default' ? actionRow('Delete policy', { danger: true, iconName: 'trash', onClick: () => { close(); confirmDialog(`Delete ${policy.name}?`, 'People and groups using it fall back to their other policies or the default.', 'Delete', () => act(() => api('admin/policy', { action: 'delete', id: policy.id }), null, 'Policy deleted.')); } }) : null;
-        return h('form', { class: 'stack', onsubmit: async event => {
+        // Every limit is checked by Studio and shown in one place; a message
+        // goes as soon as a field changes.
+        return h('form', { class: 'stack', novalidate: true, oninput: () => say(box, ''), onchange: () => say(box, ''), onsubmit: async event => {
           event.preventDefault(); say(box, '');
           const body = { action: policy ? 'update' : 'create', id: policy?.id, name: name.value, idleMinutes: idle.value(), absoluteMinutes: absolute.value(), persistent: persistent.checked, stepUpMinutes: Number(stepUp.value), maxSessions: maxSessions.value === '' ? null : Number(maxSessions.value) };
           await busy(save, 'Saving…', async () => { if (await act(() => api('admin/policy', body), box, 'Policy saved.')) close(); });

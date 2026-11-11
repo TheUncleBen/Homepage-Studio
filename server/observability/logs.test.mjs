@@ -155,3 +155,34 @@ test('renderer error lines carry their class (UI review M4)', async () => {
   assert.equal(event.error_class, 'tls-untrusted');
   assert.equal(workerEvent('default', 'stdout', '[2026-11-07T03:00:00.000Z] info: <x> all good').error_class, undefined);
 });
+
+test('the Logs page knows the same filter names and levels as the search (audit, 11 Nov 2026)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../auth/ui/ops.js', import.meta.url), 'utf8');
+  const list = name => JSON.parse(source.match(new RegExp(`const ${name} = (\\[[^\\]]*\\]);`))[1].replace(/'/g, '"'));
+  const query = readFileSync(new URL('./query.mjs', import.meta.url), 'utf8');
+  const keys = name => Object.keys(Function(`return ${query.match(new RegExp(`const ${name} = (\\{[^}]*\\});`))[1]}`)()).sort();
+  assert.deepEqual(list('FILTERS').sort(), keys('FIELD_ALIASES'));
+  assert.deepEqual(list('LEVEL_WORDS').sort(), keys('SEVERITY_WORDS'));
+});
+
+test('a log alert whose search can never match is refused with the reason (audit, 11 Nov 2026)', async () => {
+  const { queryProblem } = await import('./query.mjs');
+  const { cleanAlert } = await import('./definitions.mjs');
+  assert.equal(queryProblem('severity:error resource:plex "backup failed"'), '');
+  assert.equal(queryProblem('level:3 -type:monitor.* http://nas:5000'), '');
+  assert.match(queryProblem('severity:eror'), /^Levels are/);
+  assert.match(queryProblem('sevrity:error'), /isn’t a filter/);
+  assert.match(queryProblem('"backup failed'), /quote is left open/);
+  // Names an object has by inheritance are not filters or levels.
+  assert.match(queryProblem('constructor:x'), /isn’t a filter/);
+  assert.match(queryProblem('level:constructor'), /^Levels are/);
+  assert.equal(parseQuery('constructor:x')[0].kind, 'text');
+  // Searches that work are not refused (UI review, 11 Nov 2026).
+  assert.equal(queryProblem('sshd: Failed password'), '');
+  assert.equal(queryProblem('severity:"error"'), '');
+  assert.equal(queryProblem('"say \\"hi\\" now"'), '');
+  const channels = [{ id: 'c1' }];
+  assert.throws(() => cleanAlert({ name: 'Errors', query: 'severity:eror', channels: ['c1'] }, { channels }), /Levels are/);
+  assert.equal(cleanAlert({ name: 'Errors', query: 'severity:error', channels: ['c1'] }, { channels }).query, 'severity:error');
+});

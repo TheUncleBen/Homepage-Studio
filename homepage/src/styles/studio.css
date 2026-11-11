@@ -1730,7 +1730,7 @@ body {
     flex: 1 1 0;
   }
   .studio-catalog {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     max-height: 56vh;
   }
   .studio-catalog-item {
@@ -2299,6 +2299,7 @@ body {
   grid-template-columns: minmax(0, 1fr) 32px;
 }
 .studio-pair input,
+.studio-row-stacked .studio-row-control .studio-input-line input,
 .studio-json-input,
 .studio-textarea-input {
   width: 100%;
@@ -3904,15 +3905,23 @@ svg.studio-chart-gauge {
    focus or selection, so a resting card looks exactly like the live one. */
 .studio-edit-mode .studio-panel:not(.studio-stacked-panel) > .studio-panel-slide > .studio-panel-header {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: var(--studio-card-tool-edge);
+  right: var(--studio-card-tool-edge);
   z-index: 3;
   min-height: 0;
   padding: 0;
   gap: 4px;
 }
+/* One size for a card's Move and Edit, which the select box beside them
+   (below) is placed from. 36px wide, as .studio-icon-button's min-width
+   makes them; 44px square on touch. */
+.studio-edit-mode {
+  --studio-card-tool: 36px;
+  --studio-card-tool-edge: 10px;
+}
 .studio-edit-mode .studio-panel-header .studio-icon-button {
-  width: 30px;
+  width: var(--studio-card-tool);
+  min-width: var(--studio-card-tool);
   height: 30px;
   border-radius: 8px;
   /* Solid, as on a stack: what they sit over never shows through. */
@@ -3930,6 +3939,26 @@ svg.studio-chart-gauge {
   width: 30px;
   height: 30px;
   margin: 0;
+}
+/* With no logo in the top-left corner, the box would cover the name's first
+   letters (or whatever the card draws there), so it joins Move and Edit at
+   the top right instead, one gap to the left of them. */
+.studio-edit-mode
+  .studio-panel:not(.studio-stacked-panel):not(:has(.studio-card-head:not([data-logo="above"]) .studio-card-logo))
+  > .studio-panel-slide
+  > .studio-select-corner {
+  --studio-card-tools: 2;
+  top: var(--studio-card-tool-edge);
+  left: auto;
+  right: calc(var(--studio-card-tool-edge) + var(--studio-card-tools) * (var(--studio-card-tool) + 4px));
+}
+.studio-edit-mode
+  .studio-panel:not(.studio-stacked-panel):not(:has(.studio-card-head:not([data-logo="above"]) .studio-card-logo)):not(
+    :has(.studio-panel-header > button + button)
+  )
+  > .studio-panel-slide
+  > .studio-select-corner {
+  --studio-card-tools: 1;
 }
 .studio-select-input {
   position: absolute;
@@ -4469,6 +4498,9 @@ svg.studio-chart-gauge {
   display: flex;
   align-items: center;
   gap: 10px;
+  /* Lets a long name shorten on a narrow phone instead of pushing Choose
+     past the panel (UI review, 11 Nov 2026). */
+  min-width: 0;
 }
 .studio-icon-preview {
   display: grid;
@@ -4484,9 +4516,13 @@ svg.studio-chart-gauge {
 .studio-icon-value {
   flex: 1;
   min-width: 0;
+  /* Up to two lines, so "Same as the logo" stays readable on a phone. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 /* Uploaded logos sit whole on the tile; backgrounds fill it. */
 .studio-uploaded-logo {
@@ -4765,10 +4801,11 @@ svg.studio-chart-gauge {
   opacity: 1;
   pointer-events: auto;
 }
-/* On a chart or status history, and in a stack (its page dots sit along the
-   bottom), the note sits in the header row, so it never covers what is
-   drawn. */
-.studio-stack-shell .studio-freshness,
+/* On a chart or status history, and in a stack (its page dots and play
+   button sit along the bottom), the note sits in the header row, so it never
+   covers what is drawn. Stacked cards are the shell's siblings, not its
+   children. */
+.studio-stacked-panel .studio-freshness,
 .studio-panel:has(.studio-chart, .studio-status-history) .studio-freshness {
   top: 8px;
   bottom: auto;
@@ -5281,9 +5318,9 @@ svg.studio-chart-gauge {
 /* Touch: edit controls are large targets (44 px; the resize corner 44 by
    36 so it never meets the controls above it on a two-row tile). */
 @media (pointer: coarse) {
-  .studio-edit-mode .studio-panel:not(.studio-stacked-panel) > .studio-panel-slide > .studio-panel-header {
-    top: 4px;
-    right: 4px;
+  .studio-edit-mode {
+    --studio-card-tool: 44px;
+    --studio-card-tool-edge: 4px;
   }
   .studio-select-target.studio-select-corner {
     top: 0;
@@ -5293,7 +5330,6 @@ svg.studio-chart-gauge {
     margin: 0;
   }
   .studio-edit-mode .studio-panel-header .studio-icon-button {
-    width: 44px;
     height: 44px;
   }
   .studio-edit-mode .studio-resize-handle {
@@ -5504,19 +5540,29 @@ svg.studio-chart-gauge {
 /* Phone: a widget-dialog or Appearance choice keeps its options on one line,
    sharing the width; a long option wraps inside its own button rather than
    pushing the last one to a line of its own (or, in Appearance, past the
-   panel: UI review M5, 10 Nov 2026). */
+   panel: UI review M5, 10 Nov 2026). Every Studio dialog does the same, so
+   Dashboard settings › Refresh no longer runs past its panel (audit, 11 Nov
+   2026). */
 @media (max-width: 560px) {
-  :is(.studio-look-editor, .studio-appearance) .studio-row-control > .studio-segmented {
+  :is(.studio-look-editor, .studio-appearance, .studio-dialog) .studio-row-control > .studio-segmented {
     flex-wrap: nowrap;
     justify-self: stretch;
   }
   .studio-look-editor .studio-segmented > button,
-  .studio-appearance .studio-row-control > .studio-segmented > button {
+  :is(.studio-appearance, .studio-dialog) .studio-row-control > .studio-segmented > button {
     flex: 1 1 auto;
     min-width: 0;
     padding: 4px 6px;
     white-space: normal;
     line-height: 1.15;
+  }
+}
+/* The narrowest phones (320 px): one-word options can't wrap, so the
+   buttons give up side padding instead (UI review, 11 Nov 2026). */
+@media (max-width: 380px) {
+  .studio-look-editor .studio-segmented > button,
+  :is(.studio-appearance, .studio-dialog) .studio-row-control > .studio-segmented > button {
+    padding-inline: 2px;
   }
 }
 /* Full view: the time ranges share the dialog's width, so all five fit a
@@ -6412,4 +6458,20 @@ svg.studio-chart-gauge {
 }
 .studio-edit-mode.studio-resizing .studio-panel .studio-card-logo {
   opacity: 1;
+}
+
+/* iOS zooms the page into any field whose text is smaller than 16px when it
+   gets focus, and doesn't zoom back. On touch screens every field's text is
+   at least 16px; the compact sizes above stay for mouse and keyboard. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
+
+/* Selected text uses the dashboard's accent, not the browser's bright blue. */
+::selection {
+  background: color-mix(in srgb, var(--studio-accent, #7e6b8f) 38%, transparent);
 }

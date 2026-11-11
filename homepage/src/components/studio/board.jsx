@@ -1651,7 +1651,8 @@ export default function StudioBoard({
         }
       : undefined,
     copyLink: async (page) => {
-      const url = `${window.location.origin}${window.location.pathname.replace(/\/edit$/, "")}${pageHash(wholeRef.current, page.id)}`;
+      // The page's address on the dashboard itself, not on the editor.
+      const url = `${window.location.origin}${dashboardPath("/", dashboard.basePath)}${pageHash(wholeRef.current, page.id)}`;
       try {
         await navigator.clipboard.writeText(url);
         showToast("Link copied");
@@ -2635,7 +2636,7 @@ export default function StudioBoard({
                 <p>
                   Add a service, a clock, a bookmark, or a native integration.
                   <br />
-                  Arrange each panel freely. Stack the ones that belong together.
+                  Arrange each widget freely. Stack the ones that belong together.
                 </p>
                 <button
                   className="studio-button studio-primary"

@@ -47,7 +47,8 @@ is off.
 Card monitors follow the card: change its address or Status, archive or
 delete the dashboard, and the monitor follows within a minute. Their only
 settings are which channels to notify and whether to pause them (the
-monitor's **Notifications** button).
+monitor's **Notifications** button); a maintenance window can cover them like
+any other monitor.
 
 ## Other monitors
 

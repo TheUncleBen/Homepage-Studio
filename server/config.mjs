@@ -185,7 +185,16 @@ function yamlDocument(source, filename) {
     if (error instanceof ConfigError) throw error;
     fail(`${filename} contains unsupported or excessive YAML aliases.`, 'INVALID_YAML');
   }
-  return { doc, data, restore: masked.restore, text: () => masked.restoreText(doc.toString({ lineWidth: 0 })) };
+  // A new deployment's files start as `{}` or `[]`. Writing into that empty
+  // flow collection would keep everything on one line, which nobody can read
+  // or edit by hand, so an empty root becomes block style. A root someone
+  // wrote in flow style with content keeps its style.
+  const emptyFlowRoot = (isMap(doc.contents) || isSeq(doc.contents)) && doc.contents.flow && !doc.contents.items.length;
+  const text = () => {
+    if (emptyFlowRoot && doc.contents?.items?.length) doc.contents.flow = false;
+    return masked.restoreText(doc.toString({ lineWidth: 0 }));
+  };
+  return { doc, data, restore: masked.restore, text };
 }
 
 function validateServiceConfig(config, label) {
@@ -1479,7 +1488,7 @@ export function createConfigStore({ configDir, stateDir, backupRetention = DEFAU
     mutateDiscoveryVisibility: (change) => editing(change, async () => {
       const current = await readCurrent();
       checkRevision(change.revision, current);
-      if (typeof change.hidden !== 'boolean') fail('Discovered panel visibility must be a boolean.', 'INVALID_ACTION', 400);
+      if (typeof change.hidden !== 'boolean') fail('Discovered widget visibility must be a boolean.', 'INVALID_ACTION', 400);
       if (!current.discoveredSources.some((source) => source.id === change.id)) fail('That discovered panel no longer exists.', 'TILE_NOT_FOUND', 404);
       const hidden = new Set(current.hiddenDiscoveredIds);
       if (change.hidden) hidden.add(change.id); else hidden.delete(change.id);

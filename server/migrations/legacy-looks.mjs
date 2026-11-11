@@ -175,7 +175,12 @@ async function write(file, text) {
   try { await handle.writeFile(text); await handle.sync(); } finally { await handle.close(); }
   await fs.rename(temporary, file);
 }
-async function update(file, convert) {
+export async function update(file, convert) {
+  // Only regular files: a symlinked or hard-linked file isn't replaced by a
+  // copy (config.mjs refuses those too).
+  let stat;
+  try { stat = await fs.lstat(file); } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+  if (!stat.isFile() || stat.nlink > 1) return false;
   const text = await read(file);
   if (text === null) return false;
   const next = convert(text);
@@ -188,17 +193,18 @@ const location = (configDir, stateDir, name) => join(name === 'state.json' ? sta
 
 // A save interrupted by a crash is finished the way config.mjs would (its
 // snapshot put back), so converted files aren't later replaced by old ones.
-async function settleInterrupted(configDir, stateDir) {
+// Returns false when an interrupted save is left for manual recovery.
+export async function settleInterrupted(configDir, stateDir) {
   const journal = await read(join(stateDir, 'transaction.json'));
-  if (journal === null) return;
+  if (journal === null) return true;
   let backup;
-  try { backup = JSON.parse(await read(join(stateDir, 'backups', `${JSON.parse(journal).backupId}.json`))); } catch { return; }
-  if (!plain(backup?.before) || !plain(backup.afterHashes)) return;
+  try { backup = JSON.parse(await read(join(stateDir, 'backups', `${JSON.parse(journal).backupId}.json`))); } catch { return false; }
+  if (!plain(backup?.before) || !plain(backup.afterHashes)) return false;
   const names = Object.keys(backup.before);
   for (const name of names) {
     const current = await read(location(configDir, stateDir, name));
     // Edited by hand since: config.mjs asks for manual recovery; leave it.
-    if (hash(current) !== hash(backup.before[name]) && hash(current) !== backup.afterHashes[name]) return;
+    if (hash(current) !== hash(backup.before[name]) && hash(current) !== backup.afterHashes[name]) return false;
   }
   for (const name of names) {
     const file = location(configDir, stateDir, name);
@@ -209,10 +215,11 @@ async function settleInterrupted(configDir, stateDir) {
     }
   }
   await fs.rm(join(stateDir, 'transaction.json'), { force: true });
+  return true;
 }
 
 // Every dashboard with a folder in either volume.
-async function dashboardDirs(configRoot, stateRoot) {
+export async function dashboardDirs(configRoot, stateRoot) {
   const out = [{ configDir: configRoot, stateDir: stateRoot }];
   const ids = new Set();
   for (const root of [configRoot, stateRoot]) {

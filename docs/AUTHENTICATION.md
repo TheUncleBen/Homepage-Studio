@@ -155,7 +155,10 @@ Everyone can manage their own sign-in under **My account**
 needs a recent sign-in, and a security alert goes out), change the password, add or remove passkeys and the
 authenticator app, make new backup codes, see where they're signed in and sign
 other devices out. Studio insists on keeping a passkey, or a password with an
-authenticator app, so no one locks themselves out by accident.
+authenticator app, so no one locks themselves out by accident. When the
+authenticator app is the only second step, **Replace** moves it to a new
+phone or app (an email says it was replaced), and the last passkey says what
+to add before it can be removed.
 
 Changing sign-in methods, the email address, people, sharing or settings, and
 administrator actions such as raw file saves, imports, exports and restores

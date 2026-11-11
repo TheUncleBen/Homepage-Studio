@@ -53,6 +53,9 @@ test('information and service Custom API preserve different native shapes', () =
   assert.deepEqual(field('customapi','mappings').valueTypes,['array','object']);
   assert.deepEqual(field('customapi','mappings','info').valueTypes,['array']);
   assert.equal(field('customapi','display','info'),undefined);
+  // Display is a choice of the three the widget knows, block by default.
+  assert.deepEqual(field('customapi','display').choices,['block','list','dynamic-list']);
+  assert.equal(field('customapi','display').defaultChoice,'block');
 });
 
 test('prose field choices are an ordered optional list and never become defaults', () => {
@@ -191,6 +194,8 @@ test('every widget has its own description of what it is and what it shows', () 
   assert.equal(widget('pfsense', 'service', shipped).description, 'Firewall. Load Avg, Mem Usage, Temp, WAN Status, WAN IP, Disk Usage.');
   assert.equal(widget('portainer', 'service', shipped).description, 'Docker management. Running, Stopped, Total.');
   assert.match(widget('netbird', 'service', shipped).description, /^Mesh VPN\. Online Peers, Users, Login Expired\.$/);
+  // Every integration says what kind of app it is (a new upstream widget needs an entry in CATEGORIES).
+  for (const item of shipped.service) assert.match(item.description, /^[^.]+\. /, `service ${item.type} has no category in scripts/catalog-descriptions.mjs`);
   const services = shipped.service.map(item => item.description);
   assert.ok(new Set(services).size > services.length * 0.9, 'descriptions are mostly distinct');
 });

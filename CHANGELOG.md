@@ -9,6 +9,78 @@ build is identified by its source commit and image digest
 
 ## [Unreleased]
 
+### Audit fixes (continuous audit of cf02529)
+
+- **Readable configuration files.** Earlier candidates wrote every change to
+  a new deployment's `services.yaml`, `settings.yaml` and the other YAML
+  files as one ever-growing line. New deployments now get ordinary YAML, and
+  data version 2 rewrites existing one-line files the same way at the first
+  start (after the before-upgrade backup), keeping values, comments and
+  `{{HOMEPAGE_VAR_…}}` references.
+- **Lists of settings in the widget editor** (Custom API's Value mappings,
+  Calendar integrations, Home Assistant's custom values, Prometheus metrics)
+  are edited as JSON with the documented example, instead of a list of text
+  the widget couldn't read. Fields with a Text/Settings switch, such as
+  Request Body, show their input box.
+- **No zoom on iPhone.** On touch screens no field's text is under 16px, so
+  iOS no longer zooms into the page when a field is tapped.
+- **Operations:** the Show menu and the monitor search match Studio's other
+  controls.
+- **Audit log:** saving sign-in settings or a profile without a change no
+  longer records an event, and a change names only what changed.
+- **Add a widget:** BookOrbit says what kind of app it is. Custom API's
+  Display is a choice of Block (the default), List and Dynamic list.
+- **Copy link to page** gives the page's address on the dashboard, not on
+  the editor (which opened a missing page).
+- **Stacks:** the "Updated … ago" note sits at the top, clear of the page
+  dots and play button.
+- **Editing:** on a card with no logo, the select box sits beside Move and
+  Edit instead of over the first letters of the name.
+- **A down card** keeps its reason and its time apart ("Name not found ·
+  check the address · since 12:48").
+- **Operations:** after a restart, card monitors show before every widget's
+  numbers are collected.
+- Selected text uses the dashboard's accent colour.
+- **Administration:** Trusted certificates and Backups put their add
+  buttons above the list, where People has Invite a person.
+- **Administration:** a long username no longer widens a person's dialog
+  past a phone screen. Session policy errors use the dialog's own names and
+  units ("Idle sign-out must be 5 minutes to 90 days…"), a duration such as
+  1.5 hours is accepted, and "Confirm it's you after" has a label for
+  screen readers.
+- **My account:** when the authenticator app is your only second step, it
+  offers Replace (for a new phone) instead of a Remove that Studio then
+  refused; your last passkey says it stays until another way is added.
+- **Monitoring history survives restarts and updates.** Every start cleared
+  each card's status history, response times and down-since time, because
+  old monitors were tidied away before the dashboards' cards were read
+  again. Card history is now kept until its dashboard has been read.
+- On phones, dialogs in Administration and My account no longer pop up the
+  keyboard as they open. Replacing an authenticator app sends a "replaced"
+  email, and session policy messages clear as soon as you edit a field.
+- In long dialogs on phones (New monitor), an error shows in view above the
+  buttons instead of below them, and a third button (Save after Cancel and
+  Test now) takes the full row.
+- **Logs:** a search that finds nothing because of a typo (`sourc:`, an
+  unknown level, an open quote) says what to fix.
+- **Maintenance windows can cover cards.** A window (say, a router update)
+  can include the monitors that come from your cards, not only ones added
+  under New monitor.
+- **Log alerts** refuse a search that could never match (an unknown filter
+  or level, or an open quote) and say what to fix, instead of saving an
+  alert that never fires. An email channel says when Studio's email
+  settings aren't set, so nothing would be sent.
+- On phones, choices in every Studio dialog share the width, so Dashboard
+  settings › Refresh no longer runs past its panel.
+- The stack dialog's **Add an existing widget**, snapshot names and a few
+  messages say "widget" like the rest of the editor, not "panel".
+- On the narrowest phones (320 px), Administration › Monitoring and logs no
+  longer scrolls sideways, choices in Studio's own dialogs (Maintenance ›
+  When) fit their row, and Dashboard settings › Tab icon keeps Choose in
+  view.
+- fast-xml-parser (reached through gamedig, for game server widgets) is
+  updated to 5.12.0 for GHSA-474x-hrwr-fgx4.
+
 ### Upgrades keep your data
 
 - **Updating is changing the image digest** ([docs/UPGRADING.md](docs/UPGRADING.md)).

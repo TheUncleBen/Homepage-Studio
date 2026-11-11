@@ -485,9 +485,25 @@
           chipRow('Level', 'severity', LEVELS.map(([v, text]) => ({ value: v, text }))),
           sets.filter(([, field, items]) => items.length || chosen[field]).map(([label, field, items]) => chipRow(label, field, items)));
       }
+      // Why a search found nothing, when it's the search itself: a filter
+      // name or level Studio doesn't know (server/observability/query.mjs),
+      // or a quote left open.
+      const FILTERS = ['sev', 'severity', 'level', 'source', 'src', 'resource', 'res', 'type', 'event', 'class', 'error', 'dashboard', 'scope', 'category', 'cat', 'group', 'panel', 'id', 'actor'];
+      const LEVEL_WORDS = ['critical', 'crit', 'error', 'err', 'errors', 'warning', 'warn', 'warnings', 'notice', 'info', 'debug'];
+      function queryHint(text) {
+        if ((text.replace(/\\./g, '').match(/"/g) ?? []).length % 2) return 'A quote is left open: close it with another ".';
+        for (const [, name, raw] of text.matchAll(/(?:^|\s)-?([a-z]+):("[^"]*"|\S+)/gi)) {
+          const field = name.toLowerCase();
+          const value = raw.replace(/^"|"$/g, '');
+          if (!FILTERS.includes(field) && !raw.startsWith('//')) return `“${name}:” isn’t a filter. Try severity:, source:, resource:, type:, class:, dashboard:, panel: or actor:.`;
+          if (['sev', 'severity', 'level'].includes(field) && !LEVEL_WORDS.includes(value.toLowerCase()) && !/^[0-7]$/.test(value)) return 'Levels are critical, error, warning, notice, info or debug (or 0 to 7).';
+        }
+        return '';
+      }
       function drawEvents(events, append) {
         const rows = events.map(event => eventRow(event));
-        if (!append) put(results, group({}, rows.length ? rows : [emptyRow('No events match.')]));
+        const hint = rows.length ? '' : queryHint(queryInput.value);
+        if (!append) put(results, group({}, rows.length ? rows : [emptyRow(hint ? `No events match. ${hint}` : 'No events match.')]));
         else results.querySelector('.group-body')?.append(...rows);
         results.querySelector('.ops-more')?.remove();
         if (next) {
@@ -760,9 +776,12 @@
         drawWhen();
         const covered = new Set(existing?.monitors ?? []);
         const monitorsHolder = h('div', {});
+        // Cards' monitors too (they come from the dashboards, not the config).
+        let cards = [];
+        ops('monitors').then(answer => { cards = (answer.monitors ?? []).filter(item => item.card); drawMonitors(); }).catch(() => {});
         function drawMonitors() {
-          const candidates = cfg.monitors.filter(item => item.scope === scope.select.value);
-          put(monitorsHolder, candidates.length ? candidates.map(item => row(item.name, toggle({ checked: covered.has(item.id), label: item.name, onChange: on => { if (on) covered.add(item.id); else covered.delete(item.id); } }))) : emptyRow('No monitors on this dashboard to cover.'));
+          const candidates = [...cfg.monitors, ...cards].filter(item => item.scope === scope.select.value);
+          put(monitorsHolder, candidates.length ? candidates.map(item => row(item.name, toggle({ checked: covered.has(item.id), label: item.card ? `${item.name} (card)` : item.name, onChange: on => { if (on) covered.add(item.id); else covered.delete(item.id); } }), { detail: item.card ? 'Card' : undefined })) : emptyRow('No monitors on this dashboard to cover.'));
         }
         scope.select.addEventListener('change', () => { covered.clear(); drawMonitors(); });
         drawMonitors();
@@ -869,7 +888,10 @@
             const rows = [];
             const take = (label, key, attrs) => { const r = secret(label, key, attrs); rows.push(r.row); return r.input; };
             const plain = (label, key, attrs = {}) => { const r = inputRow(label, { value: existing?.[key] ?? '', ...attrs }); rows.push(r.row); return r.input; };
-            if (type === 'email') { const to = plain('Send to', 'to', { placeholder: 'you@example.com, team@example.com' }); read = () => ({ to: to.value }); }
+            if (type === 'email') {
+              const to = plain('Send to', 'to', { placeholder: 'you@example.com, team@example.com' }); read = () => ({ to: to.value });
+              if (!cfg.storage?.emailReady) rows.push(h('p', { class: 'empty-row', text: 'Email needs Studio’s email settings (STUDIO_SMTP_HOST). Until they’re set, nothing is sent.' }));
+            }
             else if (type === 'telegram') { const token = take('Bot token', 'token'); const chat = plain('Chat id', 'chat'); read = () => ({ token: token.value, chat: chat.value }); }
             else if (type === 'pushover') { const token = take('App token', 'token'); const user = plain('User key', 'user'); read = () => ({ token: token.value, user: user.value }); }
             else {

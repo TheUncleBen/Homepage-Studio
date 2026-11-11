@@ -247,9 +247,17 @@ export function createMonitoring({ db, definitions, runCheck, onEvent = () => {}
     db.run('DELETE FROM check_day WHERE start < ?', t - DAY_DAYS * 86400e3);
     db.run('DELETE FROM incident_event WHERE incident_id IN (SELECT id FROM incident WHERE closed IS NOT NULL AND closed < ?)', t - 400 * 86400e3);
     db.run('DELETE FROM incident WHERE closed IS NOT NULL AND closed < ?', t - 400 * 86400e3);
-    // Monitors that no longer exist.
+    // Monitors that no longer exist. A card's monitor comes from its
+    // dashboard a few seconds after a start, so one whose dashboard hasn't
+    // been read yet is kept (a restart or an update used to clear every
+    // card's history); one unchecked for RESULT_DAYS has gone with its
+    // dashboard.
     const ids = new Set(all().map(monitor => monitor.id));
-    for (const row of db.all('SELECT monitor_id FROM monitor_state')) if (!ids.has(row.monitor_id)) forget(row.monitor_id);
+    for (const row of db.all('SELECT monitor_id, scope, last_check FROM monitor_state')) {
+      if (ids.has(row.monitor_id)) continue;
+      const waiting = row.monitor_id.startsWith('card:') && !bound.has(row.scope) && (row.last_check ?? 0) > t - RESULT_DAYS * 86400e3;
+      if (!waiting) forget(row.monitor_id);
+    }
   }
   function forget(id) {
     states.delete(id); due.delete(id);
@@ -273,7 +281,12 @@ export function createMonitoring({ db, definitions, runCheck, onEvent = () => {}
       // checked now, so its dot doesn't show the old answer for a cycle.
       for (const monitor of monitors) if (before.has(monitor.id) && before.get(monitor.id) !== JSON.stringify(monitor)) due.set(monitor.id, now());
     },
-    dropDashboard(dashboardId) { for (const monitor of bound.get(dashboardId) ?? []) forget(monitor.id); bound.delete(dashboardId); },
+    // Also its cards' rows kept from before a restart (not bound yet).
+    dropDashboard(dashboardId) {
+      for (const monitor of bound.get(dashboardId) ?? []) forget(monitor.id);
+      for (const row of db.all("SELECT monitor_id FROM monitor_state WHERE scope = ? AND monitor_id LIKE 'card:%'", dashboardId)) forget(row.monitor_id);
+      bound.delete(dashboardId);
+    },
     monitors: all,
     byId,
     bound: dashboardId => bound.get(dashboardId) ?? [],
