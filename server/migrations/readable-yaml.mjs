@@ -21,24 +21,32 @@ export function readableYamlText(text) {
   const references = [];
   const masked = text.replace(PLACEHOLDER, (original) => `${prefix}${references.push(original) - 1}END`);
   const restore = (value) => value.replace(new RegExp(`${prefix}(\\d+)END`, 'g'), (_, index) => references[Number(index)]);
-  const doc = parseDocument(masked, OPTIONS);
-  if (doc.errors.length || !(isMap(doc.contents) || isSeq(doc.contents)) || !doc.contents.flow || !doc.contents.items.length) return text;
-  const before = JSON.stringify(doc.toJS({ maxAliasCount: 100 }));
-  visit(doc, {
-    Map(_, node) { node.flow = false; },
-    Seq(_, node) { node.flow = Boolean(node.items.length) && node.items.every((item) => isScalar(item)); },
-  });
-  doc.contents.flow = false;
-  const next = doc.toString({ lineWidth: 0 });
-  const check = parseDocument(next, OPTIONS);
-  if (check.errors.length || JSON.stringify(check.toJS({ maxAliasCount: 100 })) !== before) return text;
-  return restore(next);
+  try {
+    const doc = parseDocument(masked, OPTIONS);
+    if (doc.errors.length || !(isMap(doc.contents) || isSeq(doc.contents)) || !doc.contents.flow || !doc.contents.items.length) return text;
+    const before = JSON.stringify(doc.toJS({ maxAliasCount: 100 }));
+    // Empty collections stay `{}` and `[]`.
+    visit(doc, {
+      Map(_, node) { if (node.items.length) node.flow = false; },
+      Seq(_, node) { if (node.items.length) node.flow = node.items.every((item) => isScalar(item)); },
+    });
+    doc.contents.flow = false;
+    const next = doc.toString({ lineWidth: 0 });
+    const check = parseDocument(next, OPTIONS);
+    if (check.errors.length || JSON.stringify(check.toJS({ maxAliasCount: 100 })) !== before) return text;
+    return restore(next);
+  } catch {
+    // Anything this can't read safely (too many aliases, say) stays as it is;
+    // Studio reports it when the dashboard loads.
+    return text;
+  }
 }
 
 export async function migrateReadableYaml({ configRoot, stateRoot, log = console }) {
   let files = 0;
   for (const { configDir, stateDir } of await dashboardDirs(configRoot, stateRoot)) {
-    await settleInterrupted(configDir, stateDir);
+    // A save left for manual recovery keeps its files exactly as they are.
+    if (!await settleInterrupted(configDir, stateDir)) continue;
     for (const name of FILES) if (await update(join(configDir, name), readableYamlText)) files += 1;
   }
   log.log(`Studio upgrade: ${files} one-line YAML file${files === 1 ? '' : 's'} rewritten as readable YAML.`);

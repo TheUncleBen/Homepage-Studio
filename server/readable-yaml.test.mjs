@@ -31,7 +31,12 @@ test('a one-line YAML file becomes readable block YAML with the same values and 
 });
 
 test('block files, empty files, broken files and other text are left exactly as they are', () => {
-  for (const text of ['title: Home\nlayout: { Media: { style: row } }\n', '[]\n', '{}\n', '', '{ a: [\n', '- a\n- b\n', 'not: [valid\n']) assert.equal(readableYamlText(text), text);
+  const aliases = '{ a: &a [x,x,x,x,x,x,x,x,x,x], b: &b [*a,*a,*a,*a,*a,*a,*a,*a,*a,*a], c: &c [*b,*b,*b,*b,*b,*b,*b,*b,*b,*b], d: [*c,*c] }\n';
+  for (const text of [aliases, 'title: Home\nlayout: { Media: { style: row } }\n', '[]\n', '{}\n', '', '{ a: [\n', '- a\n- b\n', 'not: [valid\n']) assert.equal(readableYamlText(text), text);
+});
+
+test('empty nested collections stay {} and []', () => {
+  assert.equal(readableYamlText('{ a: {}, b: [], c: { d: 1 } }\n'), 'a: {}\nb: []\nc:\n  d: 1\n');
 });
 
 test('the upgrade to data version 2 rewrites every dashboard\'s one-line files after a backup', async (t) => {
@@ -44,6 +49,9 @@ test('the upgrade to data version 2 rewrites every dashboard\'s one-line files a
   await fs.writeFile(join(configRoot, 'settings.yaml'), '{ title: Home, theme: dark }\n');
   await fs.writeFile(join(configRoot, 'widgets.yaml'), '- resources:\n    cpu: true\n');
   await fs.writeFile(join(other, 'settings.yaml'), '{ title: Family }\n');
+  // A symlinked file is left alone, not replaced by a copy.
+  await fs.writeFile(join(root, 'shared.yaml'), '{ x: 1 }\n');
+  await fs.symlink(join(root, 'shared.yaml'), join(other, 'docker.yaml'));
   await fs.writeFile(join(stateRoot, DATA_MARKER), JSON.stringify({ version: 1, build: 'cf02529' }));
   const result = await upgradeData({ configRoot, stateRoot, buildRevision: 'next', log: quiet });
   assert.equal(result.from, 1); assert.equal(result.to, 2); assert.match(result.backup, /before-upgrade/);
@@ -51,5 +59,19 @@ test('the upgrade to data version 2 rewrites every dashboard\'s one-line files a
   assert.equal(await fs.readFile(join(other, 'settings.yaml'), 'utf8'), 'title: Family\n');
   assert.equal(await fs.readFile(join(configRoot, 'widgets.yaml'), 'utf8'), '- resources:\n    cpu: true\n');
   assert.match(await fs.readFile(join(configRoot, 'services.yaml'), 'utf8'), /^- Services:\n {4}- App:\n/);
+  assert.equal((await fs.lstat(join(other, 'docker.yaml'))).isSymbolicLink(), true);
+  assert.equal(await fs.readFile(join(root, 'shared.yaml'), 'utf8'), '{ x: 1 }\n');
   assert.equal((await readDataVersion(stateRoot)).version, 2);
+});
+
+test('a dashboard with a save left for manual recovery keeps its files as they are', async (t) => {
+  const root = await fs.mkdtemp(join(os.tmpdir(), 'studio-readable-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const configRoot = join(root, 'config'), stateRoot = join(root, 'state');
+  await fs.mkdir(configRoot, { recursive: true }); await fs.mkdir(stateRoot, { recursive: true });
+  await fs.writeFile(join(configRoot, 'settings.yaml'), '{ title: Home }\n');
+  await fs.writeFile(join(stateRoot, 'transaction.json'), JSON.stringify({ backupId: 'missing' }));
+  await fs.writeFile(join(stateRoot, DATA_MARKER), JSON.stringify({ version: 1 }));
+  await upgradeData({ configRoot, stateRoot, buildRevision: 'next', log: quiet });
+  assert.equal(await fs.readFile(join(configRoot, 'settings.yaml'), 'utf8'), '{ title: Home }\n');
 });
